@@ -7,6 +7,8 @@
 
 use crate::Error;
 
+// on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
+// reject non-ASCII); the project brands as μTZ, the container as uTZ1
 pub const MAGIC: [u8; 4] = *b"uTZ1";
 pub const VERSION: u8 = 1;
 

@@ -1,10 +1,10 @@
-# uTZ — micro-timezone
+# μTZ — micro-timezone
 
 A tiny, embeddable latitude/longitude → IANA timezone lookup crate. Ground-up
 rewrite; keeps only the *contract* of the old `spatialtime` (Reader-style API,
 OSM source), replaces the whole engine.
 
-Working crate name: **`utz`** (project: uTZ / micro-timezone).
+Working crate name: **`utz`** (project: μTZ / micro-timezone).
 
 ---
 
@@ -52,8 +52,7 @@ utz/                 workspace root
       lib.rs         re-exports encoder + measurement helpers
       types.rs       Feat/Ring/Poly, quantization helpers
       loader.rs      source → Vec<Feat>  (geojson; fgb reader kept for now)
-      topo.rs        shared-arc topology + topology-aware RDP (ported)
-      rdp.rs         open-polyline RDP
+      topo.rs        shared-arc topology + topology-aware open-polyline RDP (ported)
       grid.rs        grid + interned-CSR builder
       encode.rs      container serializer (header + sections + compress)
       download.rs    conditional GET (ETag / Last-Modified)
@@ -163,16 +162,16 @@ caveat so users pick `-1970` when past timestamps must convert correctly, or
 `all` when the unique country-level tzid string itself is the product.
 
 **Source URLs** (timezone-boundary-builder, `releases/latest/download/`, GeoJSON zip).
-Six variants: {land-only, with-oceans} × {all, -1970, -now}. uTZ uses the
+Six variants: {land-only, with-oceans} × {all, -1970, -now}. μTZ uses the
 **with-oceans** ones (global coverage — land-only leaves the sea uncovered):
 
 ```
 https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones.geojson.zip
 https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones-1970.geojson.zip
 https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones-now.geojson.zip
-https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones-with-oceans.geojson.zip        # uTZ `all` (unmerged, 444 zones)
-https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones-with-oceans-1970.geojson.zip   # uTZ `1970`
-https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones-with-oceans-now.geojson.zip    # uTZ `now` (default)
+https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones-with-oceans.geojson.zip        # μTZ `all` (unmerged, 444 zones)
+https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones-with-oceans-1970.geojson.zip   # μTZ `1970`
+https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones-with-oceans-now.geojson.zip    # μTZ `now` (default)
 ```
 
 (`all` grid/size numbers not yet measured — §10 table covers `-now`/`-1970`;
@@ -298,7 +297,7 @@ docs (HTML self-embeds data → generated artifact, not a committed asset).
 
 ---
 
-## 13. How uTZ differs from tzf-rs (why build it)
+## 13. How μTZ differs from tzf-rs (why build it)
 
 Win: **~10× smaller** (general compression tzf lacks + tunable aggressive RDP + int
 quant): ~125–460 KB vs tzf ~5–7 MB. **Genuinely `no_std`/flash-embeddable** (tzf is

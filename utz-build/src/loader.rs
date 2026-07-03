@@ -14,7 +14,7 @@ use serde::Deserialize;
 use crate::{download, Dataset, Feat, Poly, Ring};
 
 /// TZBB release asset for a dataset (`releases/latest`). TZBB naming: the
-/// unsuffixed release is the "Comprehensive" set (uTZ `all`); `-1970` = "Same
+/// unsuffixed release is the "Comprehensive" set (μTZ `all`); `-1970` = "Same
 /// since 1970"; `-now` = "Same since now"; `with-oceans` selects ocean cover.
 pub fn dataset_url(d: Dataset) -> String {
     let base = "https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download";

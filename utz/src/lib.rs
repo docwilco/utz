@@ -1,4 +1,4 @@
-//! uTZ — micro-timezone: tiny, embeddable lat/lon → IANA tzid lookup.
+//! μTZ — micro-timezone: tiny, embeddable lat/lon → IANA tzid lookup.
 //!
 //! Self-describing container (see PLAN.md §4) → one generic decoder: grid
 //! prefilter, lazy per-polygon integer PIP. `no_std` + `alloc`.
@@ -19,8 +19,8 @@ pub use finder::Finder;
 /// Errors surfaced by the reader.
 #[derive(Debug, PartialEq, derive_more::Display, derive_more::Error)]
 pub enum Error {
-    /// The byte source is not a valid uTZ container.
-    #[display("not a valid uTZ container")]
+    /// The byte source is not a valid μTZ container.
+    #[display("not a valid μTZ container")]
     BadFormat,
     /// Container is compressed with a codec this build cannot decode
     /// (or `from_static` was handed a non-`uncompressed` container).

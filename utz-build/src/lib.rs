@@ -1,4 +1,4 @@
-//! uTZ build + exploration crate.
+//! μTZ build + exploration crate.
 //!
 //! Home of the encoder (topology + RDP + quantization + grid + container) and
 //! the measurement examples ported from the old `formatlab` prototype. Also
@@ -27,7 +27,7 @@ use geozero::ToGeo;
 
 /// The two dataset knobs (PLAN.md §6): merge vintage × ocean coverage.
 /// TZBB's terminology: `now` = "Same since now", `1970` = "Same since 1970",
-/// `all` = "Comprehensive" (every tzid, unsuffixed release). uTZ defaults to
+/// `all` = "Comprehensive" (every tzid, unsuffixed release). μTZ defaults to
 /// with-oceans; a `land-` prefix selects the land-only releases.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Dataset {
