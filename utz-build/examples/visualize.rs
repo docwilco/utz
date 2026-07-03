@@ -29,8 +29,17 @@ fn live(ds: &str, feats: &[Feat]) -> anyhow::Result<()> {
     let wasm = build_wasm()?;
     println!("utz_simplify.wasm: {:.1} KiB", wasm.len() as f64 / 1024.0);
 
+    // density is optional: first use downloads GHS-POP (~460 MB, then cached)
+    let dens = match utz_build::density::DensityGrid::load(&utz_build::cache_dir()) {
+        Ok(g) => Some(g),
+        Err(e) => {
+            eprintln!("warning: density grid unavailable ({e}); density controls disabled");
+            None
+        }
+    };
+
     let sub = format!("{ds} with-oceans · full-res arcs · simplification runs in-browser (utz-simplify WASM)");
-    let html = viz::live_html(&topo0.arc_coords, stored0, &base64(&wasm), "OSM time zones — live simplification", &sub)?;
+    let html = viz::live_html(&topo0.arc_coords, stored0, &viz::b64(&wasm), "OSM time zones — live simplification", &sub, dens.as_ref())?;
     let outp = format!("{ds}_live.html");
     std::fs::write(&outp, &html)?;
     println!("wrote {outp}  ({:.1} MiB)", html.len() as f64 / (1 << 20) as f64);
@@ -46,23 +55,6 @@ fn build_wasm() -> anyhow::Result<Vec<u8>> {
         .status()?;
     anyhow::ensure!(status.success(), "wasm build failed — try: rustup target add wasm32-unknown-unknown");
     Ok(std::fs::read(format!("{root}/target/wasm32-unknown-unknown/release/utz_simplify.wasm"))?)
-}
-
-fn base64(data: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut s = String::with_capacity(data.len().div_ceil(3) * 4);
-    for c in data.chunks(3) {
-        let b = [c[0], *c.get(1).unwrap_or(&0), *c.get(2).unwrap_or(&0)];
-        let n = u32::from_be_bytes([0, b[0], b[1], b[2]]);
-        for i in 0..4 {
-            if i <= c.len() {
-                s.push(T[(n >> (18 - 6 * i) & 63) as usize] as char);
-            } else {
-                s.push('=');
-            }
-        }
-    }
-    s
 }
 
 fn overlay(ds: &str, feats: &[Feat]) -> anyhow::Result<()> {
