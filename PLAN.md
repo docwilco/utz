@@ -306,8 +306,8 @@ big polygons); benchmark `geo` vs `geometry-rs`.
 ## 14. Open decisions (continue later)
 
 1. **Build-knob mechanism** — features vs `tz.toml` split (leaning features + toml).
-2. **`geo` vs hand-rolled PIP** at runtime — leaning hand-rolled i64 (no_std), geo as
-   dev-oracle. Confirm with a speed bench.
+2. ~~**`geo` vs hand-rolled PIP**~~ — **decided**: hand-rolled i64 (`utz/src/pip.rs`),
+   geo dev-oracle only. 0/20k disagreements, 14.5–51× faster (see §15).
 3. **`LonLat` newtype** vs raw `(lon, lat)` to prevent order footgun.
 4. **Antimeridian**: verify TZBB is pre-split; else add a split pass.
 5. **Default preset** values (dataset/ε/quant/grid/codec) for the "balanced" build.
@@ -317,8 +317,17 @@ big polygons); benchmark `geo` vs `geometry-rs`.
 
 ## 15. Measurement backlog (do in this workspace)
 
-- [ ] **Dominant-first interning cost** — extra unique lists + KB at 2° (`-now`/`-1970`).
-- [ ] **Hand-rolled i64 PIP vs `geo`** — correctness (0 disagreements target) + speed.
+- [x] **Dominant-first interning cost** — measured (`dominant_cost` example) at 2°:
+  per-cell dominant-first costs **+1.3 KB** `-now` (300→486 lists) / **+3.1 KB**
+  `-1970` (1163→1616), but lifts P(first-PIP-hit) 53%→**78.8%** / 46%→**78.2%**.
+  Global-area-desc ordering is free (interning preserved by construction) but only
+  helps `-1970` (46→53%). Verdict: dominant-first worth it — KBs are noise vs the
+  32 KB primary; halves expected PIP work on border cells.
+- [x] **Hand-rolled i64 PIP vs `geo`** — done (`utz/src/pip.rs` + `pip_bench`):
+  **0/20,000 disagreements** on quantized OSM ε=500 m, both datasets. Speed with
+  equal bbox prechecks: **14.5×** faster (`-now`), **51×** (`-1970`). Decision
+  confirmed: hand-rolled per-polygon even-odd, i64 (i128 for i32 grids), boundary
+  points claimed (`geo` stays dev-oracle only).
 - [ ] **Real grid lookup bench** — interior O(1) vs border PIP, vs linear scan, both datasets.
 - [ ] **Full pipeline size table** — topology×RDP(ε)×quant(i16/i24)×codec(incl gzip), `-now`/`-1970`.
 - [ ] **Grid size × P(PIP) × memory** confirmation with the *real* CSR builder.
