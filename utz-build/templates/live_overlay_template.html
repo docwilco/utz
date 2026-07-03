@@ -43,7 +43,7 @@
   <div id="slots"></div>
   <label class="slot" id="rawrow">
     <input type="checkbox" id="rawcb">
-    <span class="sw" style="background:#6b7684"></span>
+    <span class="sw" style="background:#00d95f"></span>
     <span class="raw-label">raw · f64 full-res</span>
     <span class="rawv" id="rawv"></span>
   </label>
@@ -238,9 +238,9 @@ Slot.prototype.redraw = function () {
 };
 
 var slots = [
-  new Slot(0, '#ffb454', { on: true, algo: 0, eps: 500, quant: 0 }),
-  new Slot(1, '#58a6ff', { on: false, algo: 2, eps: 500, quant: 0 }),
-  new Slot(2, '#d2a8ff', { on: false, algo: 1, eps: 500, quant: 0 }),
+  new Slot(0, '#ff2d78', { on: true, algo: 0, eps: 500, quant: 0 }),
+  new Slot(1, '#00c8ff', { on: false, algo: 2, eps: 500, quant: 0 }),
+  new Slot(2, '#ffd400', { on: false, algo: 1, eps: 500, quant: 0 }),
 ];
 
 // raw f64 overlay — built lazily on first enable (drawing 2M verts is slow)
@@ -250,7 +250,7 @@ document.getElementById('rawcb').addEventListener('change', function () {
   if (this.checked) {
     if (!rawLayer) {
       var lls = ARCS.map(function (arc) { return arc.map(function (p) { return [p[1], p[0]]; }); });
-      rawLayer = L.polyline(lls, { color: '#6b7684', weight: 1, opacity: 0.8 });
+      rawLayer = L.polyline(lls, { color: '#00d95f', weight: 1, opacity: 0.8 });
     }
     rawLayer.addTo(map);
   } else if (rawLayer) {
@@ -265,7 +265,7 @@ function updateStats() {
   var shown = 0;
   if (document.getElementById('rawcb').checked) {
     shown++;
-    el.innerHTML += '<div class="st"><span class="sw" style="background:#6b7684"></span><span>raw f64</span>' +
+    el.innerHTML += '<div class="st"><span class="sw" style="background:#00d95f"></span><span>raw f64</span>' +
       '<span class="num">' + STORED0.toLocaleString() + ' v · ' + fmtBytes(STORED0 * 16) + '</span></div>';
   }
   slots.forEach(function (s) {
