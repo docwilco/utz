@@ -55,22 +55,15 @@
       <span class="raw-label">heatmap</span>
       <input type="range" id="heatop" min="0" max="100" value="45" style="flex:1" title="heatmap opacity">
     </label>
-    <div class="slot" title="weighted sets shrink ε toward ε × strength where density is high">
-      <span class="raw-label" style="color:#8b98a8">weight strength</span>
-      <input type="range" id="wminsl" min="5" max="100" value="50" style="flex:1">
-      <span class="rawv" id="wminv"></span>
-    </div>
   </div>
   <div class="qsec">
     <div class="qtitle">Reduction <span>· enabled sets</span></div>
     <div id="stats"></div>
   </div>
-  <div class="foot">arcs drawn as shared-border outlines (each border once) ·
-    simplification runs the builder's own code (utz-simplify → WASM) in workers —
-    changing settings aborts and recomputes · the raw line is simplified first,
-    then snapped to the chosen grid for display (the builder's order) ·
-    bytes = raw coords at the chosen width, before delta/varint +
-    compression · raw layer is heavy to draw</div>
+  <div class="qsec">
+    <div class="qtitle">Misassigned <span>· vs raw ε=0, pre-quant</span></div>
+    <div id="mstats"></div>
+  </div>
 </div>
 <script>
 var ARCS = /*ARCS*/;
@@ -81,7 +74,6 @@ var WASM_B64 = "/*WASM*/";
 // {w,h,lon0,lat0,dlon,dlat,b64}; both null when built without GHS-POP
 var DENS = /*DENS*/;
 var HEAT = /*HEAT*/;
-var WMIN = 0.1;              // weighting slider: ε multiplier at max density
 
 var ALGO = [
   { id: 0, key: 'rdp', name: 'RDP' },
@@ -92,6 +84,16 @@ var ALGO = [
   { id: 255, key: 'raw', name: 'Raw' },
 ];
 var EPS_M = [10, 25, 50, 100, 250, 500, 1000, 2000, 5000];
+// per-set population weighting: ε multiplier at max density (1 = off)
+var POPW = [
+  { label: 'pop off', w: 1 },
+  { label: '×0.5', w: 0.5 },
+  { label: '×0.2', w: 0.2 },
+  { label: '×0.1', w: 0.1 },
+  { label: '×0.05', w: 0.05 },
+  { label: '×0.02', w: 0.02 },
+  { label: '×0.01', w: 0.01 },
+];
 var QUANT = [
   { key: 'f64', label: 'f64', bpc: 8 },
   { key: 'f32', label: 'f32', bpc: 4 },
@@ -131,55 +133,110 @@ var WASM_BYTES = (function () {
   return u;
 })();
 var DENSF = DENS ? new Float64Array(DENS) : null;
+var HEATV = HEAT ? (function () {
+  var bin = atob(HEAT.b64), u = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u;
+})() : null;
 
-// worker: instantiate utz-simplify WASM, simplify every arc on request.
+// worker: instantiate utz-simplify WASM, simplify every arc on request, and
+// price the misassignment (pocket decomposition between each raw sub-chain
+// and its shortcut — subset simplifiers make output verts bit-exact copies,
+// so they map back to raw indices; density from the embedded heat raster).
 // Killed and respawned to abort — never blocks the page.
-var WORKER_SRC = '\
-var W = null, buf = 0, dbuf = 0, COORDS = null, OFFS = null, DENS = null;\
-onmessage = function (e) {\
-  var m = e.data;\
-  if (m.type === "init") {\
-    COORDS = m.coords; OFFS = m.offs; DENS = m.dens;\
-    var maxLen = 0;\
-    for (var a = 0; a + 1 < OFFS.length; a++) maxLen = Math.max(maxLen, OFFS[a + 1] - OFFS[a]);\
-    WebAssembly.instantiate(m.wasm, {}).then(function (r) {\
-      W = r.instance.exports;\
-      buf = W.utz_alloc(maxLen * 2);\
-      if (DENS) dbuf = W.utz_alloc(maxLen);\
-      postMessage({ type: "ready" });\
-    });\
-  } else if (m.type === "run") {\
-    var t0 = Date.now();\
-    var out = new Float64Array(COORDS.length);\
-    var outOffs = new Uint32Array(OFFS.length);\
-    var kept = 0;\
-    var weighted = DENS && m.wmin < 1;\
-    for (var a = 0; a + 1 < OFFS.length; a++) {\
-      var s = OFFS[a], n = OFFS[a + 1] - s;\
-      var f = new Float64Array(W.memory.buffer, buf, n * 2);\
-      f.set(COORDS.subarray(s * 2, (s + n) * 2));\
-      var k;\
-      if (weighted) {\
-        new Float64Array(W.memory.buffer, dbuf, n).set(DENS.subarray(s, s + n));\
-        k = W.utz_simplify_w(m.algoId, buf, n, m.param, dbuf, m.wmin);\
-      } else {\
-        k = W.utz_simplify(m.algoId, buf, n, m.param);\
-      }\
-      out.set(new Float64Array(W.memory.buffer, buf, k * 2), kept * 2);\
-      kept += k; outOffs[a + 1] = kept;\
-    }\
-    var coords = out.slice(0, kept * 2);\
-    postMessage({ type: "done", gen: m.gen, kept: kept, ms: Date.now() - t0, coords: coords, offs: outOffs },\
-      [coords.buffer, outOffs.buffer]);\
-  }\
-};';
-var WORKER_URL = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' }));
+function workerBody() {
+  var W = null, buf = 0, dbuf = 0, COORDS = null, OFFS = null, DENS = null;
+  // pockets between raw sub-chain [i0..i1] (indices within arc at base s)
+  // and its shortcut; splits at chain/shortcut-line crossings. People are
+  // priced with the mean per-vertex density over the pocket's chain — DENS
+  // hugs the boundary exactly where pockets live.
+  function pockets(s, i0, i1, acc) {
+    var X = function (i) { return COORDS[(s + i) * 2]; };
+    var Y = function (i) { return COORDS[(s + i) * 2 + 1]; };
+    var D = function (i) { return DENS ? DENS[s + i] : 0; };
+    var ax = X(i0), ay = Y(i0), dx = X(i1) - ax, dy = Y(i1) - ay;
+    var len2 = dx * dx + dy * dy;
+    var pocket = 0, clat = ay, dsum = D(i0), np = 1;
+    var flush = function () {
+      var km2 = Math.abs(pocket) * 111.32 * 111.32 * Math.cos(clat / np * Math.PI / 180);
+      acc.area += km2;
+      acc.people += km2 * dsum / np;
+    };
+    var px = ax, py = ay, sp = 0;
+    for (var k = i0; k < i1; k++) {
+      var qx = X(k + 1), qy = Y(k + 1);
+      var sq = dx * (qy - ay) - dy * (qx - ax);
+      if (len2 > 0 && sp * sq < 0) {
+        var t = sp / (sp - sq);
+        var xx = px + t * (qx - px), xy = py + t * (qy - py);
+        pocket += ((px - ax) * (xy - ay) - (py - ay) * (xx - ax)) / 2;
+        flush();
+        pocket = ((xx - ax) * (qy - ay) - (xy - ay) * (qx - ax)) / 2;
+        clat = xy + qy; dsum = D(k) + D(k + 1); np = 2;
+      } else {
+        pocket += ((px - ax) * (qy - ay) - (py - ay) * (qx - ax)) / 2;
+        clat += qy; dsum += D(k + 1); np++;
+      }
+      px = qx; py = qy; sp = sq;
+    }
+    flush();
+  }
+  onmessage = function (e) {
+    var m = e.data;
+    if (m.type === 'init') {
+      COORDS = m.coords; OFFS = m.offs; DENS = m.dens;
+      var maxLen = 0;
+      for (var a = 0; a + 1 < OFFS.length; a++) maxLen = Math.max(maxLen, OFFS[a + 1] - OFFS[a]);
+      WebAssembly.instantiate(m.wasm, {}).then(function (r) {
+        W = r.instance.exports;
+        buf = W.utz_alloc(maxLen * 2);
+        if (DENS) dbuf = W.utz_alloc(maxLen);
+        postMessage({ type: 'ready' });
+      });
+    } else if (m.type === 'run') {
+      var t0 = Date.now();
+      var out = new Float64Array(COORDS.length);
+      var outOffs = new Uint32Array(OFFS.length);
+      var kept = 0;
+      var weighted = DENS && m.wmin < 1;
+      var acc = { area: 0, people: 0 };
+      for (var a = 0; a + 1 < OFFS.length; a++) {
+        var s = OFFS[a], n = OFFS[a + 1] - s;
+        var f = new Float64Array(W.memory.buffer, buf, n * 2);
+        f.set(COORDS.subarray(s * 2, (s + n) * 2));
+        var k;
+        if (weighted) {
+          new Float64Array(W.memory.buffer, dbuf, n).set(DENS.subarray(s, s + n));
+          k = W.utz_simplify_w(m.algoId, buf, n, m.param, dbuf, m.wmin);
+        } else {
+          k = W.utz_simplify(m.algoId, buf, n, m.param);
+        }
+        var res = new Float64Array(W.memory.buffer, buf, k * 2);
+        out.set(res, kept * 2);
+        if (k < n) {
+          // walk-match kept verts to raw indices, then price each shortcut
+          var j = 0, prev = -1;
+          for (var v = 0; v < k; v++) {
+            while (COORDS[(s + j) * 2] !== res[v * 2] || COORDS[(s + j) * 2 + 1] !== res[v * 2 + 1]) j++;
+            if (prev >= 0 && j > prev + 1) pockets(s, prev, j, acc);
+            prev = j; j++;
+          }
+        }
+        kept += k; outOffs[a + 1] = kept;
+      }
+      var coords = out.slice(0, kept * 2);
+      postMessage({ type: 'done', gen: m.gen, kept: kept, ms: Date.now() - t0, coords: coords, offs: outOffs, area: acc.area, people: acc.people },
+        [coords.buffer, outOffs.buffer]);
+    }
+  };
+}
+var WORKER_URL = URL.createObjectURL(new Blob(['(' + workerBody.toString() + ')()'], { type: 'text/javascript' }));
 
 function Slot(idx, color, def) {
   var self = this;
   this.idx = idx; this.color = color;
   this.on = def.on; this.algo = def.algo; this.eps = def.eps; this.quant = def.quant;
-  this.w = !!def.w;
+  this.pw = def.pw || 0;
   this.gen = 0; this.busy = false; this.ready = false; this.pendingRun = false;
   this.worker = null; this.result = null;
   this.layer = L.polyline([], { color: color, weight: 1.2, opacity: 0.95 });
@@ -188,24 +245,50 @@ function Slot(idx, color, def) {
   this.cb = document.createElement('input'); this.cb.type = 'checkbox'; this.cb.checked = this.on;
   var sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = color;
   this.selAlgo = mkSelect(ALGO.map(function (a) { return a.name; }), this.algo);
-  this.selEps = mkSelect(EPS_M.map(function (e) { return 'ε ' + e + ' m'; }), EPS_M.indexOf(this.eps));
+  this.selEps = mkSelect(
+    EPS_M.map(function (e) { return 'ε ' + e + ' m'; }).concat(['ε custom…']),
+    EPS_M.indexOf(this.eps));
   this.selQuant = mkSelect(QUANT.map(function (q) { return q.label; }), this.quant);
   this.spin = document.createElement('span'); this.spin.className = 'spin';
   row.appendChild(this.cb); row.appendChild(sw);
   row.appendChild(this.selAlgo); row.appendChild(this.selEps); row.appendChild(this.selQuant);
   if (DENS) {
-    this.wcb = document.createElement('input'); this.wcb.type = 'checkbox';
-    this.wcb.checked = this.w;
-    this.wcb.title = 'population weighting: ε shrinks toward ε × strength in dense areas (GHS-POP; slider below)';
-    row.appendChild(this.wcb);
-    this.wcb.addEventListener('change', function () { self.w = self.wcb.checked; self.request(); });
+    this.selPop = mkSelect(POPW.map(function (p) { return p.label; }), this.pw);
+    this.selPop.title = 'population weighting: ε shrinks toward ε × this factor in the densest areas (GHS-POP)';
+    row.appendChild(this.selPop);
+    this.selPop.addEventListener('change', function () { self.pw = self.selPop.selectedIndex; self.request(); });
   }
   row.appendChild(this.spin);
   document.getElementById('slots').appendChild(row);
 
+  // custom-ε sub-row: log slider 1 m … 10 km, shown while 'ε custom…' is picked
+  this.epsRow = document.createElement('div');
+  this.epsRow.className = 'slot'; this.epsRow.style.display = 'none';
+  var elbl = document.createElement('span'); elbl.className = 'raw-label'; elbl.style.color = '#8b98a8';
+  elbl.textContent = 'custom ε';
+  this.epsSl = document.createElement('input');
+  this.epsSl.type = 'range'; this.epsSl.min = 0; this.epsSl.max = 100; this.epsSl.style.flex = '1';
+  this.epsV = document.createElement('span'); this.epsV.className = 'rawv';
+  this.epsRow.appendChild(elbl); this.epsRow.appendChild(this.epsSl); this.epsRow.appendChild(this.epsV);
+  document.getElementById('slots').appendChild(this.epsRow);
+  var slEps = function () { return Math.round(Math.pow(10, self.epsSl.value / 25)); };
+
   this.cb.addEventListener('change', function () { self.on = self.cb.checked; self.toggled(); });
   this.selAlgo.addEventListener('change', function () { self.algo = self.selAlgo.selectedIndex; self.syncDisabled(); self.request(); });
-  this.selEps.addEventListener('change', function () { self.eps = EPS_M[self.selEps.selectedIndex]; self.request(); });
+  this.selEps.addEventListener('change', function () {
+    if (self.selEps.selectedIndex < EPS_M.length) {
+      self.eps = EPS_M[self.selEps.selectedIndex];
+      self.epsRow.style.display = 'none';
+    } else {
+      self.epsSl.value = Math.round(25 * Math.log10(Math.max(1, self.eps))); // seed from current ε
+      self.eps = slEps();
+      self.epsV.textContent = 'ε ' + self.eps + ' m';
+      self.epsRow.style.display = '';
+    }
+    self.request();
+  });
+  this.epsSl.addEventListener('input', function () { self.epsV.textContent = 'ε ' + slEps() + ' m'; });
+  this.epsSl.addEventListener('change', function () { self.eps = slEps(); self.request(); });
   this.selQuant.addEventListener('change', function () {
     // quantization only snaps the already-simplified result for display
     self.quant = self.selQuant.selectedIndex;
@@ -224,8 +307,9 @@ Slot.prototype.syncDisabled = function () {
   var raw = ALGO[this.algo].key === 'raw'; // no ε — quant only
   this.selAlgo.disabled = d;
   this.selEps.disabled = d || raw;
+  this.epsSl.disabled = d || raw;
   this.selQuant.disabled = d;
-  if (this.wcb) this.wcb.disabled = d || raw;
+  if (this.selPop) this.selPop.disabled = d || raw;
 };
 Slot.prototype.toggled = function () {
   this.syncDisabled();
@@ -265,7 +349,7 @@ Slot.prototype.send = function () {
     type: 'run', gen: this.gen,
     algoId: ALGO[this.algo].id,
     param: ALGO[this.algo].key === 'vw' ? epsDeg * epsDeg : epsDeg,
-    wmin: this.w ? WMIN : 1,
+    wmin: DENS ? POPW[this.pw].w : 1,
   });
 };
 Slot.prototype.request = function () {
@@ -321,8 +405,7 @@ if (DENS) {
   var heatCb = document.getElementById('heatcb'), heatOp = document.getElementById('heatop');
   var mercY = function (lat) { return Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)); };
   function buildHeat() {
-    var bin = atob(HEAT.b64), v = new Uint8Array(bin.length);
-    for (var i = 0; i < bin.length; i++) v[i] = bin.charCodeAt(i);
+    var v = HEATV;
     // the raster is equirectangular; Leaflet stretches an imageOverlay
     // linearly in *Mercator* y — resample rows so latitudes land right
     var latTop = Math.min(HEAT.lat0, 85.05), latBot = Math.max(HEAT.lat0 - HEAT.h * HEAT.dlat, -85.05);
@@ -359,21 +442,6 @@ if (DENS) {
     } else if (heatLayer) { map.removeLayer(heatLayer); }
   });
   heatOp.addEventListener('input', function () { if (heatLayer) heatLayer.setOpacity(heatOp.value / 100); });
-
-  // strength slider → WMIN, log scale ×0.79 … ×0.01 (default ×0.1);
-  // label updates live, weighted sets recompute on release
-  var wminSl = document.getElementById('wminsl');
-  var slWmin = function () { return Math.pow(10, -2 * wminSl.value / 100); };
-  var syncWminLabel = function () {
-    var w = slWmin();
-    document.getElementById('wminv').textContent = '×' + (w < 0.1 ? w.toFixed(3) : w.toFixed(2));
-  };
-  wminSl.addEventListener('input', syncWminLabel);
-  wminSl.addEventListener('change', function () {
-    WMIN = slWmin();
-    slots.forEach(function (s) { if (s.on && s.w) s.request(); });
-  });
-  WMIN = slWmin(); syncWminLabel();
   if (heatCb.checked) heatCb.dispatchEvent(new Event('change')); // restored state
 }
 
@@ -394,12 +462,27 @@ function updateStats() {
     var isRaw = ALGO[s.algo].key === 'raw';
     el.innerHTML += '<div class="st"><span class="sw" style="background:' + s.color + '"></span>' +
       '<span>' + ALGO[s.algo].name + (isRaw ? '' : ' ε' + s.eps) + ' @ ' + q.label +
-      (s.w && !isRaw ? ' pop×' + (WMIN < 0.1 ? WMIN.toFixed(3) : WMIN.toFixed(2)) : '') + '</span>' +
+      (s.pw && !isRaw ? ' pop' + POPW[s.pw].label : '') + '</span>' +
       '<span class="num">' + kept.toLocaleString() + ' v · <span class="pct">−' +
       (100 * (1 - kept / STORED0)).toFixed(1) + '%</span> · ' + fmtBytes(kept * 2 * q.bpc) +
       ' · ' + s.result.ms.toLocaleString() + ' ms</span></div>';
   });
   if (!shown) el.innerHTML = '<div class="st" style="color:#5a6472">nothing enabled</div>';
+
+  // misassignment vs raw: pocket area, and people when the raster is embedded
+  var ms = document.getElementById('mstats');
+  ms.innerHTML = '';
+  var mshown = 0;
+  slots.forEach(function (s) {
+    if (!s.on || !s.result || ALGO[s.algo].key === 'raw') return;
+    mshown++;
+    ms.innerHTML += '<div class="st"><span class="sw" style="background:' + s.color + '"></span>' +
+      '<span>' + ALGO[s.algo].name + ' ε' + s.eps + (s.pw ? ' pop' + POPW[s.pw].label : '') + '</span>' +
+      '<span class="num">' + Math.round(s.result.area).toLocaleString() + ' km²' +
+      (DENS ? ' · <span class="pct">' + Math.round(s.result.people).toLocaleString() + ' people</span>' : '') +
+      '</span></div>';
+  });
+  if (!mshown) ms.innerHTML = '<div class="st" style="color:#5a6472">no simplified sets enabled</div>';
 }
 
 slots.forEach(function (s) { if (s.on) { s.layer.addTo(map); s.request(); } });
