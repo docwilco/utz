@@ -68,10 +68,10 @@ fn main() -> anyhow::Result<()> {
     println!("disagreements: {diff} ({wrong} wrong, {} benign-overlap)", diff - wrong);
     println!("finder.lookup: {:.2} µs/point over {npts}", dt.as_micros() as f64 / npts as f64);
 
-    // fuzzy sanity: must answer everywhere with-oceans covers, cheaply
+    // coarse sanity: must answer everywhere with-oceans covers, cheaply
     let t0 = Instant::now();
-    let fz = pts.iter().filter(|&&(lo, la)| finder.fuzzy(lo, la).is_some()).count();
-    println!("fuzzy: {fz}/{npts} answered, {:.2} µs/point", t0.elapsed().as_micros() as f64 / npts as f64);
+    let fz = pts.iter().filter(|&&(lo, la)| finder.lookup_coarse(lo, la).is_some()).count();
+    println!("lookup_coarse: {fz}/{npts} answered, {:.2} µs/point", t0.elapsed().as_micros() as f64 / npts as f64);
 
     // every codec must roundtrip to the same answers as the uncompressed finder
     let payload = encode::build_payload(&feats, &p)?;

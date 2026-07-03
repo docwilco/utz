@@ -5,7 +5,7 @@
 //!    (candidate sets; ≥2 candidates = border cell needing PIP);
 //! 2. scanline fill on a sub×sub-finer grid — even-odd span fill per polygon
 //!    gives per-subcell ownership, aggregated to a dominant zone per cell
-//!    (interior fill for the primary array + the `fuzzy` answer).
+//!    (interior fill for the primary array + the `lookup_coarse` answer).
 
 use std::collections::{HashMap, HashSet};
 

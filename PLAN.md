@@ -43,7 +43,7 @@ utz/                 workspace root
       format.rs      self-describing header, zone table, arc store, ring index
       grid.rs        ndarray cell → zone-id | spill-index (+ CSR spillover)
       pip.rs         hand-rolled per-polygon integer PIP (i64/i128)
-      finder.rs      Finder: new()/from_static()/from_reader() + lookup()/fuzzy
+      finder.rs      Finder: new()/from_static()/from_reader() + lookup()/lookup_coarse()
 
   utz-build/         build-dependency + dev/exploration + viz tool
     src/
@@ -76,7 +76,7 @@ impl Finder {
     fn from_reader(r: impl Read) -> Result<Finder>;          // file / network / OTA: owned buffer
 
     fn lookup(&self, lon: f64, lat: f64) -> Option<&str>;    // accurate: grid → PIP
-    fn fuzzy(&self,  lon: f64, lat: f64) -> Option<&str>;    // grid-only, no geometry, ~cell-size error
+    fn lookup_coarse(&self, lon: f64, lat: f64) -> Option<&str>; // grid-only, no geometry, ~cell-size error
 }
 ```
 
@@ -85,7 +85,7 @@ impl Finder {
 - **`no-embed` mode:** ship the binary *without* the asset, load it at runtime from
   a flash partition (`from_static`) or file (`from_reader`). Enables **OTA-updatable
   tz data** (swap `-now`↔`-1970`, new TZBB vintage) without reflashing firmware.
-- **`fuzzy`** (learned from tzf's FuzzyFinder): answer from the grid alone — no arcs
+- **`lookup_coarse`** (learned from tzf's FuzzyFinder): answer from the grid alone — no arcs
   loaded, ~cell-size border error, tiny + instant. Optional mode.
 - **Return `Option<&str>`** (tzid, borrowed from the zone table). DST resolved
   downstream. `None` only if truly uncovered (with-oceans has full coverage).
@@ -215,13 +215,13 @@ dict tiers as before. `uncompressed` enables zero-copy `from_static`.
 
 ## 9. Rings / memory strategy
 
-Decision: **both eager and lazy, feature-selected**, plus `fuzzy`.
+Decision: **both eager and lazy, feature-selected**, plus `lookup_coarse`.
 - **Lazy** (`lazy`): grid → candidate ids → decode **one polygon at a time** from
   the arc store (resolve arc refs → i64), PIP, discard. Working set = largest single
   candidate polygon. Interior cells decode **zero** geometry. Best for embedded.
 - **Eager** (`eager`): decode all polygons into RAM in `new()`. Fastest repeat
   lookups, highest RAM. Server/std.
-- **Fuzzy**: grid-only, no arcs. ~cell-size error, ~KBs, no geometry loaded.
+- **Coarse** (`lookup_coarse`): grid-only, no arcs. ~cell-size error, ~KBs, no geometry loaded.
 - **Per-ring streaming** (even less RAM than per-polygon) is a possible embedded
   fast-path for a rare huge polygon; needs the hand-rolled PIP (fine, we own it).
   Defer unless a single simplified polygon is large enough to matter.
@@ -269,7 +269,7 @@ compile_error!("select a codec: one of `uncompressed`,`gzip`,`zstd-sys`,`ruzstd`
 
 - **Cargo features (discrete):** dataset (`now`/`1970`/`all`), codec (+ size tiers),
   quant (`i16`/`i24`/`i32`), grid (`g1`/`g2`/`g3`/`g5`/`g10`), memory mode
-  (`eager`/`lazy`/`fuzzy`), `embed`/`no-embed`. RDP presets (`rdp-100`/`rdp-250`/…).
+  (`eager`/`lazy`/`coarse`), `embed`/`no-embed`. RDP presets (`rdp-100`/`rdp-250`/…).
 - **`tz.toml` (continuous / rare overrides):** an arbitrary `rdp_meters` not covered
   by a preset, custom grid degree, TZBB URL override. `build.rs` reads it,
   `rerun-if-changed`.
@@ -306,7 +306,7 @@ timestamps convert right), **`all`** for the unique per-country tzid string.
 Not-better: tzf is mature/tested; we reuse its good ideas (topology, 1° grid,
 delta-varint); if you don't need embedded/tiny, tzf already exists.
 
-**Learned from tzf (adopt now):** grid-only `fuzzy` mode; ship a balanced preset;
+**Learned from tzf (adopt now):** grid-only coarse mode (tzf calls it "fuzzy"); ship a balanced preset;
 embed TZBB version; verify antimeridian handling. **Defer:** hierarchical/quadtree
 grid (1°-accuracy at coarse memory); per-polygon YStripe edge index (faster PIP on
 big polygons); benchmark `geo` vs `geometry-rs`.
@@ -324,13 +324,13 @@ big polygons); benchmark `geo` vs `geometry-rs`.
 6. Crate/repo name confirmed `utz`; public naming of feature groups.
 7. **Alloc-free mode** (discuss): today `no_std` = core+**alloc** — `Finder`
    carries `Vec` scratch (empty until a border-cell lookup) and `from_vec`/
-   decompression need the heap. The grid + `fuzzy` path could run truly
+   decompression need the heap. The grid + `lookup_coarse` path could run truly
    alloc-free from flash (`from_static`, uncompressed); the accurate path
    could too with a caller-provided or fixed-size scratch buffer (bound =
    largest decoded polygon, a build-time-known number that could go in the
    header). Worth it for heapless targets / ISR-context lookups? Costs: API
    surface (buffer-passing or const-generic capacity), a header field, and
-   a `fuzzy`-only Finder variant. Decide after a real embedded consumer.
+   a coarse-only Finder variant. Decide after a real embedded consumer.
 
 ---
 

@@ -33,7 +33,8 @@ and pushes on size and embeddability:
 - **[rtz](https://github.com/twitchax/rtz)** — the 1°×1° grid prefilter and the
   decode-once-into-memory lookup model.
 - **[tzf-rs](https://github.com/ringsaturn/tzf-rs)** — shared-edge (topology)
-  boundary deduplication, the grid/preindex "fuzzy" fast-path, and delta+varint
+  boundary deduplication, the grid/preindex fast-path (its "Fuzzy" finder, uTZ's
+  `lookup_coarse`), and delta+varint
   coordinate encoding.
 
 Where those ship fixed data tiers, uTZ makes the size/accuracy tradeoff a

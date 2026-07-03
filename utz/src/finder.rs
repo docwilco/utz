@@ -104,7 +104,7 @@ impl Finder {
 
     /// Grid-only approximate lookup: no geometry decoded, ~cell-size border
     /// error. Border cells answer with the cell's dominant zone.
-    pub fn fuzzy(&self, lon: f64, lat: f64) -> Option<&str> {
+    pub fn lookup_coarse(&self, lon: f64, lat: f64) -> Option<&str> {
         let (px, py) = self.quantize(lon, lat);
         match self.cell_value(px, py) {
             v if v == NO_ZONE => None,
