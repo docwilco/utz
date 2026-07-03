@@ -99,7 +99,7 @@ and the known-point tests as regression fixtures. Nothing else survives.
 ## 4. On-disk / embedded format (self-describing)
 
 ```
-header:      magic, version, dataset(now|1970), tzbb_release,
+header:      magic, version, dataset(now|1970|all), tzbb_release,
              rdp_eps, quant_bits, grid_deg, codec
 zone table:  tzid string pool + offsets
 arc store:   per arc: [varint vcount][i{16,24,32} first vertex][zigzag-varint deltas]
@@ -120,7 +120,8 @@ edges; validated by tzf/ZoneDetect-v1 independently converging on the same desig
 
 ## 5. Build pipeline (build time)
 
-1. **Download** `timezones-with-oceans-{now,1970}.geojson.zip` → `cache/`.
+1. **Download** `timezones-with-oceans[-now|-1970].geojson.zip` (no suffix =
+   `all`) → `cache/`.
    **Conditional GET**: store `ETag`/`Last-Modified`, send
    `If-None-Match`/`If-Modified-Since` → 304 reuses cache. Record TZBB release in
    the header (DST vintage + cache-invalidation).
@@ -147,25 +148,31 @@ edges; validated by tzf/ZoneDetect-v1 independently converging on the same desig
 - **`-1970`** (304 zones): merges only zones identical since 1970 → matches IANA's
   own equivalence, **correct per-location tzid** (`Europe/Amsterdam`,
   `America/Detroit`). Bigger but faithful.
+- **`all`** (444 zones, no URL suffix; TZBB calls it "Comprehensive", parser also
+  accepts `full`): no merging at all — one polygon per `zone.tab` tzid, keeping
+  pure aliases distinct (`Europe/Oslo` ≠ `Europe/Berlin`). **Unique per-country
+  tzid string** for display/interop. Caveat: most zones → most data → largest
+  asset and heaviest build; clock behavior gains nothing over `-1970`.
 
 Exactly one selected. `-now` default (smallest); document the tzid-representative
-caveat so users who need exact names pick `-1970`.
+caveat so users who need exact names pick `-1970`, or `all` when the unique
+country-level tzid string itself is the product.
 
 **Source URLs** (timezone-boundary-builder, `releases/latest/download/`, GeoJSON zip).
-Six variants: {land-only, with-oceans} × {full, -1970, -now}. uTZ uses the
+Six variants: {land-only, with-oceans} × {all, -1970, -now}. uTZ uses the
 **with-oceans** ones (global coverage — land-only leaves the sea uncovered):
 
 ```
 https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones.geojson.zip
 https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones-1970.geojson.zip
 https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones-now.geojson.zip
-https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones-with-oceans.geojson.zip        # (full, unmerged ~450 zones)
+https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones-with-oceans.geojson.zip        # uTZ `all` (unmerged, 444 zones)
 https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones-with-oceans-1970.geojson.zip   # uTZ `1970`
 https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download/timezones-with-oceans-now.geojson.zip    # uTZ `now` (default)
 ```
 
-(`full` with-oceans = one polygon per IANA zone, ~450 — not exposed by default, but
-the pipeline could offer it as a third dataset for maximum tzid fidelity.)
+(`all` grid/size numbers not yet measured — §10 table covers `-now`/`-1970`;
+extend the sweep when the `all` knob lands.)
 
 ---
 
@@ -246,7 +253,7 @@ Decision: **both eager and lazy, feature-selected**, plus `fuzzy`.
   `[B,A]` stop deduping) → more unique lists. **Cost unmeasured — measurement item.**
 - **Overlapping/`(start,len)` spillover** (extent table / tail-merging) can shrink
   the id pool further, but at 2° the pool is ~1 KB next to the 32 KB primary — skip
-  until a finer grid / full-unmerged OSM makes the pool the bottleneck.
+  until a finer grid / the unmerged `all` dataset makes the pool the bottleneck.
 
 ---
 
@@ -254,11 +261,11 @@ Decision: **both eager and lazy, feature-selected**, plus `fuzzy`.
 
 No default features. Grouped `compile_error!`s that **list the options**:
 ```rust
-compile_error!("select a dataset: enable exactly one of `now` or `1970`");
+compile_error!("select a dataset: enable exactly one of `now`, `1970`, or `all`");
 compile_error!("select a codec: one of `uncompressed`,`gzip`,`zstd-sys`,`ruzstd`,`brotli`,`xz`");
 ```
 
-- **Cargo features (discrete):** dataset (`now`/`1970`), codec (+ size tiers),
+- **Cargo features (discrete):** dataset (`now`/`1970`/`all`), codec (+ size tiers),
   quant (`i16`/`i24`/`i32`), grid (`g1`/`g2`/`g3`/`g5`/`g10`), memory mode
   (`eager`/`lazy`/`fuzzy`), `embed`/`no-embed`. RDP presets (`rdp-100`/`rdp-250`/…).
 - **`tz.toml` (continuous / rare overrides):** an arbitrary `rdp_meters` not covered
@@ -292,7 +299,8 @@ docs (HTML self-embeds data → generated artifact, not a committed asset).
 Win: **~10× smaller** (general compression tzf lacks + tunable aggressive RDP + int
 quant): ~125–460 KB vs tzf ~5–7 MB. **Genuinely `no_std`/flash-embeddable** (tzf is
 std/protobuf, can't zero-copy from flash, can't run on ESP32). **Tunable** to an
-exact size/RAM/accuracy point. **`-1970`** for correct per-location tzid.
+exact size/RAM/accuracy point. **`-1970`** for correct per-location tzid,
+**`all`** for the unique per-country tzid string.
 Not-better: tzf is mature/tested; we reuse its good ideas (topology, 1° grid,
 delta-varint); if you don't need embedded/tiny, tzf already exists.
 
@@ -337,7 +345,7 @@ big polygons); benchmark `geo` vs `geometry-rs`.
   answers; ~0.26% of lookups differ from a linear scan only inside genuine overlap
   (either tzid valid).
 - [x] **Full pipeline size table** — done (`size_table`, real container, 2° grid,
-  dominant-first CSR, `-now`; `-1970`/full skipped — `-now` suffices for stats):
+  dominant-first CSR, `-now`; `-1970`/`all` skipped — `-now` suffices for stats):
 
   | ε(m) | quant | raw | gzip | zstd22 | br.q11 | xz9 |
   |--:|--|--:|--:|--:|--:|--:|
