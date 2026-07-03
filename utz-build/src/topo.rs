@@ -1,7 +1,9 @@
 //! Format B: TopoJSON-style topology. Shared borders are cut into *arcs* at
 //! junctions, each arc stored ONCE as i24 delta+varint, and every ring is a list
-//! of signed arc references. Optional topology-aware RDP simplifies each arc a
-//! single time (endpoints fixed), so neighbouring polygons stay stitched.
+//! of signed arc references. Optional topology-aware Ramer–Douglas–Peucker
+//! (RDP) line simplification runs on each arc a single time (endpoints fixed),
+//! so neighbouring polygons stay stitched. Other open-polyline simplifiers
+//! could slot into the same per-arc pass (PLAN.md §14).
 
 use std::collections::HashMap;
 

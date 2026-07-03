@@ -11,10 +11,11 @@ Working crate name: **`utz`** (project: μTZ / micro-timezone).
 ## 1. Goals
 
 - **Tiny.** OSM timezone data down to ~125–460 KB (vs tzf-rs ~5–7 MB) via
-  shared-arc topology + tunable RDP + integer quantization + general compression.
+  shared-arc topology + tunable line simplification (Ramer–Douglas–Peucker,
+  "RDP", today; §14 for alternatives) + integer quantization + general compression.
 - **Embeddable / `no_std`-friendly.** Pure-Rust codecs, integer PIP, flat arrays
   that borrow zero-copy from a flash partition. Targets ESP32/Xtensa-class.
-- **Tunable at build time.** Dataset, RDP ε, quant grid, grid cell size, codec —
+- **Tunable at build time.** Dataset, simplification ε, quant grid, grid cell size, codec —
   build exactly the size/RAM/accuracy point you need, guided by a viz tool.
 - **DST-correct.** Returns the IANA `tzid`; resolve offsets/DST downstream
   (`jiff` — its `jiff-static` compile-time zones suit embedded; or the prevalent
@@ -320,7 +321,8 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
 
 1. **Build-knob mechanism** — features vs `tz.toml` split (leaning features + toml).
 2. ~~**`geo` vs hand-rolled PIP**~~ — **decided**: hand-rolled i64 (`utz/src/pip.rs`),
-   geo dev-oracle only. 0/20k disagreements, 14.5–51× faster (see §15).
+   geo dev-oracle only. 0/20k disagreements, speed parity with geo after
+   adopting its loop shape (see §15).
 3. **`LonLat` newtype** vs raw `(lon, lat)` to prevent order footgun.
 4. ~~**Antimeridian**~~ — **verified pre-split** (see §15); no split pass.
 5. **Default preset** values (dataset/ε/quant/grid/codec) for the "balanced" build.
@@ -334,6 +336,29 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
    header). Worth it for heapless targets / ISR-context lookups? Costs: API
    surface (buffer-passing or const-generic capacity), a header field, and
    a coarse-only Finder variant. Decide after a real embedded consumer.
+8. **Simplification algorithm menu** (beyond Ramer–Douglas–Peucker): every
+   candidate is an open-polyline algorithm, so each slots into the same
+   per-arc topology-aware pass (endpoints pinned, each arc once). Candidates:
+   - **Visvalingam–Whyatt** (drop min-effective-triangle-area point,
+     iterate): the serious contender — different, often cartographically
+     nicer shape than RDP at the same vertex budget (mapshaper's default).
+     Caveat: parameter is an *area*, so no direct "borders move ≤ X m"
+     guarantee; expose as its own knob, don't fake an ε equivalence.
+   - **Imai–Iri** (min-vertex polyline within ε, via shortcut-graph shortest
+     path): provably the *fewest* vertices for the same ε bound RDP honors —
+     directly serves the "tiny" goal. O(n²)-ish per arc, but arcs are short
+     after junction cutting; likely affordable at build time. Measure
+     verts-vs-RDP on real arcs before committing.
+   - **Reumann–Witkam / Opheim / Lang / Zhao–Saalfeld** (corridor/streaming
+     family): built for single-pass speed, generally worse quality-per-vertex
+     than RDP; speed is free at build time, so low value — skip unless a
+     sweep proves otherwise.
+   Format impact: header gains a `simplify_algo` byte next to `rdp_eps`
+   (self-describing rule: runtime never cares, only the builder). Viz: JS
+   preview in the tuning HTML is feasible (simplify-js, mapshaper's VW), but
+   tuning numbers must come from the real Rust encoder — embed precomputed
+   sweep levels (as today) or compile the simplifiers to WASM for exact live
+   preview.
 
 ---
 

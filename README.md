@@ -7,10 +7,10 @@ Tiny, embeddable latitude/longitude → IANA timezone lookup for Rust.
 ## Why
 
 - **Tiny** — OSM timezone data down to ~125–460 KB via shared-arc topology,
-  tunable RDP simplification, integer quantization, and general compression.
+  tunable map simplification, integer quantization, and general compression.
 - **Embeddable** — pure-Rust codecs, integer point-in-polygon, flat arrays that
   borrow zero-copy from a flash partition. `no_std` capable.
-- **Tunable** — pick dataset, RDP tolerance, quantization grid, grid cell size,
+- **Tunable** — pick dataset, simplification parameters, quantization grid, grid cell size,
   and compression codec to hit your exact size / RAM / accuracy point, guided by a
   visualization tool. Or use no compression for direct from flash. (Though some
   parts need some RAM. See further down.)
@@ -31,13 +31,12 @@ let tz = finder.lookup(-0.1278, 51.5074);      // Some("Europe/London")
 and pushes on size and embeddability:
 
 - **[spatialtime](https://github.com/moranbw/spatialtime)** — the crate μTZ grew
-  out of. The `Reader`-style build-once/query-many API and the OSM data approach
-  come from here.
+  out of. The `Reader`-style build-once/query-many API and the compression
+  approach come from here
 - **[rtz](https://github.com/twitchax/rtz)** — the 1°×1° grid prefilter.
 - **[tzf-rs](https://github.com/ringsaturn/tzf-rs)** — shared-edge (topology)
   boundary deduplication, the grid/preindex fast-path (its "Fuzzy" finder, μTZ's
-  `lookup_coarse`), and delta+varint
-  coordinate encoding.
+  `lookup_coarse`), and delta+varint coordinate encoding.
 
 Where those ship fixed data tiers, μTZ makes the size/accuracy tradeoff a
 build-time knob and adds general-purpose compression + integer quantization to go
