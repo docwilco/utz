@@ -347,12 +347,14 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
 - [x] **Hand-rolled i64 PIP vs `geo` vs `geometry-rs`** — done (`utz/src/pip.rs` +
   `pip_bench`, 3-way): **0/20,000 disagreements** on quantized OSM ε=500 m, both
   datasets (incl. geometry-rs, whose boundary semantics differ but never off
-  boundary). Speed with equal hoisted bbox prechecks: geo runs in 0.66–0.74× our
-  time, geometry-rs in 0.83–0.84× — both modestly *faster* per edge, all within
-  1.5×. (An earlier "**14.5×/51× ours faster**" figure was a bench bug: geo 0.32
-  `Polygon::contains` has NO internal bounding-rect precheck — only ours got a
-  bbox test, so geo walked every ring in the scan. Corrected 2026-07.) Decision
-  stands on non-speed grounds: `no_std` with zero deps, zero-copy
+  boundary). Speed with equal hoisted bbox prechecks: **even with geo**
+  (1.00–1.04×), **1.25–1.27× faster than geometry-rs** — after adopting geo's
+  loop shape (one cross product per scanline-touching edge decides crossing AND
+  boundary-collinear; the old loop ran vertex/horizontal boundary branches on
+  every edge, costing ~35%). (An earlier "**14.5×/51× ours faster**" figure was
+  a bench bug: geo 0.32 `Polygon::contains` has NO internal bounding-rect
+  precheck — only ours got a bbox test, so geo walked every ring in the scan.
+  Corrected 2026-07.) Decision rests on non-speed grounds anyway: `no_std` with zero deps, zero-copy
   `&[(i32,i32)]` slices straight from the arc decoder (geo/geometry-rs need
   owned i64/f64 ring `Vec`s — per-lookup allocs in lazy mode), deterministic
   boundary-claimed semantics, i128 variant for i32 grids (geometry-rs's

@@ -1,9 +1,10 @@
 //! Hand-rolled per-polygon integer point-in-polygon (PLAN.md §8).
 //!
-//! Even-odd ray cast (half-open rule, ray toward +x) over ONE polygon's rings —
-//! exterior first, holes after; parity XORs across rings, so a point inside a
-//! hole comes out `false`. Exact integer arithmetic, no division: the runtime
-//! compares `(px-x0)(y1-y0)` against `(py-y0)(x1-x0)` in a wide type.
+//! Even-odd ray cast (ray toward +x) over ONE polygon's rings — exterior
+//! first, holes after; parity XORs across rings, so a point inside a hole
+//! comes out `false`. Exact integer arithmetic, no division: one cross
+//! product `(b-a)×(p-a)` in a wide type decides crossing direction AND
+//! boundary (collinear) for each edge whose y-span touches the scanline.
 //!
 //! Width follows the quantization grid (overflow bound: product ≤ 4·coord_max²):
 //! - `contains_i64`  — safe for i16/i24 grids (|coord| ≤ 2^23 → products ≤ 2^48)
@@ -37,25 +38,35 @@ macro_rules! pip_impl {
             let (mut x0, mut y0) = ring[n - 1];
             for i in 0..n {
                 let (x1, y1) = ring[i];
-                if (y0 > py) != (y1 > py) {
-                    // edge straddles the scanline (half-open): compare px to the
-                    // intersection x without dividing
-                    let dy = (y1 as $wide) - (y0 as $wide);
-                    let lhs = ((px as $wide) - (x0 as $wide)) * dy;
-                    let rhs = ((py as $wide) - (y0 as $wide)) * ((x1 as $wide) - (x0 as $wide));
-                    if lhs == rhs {
-                        return RingHit::Boundary; // exactly on the edge
+                // compute the cross product for any edge whose y-span touches
+                // the scanline; collinear + x-in-span = exactly on the edge
+                // (covers interior points, vertices, and horizontal edges —
+                // every vertex is the endpoint of some touching edge).
+                // Crossing rules (each crossing vertex counted once): an upward
+                // edge excludes its final endpoint, a downward edge excludes
+                // its starting endpoint, horizontal edges never cross.
+                if y0 <= py {
+                    if y1 >= py {
+                        let cross = ((x1 as $wide) - (x0 as $wide)) * ((py as $wide) - (y0 as $wide))
+                            - ((y1 as $wide) - (y0 as $wide)) * ((px as $wide) - (x0 as $wide));
+                        if cross == 0 {
+                            if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
+                                return RingHit::Boundary;
+                            }
+                        } else if cross > 0 && y1 != py {
+                            inside = !inside; // point strictly left of an upward edge
+                        }
                     }
-                    if (dy > 0) == (lhs < rhs) {
-                        inside = !inside;
+                } else if y1 <= py {
+                    let cross = ((x1 as $wide) - (x0 as $wide)) * ((py as $wide) - (y0 as $wide))
+                        - ((y1 as $wide) - (y0 as $wide)) * ((px as $wide) - (x0 as $wide));
+                    if cross == 0 {
+                        if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
+                            return RingHit::Boundary;
+                        }
+                    } else if cross < 0 {
+                        inside = !inside; // point strictly right of a downward edge
                     }
-                } else if y0 == py && y1 == py {
-                    // horizontal edge on the scanline: only boundary can matter
-                    if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
-                        return RingHit::Boundary;
-                    }
-                } else if (x0, y0) == (px, py) {
-                    return RingHit::Boundary; // on a vertex not caught above
                 }
                 (x0, y0) = (x1, y1);
             }
