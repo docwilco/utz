@@ -1,0 +1,162 @@
+//! Hand-rolled per-polygon integer point-in-polygon (PLAN.md §8).
+//!
+//! Even-odd ray cast (half-open rule, ray toward +x) over ONE polygon's rings —
+//! exterior first, holes after; parity XORs across rings, so a point inside a
+//! hole comes out `false`. Exact integer arithmetic, no division: the runtime
+//! compares `(px-x0)(y1-y0)` against `(py-y0)(x1-x0)` in a wide type.
+//!
+//! Width follows the quantization grid (overflow bound: product ≤ 4·coord_max²):
+//! - `contains_i64`  — safe for i16/i24 grids (|coord| ≤ 2^23 → products ≤ 2^48)
+//! - `contains_i128` — for i32-fine grids (deg×1e7 overflows i64)
+//!
+//! Points exactly ON any edge (exterior or hole) report `true`: border points
+//! are ambiguous between adjacent zones, and claiming them keeps lookup
+//! deterministic (first candidate polygon wins).
+
+macro_rules! pip_impl {
+    ($contains:ident, $ring_hit:ident, $wide:ty) => {
+        /// `rings[0]` = exterior, rest = holes; no duplicated closing vertex.
+        pub fn $contains(rings: &[&[(i32, i32)]], px: i32, py: i32) -> bool {
+            let mut inside = false;
+            for ring in rings {
+                match $ring_hit(ring, px, py) {
+                    RingHit::Boundary => return true,
+                    RingHit::Inside => inside = !inside,
+                    RingHit::Outside => {}
+                }
+            }
+            inside
+        }
+
+        fn $ring_hit(ring: &[(i32, i32)], px: i32, py: i32) -> RingHit {
+            let n = ring.len();
+            if n < 3 {
+                return RingHit::Outside;
+            }
+            let mut inside = false;
+            let (mut x0, mut y0) = ring[n - 1];
+            for i in 0..n {
+                let (x1, y1) = ring[i];
+                if (y0 > py) != (y1 > py) {
+                    // edge straddles the scanline (half-open): compare px to the
+                    // intersection x without dividing
+                    let dy = (y1 as $wide) - (y0 as $wide);
+                    let lhs = ((px as $wide) - (x0 as $wide)) * dy;
+                    let rhs = ((py as $wide) - (y0 as $wide)) * ((x1 as $wide) - (x0 as $wide));
+                    if lhs == rhs {
+                        return RingHit::Boundary; // exactly on the edge
+                    }
+                    if (dy > 0) == (lhs < rhs) {
+                        inside = !inside;
+                    }
+                } else if y0 == py && y1 == py {
+                    // horizontal edge on the scanline: only boundary can matter
+                    if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
+                        return RingHit::Boundary;
+                    }
+                } else if (x0, y0) == (px, py) {
+                    return RingHit::Boundary; // on a vertex not caught above
+                }
+                (x0, y0) = (x1, y1);
+            }
+            if inside {
+                RingHit::Inside
+            } else {
+                RingHit::Outside
+            }
+        }
+    };
+}
+
+enum RingHit {
+    Inside,
+    Outside,
+    Boundary,
+}
+
+pip_impl!(contains_i64, ring_hit_i64, i64);
+pip_impl!(contains_i128, ring_hit_i128, i128);
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+    use std::vec;
+    use std::vec::Vec;
+
+    use super::*;
+
+    const SQUARE: &[(i32, i32)] = &[(0, 0), (10, 0), (10, 10), (0, 10)];
+    const HOLE: &[(i32, i32)] = &[(3, 3), (7, 3), (7, 7), (3, 7)];
+
+    #[test]
+    fn square_basics() {
+        assert!(contains_i64(&[SQUARE], 5, 5));
+        assert!(!contains_i64(&[SQUARE], 15, 5));
+        assert!(!contains_i64(&[SQUARE], -1, -1));
+        // boundary claims: edges + vertices
+        assert!(contains_i64(&[SQUARE], 0, 5));
+        assert!(contains_i64(&[SQUARE], 5, 0));
+        assert!(contains_i64(&[SQUARE], 10, 10));
+    }
+
+    #[test]
+    fn hole_excludes() {
+        let poly: &[&[(i32, i32)]] = &[SQUARE, HOLE];
+        assert!(contains_i64(poly, 1, 1)); // in exterior, outside hole
+        assert!(!contains_i64(poly, 5, 5)); // inside hole
+        assert!(contains_i64(poly, 3, 5)); // on hole edge -> claimed
+    }
+
+    #[test]
+    fn i128_matches_i64_in_range() {
+        let poly: &[&[(i32, i32)]] = &[SQUARE, HOLE];
+        for x in -2..13 {
+            for y in -2..13 {
+                assert_eq!(contains_i64(poly, x, y), contains_i128(poly, x, y), "at ({x},{y})");
+            }
+        }
+    }
+
+    /// cross-validate against the geo i64 oracle (PLAN.md §8) on random
+    /// integer polygons — interiors must agree everywhere off-boundary.
+    #[test]
+    fn geo_oracle_agreement() {
+        use geo::Contains;
+        let mut lcg = 0xdead_beefu64;
+        let mut next = |m: i64| -> i32 {
+            lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((lcg >> 33) as i64 % m) as i32
+        };
+        for _ in 0..200 {
+            // random star-shaped polygon (guaranteed simple) around a center
+            let (cx, cy) = (next(1000) - 500, next(1000) - 500);
+            let n = 5 + (next(12) as usize);
+            let mut pts: Vec<(i32, i32)> = (0..n)
+                .map(|k| {
+                    let ang = k as f64 / n as f64 * core::f64::consts::TAU;
+                    let r = 50 + next(400) as i64;
+                    (cx + (ang.cos() * r as f64) as i32, cy + (ang.sin() * r as f64) as i32)
+                })
+                .collect();
+            pts.dedup();
+            if pts.first() == pts.last() { pts.pop(); }
+            if pts.len() < 3 { continue; }
+
+            let ext: geo::LineString<i64> = pts.iter().map(|&(x, y)| (x as i64, y as i64)).collect();
+            let gpoly = geo::Polygon::new(ext, vec![]);
+            let rings: &[&[(i32, i32)]] = &[&pts];
+            for _ in 0..200 {
+                let (px, py) = (cx + next(1200) - 600, cy + next(1200) - 600);
+                let ours = contains_i64(rings, px, py);
+                let geo_says = gpoly.contains(&geo::Point::new(px as i64, py as i64));
+                if ours != geo_says {
+                    // geo::Contains excludes the boundary; we claim it. Only
+                    // that exact disagreement is allowed.
+                    use geo::algorithm::Intersects;
+                    let on_boundary = gpoly.exterior().intersects(&geo::Point::new(px as i64, py as i64));
+                    assert!(ours && on_boundary, "disagree off-boundary at ({px},{py})");
+                }
+            }
+        }
+    }
+}

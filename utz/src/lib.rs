@@ -6,6 +6,8 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub mod pip;
+
 use core::result::Result;
 
 /// Errors surfaced by the reader. (Variants firmed up during implementation.)

@@ -1575,6 +1575,7 @@ dependencies = [
  "geo-types",
  "geozero",
  "lzma-rust2",
+ "utz",
  "zstd",
 ]
 

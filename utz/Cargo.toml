@@ -6,6 +6,9 @@ license.workspace = true
 
 # Runtime crate — kept lean / no_std-friendly. Codec + build deps added during
 # implementation (see PLAN.md §7, §11). geo is a DEV-dependency only (PIP oracle).
+[features]
+std = []
+
 [dependencies]
 
 [dev-dependencies]
