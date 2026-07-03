@@ -1,0 +1,11 @@
+/target
+# Downloaded source data + built assets are never committed — built on demand.
+/cache/
+*.geojson
+*.geojson.zip
+*.json
+# Generated assets (all knob variants) and the built container(s).
+/assets/
+*.utz
+# Generated visualization HTML (self-embeds data; regenerate via the viz tool).
+*_viewer.html

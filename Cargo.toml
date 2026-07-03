@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["utz", "utz-build"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "" # TBD
+
+[workspace.dependencies]
+geo = "0.32"
+geo-types = "0.7"
+anyhow = "1"
