@@ -39,7 +39,7 @@
 <div id="panel">
   <h2>__TITLE__</h2>
   <p class="sub">__SUB__</p>
-  <div class="qtitle">Sets <span>· algorithm / ε / quantization / order / pop-weight</span></div>
+  <div class="qtitle">Sets <span>· algorithm / ε / quantization / pop-weight</span></div>
   <div id="slots"></div>
   <label class="slot" id="rawrow">
     <input type="checkbox" id="rawcb">
@@ -67,9 +67,9 @@
   </div>
   <div class="foot">arcs drawn as shared-border outlines (each border once) ·
     simplification runs the builder's own code (utz-simplify → WASM) in workers —
-    changing settings aborts and recomputes · S→Q simplifies the raw line then
-    snaps for display, Q→S snaps to the grid first and simplifies the snapped
-    line · bytes = raw coords at the chosen width, before delta/varint +
+    changing settings aborts and recomputes · the raw line is simplified first,
+    then snapped to the chosen grid for display (the builder's order) ·
+    bytes = raw coords at the chosen width, before delta/varint +
     compression · raw layer is heavy to draw</div>
 </div>
 <script>
@@ -136,13 +136,6 @@ var DENSF = DENS ? new Float64Array(DENS) : null;
 // Killed and respawned to abort — never blocks the page.
 var WORKER_SRC = '\
 var W = null, buf = 0, dbuf = 0, COORDS = null, OFFS = null, DENS = null;\
-function qc(v, m, span) {\
-  if (m === "f32") return Math.fround(v);\
-  if (m === "i32") return Math.round(v * 1e7) / 1e7;\
-  if (m === "i24") return Math.round(v / span * 8388607) / 8388607 * span;\
-  if (m === "i16") return Math.round(v / span * 32767) / 32767 * span;\
-  return v;\
-}\
 onmessage = function (e) {\
   var m = e.data;\
   if (m.type === "init") {\
@@ -160,19 +153,11 @@ onmessage = function (e) {\
     var out = new Float64Array(COORDS.length);\
     var outOffs = new Uint32Array(OFFS.length);\
     var kept = 0;\
-    var pre = m.pre && m.quant !== "f64";\
     var weighted = DENS && m.wmin < 1;\
     for (var a = 0; a + 1 < OFFS.length; a++) {\
       var s = OFFS[a], n = OFFS[a + 1] - s;\
       var f = new Float64Array(W.memory.buffer, buf, n * 2);\
-      if (pre) {\
-        for (var i = 0; i < n; i++) {\
-          f[i * 2] = qc(COORDS[(s + i) * 2], m.quant, 180);\
-          f[i * 2 + 1] = qc(COORDS[(s + i) * 2 + 1], m.quant, 90);\
-        }\
-      } else {\
-        f.set(COORDS.subarray(s * 2, (s + n) * 2));\
-      }\
+      f.set(COORDS.subarray(s * 2, (s + n) * 2));\
       var k;\
       if (weighted) {\
         new Float64Array(W.memory.buffer, dbuf, n).set(DENS.subarray(s, s + n));\
@@ -190,16 +175,11 @@ onmessage = function (e) {\
 };';
 var WORKER_URL = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' }));
 
-var ORDER = [
-  { key: 'sq', label: 'S→Q', title: 'simplify the raw line, then quantize' },
-  { key: 'qs', label: 'Q→S', title: 'quantize to the grid first, then simplify the snapped line' },
-];
-
 function Slot(idx, color, def) {
   var self = this;
   this.idx = idx; this.color = color;
   this.on = def.on; this.algo = def.algo; this.eps = def.eps; this.quant = def.quant;
-  this.order = def.order || 0; this.w = !!def.w;
+  this.w = !!def.w;
   this.gen = 0; this.busy = false; this.ready = false; this.pendingRun = false;
   this.worker = null; this.result = null;
   this.layer = L.polyline([], { color: color, weight: 1.2, opacity: 0.95 });
@@ -210,12 +190,9 @@ function Slot(idx, color, def) {
   this.selAlgo = mkSelect(ALGO.map(function (a) { return a.name; }), this.algo);
   this.selEps = mkSelect(EPS_M.map(function (e) { return 'ε ' + e + ' m'; }), EPS_M.indexOf(this.eps));
   this.selQuant = mkSelect(QUANT.map(function (q) { return q.label; }), this.quant);
-  this.selOrder = mkSelect(ORDER.map(function (o) { return o.label; }), this.order);
-  ORDER.forEach(function (o, i) { self.selOrder.options[i].title = o.title; });
   this.spin = document.createElement('span'); this.spin.className = 'spin';
   row.appendChild(this.cb); row.appendChild(sw);
   row.appendChild(this.selAlgo); row.appendChild(this.selEps); row.appendChild(this.selQuant);
-  row.appendChild(this.selOrder);
   if (DENS) {
     this.wcb = document.createElement('input'); this.wcb.type = 'checkbox';
     this.wcb.checked = this.w;
@@ -230,12 +207,10 @@ function Slot(idx, color, def) {
   this.selAlgo.addEventListener('change', function () { self.algo = self.selAlgo.selectedIndex; self.syncDisabled(); self.request(); });
   this.selEps.addEventListener('change', function () { self.eps = EPS_M[self.selEps.selectedIndex]; self.request(); });
   this.selQuant.addEventListener('change', function () {
+    // quantization only snaps the already-simplified result for display
     self.quant = self.selQuant.selectedIndex;
-    // quant-first feeds the simplifier different input — recompute; the
-    // simplify-first result only needs its display snap refreshed
-    if (ORDER[self.order].key === 'qs') { self.request(); } else { self.redraw(); updateStats(); }
+    self.redraw(); updateStats();
   });
-  this.selOrder.addEventListener('change', function () { self.order = self.selOrder.selectedIndex; self.request(); });
   this.syncDisabled();
 }
 function mkSelect(labels, sel) {
@@ -246,10 +221,9 @@ function mkSelect(labels, sel) {
 }
 Slot.prototype.syncDisabled = function () {
   var d = !this.on;
-  var raw = ALGO[this.algo].key === 'raw'; // no ε, no order — quant only
+  var raw = ALGO[this.algo].key === 'raw'; // no ε — quant only
   this.selAlgo.disabled = d;
   this.selEps.disabled = d || raw;
-  this.selOrder.disabled = d || raw;
   this.selQuant.disabled = d;
   if (this.wcb) this.wcb.disabled = d || raw;
 };
@@ -291,8 +265,6 @@ Slot.prototype.send = function () {
     type: 'run', gen: this.gen,
     algoId: ALGO[this.algo].id,
     param: ALGO[this.algo].key === 'vw' ? epsDeg * epsDeg : epsDeg,
-    pre: ORDER[this.order].key === 'qs',
-    quant: QUANT[this.quant].key,
     wmin: this.w ? WMIN : 1,
   });
 };
@@ -306,8 +278,7 @@ Slot.prototype.request = function () {
 };
 Slot.prototype.redraw = function () {
   if (!this.result || !this.on) return;
-  // quant-first output is already on the grid — don't snap twice
-  var m = ORDER[this.order].key === 'qs' ? 'f64' : QUANT[this.quant].key;
+  var m = QUANT[this.quant].key;
   var lls = [], c = this.result.coords, o = this.result.offs;
   for (var a = 0; a + 1 < o.length; a++) {
     var seg = new Array(o[a + 1] - o[a]);
@@ -423,7 +394,6 @@ function updateStats() {
     var isRaw = ALGO[s.algo].key === 'raw';
     el.innerHTML += '<div class="st"><span class="sw" style="background:' + s.color + '"></span>' +
       '<span>' + ALGO[s.algo].name + (isRaw ? '' : ' ε' + s.eps) + ' @ ' + q.label +
-      (isRaw ? '' : ' ' + ORDER[s.order].label) +
       (s.w && !isRaw ? ' pop×' + (WMIN < 0.1 ? WMIN.toFixed(3) : WMIN.toFixed(2)) : '') + '</span>' +
       '<span class="num">' + kept.toLocaleString() + ' v · <span class="pct">−' +
       (100 * (1 - kept / STORED0)).toFixed(1) + '%</span> · ' + fmtBytes(kept * 2 * q.bpc) +
