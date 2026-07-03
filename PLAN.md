@@ -355,7 +355,23 @@ big polygons); benchmark `geo` vs `geometry-rs`.
   The ~125–460 KB goal (§1) is confirmed: ε=500 i16 brotli = 133 K, ε=100 i24
   brotli = 745 K (full-fidelity end). Note i16's quant step (~305–611 m) makes
   ε<500 m i16 quant-limited — pair i16 with ε≥500, i24 with ε≤250.
-- [ ] **Grid size × P(PIP) × memory** confirmation with the *real* CSR builder.
+- [x] **Grid size × P(PIP) × memory** — confirmed with the real builder
+  (`csr_sweep`, ε=500 m, dominant-first, 200k uniform points):
+
+  | deg | `-now` P(PIP) | `-now` total | `-1970` P(PIP) | `-1970` total |
+  |--:|--:|--:|--:|--:|
+  | 1 | 13.1% | 130.1 KB | 16.5% | 140.5 KB |
+  | 2 | 24.5% | 35.0 KB | 29.8% | 43.0 KB |
+  | 3 | 34.4% | 17.3 KB | 40.7% | 23.4 KB |
+  | 5 | 52.0% | 7.9 KB | 58.9% | 11.8 KB |
+  | 10 | 83.3% | 3.2 KB | 86.6% | 5.1 KB |
+
+  Real P(PIP) runs 2–5 pts *below* the §10 crude estimates (edge walk on raw
+  geometry over-counted border cells). Totals = §10 IdSorted numbers + the
+  known dominant-first cost (2°: 33.7+1.3=35.0 / 40.0+3.1=43.1 ✓). Side table
+  stays ≤14 KB even at 1°; u16 tags are safe at every size (max 2,057 lists,
+  5,080 ids — far under the 15-bit/u16 limits). 2° (default) and 3° both look
+  right: 3° halves memory for +10 pts P(PIP).
 - [x] **gzip vs zstd/brotli/xz** — answered by the same sweep: brotli q11 wins
   nearly every cell (xz9 edges it once, by 1%); zstd22 trails brotli 3–8%; gzip
   trails 5–15% but stays respectable for the smallest pure-Rust decoder
