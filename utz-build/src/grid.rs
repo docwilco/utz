@@ -127,7 +127,12 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
         v.sort_unstable();
         v
     }).collect();
-    let sets: Vec<Vec<u16>> = sets.into_iter().map(|s| {
+    // candidate set = edge walk ∪ subcell owners. The union matters where TZBB
+    // zones deliberately OVERLAP (e.g. Asia/Shanghai + Asia/Urumqi over
+    // Xinjiang): a zone covering a whole cell leaves no ring in it, so the edge
+    // walk alone misses it and would mislabel the cell interior.
+    let sets: Vec<Vec<u16>> = sets.into_iter().enumerate().map(|(c, mut s)| {
+        s.extend(tallies[c].iter().map(|&(z, _)| z));
         let mut v: Vec<u16> = s.into_iter().collect();
         v.sort_unstable();
         v

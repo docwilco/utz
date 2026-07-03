@@ -309,7 +309,7 @@ big polygons); benchmark `geo` vs `geometry-rs`.
 2. ~~**`geo` vs hand-rolled PIP**~~ — **decided**: hand-rolled i64 (`utz/src/pip.rs`),
    geo dev-oracle only. 0/20k disagreements, 14.5–51× faster (see §15).
 3. **`LonLat` newtype** vs raw `(lon, lat)` to prevent order footgun.
-4. **Antimeridian**: verify TZBB is pre-split; else add a split pass.
+4. ~~**Antimeridian**~~ — **verified pre-split** (see §15); no split pass.
 5. **Default preset** values (dataset/ε/quant/grid/codec) for the "balanced" build.
 6. Crate/repo name confirmed `utz`; public naming of feature groups.
 
@@ -328,11 +328,21 @@ big polygons); benchmark `geo` vs `geometry-rs`.
   equal bbox prechecks: **14.5×** faster (`-now`), **51×** (`-1970`). Decision
   confirmed: hand-rolled per-polygon even-odd, i64 (i128 for i32 grids), boundary
   points claimed (`geo` stays dev-oracle only).
-- [ ] **Real grid lookup bench** — interior O(1) vs border PIP, vs linear scan, both datasets.
+- [x] **Real grid lookup bench** — done (`grid_bench`, ε=500 m, 2°, dominant-first):
+  **0.88 µs/lookup** `-now` (6.2× vs linear) / **0.47 µs** `-1970` (4.8×); PIP needed
+  24.5% / 29.7% (matches §10 P(PIP) predictions); 0 fallbacks. Found + fixed a real
+  grid bug: TZBB zones deliberately **overlap** (Asia/Shanghai + Asia/Urumqi over
+  Xinjiang), and a zone covering a whole cell leaves no ring for the edge walk —
+  candidate sets are now edge-walk ∪ scanline-owners. After the fix, **0 wrong**
+  answers; ~0.26% of lookups differ from a linear scan only inside genuine overlap
+  (either tzid valid).
 - [ ] **Full pipeline size table** — topology×RDP(ε)×quant(i16/i24)×codec(incl gzip), `-now`/`-1970`.
 - [ ] **Grid size × P(PIP) × memory** confirmation with the *real* CSR builder.
 - [ ] **gzip** vs zstd/brotli/xz on the container.
-- [ ] **Antimeridian** scan of TZBB polygons.
+- [x] **Antimeridian** — scanned (`amscan`): TZBB with-oceans is pre-split (414/422
+  verts exactly on ±180, 0 out-of-range coords). Single flagged >180° edge is
+  Pacific/Auckland's south-pole seam (180,−90)→(−180,−90) — degenerate at the pole,
+  planar PIP handles it. **No split pass needed.**
 - [ ] (later) hierarchical grid; YStripe PIP index; `geometry-rs` comparison.
 
 Prototypes to port from the old `formatlab` crate: `topo.rs` (topology+RDP),
