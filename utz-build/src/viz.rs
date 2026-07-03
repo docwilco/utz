@@ -41,6 +41,30 @@ pub fn overlay_html(levels: &[Level], defaults_on: &[u32], title: &str, sub: &st
         .replace("__TITLE__", title).replace("__SUB__", sub))
 }
 
+/// Live-simplification viewer (`live_overlay_template.html`): embeds the
+/// FULL-RES topology arcs plus the `utz-simplify` WASM module (base64), so an
+/// ε slider + algorithm radio rerun the exact builder code in the browser.
+/// Heavy by design (all ε=0 arcs embedded) — it's a local tuning artifact.
+pub fn live_html(arcs: &[Vec<(f64, f64)>], stored0: usize, wasm_b64: &str, title: &str, sub: &str) -> anyhow::Result<String> {
+    let mut data = String::with_capacity(arcs.iter().map(|a| a.len()).sum::<usize>() * 20);
+    data.push('[');
+    for (i, a) in arcs.iter().enumerate() {
+        if i > 0 { data.push(','); }
+        data.push('[');
+        for (j, &(x, y)) in a.iter().enumerate() {
+            if j > 0 { data.push(','); }
+            data.push_str(&format!("[{},{}]", rd(x), rd(y)));
+        }
+        data.push(']');
+    }
+    data.push(']');
+    let tpl = std::fs::read_to_string(template_path("live_overlay_template.html"))?;
+    Ok(tpl.replace("/*ARCS*/", &data)
+        .replace("/*STORED0*/", &stored0.to_string())
+        .replace("/*WASM*/", wasm_b64)
+        .replace("__TITLE__", title).replace("__SUB__", sub))
+}
+
 /// Border-detail viewer (`london_sweep_template.html`): a few selected features
 /// per ε level, e.g. the two sides of a land border.
 pub fn border_html(levels: &[Level]) -> anyhow::Result<String> {

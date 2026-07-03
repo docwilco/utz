@@ -10,4 +10,5 @@
 # Generated visualization HTML (self-embeds data; regenerate via the viz tool).
 *_viewer.html
 *_overlay.html
+*_live.html
 border_sweep.html

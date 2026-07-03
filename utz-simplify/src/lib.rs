@@ -159,28 +159,133 @@ pub fn visvalingam(pts: &[(f64, f64)], min_area: f64) -> Vec<(f64, f64)> {
 /// — BFS for the fewest hops from first to last point over the graph of
 /// "shortcut" segments that stay within `eps` of every skipped point.
 ///
-/// The exact algorithm is O(n²)·O(validity check); arcs longer than `II_MAX`
-/// points are prefiltered with `rdp(eps/2)` and solved at `eps/2` — deviation
-/// bounds compose, so the total stays ≤ `eps` (result is then near-optimal
-/// rather than optimal).
+/// The exact core is ~O(n²) (Chan–Chin wedges, O(1) amortized per shortcut
+/// check); very long inputs are RDP prefiltered with an *adaptive* slice of
+/// the budget — start at `eps/10` (Imai–Iri's vertex count is driven by its
+/// share, so give it as much as possible: an even split kept MORE points than
+/// plain RDP on real arcs) and escalate toward the `eps/2` cap only while the
+/// prefiltered arc stays too big. Deviation bounds compose, so the total
+/// stays ≤ `eps`; prefiltered results are near-optimal rather than optimal.
 pub fn imai_iri(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
-    const II_MAX: usize = 1024;
+    // caps the lazy backward-row bitsets at 2·II_MAX ≈ 32 MB transient
+    const II_MAX: usize = 8192;
     if pts.len() < 3 || eps <= 0.0 {
         return pts.to_vec();
     }
-    if pts.len() > II_MAX {
-        let pre = rdp(pts, eps * 0.5);
-        return imai_iri_core(&pre, eps * 0.5);
+    if pts.len() <= II_MAX {
+        return imai_iri_core(pts, eps);
     }
-    imai_iri_core(pts, eps)
+    let mut pre_eps = eps * 0.1;
+    loop {
+        let pre = rdp(pts, pre_eps);
+        if pre.len() <= 2 * II_MAX || pre_eps >= eps * 0.5 {
+            return imai_iri_core(&pre, eps - pre_eps);
+        }
+        pre_eps = (pre_eps * 2.0).min(eps * 0.5);
+    }
+}
+
+/// Angular interval of directions (≤ π wide, shrinks under intersection):
+/// `u` is inside iff `cross(lo, u) ≥ 0 ∧ cross(u, hi) ≥ 0`.
+struct Wedge {
+    lo: (f64, f64),
+    hi: (f64, f64),
+    any: bool,   // no constraint yet — full circle
+    empty: bool, // intersection pinched shut — nothing valid beyond here
+}
+
+fn cross(a: (f64, f64), b: (f64, f64)) -> f64 {
+    a.0 * b.1 - a.1 * b.0
+}
+
+impl Wedge {
+    fn new() -> Self {
+        Wedge { lo: (0.0, 0.0), hi: (0.0, 0.0), any: true, empty: false }
+    }
+    /// Intersect with the wedge of directions whose ray from the anchor
+    /// passes within ε of a point at unit direction `c`, `sin_phi` = ε/dist.
+    fn add(&mut self, c: (f64, f64), sin_phi: f64) {
+        let cos_phi = (1.0 - sin_phi * sin_phi).max(0.0).sqrt();
+        let lo = (c.0 * cos_phi + c.1 * sin_phi, -c.0 * sin_phi + c.1 * cos_phi);
+        let hi = (c.0 * cos_phi - c.1 * sin_phi, c.0 * sin_phi + c.1 * cos_phi);
+        if self.any {
+            (self.lo, self.hi, self.any) = (lo, hi, false);
+            return;
+        }
+        // Two arcs each ≤ π wide intersect iff an endpoint of one lies inside
+        // the other; when they do, the intersection is [ccw-most start,
+        // cw-most end] by MEMBERSHIP, not by pairwise cross comparison — a
+        // disjoint interval > 180° away otherwise slips through unchanged.
+        let in_cur = |u: (f64, f64)| cross(self.lo, u) >= 0.0 && cross(u, self.hi) >= 0.0;
+        let in_new = |u: (f64, f64)| cross(lo, u) >= 0.0 && cross(u, hi) >= 0.0;
+        let (lo_in, hi_in) = (in_cur(lo), in_cur(hi));
+        if !(lo_in || hi_in || in_new(self.lo)) {
+            self.empty = true;
+            return;
+        }
+        if lo_in {
+            self.lo = lo;
+        }
+        if hi_in {
+            self.hi = hi;
+        }
+        // float-slop safety: a hairline wedge may come out inverted — treat
+        // as empty (rejects a valid shortcut at worst, never accepts a bad one)
+        if cross(self.lo, self.hi) < 0.0 {
+            self.empty = true;
+        }
+    }
+    fn contains(&self, d: (f64, f64)) -> bool {
+        !self.empty && (self.any || (cross(self.lo, d) >= 0.0 && cross(d, self.hi) >= 0.0))
+    }
+}
+
+/// Ray-validity sweep from `pts[from]`: walk `ks` (the intermediate points in
+/// sweep order), calling `visit(k_target, ok)` where `ok` ⟺ the ray from
+/// `pts[from]` toward `pts[k_target]` stays within ε of every point already
+/// swept. `dist(p_k, seg(i,j)) ≤ ε ⟺ ray-from-i ok ∧ ray-from-j ok`, so two
+/// sweeps decide segment validity exactly.
+fn ray_sweep(pts: &[(f64, f64)], from: usize, ks: impl Iterator<Item = usize>, eps: f64, mut visit: impl FnMut(usize, bool) -> bool) {
+    let p0 = pts[from];
+    let mut w = Wedge::new();
+    let mut has_far = false; // some swept point is > ε from the anchor
+    for k in ks {
+        let d = (pts[k].0 - p0.0, pts[k].1 - p0.1);
+        let ok = if d == (0.0, 0.0) { !has_far } else { w.contains(d) };
+        if !visit(k, ok) {
+            return;
+        }
+        // fold k into the constraints for the points swept after it
+        let dist = (d.0 * d.0 + d.1 * d.1).sqrt();
+        if dist > eps {
+            has_far = true;
+            w.add((d.0 / dist, d.1 / dist), eps / dist);
+            if w.empty {
+                // constraints only accumulate — nothing further can be valid
+                while visit(usize::MAX, false) {}
+                return;
+            }
+        }
+    }
 }
 
 fn imai_iri_core(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
     let n = pts.len();
-    let e2 = eps * eps;
-    let valid = |i: usize, j: usize| -> bool {
-        pts[i + 1..j].iter().all(|&p| seg_dist2(p, pts[i], pts[j]) <= e2)
+    let words = n.div_ceil(64);
+    // lazily computed backward rows: bit i of row j ⟺ ray from p_j toward
+    // p_i stays within ε of every point strictly between i and j
+    let mut bwd: Vec<Option<Vec<u64>>> = vec![None; n];
+    let mut bwd_row = |j: usize| -> Vec<u64> {
+        let mut bits = vec![0u64; words];
+        ray_sweep(pts, j, (0..j).rev(), eps, |i, ok| {
+            if i != usize::MAX && ok {
+                bits[i / 64] |= 1 << (i % 64);
+            }
+            i != usize::MAX && i > 0
+        });
+        bits
     };
+
     // BFS level by level: first time a node is reached = fewest hops
     let mut parent = vec![usize::MAX; n];
     let mut frontier = vec![0usize];
@@ -188,14 +293,26 @@ fn imai_iri_core(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
     'bfs: while !frontier.is_empty() {
         let mut nextf = Vec::new();
         for &i in &frontier {
-            for j in i + 1..n {
-                if parent[j] == usize::MAX && valid(i, j) {
-                    parent[j] = i;
-                    if j == n - 1 {
-                        break 'bfs;
-                    }
-                    nextf.push(j);
+            let mut done = false;
+            ray_sweep(pts, i, i + 1..n, eps, |j, fwd_ok| {
+                if j == usize::MAX {
+                    return false; // wedge pinched shut — stop this sweep
                 }
+                if fwd_ok && parent[j] == usize::MAX {
+                    let row = bwd[j].get_or_insert_with(|| bwd_row(j));
+                    if row[i / 64] >> (i % 64) & 1 == 1 {
+                        parent[j] = i;
+                        if j == n - 1 {
+                            done = true;
+                            return false;
+                        }
+                        nextf.push(j);
+                    }
+                }
+                true
+            });
+            if done {
+                break 'bfs;
             }
         }
         frontier = nextf;
@@ -351,6 +468,57 @@ mod tests {
             visvalingam(&pts, 0.2)
         );
         assert_eq!(simplify(Simplify::ImaiIri { eps: 0.2 }, &pts), imai_iri(&pts, 0.2));
+    }
+
+    /// naive O(n) per-check BFS — the reference the wedge core must match
+    fn imai_iri_naive(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
+        let n = pts.len();
+        let e2 = eps * eps;
+        let valid =
+            |i: usize, j: usize| pts[i + 1..j].iter().all(|&p| seg_dist2(p, pts[i], pts[j]) <= e2);
+        let mut parent = vec![usize::MAX; n];
+        let mut frontier = vec![0usize];
+        parent[0] = 0;
+        'bfs: while !frontier.is_empty() {
+            let mut nextf = Vec::new();
+            for &i in &frontier {
+                for j in i + 1..n {
+                    if parent[j] == usize::MAX && valid(i, j) {
+                        parent[j] = i;
+                        if j == n - 1 {
+                            break 'bfs;
+                        }
+                        nextf.push(j);
+                    }
+                }
+            }
+            frontier = nextf;
+        }
+        let mut path = vec![n - 1];
+        while *path.last().unwrap() != 0 {
+            path.push(parent[*path.last().unwrap()]);
+        }
+        path.iter().rev().map(|&i| pts[i]).collect()
+    }
+
+    #[test]
+    fn wedge_core_matches_naive() {
+        // the disjoint-interval wraparound bug needed n ≈ thousands to
+        // surface — cover both small and large inputs
+        for seed in 1..=30u64 {
+            let pts = wiggle(400, seed);
+            for eps in [0.03, 0.1, 0.3, 0.9] {
+                let (w, nv) = (imai_iri_core(&pts, eps).len(), imai_iri_naive(&pts, eps).len());
+                assert_eq!(w, nv, "seed {seed} eps {eps}: wedge {w} != naive {nv}");
+            }
+        }
+        for seed in 1..=3u64 {
+            let pts = wiggle(3000, seed);
+            for eps in [0.3, 0.9] {
+                let (w, nv) = (imai_iri_core(&pts, eps).len(), imai_iri_naive(&pts, eps).len());
+                assert_eq!(w, nv, "seed {seed} eps {eps} (n=3000): wedge {w} != naive {nv}");
+            }
+        }
     }
 
     #[test]

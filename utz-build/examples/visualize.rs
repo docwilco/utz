@@ -1,8 +1,10 @@
 // Regenerate the tuning viewers (PLAN.md §12).
 //
-// usage: cargo run --release -p utz-build --example visualize [overlay|border] [now|1970] [full]
+// usage: cargo run --release -p utz-build --example visualize [overlay|border|live] [now|1970] [full]
 //   overlay — whole-dataset RDP overlay viewer   -> <ds>_overlay.html
 //   border  — Portugal/Spain border detail sweep -> border_sweep.html
+//   live    — full-res arcs + utz-simplify WASM: algorithm radio + ε slider
+//             run the builder's own code in the browser -> <ds>_live.html
 //   "full" (overlay only): also embed ε=0 (~73 MB HTML for OSM)
 
 use utz_build::{topo, viz, Feat};
@@ -14,8 +16,53 @@ fn main() -> anyhow::Result<()> {
     match mode.as_str() {
         "overlay" => overlay(&ds, &feats),
         "border" => border(&feats),
-        m => anyhow::bail!("unknown mode {m:?}: use overlay|border"),
+        "live" => live(&ds, &feats),
+        m => anyhow::bail!("unknown mode {m:?}: use overlay|border|live"),
     }
+}
+
+fn live(ds: &str, feats: &[Feat]) -> anyhow::Result<()> {
+    let topo0 = topo::build_topology(feats, 0.0);
+    let stored0: usize = topo0.arc_coords.iter().map(|a| a.len()).sum();
+    println!("{} arcs, {stored0} full-res verts", topo0.arc_coords.len());
+
+    let wasm = build_wasm()?;
+    println!("utz_simplify.wasm: {:.1} KiB", wasm.len() as f64 / 1024.0);
+
+    let sub = format!("{ds} with-oceans · full-res arcs · simplification runs in-browser (utz-simplify WASM)");
+    let html = viz::live_html(&topo0.arc_coords, stored0, &base64(&wasm), "OSM time zones — live simplification", &sub)?;
+    let outp = format!("{ds}_live.html");
+    std::fs::write(&outp, &html)?;
+    println!("wrote {outp}  ({:.1} MiB)", html.len() as f64 / (1 << 20) as f64);
+    Ok(())
+}
+
+/// Build utz-simplify for wasm32-unknown-unknown and return the cdylib bytes.
+fn build_wasm() -> anyhow::Result<Vec<u8>> {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
+    let status = std::process::Command::new("cargo")
+        .args(["build", "-p", "utz-simplify", "--release", "--target", "wasm32-unknown-unknown"])
+        .current_dir(root)
+        .status()?;
+    anyhow::ensure!(status.success(), "wasm build failed — try: rustup target add wasm32-unknown-unknown");
+    Ok(std::fs::read(format!("{root}/target/wasm32-unknown-unknown/release/utz_simplify.wasm"))?)
+}
+
+fn base64(data: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut s = String::with_capacity(data.len().div_ceil(3) * 4);
+    for c in data.chunks(3) {
+        let b = [c[0], *c.get(1).unwrap_or(&0), *c.get(2).unwrap_or(&0)];
+        let n = u32::from_be_bytes([0, b[0], b[1], b[2]]);
+        for i in 0..4 {
+            if i <= c.len() {
+                s.push(T[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                s.push('=');
+            }
+        }
+    }
+    s
 }
 
 fn overlay(ds: &str, feats: &[Feat]) -> anyhow::Result<()> {

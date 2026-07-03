@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  html, body, #map { height: 100%; margin: 0; }
+  #panel { position: absolute; top: 12px; right: 12px; z-index: 600; width: 292px;
+    background: rgba(17,22,28,0.9); color: #e6edf3; border: 1px solid #2a3542; border-radius: 10px;
+    padding: 12px 14px; font: 13px/1.4 system-ui, sans-serif; backdrop-filter: blur(6px); max-height: 92vh; overflow-y: auto; }
+  #panel h2 { margin: 0 0 2px; font-size: 13px; }
+  #panel .sub { margin: 0 0 10px; font-size: 11px; color: #8b98a8; }
+  .qsec { margin-top: 10px; padding-top: 9px; border-top: 1px solid #2a3542; }
+  .qtitle { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: #b9c4d0; margin-bottom: 6px; }
+  .qtitle span { color: #5a6472; text-transform: none; letter-spacing: 0; }
+  .slot { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+  .slot input[type=checkbox] { accent-color: #ffb454; width: 14px; height: 14px; flex: none; }
+  .sw { width: 14px; height: 4px; border-radius: 2px; flex: none; }
+  .slot select { background: #0d1117; color: #e6edf3; border: 1px solid #2a3542; border-radius: 5px;
+    font: 11px system-ui, sans-serif; padding: 2px 3px; max-width: 86px; }
+  .slot select:disabled { opacity: 0.4; }
+  .slot .raw-label { font-size: 12px; }
+  .slot .rawv { color: #8b98a8; font-size: 11px; margin-left: auto; font-variant-numeric: tabular-nums; }
+  .spin { width: 11px; height: 11px; flex: none; border: 2px solid #2a3542; border-top-color: #ffb454;
+    border-radius: 50%; animation: sp 0.8s linear infinite; visibility: hidden; }
+  .spin.on { visibility: visible; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .st { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .st .num { margin-left: auto; color: #8b98a8; }
+  .st .pct { color: #7ee787; }
+  #panel .foot { margin-top: 9px; padding-top: 8px; border-top: 1px solid #2a3542; font-size: 11px; color: #8b98a8; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <h2>__TITLE__</h2>
+  <p class="sub">__SUB__</p>
+  <div class="qtitle">Sets <span>· algorithm / ε / quantization</span></div>
+  <div id="slots"></div>
+  <label class="slot" id="rawrow">
+    <input type="checkbox" id="rawcb">
+    <span class="sw" style="background:#6b7684"></span>
+    <span class="raw-label">raw · f64 full-res</span>
+    <span class="rawv" id="rawv"></span>
+  </label>
+  <div class="qsec">
+    <div class="qtitle">Reduction <span>· enabled sets</span></div>
+    <div id="stats"></div>
+  </div>
+  <div class="foot">arcs drawn as shared-border outlines (each border once) ·
+    simplification runs the builder's own code (utz-simplify → WASM) in workers —
+    changing settings aborts and recomputes · bytes = raw coords at the chosen
+    width, before delta/varint + compression · raw layer is heavy to draw</div>
+</div>
+<script>
+var ARCS = /*ARCS*/;
+var STORED0 = /*STORED0*/;   // full-res arc verts (the embedded baseline)
+var WASM_B64 = "/*WASM*/";
+
+var ALGO = [
+  { id: 0, key: 'rdp', name: 'RDP' },
+  { id: 1, key: 'vw', name: 'Visvalingam' },
+  { id: 2, key: 'ii', name: 'Imai–Iri' },
+];
+var EPS_M = [10, 25, 50, 100, 250, 500, 1000, 2000, 5000];
+var QUANT = [
+  { key: 'f64', label: 'f64', bpc: 8 },
+  { key: 'f32', label: 'f32', bpc: 4 },
+  { key: 'i32', label: 'i32', bpc: 4 },
+  { key: 'i24', label: 'i24', bpc: 3 },
+  { key: 'i16', label: 'i16', bpc: 2 },
+];
+function qc(v, m, span) {
+  if (m === 'f64') return v;
+  if (m === 'f32') return Math.fround(v);
+  if (m === 'i32') return Math.round(v * 1e7) / 1e7;
+  if (m === 'i24') return Math.round(v / span * 8388607) / 8388607 * span;
+  if (m === 'i16') return Math.round(v / span * 32767) / 32767 * span;
+  return v;
+}
+function fmtBytes(b) {
+  return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MiB' : Math.round(b / 1024).toLocaleString() + ' KiB';
+}
+
+var map = L.map('map', { worldCopyJump: true, preferCanvas: true }).setView([25, 5], 2);
+var streets = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' }).addTo(map);
+var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri' });
+var dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' });
+L.control.layers({ 'Streets': streets, 'Satellite': sat, 'Dark': dark }, {}, { position: 'bottomright' }).addTo(map);
+L.control.scale({ position: 'bottomleft', metric: true, imperial: true, maxWidth: 180 }).addTo(map);
+
+// flat copies shipped to each worker once (structured clone = fast memcpy)
+var NARCS = ARCS.length;
+var OFFS = new Uint32Array(NARCS + 1);
+for (var a = 0; a < NARCS; a++) OFFS[a + 1] = OFFS[a] + ARCS[a].length;
+var COORDS = new Float64Array(OFFS[NARCS] * 2);
+for (var a2 = 0, w2 = 0; a2 < NARCS; a2++)
+  for (var i2 = 0; i2 < ARCS[a2].length; i2++) { COORDS[w2++] = ARCS[a2][i2][0]; COORDS[w2++] = ARCS[a2][i2][1]; }
+var WASM_BYTES = (function () {
+  var bin = atob(WASM_B64), u = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u;
+})();
+
+// worker: instantiate utz-simplify WASM, simplify every arc on request.
+// Killed and respawned to abort — never blocks the page.
+var WORKER_SRC = '\
+var W = null, buf = 0, COORDS = null, OFFS = null;\
+onmessage = function (e) {\
+  var m = e.data;\
+  if (m.type === "init") {\
+    COORDS = m.coords; OFFS = m.offs;\
+    var maxLen = 0;\
+    for (var a = 0; a + 1 < OFFS.length; a++) maxLen = Math.max(maxLen, OFFS[a + 1] - OFFS[a]);\
+    WebAssembly.instantiate(m.wasm, {}).then(function (r) {\
+      W = r.instance.exports;\
+      buf = W.utz_alloc(maxLen * 2);\
+      postMessage({ type: "ready" });\
+    });\
+  } else if (m.type === "run") {\
+    var t0 = Date.now();\
+    var out = new Float64Array(COORDS.length);\
+    var outOffs = new Uint32Array(OFFS.length);\
+    var kept = 0;\
+    for (var a = 0; a + 1 < OFFS.length; a++) {\
+      var s = OFFS[a], n = OFFS[a + 1] - s;\
+      var f = new Float64Array(W.memory.buffer, buf, n * 2);\
+      f.set(COORDS.subarray(s * 2, (s + n) * 2));\
+      var k = W.utz_simplify(m.algoId, buf, n, m.param);\
+      out.set(new Float64Array(W.memory.buffer, buf, k * 2), kept * 2);\
+      kept += k; outOffs[a + 1] = kept;\
+    }\
+    var coords = out.slice(0, kept * 2);\
+    postMessage({ type: "done", gen: m.gen, kept: kept, ms: Date.now() - t0, coords: coords, offs: outOffs },\
+      [coords.buffer, outOffs.buffer]);\
+  }\
+};';
+var WORKER_URL = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' }));
+
+function Slot(idx, color, def) {
+  var self = this;
+  this.idx = idx; this.color = color;
+  this.on = def.on; this.algo = def.algo; this.eps = def.eps; this.quant = def.quant;
+  this.gen = 0; this.busy = false; this.ready = false; this.pendingRun = false;
+  this.worker = null; this.result = null;
+  this.layer = L.polyline([], { color: color, weight: 1.2, opacity: 0.95 });
+
+  var row = document.createElement('div'); row.className = 'slot';
+  this.cb = document.createElement('input'); this.cb.type = 'checkbox'; this.cb.checked = this.on;
+  var sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = color;
+  this.selAlgo = mkSelect(ALGO.map(function (a) { return a.name; }), this.algo);
+  this.selEps = mkSelect(EPS_M.map(function (e) { return 'ε ' + e + ' m'; }), EPS_M.indexOf(this.eps));
+  this.selQuant = mkSelect(QUANT.map(function (q) { return q.label; }), this.quant);
+  this.spin = document.createElement('span'); this.spin.className = 'spin';
+  row.appendChild(this.cb); row.appendChild(sw);
+  row.appendChild(this.selAlgo); row.appendChild(this.selEps); row.appendChild(this.selQuant);
+  row.appendChild(this.spin);
+  document.getElementById('slots').appendChild(row);
+
+  this.cb.addEventListener('change', function () { self.on = self.cb.checked; self.toggled(); });
+  this.selAlgo.addEventListener('change', function () { self.algo = self.selAlgo.selectedIndex; self.request(); });
+  this.selEps.addEventListener('change', function () { self.eps = EPS_M[self.selEps.selectedIndex]; self.request(); });
+  this.selQuant.addEventListener('change', function () { self.quant = self.selQuant.selectedIndex; self.redraw(); updateStats(); });
+  this.syncDisabled();
+}
+function mkSelect(labels, sel) {
+  var s = document.createElement('select');
+  labels.forEach(function (l) { var o = document.createElement('option'); o.textContent = l; s.appendChild(o); });
+  s.selectedIndex = sel;
+  return s;
+}
+Slot.prototype.syncDisabled = function () {
+  var d = !this.on;
+  this.selAlgo.disabled = d; this.selEps.disabled = d; this.selQuant.disabled = d;
+};
+Slot.prototype.toggled = function () {
+  this.syncDisabled();
+  if (this.on) {
+    this.layer.addTo(map);
+    if (this.result) { this.redraw(); updateStats(); } else { this.request(); }
+  } else {
+    map.removeLayer(this.layer);
+    if (this.busy) { this.abort(); }
+    updateStats();
+  }
+};
+Slot.prototype.spawn = function () {
+  var self = this;
+  this.ready = false;
+  this.worker = new Worker(WORKER_URL);
+  this.worker.onmessage = function (e) {
+    var m = e.data;
+    if (m.type === 'ready') {
+      self.ready = true;
+      if (self.pendingRun) { self.pendingRun = false; self.send(); }
+    } else if (m.type === 'done' && m.gen === self.gen) {
+      self.busy = false; self.spin.classList.remove('on');
+      self.result = m;
+      self.redraw(); updateStats();
+    }
+  };
+  this.worker.postMessage({ type: 'init', wasm: WASM_BYTES, coords: COORDS, offs: OFFS });
+};
+Slot.prototype.abort = function () {
+  if (this.worker) { this.worker.terminate(); this.worker = null; }
+  this.busy = false; this.pendingRun = false; this.spin.classList.remove('on');
+};
+Slot.prototype.send = function () {
+  var epsDeg = this.eps / 111320;
+  this.worker.postMessage({
+    type: 'run', gen: this.gen,
+    algoId: ALGO[this.algo].id,
+    param: ALGO[this.algo].key === 'vw' ? epsDeg * epsDeg : epsDeg,
+  });
+};
+Slot.prototype.request = function () {
+  if (!this.on) return;
+  this.gen++;
+  if (this.busy) this.abort(); // abort mid-compute, start fresh
+  this.busy = true; this.spin.classList.add('on');
+  if (!this.worker) this.spawn();
+  if (this.ready) { this.send(); } else { this.pendingRun = true; }
+};
+Slot.prototype.redraw = function () {
+  if (!this.result || !this.on) return;
+  var m = QUANT[this.quant].key;
+  var lls = [], c = this.result.coords, o = this.result.offs;
+  for (var a = 0; a + 1 < o.length; a++) {
+    var seg = new Array(o[a + 1] - o[a]);
+    for (var i = o[a]; i < o[a + 1]; i++) seg[i - o[a]] = [qc(c[i * 2 + 1], m, 90), qc(c[i * 2], m, 180)];
+    lls.push(seg);
+  }
+  this.layer.setLatLngs(lls);
+};
+
+var slots = [
+  new Slot(0, '#ffb454', { on: true, algo: 0, eps: 500, quant: 0 }),
+  new Slot(1, '#58a6ff', { on: false, algo: 2, eps: 500, quant: 0 }),
+  new Slot(2, '#d2a8ff', { on: false, algo: 1, eps: 500, quant: 0 }),
+];
+
+// raw f64 overlay — built lazily on first enable (drawing 2M verts is slow)
+var rawLayer = null;
+document.getElementById('rawv').textContent = STORED0.toLocaleString() + ' v';
+document.getElementById('rawcb').addEventListener('change', function () {
+  if (this.checked) {
+    if (!rawLayer) {
+      var lls = ARCS.map(function (arc) { return arc.map(function (p) { return [p[1], p[0]]; }); });
+      rawLayer = L.polyline(lls, { color: '#6b7684', weight: 1, opacity: 0.8 });
+    }
+    rawLayer.addTo(map);
+  } else if (rawLayer) {
+    map.removeLayer(rawLayer);
+  }
+  updateStats();
+});
+
+function updateStats() {
+  var el = document.getElementById('stats');
+  el.innerHTML = '';
+  var shown = 0;
+  if (document.getElementById('rawcb').checked) {
+    shown++;
+    el.innerHTML += '<div class="st"><span class="sw" style="background:#6b7684"></span><span>raw f64</span>' +
+      '<span class="num">' + STORED0.toLocaleString() + ' v · ' + fmtBytes(STORED0 * 16) + '</span></div>';
+  }
+  slots.forEach(function (s) {
+    if (!s.on || !s.result) return;
+    shown++;
+    var q = QUANT[s.quant];
+    var kept = s.result.kept;
+    el.innerHTML += '<div class="st"><span class="sw" style="background:' + s.color + '"></span>' +
+      '<span>' + ALGO[s.algo].name + ' ε' + s.eps + ' @ ' + q.label + '</span>' +
+      '<span class="num">' + kept.toLocaleString() + ' v · <span class="pct">−' +
+      (100 * (1 - kept / STORED0)).toFixed(1) + '%</span> · ' + fmtBytes(kept * 2 * q.bpc) +
+      ' · ' + s.result.ms.toLocaleString() + ' ms</span></div>';
+  });
+  if (!shown) el.innerHTML = '<div class="st" style="color:#5a6472">nothing enabled</div>';
+}
+
+slots.forEach(function (s) { if (s.on) { s.layer.addTo(map); s.request(); } });
+updateStats();
+</script>
+</body>
+</html>

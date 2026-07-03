@@ -296,10 +296,16 @@ compile_error!("select a codec: one of `uncompressed`,`gzip`,`zstd-sys`,`ruzstd`
 ## 12. Visualization
 
 `utz-build/viz.rs` + `cargo run -p utz-build --example visualize` regenerates the
-sweep viewer (RDP levels × quant grids × basemap, our current HTML: keyless
-Carto/Esri tiles, scale bar, on-the-fly JS quantization, full stays f64). Users
-tune ε/quant/grid **before** committing the build knobs. Link a CI-built copy from
-docs (HTML self-embeds data → generated artifact, not a committed asset).
+viewers (keyless Carto/Esri tiles, scale bar, on-the-fly JS quantization; HTML
+self-embeds data → generated artifact, not a committed asset). Users tune
+ε/quant/grid **before** committing the build knobs. Link a CI-built copy from docs.
+- **overlay**: precomputed RDP ε levels × quant grids, reduction-stats panel
+  (stored arc verts vs ε=0, raw coord bytes at the chosen width).
+- **live**: full-res arcs + `utz-simplify` compiled to WASM — three independent
+  "sets" (algorithm/ε/quant dropdowns, per-set color), raw-f64 overlay toggle,
+  per-set reduction stats. Each set computes in a Web Worker (spinner, UI stays
+  live); changing settings terminates the worker and recomputes fresh.
+- **border**: Portugal/Spain detail sweep for visual fidelity checks.
 
 ---
 
@@ -354,10 +360,19 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
      points, actually honors the ε bound.)
    - **Visvalingam–Whyatt** (`visvalingam`): smallest-triangle removal, area
      knob (no ε-equivalence faked), deterministic tie-break on index.
-   - **Imai–Iri** (`imai_iri`): provably minimum vertices within ε (BFS over
-     the shortcut graph; brute-force-verified optimal in tests). Arcs > 1024
-     pts get an `rdp(ε/2)` prefilter and solve at ε/2 — bounds compose, so
-     total stays ≤ ε, near-optimal.
+   - **Imai–Iri** (`imai_iri`): provably minimum vertices within ε — BFS over
+     the shortcut graph with **Chan–Chin wedge validity** (per anchor, sweep
+     targets keeping the intersection of "ray passes within ε of point k"
+     angular wedges; segment valid ⟺ forward wedge at i ∧ backward wedge at j;
+     O(1) amortized per check, exact — matches the naive-scan oracle at
+     n=3000, brute-force-verified optimal on small inputs). Watch the arc
+     wraparound: interval intersection must use *membership* tests, pairwise
+     cross-sign comparison silently accepts disjoint intervals > 180° away.
+     Arcs > 8192 pts prefilter with `rdp(ε/10)`, escalating toward ε/2 only
+     while still too big — bounds compose, total ≤ ε, near-optimal. Measured
+     vs RDP on full-planet `-now` arcs: **−3.8% verts at ε=100 m, −18% at
+     500 m, −19% at 2000 m**, ~1 s for all 1372 arcs (WASM) — strong
+     candidate for the default algorithm.
    - Corridor/streaming family (Reumann–Witkam, Opheim, Lang, Zhao–Saalfeld):
      **rejected** — quality-per-vertex worse than RDP; their single-pass
      speed advantage is worthless at build time.
