@@ -16,7 +16,7 @@
 //! utz_free(ptr, n * 2);
 //! ```
 
-use crate::{simplify, Simplify};
+use crate::{simplify, simplify_weighted, DensityWeight, Simplify};
 
 pub const ALGO_RDP: u32 = 0;
 pub const ALGO_VISVALINGAM: u32 = 1;
@@ -58,6 +58,39 @@ pub unsafe extern "C" fn utz_simplify(algo: u32, xy: *mut f64, n_pts: usize, par
             _ => Simplify::None,
         },
         &pts,
+    );
+    for (i, (x, y)) in out.iter().enumerate() {
+        buf[i * 2] = *x;
+        buf[i * 2 + 1] = *y;
+    }
+    out.len()
+}
+
+/// [`utz_simplify`] with population-density weighting: `dens` points at
+/// `n_pts` per-vertex densities (people/km²), mapped through
+/// [`DensityWeight::new`]`(w_min)` — so the browser's weighting slider runs
+/// the exact map the builder uses, not a JS reimplementation. `w_min ≥ 1`
+/// turns weighting off (identical to [`utz_simplify`]).
+///
+/// # Safety
+/// `xy` must point at `n_pts * 2` valid doubles and `dens` at `n_pts` valid
+/// doubles (e.g. from [`utz_alloc`]).
+#[no_mangle]
+pub unsafe extern "C" fn utz_simplify_w(algo: u32, xy: *mut f64, n_pts: usize, param: f64, dens: *const f64, w_min: f64) -> usize {
+    let buf = core::slice::from_raw_parts_mut(xy, n_pts * 2);
+    let pts: Vec<(f64, f64)> = buf.chunks_exact(2).map(|c| (c[0], c[1])).collect();
+    let model = DensityWeight::new(w_min);
+    let w: Vec<f64> =
+        core::slice::from_raw_parts(dens, n_pts).iter().map(|&d| model.weight(d)).collect();
+    let out = simplify_weighted(
+        match algo {
+            ALGO_RDP => Simplify::Rdp { eps: param },
+            ALGO_VISVALINGAM => Simplify::Visvalingam { min_area: param },
+            ALGO_IMAI_IRI => Simplify::ImaiIri { eps: param },
+            _ => Simplify::None,
+        },
+        &pts,
+        &w,
     );
     for (i, (x, y)) in out.iter().enumerate() {
         buf[i * 2] = *x;
