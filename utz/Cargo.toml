@@ -4,12 +4,27 @@ version = "0.0.0"
 edition.workspace = true
 license.workspace = true
 
-# Runtime crate — kept lean / no_std-friendly. Codec + build deps added during
-# implementation (see PLAN.md §7, §11). geo is a DEV-dependency only (PIP oracle).
+# Runtime crate — kept lean / no_std-friendly. geo is a DEV-dependency only
+# (PIP oracle). Codec features (PLAN.md §7): each compiles in the decoder for
+# one codec byte. `gzip`/`ruzstd` are pure-Rust and no_std+alloc clean;
+# `brotli`/`xz` currently pull `std` (their no_std modes need custom io/alloc
+# plumbing — upgrade path noted in decompress.rs); `zstd-sys` is C + std.
 [features]
 std = []
+gzip = ["dep:miniz_oxide"]
+ruzstd = ["dep:ruzstd"]
+zstd-sys = ["dep:zstd", "std"]
+brotli = ["dep:brotli-decompressor", "std"]
+xz = ["dep:lzma-rust2", "std"]
 
 [dependencies]
+# no default features: keeps the derives no_std (Error derive = core::error::Error)
+derive_more = { version = "2", default-features = false, features = ["display", "error"] }
+miniz_oxide = { version = "0.8", optional = true, default-features = false, features = ["with-alloc"] }
+ruzstd = { version = "0.8", optional = true, default-features = false }
+zstd = { version = "0.13", optional = true }
+brotli-decompressor = { version = "5.0", optional = true }
+lzma-rust2 = { version = "0.16", optional = true, default-features = false, features = ["std", "xz"] }
 
 [dev-dependencies]
 geo = { workspace = true }

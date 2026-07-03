@@ -8,13 +8,12 @@ use alloc::vec::Vec;
 use core::cell::RefCell;
 
 use crate::format::{self, fixed_bytes, read_fixed, read_u16, read_u32, read_varint, unzigzag, Header};
-use crate::{pip, Error};
+use crate::{decompress, pip, Error};
 
 const NO_ZONE: u16 = 0x7FFF;
 
 enum Source {
     Static(&'static [u8]),
-    #[cfg(feature = "std")]
     Owned(Vec<u8>),
 }
 
@@ -22,7 +21,6 @@ impl Source {
     fn bytes(&self) -> &[u8] {
         match self {
             Source::Static(b) => b,
-            #[cfg(feature = "std")]
             Source::Owned(v) => v,
         }
     }
@@ -40,7 +38,7 @@ impl Finder {
     /// Borrow a container from `&'static` bytes (e.g. a flash partition).
     /// Zero-copy: only the `uncompressed` codec is accepted here.
     pub fn from_static(bytes: &'static [u8]) -> Result<Finder, Error> {
-        let (codec, start) = format::outer(bytes)?;
+        let (codec, _, start) = format::outer(bytes)?;
         if codec != 0 {
             return Err(Error::Decompress); // compressed containers need an owned buffer
         }
@@ -49,18 +47,29 @@ impl Finder {
         Ok(Finder { payload: Source::Static(payload), hdr, scratch: RefCell::new((Vec::new(), Vec::new())) })
     }
 
+    /// Take ownership of a container buffer (e.g. read from flash / OTA blob),
+    /// decompressing per the codec byte if a backend is compiled in. The
+    /// `no_std` entry point for compressed containers.
+    pub fn from_vec(bytes: Vec<u8>) -> Result<Finder, Error> {
+        let (codec, raw_len, start) = format::outer(&bytes)?;
+        let payload = if codec == 0 {
+            let mut p = bytes;
+            p.copy_within(start.., 0); // reuse the allocation
+            p.truncate(p.len() - start);
+            p
+        } else {
+            decompress::decompress(codec, raw_len, &bytes[start..])?
+        };
+        let hdr = format::parse(&payload)?;
+        Ok(Finder { payload: Source::Owned(payload), hdr, scratch: RefCell::new((Vec::new(), Vec::new())) })
+    }
+
     /// Read a container from any `Read` source into an owned buffer.
     #[cfg(feature = "std")]
     pub fn from_reader(mut r: impl std::io::Read) -> Result<Finder, Error> {
         let mut bytes = Vec::new();
         r.read_to_end(&mut bytes).map_err(|_| Error::BadFormat)?;
-        let (codec, start) = format::outer(&bytes)?;
-        if codec != 0 {
-            return Err(Error::Decompress); // codec backends land with decompress.rs (PLAN.md §7)
-        }
-        let payload = bytes[start..].to_vec();
-        let hdr = format::parse(&payload)?;
-        Ok(Finder { payload: Source::Owned(payload), hdr, scratch: RefCell::new((Vec::new(), Vec::new())) })
+        Finder::from_vec(bytes)
     }
 
     /// TZBB release recorded in the container header.

@@ -73,10 +73,18 @@ fn main() -> anyhow::Result<()> {
     let fz = pts.iter().filter(|&&(lo, la)| finder.fuzzy(lo, la).is_some()).count();
     println!("fuzzy: {fz}/{npts} answered, {:.2} µs/point", t0.elapsed().as_micros() as f64 / npts as f64);
 
-    // compressed containers must be refused (decompress.rs not yet wired)
-    let gz = encode::finish(encode::build_payload(&feats, &p)?, Codec::Gzip);
-    assert!(matches!(utz::Finder::from_reader(&gz[..]), Err(utz::Error::Decompress)));
-    println!("gzip container correctly refused (Decompress)");
+    // every codec must roundtrip to the same answers as the uncompressed finder
+    let payload = encode::build_payload(&feats, &p)?;
+    for codec in [Codec::Gzip, Codec::Zstd, Codec::Brotli, Codec::Xz] {
+        let c = encode::finish(payload.clone(), codec);
+        let f = utz::Finder::from_reader(&c[..])
+            .unwrap_or_else(|e| panic!("{codec:?} decode failed: {e:?}"));
+        assert_eq!(f.tzbb_release(), "roundtrip-dev");
+        for &(lo, la) in pts.iter().take(2_000) {
+            assert_eq!(f.lookup(lo, la), finder.lookup(lo, la), "{codec:?} ({lo},{la})");
+        }
+        println!("{codec:?}: {:.1} KB, roundtrip OK", c.len() as f64 / 1024.0);
+    }
     Ok(())
 }
 

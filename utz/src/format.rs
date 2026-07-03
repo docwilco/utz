@@ -76,12 +76,13 @@ pub fn unzigzag(v: u64) -> i64 {
     ((v >> 1) as i64) ^ -((v & 1) as i64)
 }
 
-/// Validate the outer header; returns (codec, payload_start).
-pub fn outer(bytes: &[u8]) -> Result<(u8, usize), Error> {
-    if bytes.len() < 6 || bytes[0..4] != MAGIC || bytes[4] != VERSION {
+/// Validate the outer header; returns (codec, raw_len, payload_start).
+/// `raw_len` is the UNCOMPRESSED payload size (single exact allocation).
+pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize), Error> {
+    if bytes.len() < 10 || bytes[0..4] != MAGIC || bytes[4] != VERSION {
         return Err(Error::BadFormat);
     }
-    Ok((bytes[5], 6))
+    Ok((bytes[5], read_u32(bytes, 6) as usize, 10))
 }
 
 /// Parse the payload header + section directory.

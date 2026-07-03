@@ -9,6 +9,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+pub mod decompress;
 pub mod format;
 pub mod pip;
 
@@ -16,12 +17,14 @@ mod finder;
 pub use finder::Finder;
 
 /// Errors surfaced by the reader.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, derive_more::Display, derive_more::Error)]
 pub enum Error {
     /// The byte source is not a valid uTZ container.
+    #[display("not a valid uTZ container")]
     BadFormat,
     /// Container is compressed with a codec this build cannot decode
     /// (or `from_static` was handed a non-`uncompressed` container).
+    #[display("codec not compiled in, or decompression failed")]
     Decompress,
 }
 

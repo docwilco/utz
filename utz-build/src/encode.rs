@@ -2,7 +2,8 @@
 //!
 //! Layout (all little-endian):
 //! ```text
-//! outer:  magic "uTZ1" | version u8 | codec u8 | payload…
+//! outer:  magic "uTZ1" | version u8 | codec u8 | raw_len u32 | payload…
+//!         (raw_len = UNCOMPRESSED payload size, so decoders allocate once)
 //! payload (compressed per codec):
 //!   header:     dataset u8 | quant_bits u8 | grid_deg u8 | eps_m f32
 //!               | tzbb_release (len u8 + bytes)
@@ -184,11 +185,13 @@ pub fn build_payload(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
 
 /// Prepend the outer header, compressing the payload with `codec`.
 pub fn finish(payload: Vec<u8>, codec: Codec) -> Vec<u8> {
+    let raw_len = payload.len() as u32;
     let body = compress(&payload, codec);
-    let mut o = Vec::with_capacity(body.len() + 6);
+    let mut o = Vec::with_capacity(body.len() + 10);
     o.extend_from_slice(&MAGIC);
     o.push(VERSION);
     o.push(codec as u8);
+    o.extend_from_slice(&raw_len.to_le_bytes());
     o.extend_from_slice(&body);
     o
 }
