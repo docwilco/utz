@@ -11,6 +11,7 @@
 mod types;
 pub use types::*;
 
+pub mod density;
 pub mod download;
 pub mod encode;
 pub mod grid;
