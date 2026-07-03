@@ -17,7 +17,9 @@ Working crate name: **`utz`** (project: uTZ / micro-timezone).
 - **Tunable at build time.** Dataset, RDP ε, quant grid, grid cell size, codec —
   build exactly the size/RAM/accuracy point you need, guided by a viz tool.
 - **DST-correct.** Returns the IANA `tzid`; resolve offsets/DST downstream
-  (`chrono-tz`). `-1970` option gives tzids valid for past timestamps too
+  (`jiff` — its `jiff-static` compile-time zones suit embedded; or the prevalent
+  `chrono-tz`; `time` lacks IANA tz support without third-party crates).
+  `-1970` option gives tzids valid for past timestamps too
   (back to 1970), not just current/future time.
 
 Non-goals: shipping committed assets; NED dataset (dropped — RDP+topology on OSM

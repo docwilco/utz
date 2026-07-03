@@ -10,12 +10,16 @@ Tiny, embeddable latitude/longitude → IANA timezone lookup for Rust.
 - **Tiny** — OSM timezone data down to ~125–460 KB via shared-arc topology,
   tunable RDP simplification, integer quantization, and general compression.
 - **Embeddable** — pure-Rust codecs, integer point-in-polygon, flat arrays that
-  borrow zero-copy from a flash partition. Targets ESP32/Xtensa-class devices.
+  borrow zero-copy from a flash partition. `no_std` capable.
 - **Tunable** — pick dataset, RDP tolerance, quantization grid, grid cell size,
-  and codec to hit your exact size / RAM / accuracy point, guided by a
-  visualization tool.
-- **DST-correct** — returns the IANA `tzid`; resolve offsets/DST downstream (e.g.
-  `chrono-tz`). A `-1970` dataset option gives per-location-correct tzids.
+  and compression codec to hit your exact size / RAM / accuracy point, guided by a
+  visualization tool. Or use no compression for direct from flash. (Though some
+  parts need some RAM. See further down.)
+- **DST-correct** — returns the IANA `tzid`; resolve offsets/DST downstream with
+  [`jiff`](https://crates.io/crates/jiff) (whose compile-time static zones pair
+  well with uTZ's embedded story) or the prevalent `chrono-tz`. (`time` itself
+  has no IANA tz support — fixed UTC offsets only — and needs third-party crates
+  like `time-tz`.) A `-1970` dataset option gives per-location-correct tzids.
 
 ```rust
 let finder = utz::Finder::new()?;              // or ::from_static(flash_bytes)
