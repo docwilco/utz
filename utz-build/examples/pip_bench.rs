@@ -1,8 +1,10 @@
 // Measurement backlog #2 (PLAN.md §15): hand-rolled i64 PIP vs the geo i64
-// oracle on real OSM geometry — correctness (target 0 disagreements) + speed.
+// oracle vs geometry-rs (tzf-rs's PIP crate, tidwall/geometry port) on real
+// OSM geometry — correctness (target 0 disagreements vs geo) + speed.
 //
-// Both sides get the SAME quantized (i24) simplified geometry and run the same
-// linear first-hit scan over all polygons, so the comparison is pure PIP.
+// All contenders get the SAME quantized (i24) simplified geometry and run the
+// same linear first-hit scan with the same hoisted bbox precheck, so the
+// comparison is pure per-edge PIP.
 //
 // usage: cargo run --release -p utz-build --example pip_bench [now|1970] [eps_m] [npts]
 
@@ -39,8 +41,8 @@ fn main() -> anyhow::Result<()> {
     let pts: Vec<(i32, i32)> = gen_pts(npts).iter().map(|&(lo, la)| (qx(lo), qy(la))).collect();
 
     // ---- ours: per-polygon integer PIP, linear first-hit scan ----
-    // ring slices + bbox hoisted out of the loop (geo's Contains has the same
-    // bounding-rect precheck internally; the runtime's grid plays this role)
+    // ring slices + bbox hoisted out of the loop (the runtime's grid plays
+    // this role; every contender below gets the same hoisted bbox test)
     struct P<'a> { fi: usize, bbox: (i32, i32, i32, i32), rings: Vec<&'a [(i32, i32)]> }
     let polys: Vec<P> = quant.iter().enumerate()
         .flat_map(|(fi, (_, ps))| ps.iter().map(move |p| {
@@ -62,14 +64,47 @@ fn main() -> anyhow::Result<()> {
     }
     let t_ours = t.elapsed();
 
-    // ---- geo oracle, same scan order ----
+    // ---- geo oracle, same scan order, same hoisted bbox precheck ----
+    // (geo 0.32 Polygon::contains has NO internal bounding-rect precheck —
+    // coordinate_position walks the exterior ring directly — so hoist the same
+    // bbox test ours gets, keeping the comparison pure per-edge PIP)
     let t = Instant::now();
     let mut oracle: Vec<Option<usize>> = Vec::with_capacity(npts);
     for &(px, py) in &pts {
         let pt = geo::Point::new(px as i64, py as i64);
-        oracle.push(gpolys.iter().find(|(_, p)| p.contains(&pt)).map(|&(fi, _)| fi));
+        oracle.push(gpolys.iter().zip(&polys)
+            .find(|((_, p), b)| px >= b.bbox.0 && py >= b.bbox.1 && px <= b.bbox.2 && py <= b.bbox.3
+                && p.contains(&pt))
+            .map(|(&(fi, _), _)| fi));
     }
     let t_geo = t.elapsed();
+
+    // ---- geometry-rs, same scan order, same hoisted bbox precheck ----
+    // (contains_point also runs its own internal rect precheck — inherent to
+    // its API, tzf-rs pays it too, and it's noise next to the ring walk)
+    let gm_polys: Vec<(usize, geometry_rs::Polygon)> = quant.iter().enumerate()
+        .flat_map(|(fi, (_, polys))| polys.iter().map(move |p| {
+            let ring = |r: &Vec<(i32, i32)>| -> Vec<geometry_rs::Point> {
+                let mut v: Vec<geometry_rs::Point> = r.iter()
+                    .map(|&(x, y)| geometry_rs::Point { x: x as f64, y: y as f64 })
+                    .collect();
+                let first = v[0];
+                v.push(first); // expects closed GeoJSON-style rings
+                v
+            };
+            (fi, geometry_rs::Polygon::new(ring(&p[0]), p[1..].iter().map(ring).collect()))
+        }))
+        .collect();
+    let t = Instant::now();
+    let mut gm: Vec<Option<usize>> = Vec::with_capacity(npts);
+    for &(px, py) in &pts {
+        let pt = geometry_rs::Point { x: px as f64, y: py as f64 };
+        gm.push(gm_polys.iter().zip(&polys)
+            .find(|((_, p), b)| px >= b.bbox.0 && py >= b.bbox.1 && px <= b.bbox.2 && py <= b.bbox.3
+                && p.contains_point(pt))
+            .map(|(&(fi, _), _)| fi));
+    }
+    let t_gm = t.elapsed();
 
     let mut diff = 0usize;
     for (i, (a, b)) in ours.iter().zip(&oracle).enumerate() {
@@ -79,11 +114,18 @@ fn main() -> anyhow::Result<()> {
             println!("  disagree at pt#{i} {:?}: ours={:?} geo={:?}", pts[i], tz(a), tz(b));
         }
     }
-    println!("disagreements: {diff}/{npts}");
-    println!("ours: {:>8.2?}  ({:.1} µs/lookup)", t_ours, t_ours.as_micros() as f64 / npts as f64);
-    println!("geo:  {:>8.2?}  ({:.1} µs/lookup)   speedup {:.2}x",
+    println!("disagreements vs geo: {diff}/{npts}");
+    // geometry-rs boundary semantics differ (exterior edge = outside, hole
+    // edge = inside), so only count — off-boundary answers must still agree
+    let gm_diff = ours.iter().zip(&gm).filter(|(a, b)| a != b).count();
+    println!("disagreements vs geometry-rs: {gm_diff}/{npts} (boundary semantics differ)");
+    println!("ours:        {:>8.2?}  ({:.1} µs/lookup)", t_ours, t_ours.as_micros() as f64 / npts as f64);
+    println!("geo:         {:>8.2?}  ({:.1} µs/lookup)   ours {:.2}x",
         t_geo, t_geo.as_micros() as f64 / npts as f64,
         t_geo.as_secs_f64() / t_ours.as_secs_f64());
+    println!("geometry-rs: {:>8.2?}  ({:.1} µs/lookup)   ours {:.2}x",
+        t_gm, t_gm.as_micros() as f64 / npts as f64,
+        t_gm.as_secs_f64() / t_ours.as_secs_f64());
     Ok(())
 }
 

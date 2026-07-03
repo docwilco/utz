@@ -520,6 +520,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "geometry-rs"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8a0b4dc167f84f57bd3744e8a87efead6abb3fa1cebd25b49920c5088d41330"
+
+[[package]]
 name = "geozero"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1774,6 +1780,7 @@ dependencies = [
  "flatgeobuf",
  "geo",
  "geo-types",
+ "geometry-rs",
  "geozero",
  "lzma-rust2",
  "miniz_oxide",

@@ -309,7 +309,9 @@ delta-varint); if you don't need embedded/tiny, tzf already exists.
 **Learned from tzf (adopt now):** grid-only coarse mode (tzf calls it "fuzzy"); ship a balanced preset;
 embed TZBB version; verify antimeridian handling. **Defer:** hierarchical/quadtree
 grid (1°-accuracy at coarse memory); per-polygon YStripe edge index (faster PIP on
-big polygons); benchmark `geo` vs `geometry-rs`.
+big polygons — note tzf's `geometry-rs` Rust port dropped the Go original's index,
+its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
+`geometry-rs`~~ — done, see §15 (3-way `pip_bench`).
 
 ---
 
@@ -342,11 +344,20 @@ big polygons); benchmark `geo` vs `geometry-rs`.
   Global-area-desc ordering is free (interning preserved by construction) but only
   helps `-1970` (46→53%). Verdict: dominant-first worth it — KBs are noise vs the
   32 KB primary; halves expected PIP work on border cells.
-- [x] **Hand-rolled i64 PIP vs `geo`** — done (`utz/src/pip.rs` + `pip_bench`):
-  **0/20,000 disagreements** on quantized OSM ε=500 m, both datasets. Speed with
-  equal bbox prechecks: **14.5×** faster (`-now`), **51×** (`-1970`). Decision
-  confirmed: hand-rolled per-polygon even-odd, i64 (i128 for i32 grids), boundary
-  points claimed (`geo` stays dev-oracle only).
+- [x] **Hand-rolled i64 PIP vs `geo` vs `geometry-rs`** — done (`utz/src/pip.rs` +
+  `pip_bench`, 3-way): **0/20,000 disagreements** on quantized OSM ε=500 m, both
+  datasets (incl. geometry-rs, whose boundary semantics differ but never off
+  boundary). Speed with equal hoisted bbox prechecks: geo runs in 0.66–0.74× our
+  time, geometry-rs in 0.83–0.84× — both modestly *faster* per edge, all within
+  1.5×. (An earlier "**14.5×/51× ours faster**" figure was a bench bug: geo 0.32
+  `Polygon::contains` has NO internal bounding-rect precheck — only ours got a
+  bbox test, so geo walked every ring in the scan. Corrected 2026-07.) Decision
+  stands on non-speed grounds: `no_std` with zero deps, zero-copy
+  `&[(i32,i32)]` slices straight from the arc decoder (geo/geometry-rs need
+  owned i64/f64 ring `Vec`s — per-lookup allocs in lazy mode), deterministic
+  boundary-claimed semantics, i128 variant for i32 grids (geometry-rs's
+  float-division collinearity test is inexact there). Behind the grid, PIP is
+  13–25% of lookups and single-digit µs either way (`geo` stays dev-oracle only).
 - [x] **Real grid lookup bench** — done (`grid_bench`, ε=500 m, 2°, dominant-first):
   **0.88 µs/lookup** `-now` (6.2× vs linear) / **0.47 µs** `-1970` (4.8×); PIP needed
   24.5% / 29.7% (matches §10 P(PIP) predictions); 0 fallbacks. Found + fixed a real
