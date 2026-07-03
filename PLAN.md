@@ -322,6 +322,15 @@ big polygons); benchmark `geo` vs `geometry-rs`.
 4. ~~**Antimeridian**~~ — **verified pre-split** (see §15); no split pass.
 5. **Default preset** values (dataset/ε/quant/grid/codec) for the "balanced" build.
 6. Crate/repo name confirmed `utz`; public naming of feature groups.
+7. **Alloc-free mode** (discuss): today `no_std` = core+**alloc** — `Finder`
+   carries `Vec` scratch (empty until a border-cell lookup) and `from_vec`/
+   decompression need the heap. The grid + `fuzzy` path could run truly
+   alloc-free from flash (`from_static`, uncompressed); the accurate path
+   could too with a caller-provided or fixed-size scratch buffer (bound =
+   largest decoded polygon, a build-time-known number that could go in the
+   header). Worth it for heapless targets / ISR-context lookups? Costs: API
+   surface (buffer-passing or const-generic capacity), a header field, and
+   a `fuzzy`-only Finder variant. Decide after a real embedded consumer.
 
 ---
 
