@@ -39,7 +39,7 @@
 <div id="panel">
   <h2>__TITLE__</h2>
   <p class="sub">__SUB__</p>
-  <div class="qtitle">Sets <span>· algorithm / ε / quantization / pop-weight</span></div>
+  <div class="qtitle">Sets <span>· algorithm / ε / quantization · pop-weight slider below each</span></div>
   <div id="slots"></div>
   <label class="slot" id="rawrow">
     <input type="checkbox" id="rawcb">
@@ -84,16 +84,6 @@ var ALGO = [
   { id: 255, key: 'raw', name: 'Raw' },
 ];
 var EPS_M = [10, 25, 50, 100, 250, 500, 1000, 2000, 5000];
-// per-set population weighting: ε multiplier at max density (1 = off)
-var POPW = [
-  { label: 'pop off', w: 1 },
-  { label: '×0.5', w: 0.5 },
-  { label: '×0.2', w: 0.2 },
-  { label: '×0.1', w: 0.1 },
-  { label: '×0.05', w: 0.05 },
-  { label: '×0.02', w: 0.02 },
-  { label: '×0.01', w: 0.01 },
-];
 var QUANT = [
   { key: 'f64', label: 'f64', bpc: 8 },
   { key: 'f32', label: 'f32', bpc: 4 },
@@ -236,7 +226,7 @@ function Slot(idx, color, def) {
   var self = this;
   this.idx = idx; this.color = color;
   this.on = def.on; this.algo = def.algo; this.eps = def.eps; this.quant = def.quant;
-  this.pw = def.pw || 0;
+  this.pwv = def.pwv || 0; // pop-weight slider position, 0 = off
   this.gen = 0; this.busy = false; this.ready = false; this.pendingRun = false;
   this.worker = null; this.result = null;
   this.layer = L.polyline([], { color: color, weight: 1.2, opacity: 0.95 });
@@ -252,12 +242,6 @@ function Slot(idx, color, def) {
   this.spin = document.createElement('span'); this.spin.className = 'spin';
   row.appendChild(this.cb); row.appendChild(sw);
   row.appendChild(this.selAlgo); row.appendChild(this.selEps); row.appendChild(this.selQuant);
-  if (DENS) {
-    this.selPop = mkSelect(POPW.map(function (p) { return p.label; }), this.pw);
-    this.selPop.title = 'population weighting: ε shrinks toward ε × this factor in the densest areas (GHS-POP)';
-    row.appendChild(this.selPop);
-    this.selPop.addEventListener('change', function () { self.pw = self.selPop.selectedIndex; self.request(); });
-  }
   row.appendChild(this.spin);
   document.getElementById('slots').appendChild(row);
 
@@ -272,6 +256,27 @@ function Slot(idx, color, def) {
   this.epsRow.appendChild(elbl); this.epsRow.appendChild(this.epsSl); this.epsRow.appendChild(this.epsV);
   document.getElementById('slots').appendChild(this.epsRow);
   var slEps = function () { return Math.round(Math.pow(10, self.epsSl.value / 25)); };
+
+  // pop-weight sub-row: log slider, off (×1) … ×0.01; recompute on release
+  if (DENS) {
+    this.popRow = document.createElement('div'); this.popRow.className = 'slot';
+    this.popRow.title = 'population weighting: ε shrinks toward ε × this factor in the densest areas (GHS-POP); far left = off';
+    var psw = document.createElement('span'); psw.className = 'sw'; psw.style.background = color;
+    psw.style.opacity = '0.45';
+    var plbl = document.createElement('span'); plbl.className = 'raw-label'; plbl.style.color = '#8b98a8';
+    plbl.textContent = 'pop weight';
+    this.popSl = document.createElement('input');
+    this.popSl.type = 'range'; this.popSl.min = 0; this.popSl.max = 100;
+    this.popSl.value = this.pwv; this.popSl.style.flex = '1';
+    this.popV = document.createElement('span'); this.popV.className = 'rawv';
+    this.popRow.appendChild(psw); this.popRow.appendChild(plbl);
+    this.popRow.appendChild(this.popSl); this.popRow.appendChild(this.popV);
+    document.getElementById('slots').appendChild(this.popRow);
+    var syncPop = function () { self.popV.textContent = self.pwv > 0 ? self.popLabel() : 'off'; };
+    this.popSl.addEventListener('input', function () { self.pwv = +self.popSl.value; syncPop(); });
+    this.popSl.addEventListener('change', function () { self.request(); });
+    syncPop();
+  }
 
   this.cb.addEventListener('change', function () { self.on = self.cb.checked; self.toggled(); });
   this.selAlgo.addEventListener('change', function () { self.algo = self.selAlgo.selectedIndex; self.syncDisabled(); self.request(); });
@@ -302,6 +307,12 @@ function mkSelect(labels, sel) {
   s.selectedIndex = sel;
   return s;
 }
+// ε multiplier at max density from the slider position (log: 0 → ×1 … 100 → ×0.01)
+Slot.prototype.wmin = function () { return this.pwv > 0 ? Math.pow(10, -this.pwv / 50) : 1; };
+Slot.prototype.popLabel = function () {
+  var w = this.wmin();
+  return '×' + (w < 0.1 ? w.toFixed(3) : w.toFixed(2));
+};
 Slot.prototype.syncDisabled = function () {
   var d = !this.on;
   var raw = ALGO[this.algo].key === 'raw'; // no ε — quant only
@@ -309,7 +320,7 @@ Slot.prototype.syncDisabled = function () {
   this.selEps.disabled = d || raw;
   this.epsSl.disabled = d || raw;
   this.selQuant.disabled = d;
-  if (this.selPop) this.selPop.disabled = d || raw;
+  if (this.popSl) this.popSl.disabled = d || raw;
 };
 Slot.prototype.toggled = function () {
   this.syncDisabled();
@@ -349,7 +360,7 @@ Slot.prototype.send = function () {
     type: 'run', gen: this.gen,
     algoId: ALGO[this.algo].id,
     param: ALGO[this.algo].key === 'vw' ? epsDeg * epsDeg : epsDeg,
-    wmin: DENS ? POPW[this.pw].w : 1,
+    wmin: DENS ? this.wmin() : 1,
   });
 };
 Slot.prototype.request = function () {
@@ -462,7 +473,7 @@ function updateStats() {
     var isRaw = ALGO[s.algo].key === 'raw';
     el.innerHTML += '<div class="st"><span class="sw" style="background:' + s.color + '"></span>' +
       '<span>' + ALGO[s.algo].name + (isRaw ? '' : ' ε' + s.eps) + ' @ ' + q.label +
-      (s.pw && !isRaw ? ' pop' + POPW[s.pw].label : '') + '</span>' +
+      (s.pwv > 0 && !isRaw ? ' pop' + s.popLabel() : '') + '</span>' +
       '<span class="num">' + kept.toLocaleString() + ' v · <span class="pct">−' +
       (100 * (1 - kept / STORED0)).toFixed(1) + '%</span> · ' + fmtBytes(kept * 2 * q.bpc) +
       ' · ' + s.result.ms.toLocaleString() + ' ms</span></div>';
@@ -477,7 +488,7 @@ function updateStats() {
     if (!s.on || !s.result || ALGO[s.algo].key === 'raw') return;
     mshown++;
     ms.innerHTML += '<div class="st"><span class="sw" style="background:' + s.color + '"></span>' +
-      '<span>' + ALGO[s.algo].name + ' ε' + s.eps + (s.pw ? ' pop' + POPW[s.pw].label : '') + '</span>' +
+      '<span>' + ALGO[s.algo].name + ' ε' + s.eps + (s.pwv > 0 ? ' pop' + s.popLabel() : '') + '</span>' +
       '<span class="num">' + Math.round(s.result.area).toLocaleString() + ' km²' +
       (DENS ? ' · <span class="pct">' + Math.round(s.result.people).toLocaleString() + ' people</span>' : '') +
       '</span></div>';
