@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use crate::{Feat, Poly};
+use crate::Feat;
 
 // quantization parameterized by bit-width (i16 abs, i24 abs, i32 abs, ...)
 fn qmax_of(bits: u32) -> f64 { ((1u64 << (bits - 1)) - 1) as f64 }
@@ -53,6 +53,40 @@ fn rec(p: &[(f64, f64)], a: usize, b: usize, e2: f64, keep: &mut [bool]) {
     if dm > e2 { keep[im] = true; rec(p, a, im, e2, keep); rec(p, im, b, e2, keep); }
 }
 
+/// The shared-arc topology itself, before any serialization: what the container
+/// encoder (encode.rs) consumes. Arc coords are f64, already RDP-simplified.
+pub struct Topology {
+    pub arc_coords: Vec<Vec<(f64, f64)>>,
+    /// per ring: signed arc refs (`id << 1 | reversed`)
+    pub ring_refs: Vec<Vec<u32>>,
+    /// feature → polygon → ring indices into `ring_refs`
+    pub structure: Vec<Vec<Vec<usize>>>,
+}
+
+impl Topology {
+    /// Reconstruct feature geometry from (possibly re-quantized) arc coords.
+    pub fn reconstruct(&self, feats: &[Feat], arc_coords: &[Vec<(f64, f64)>]) -> Vec<Feat> {
+        let ring_coords = |ring_idx: usize| -> Vec<(f64, f64)> {
+            let mut c: Vec<(f64, f64)> = Vec::new();
+            for &r in &self.ring_refs[ring_idx] {
+                let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
+                let mut a = arc_coords[id].clone();
+                if rev { a.reverse(); }
+                if c.last() == a.first() { a.remove(0); }
+                c.extend(a);
+            }
+            if c.last() == c.first() && c.len() > 1 { c.pop(); }
+            c
+        };
+        feats.iter().enumerate().map(|(fi, f)| {
+            let polys = self.structure[fi].iter()
+                .map(|poly| poly.iter().map(|&ri| ring_coords(ri)).collect())
+                .collect();
+            Feat { offset: f.offset, tzid: f.tzid.clone(), polys }
+        }).collect()
+    }
+}
+
 pub fn encode_topology(feats: &[Feat], eps_deg: f64) -> TopoOut {
     encode_topology_q(feats, eps_deg, 24)
 }
@@ -62,10 +96,9 @@ pub fn encode_topology_q(feats: &[Feat], eps_deg: f64, qbits: u32) -> TopoOut {
     encode_topology_qm(feats, eps_deg, qbits, false)
 }
 
-/// `abs_fixed`: store arc vertices as fixed-width absolute ints (random-access)
-/// instead of the default delta + zigzag-varint stream.
-pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: bool) -> TopoOut {
-    let qmax = qmax_of(qbits);
+/// Steps 1–4 of Format B: dedup vertices, cut shared arcs at junctions,
+/// topology-aware RDP (each arc simplified exactly once, endpoints fixed).
+pub fn build_topology(feats: &[Feat], eps_deg: f64) -> Topology {
     // 1. dedup vertices (bit-exact) -> ids + coords
     let mut vid: HashMap<(u64, u64), VId> = HashMap::new();
     let mut vcoord: Vec<(f64, f64)> = Vec::new();
@@ -143,32 +176,18 @@ pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: b
     let arc_coords: Vec<Vec<(f64, f64)>> = arcs.iter()
         .map(|a| { let c: Vec<(f64, f64)> = a.iter().map(|&v| vcoord[v as usize]).collect(); rdp_open(&c, eps_deg) })
         .collect();
-    let verts: usize = arc_coords.iter().map(|a| a.len()).sum();
 
-    // reconstruct simplified geometry (for accuracy testing)
-    let decode = |r: u32| -> (usize, bool) { ((r >> 1) as usize, (r & 1) == 1) };
-    let ring_coords = |ring_idx: usize| -> Vec<(f64, f64)> {
-        let mut c: Vec<(f64, f64)> = Vec::new();
-        for &r in &ring_refs[ring_idx] {
-            let (id, rev) = decode(r);
-            let mut a = arc_coords[id].clone();
-            if rev { a.reverse(); }
-            if c.last() == a.first() { a.remove(0); }
-            c.extend(a);
-        }
-        if c.last() == c.first() { c.pop(); }
-        c
-    };
-    let mut simplified: Vec<Feat> = Vec::new();
-    for (fi, f) in feats.iter().enumerate() {
-        let mut polys: Vec<Poly> = Vec::new();
-        for poly in &structure[fi] {
-            let mut rc: Poly = Vec::new();
-            for &ring_idx in poly { rc.push(ring_coords(ring_idx)); }
-            polys.push(rc);
-        }
-        simplified.push(Feat { offset: f.offset, tzid: f.tzid.clone(), polys });
-    }
+    Topology { arc_coords, ring_refs, structure }
+}
+
+/// `abs_fixed`: store arc vertices as fixed-width absolute ints (random-access)
+/// instead of the default delta + zigzag-varint stream.
+pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: bool) -> TopoOut {
+    let qmax = qmax_of(qbits);
+    let topo = build_topology(feats, eps_deg);
+    let Topology { arc_coords, ring_refs, structure } = &topo;
+    let verts: usize = arc_coords.iter().map(|a| a.len()).sum();
+    let simplified = topo.reconstruct(feats, arc_coords);
 
     // 5. serialize
     let total_refs: usize = ring_refs.iter().map(|r| r.len()).sum();
@@ -183,7 +202,7 @@ pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: b
     o.extend_from_slice(&(pool.len() as u16).to_le_bytes());
     for s in &pool { o.extend_from_slice(&(s.len() as u16).to_le_bytes()); o.extend_from_slice(s.as_bytes()); }
     o.extend_from_slice(&(arc_coords.len() as u32).to_le_bytes());
-    for a in &arc_coords {
+    for a in arc_coords {
         put_varint(&mut o, a.len() as u64);
         let (mut px, mut py) = (0i64, 0i64);
         for (i, &(x, y)) in a.iter().enumerate() {

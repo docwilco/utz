@@ -19,6 +19,7 @@ geozero = "0.14"
 zstd = "0.13"
 brotli = "8.0"
 lzma-rust2 = { version = "0.16", features = ["xz", "encoder"] }
+miniz_oxide = "0.8"
 
 [dev-dependencies]
-utz = { path = "../utz" }
+utz = { path = "../utz", features = ["std"] }
