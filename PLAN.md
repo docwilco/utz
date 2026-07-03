@@ -17,7 +17,8 @@ Working crate name: **`utz`** (project: uTZ / micro-timezone).
 - **Tunable at build time.** Dataset, RDP ε, quant grid, grid cell size, codec —
   build exactly the size/RAM/accuracy point you need, guided by a viz tool.
 - **DST-correct.** Returns the IANA `tzid`; resolve offsets/DST downstream
-  (`chrono-tz`). `-1970` option gives per-location-correct tzids.
+  (`chrono-tz`). `-1970` option gives tzids valid for past timestamps too
+  (back to 1970), not just current/future time.
 
 Non-goals: shipping committed assets; NED dataset (dropped — RDP+topology on OSM
 is ≤ NED size at real fidelity); being the batch-throughput champion (tzf/rtz
@@ -145,9 +146,10 @@ edges; validated by tzf/ZoneDetect-v1 independently converging on the same desig
 
 - **`-now`** (65 zones): merges currently-clock-identical zones → smaller,
   representative tzids (e.g. Amsterdam→`Europe/Paris`).
-- **`-1970`** (304 zones): merges only zones identical since 1970 → matches IANA's
-  own equivalence, **correct per-location tzid** (`Europe/Amsterdam`,
-  `America/Detroit`). Bigger but faithful.
+- **`-1970`** (304 zones): merges only zones identical since 1970 → IANA's own
+  canonical equivalence (`zone1970.tab`); the tzid's rule history **matches the
+  location for any timestamp back to 1970**, so past conversions are right too.
+  Bigger than `-now`.
 - **`all`** (444 zones, no URL suffix; TZBB calls it "Comprehensive", parser also
   accepts `full`): no merging at all — one polygon per `zone.tab` tzid, keeping
   pure aliases distinct (`Europe/Oslo` ≠ `Europe/Berlin`). **Unique per-country
@@ -155,8 +157,8 @@ edges; validated by tzf/ZoneDetect-v1 independently converging on the same desig
   asset and heaviest build; clock behavior gains nothing over `-1970`.
 
 Exactly one selected. `-now` default (smallest); document the tzid-representative
-caveat so users who need exact names pick `-1970`, or `all` when the unique
-country-level tzid string itself is the product.
+caveat so users pick `-1970` when past timestamps must convert correctly, or
+`all` when the unique country-level tzid string itself is the product.
 
 **Source URLs** (timezone-boundary-builder, `releases/latest/download/`, GeoJSON zip).
 Six variants: {land-only, with-oceans} × {all, -1970, -now}. uTZ uses the
@@ -299,8 +301,8 @@ docs (HTML self-embeds data → generated artifact, not a committed asset).
 Win: **~10× smaller** (general compression tzf lacks + tunable aggressive RDP + int
 quant): ~125–460 KB vs tzf ~5–7 MB. **Genuinely `no_std`/flash-embeddable** (tzf is
 std/protobuf, can't zero-copy from flash, can't run on ESP32). **Tunable** to an
-exact size/RAM/accuracy point. **`-1970`** for correct per-location tzid,
-**`all`** for the unique per-country tzid string.
+exact size/RAM/accuracy point. **`-1970`** for tzids valid back to 1970 (past
+timestamps convert right), **`all`** for the unique per-country tzid string.
 Not-better: tzf is mature/tested; we reuse its good ideas (topology, 1° grid,
 delta-varint); if you don't need embedded/tiny, tzf already exists.
 
