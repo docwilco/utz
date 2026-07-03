@@ -67,6 +67,9 @@ var ALGO = [
   { id: 0, key: 'rdp', name: 'RDP' },
   { id: 1, key: 'vw', name: 'Visvalingam' },
   { id: 2, key: 'ii', name: 'Imai–Iri' },
+  // id 255 hits utz_simplify's unknown-algo path: coords pass through
+  // unchanged — quantization (and nothing else) applies
+  { id: 255, key: 'raw', name: 'Raw' },
 ];
 var EPS_M = [10, 25, 50, 100, 250, 500, 1000, 2000, 5000];
 var QUANT = [
@@ -187,7 +190,7 @@ function Slot(idx, color, def) {
   document.getElementById('slots').appendChild(row);
 
   this.cb.addEventListener('change', function () { self.on = self.cb.checked; self.toggled(); });
-  this.selAlgo.addEventListener('change', function () { self.algo = self.selAlgo.selectedIndex; self.request(); });
+  this.selAlgo.addEventListener('change', function () { self.algo = self.selAlgo.selectedIndex; self.syncDisabled(); self.request(); });
   this.selEps.addEventListener('change', function () { self.eps = EPS_M[self.selEps.selectedIndex]; self.request(); });
   this.selQuant.addEventListener('change', function () {
     self.quant = self.selQuant.selectedIndex;
@@ -206,8 +209,11 @@ function mkSelect(labels, sel) {
 }
 Slot.prototype.syncDisabled = function () {
   var d = !this.on;
-  this.selAlgo.disabled = d; this.selEps.disabled = d; this.selQuant.disabled = d;
-  this.selOrder.disabled = d;
+  var raw = ALGO[this.algo].key === 'raw'; // no ε, no order — quant only
+  this.selAlgo.disabled = d;
+  this.selEps.disabled = d || raw;
+  this.selOrder.disabled = d || raw;
+  this.selQuant.disabled = d;
 };
 Slot.prototype.toggled = function () {
   this.syncDisabled();
@@ -310,8 +316,10 @@ function updateStats() {
     shown++;
     var q = QUANT[s.quant];
     var kept = s.result.kept;
+    var isRaw = ALGO[s.algo].key === 'raw';
     el.innerHTML += '<div class="st"><span class="sw" style="background:' + s.color + '"></span>' +
-      '<span>' + ALGO[s.algo].name + ' ε' + s.eps + ' @ ' + q.label + ' ' + ORDER[s.order].label + '</span>' +
+      '<span>' + ALGO[s.algo].name + (isRaw ? '' : ' ε' + s.eps) + ' @ ' + q.label +
+      (isRaw ? '' : ' ' + ORDER[s.order].label) + '</span>' +
       '<span class="num">' + kept.toLocaleString() + ' v · <span class="pct">−' +
       (100 * (1 - kept / STORED0)).toFixed(1) + '%</span> · ' + fmtBytes(kept * 2 * q.bpc) +
       ' · ' + s.result.ms.toLocaleString() + ' ms</span></div>';
