@@ -10,6 +10,7 @@ mod types;
 pub use types::*;
 
 pub mod topo;
+pub mod viz;
 
 use std::io::BufReader;
 

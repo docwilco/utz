@@ -69,7 +69,7 @@ pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: b
     // 1. dedup vertices (bit-exact) -> ids + coords
     let mut vid: HashMap<(u64, u64), VId> = HashMap::new();
     let mut vcoord: Vec<(f64, f64)> = Vec::new();
-    let mut get = |x: f64, y: f64, vid: &mut HashMap<(u64, u64), VId>, vc: &mut Vec<(f64, f64)>| -> VId {
+    let get = |x: f64, y: f64, vid: &mut HashMap<(u64, u64), VId>, vc: &mut Vec<(f64, f64)>| -> VId {
         *vid.entry((x.to_bits(), y.to_bits())).or_insert_with(|| { vc.push((x, y)); (vc.len() - 1) as VId })
     };
     let mut rings: Vec<Vec<VId>> = Vec::new();
@@ -112,7 +112,7 @@ pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: b
     let mut arc_ids: HashMap<Vec<VId>, u32> = HashMap::new();
     let mut arcs: Vec<Vec<VId>> = Vec::new();
     let mut ring_refs: Vec<Vec<u32>> = vec![Vec::new(); rings.len()];
-    let mut intern = |seq: Vec<VId>, ai: &mut HashMap<Vec<VId>, u32>, av: &mut Vec<Vec<VId>>| -> u32 {
+    let intern = |seq: Vec<VId>, ai: &mut HashMap<Vec<VId>, u32>, av: &mut Vec<Vec<VId>>| -> u32 {
         let mut rev = seq.clone(); rev.reverse();
         let (canon, dir) = if seq <= rev { (seq, 0u32) } else { (rev, 1u32) };
         let next = av.len() as u32;
