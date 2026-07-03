@@ -48,12 +48,17 @@ utz/                 workspace root
       pip.rs         hand-rolled per-polygon integer PIP (i64/i128)
       finder.rs      Finder: new()/from_static()/from_reader() + lookup()/lookup_coarse()
 
+  utz-simplify/      open-polyline simplification menu (RDP / Visvalingam–Whyatt /
+    src/             Imai–Iri), shared by utz-build and — as a wasm32 cdylib —
+      lib.rs         the tuning HTML (§14.8); wasm.rs = raw extern "C" surface
+      wasm.rs
+
   utz-build/         build-dependency + dev/exploration + viz tool
     src/
       lib.rs         re-exports encoder + measurement helpers
       types.rs       Feat/Ring/Poly, quantization helpers
       loader.rs      source → Vec<Feat>  (geojson; fgb reader kept for now)
-      topo.rs        shared-arc topology + topology-aware open-polyline RDP (ported)
+      topo.rs        shared-arc topology + topology-aware per-arc simplification
       grid.rs        grid + interned-CSR builder
       encode.rs      container serializer (header + sections + compress)
       download.rs    conditional GET (ETag / Last-Modified)
@@ -336,29 +341,29 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
    header). Worth it for heapless targets / ISR-context lookups? Costs: API
    surface (buffer-passing or const-generic capacity), a header field, and
    a coarse-only Finder variant. Decide after a real embedded consumer.
-8. **Simplification algorithm menu** (beyond Ramer–Douglas–Peucker): every
-   candidate is an open-polyline algorithm, so each slots into the same
-   per-arc topology-aware pass (endpoints pinned, each arc once). Candidates:
-   - **Visvalingam–Whyatt** (drop min-effective-triangle-area point,
-     iterate): the serious contender — different, often cartographically
-     nicer shape than RDP at the same vertex budget (mapshaper's default).
-     Caveat: parameter is an *area*, so no direct "borders move ≤ X m"
-     guarantee; expose as its own knob, don't fake an ε equivalence.
-   - **Imai–Iri** (min-vertex polyline within ε, via shortcut-graph shortest
-     path): provably the *fewest* vertices for the same ε bound RDP honors —
-     directly serves the "tiny" goal. O(n²)-ish per arc, but arcs are short
-     after junction cutting; likely affordable at build time. Measure
-     verts-vs-RDP on real arcs before committing.
-   - **Reumann–Witkam / Opheim / Lang / Zhao–Saalfeld** (corridor/streaming
-     family): built for single-pass speed, generally worse quality-per-vertex
-     than RDP; speed is free at build time, so low value — skip unless a
-     sweep proves otherwise.
-   Format impact: header gains a `simplify_algo` byte next to `rdp_eps`
-   (self-describing rule: runtime never cares, only the builder). Viz: JS
-   preview in the tuning HTML is feasible (simplify-js, mapshaper's VW), but
-   tuning numbers must come from the real Rust encoder — embed precomputed
-   sweep levels (as today) or compile the simplifiers to WASM for exact live
-   preview.
+8. ~~**Simplification algorithm menu**~~ — **decided + built**: the
+   `utz-simplify` crate (workspace member, `lib` + `cdylib`) holds the
+   open-polyline menu, shared by the builder (`topo::build_topology_algo`,
+   RDP default via `Simplify` enum) and — compiled to wasm32-unknown-unknown,
+   ~33 KB — the tuning HTML, so the browser preview runs the exact builder
+   code (raw `extern "C"` surface in `utz-simplify/src/wasm.rs`, no
+   wasm-bindgen). Menu:
+   - **Ramer–Douglas–Peucker** (`rdp`): max deviation ≤ ε; the default.
+     (Port fix: distance is now to the *segment* (clamped projection), the
+     old inline version measured to the infinite line — keeps a few more
+     points, actually honors the ε bound.)
+   - **Visvalingam–Whyatt** (`visvalingam`): smallest-triangle removal, area
+     knob (no ε-equivalence faked), deterministic tie-break on index.
+   - **Imai–Iri** (`imai_iri`): provably minimum vertices within ε (BFS over
+     the shortcut graph; brute-force-verified optimal in tests). Arcs > 1024
+     pts get an `rdp(ε/2)` prefilter and solve at ε/2 — bounds compose, so
+     total stays ≤ ε, near-optimal.
+   - Corridor/streaming family (Reumann–Witkam, Opheim, Lang, Zhao–Saalfeld):
+     **rejected** — quality-per-vertex worse than RDP; their single-pass
+     speed advantage is worthless at build time.
+   Still open: `simplify_algo` header byte + build-knob surface (feature
+   names / tz.toml) for selecting VW/II per asset; size-vs-RDP sweep for
+   Imai–Iri on real arcs to see if it should become the default.
 
 ---
 

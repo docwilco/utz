@@ -32,14 +32,17 @@ fn overlay(ds: &str, feats: &[Feat]) -> anyhow::Result<()> {
         .map(|&e| (e, topo::encode_topology(feats, e as f64 / 111_320.0)))
         .collect();
     let levels: Vec<viz::Level> = sweeps.iter()
-        .map(|(e, out)| viz::Level { eps_m: *e, feats: out.simplified.iter().collect() })
+        .map(|(e, out)| viz::Level { eps_m: *e, feats: out.simplified.iter().collect(), stored: out.verts })
         .collect();
+    // ε=0 stored-vertex baseline for the reduction stats (topology only, no encode)
+    let stored0: usize = topo::build_topology(feats, 0.0).arc_coords.iter().map(|a| a.len()).sum();
+    println!("eps=   0 m  stored={stored0} (baseline)");
     for l in &levels {
-        let verts: usize = l.feats.iter().flat_map(|f| &f.polys).flatten().map(|r| r.len()).sum();
-        println!("eps={:>4} m  verts={verts}", l.eps_m);
+        let drawn: usize = l.feats.iter().flat_map(|f| &f.polys).flatten().map(|r| r.len()).sum();
+        println!("eps={:>4} m  stored={} drawn={drawn}", l.eps_m, l.stored);
     }
 
-    let html = viz::overlay_html(&levels, &[100, 500], "OSM time zones", sub)?;
+    let html = viz::overlay_html(&levels, &[100, 500], "OSM time zones", sub, stored0)?;
     let outp = format!("{ds}_overlay.html");
     std::fs::write(&outp, &html)?;
     println!("wrote {outp}  ({:.1} MiB)", html.len() as f64 / (1 << 20) as f64);
@@ -62,7 +65,7 @@ fn border(feats: &[Feat]) -> anyhow::Result<()> {
         .map(|&e| (e, topo::encode_topology(feats, e as f64 / 111_320.0)))
         .collect();
     let levels: Vec<viz::Level> = sweeps.iter()
-        .map(|(e, out)| viz::Level { eps_m: *e, feats: sel.iter().map(|&s| &out.simplified[s]).collect() })
+        .map(|(e, out)| viz::Level { eps_m: *e, feats: sel.iter().map(|&s| &out.simplified[s]).collect(), stored: 0 })
         .collect();
     for l in &levels {
         let verts: usize = l.feats.iter().flat_map(|f| &f.polys).flatten().map(|r| r.len()).sum();

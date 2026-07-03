@@ -1788,9 +1788,14 @@ dependencies = [
  "serde_json",
  "ureq",
  "utz",
+ "utz-simplify",
  "zip",
  "zstd",
 ]
+
+[[package]]
+name = "utz-simplify"
+version = "0.0.0"
 
 [[package]]
 name = "vcpkg"

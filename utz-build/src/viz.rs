@@ -8,20 +8,24 @@ fn template_path(name: &str) -> String {
     format!("{}/templates/{name}", env!("CARGO_MANIFEST_DIR"))
 }
 
-/// One sweep level: RDP ε (meters) + the simplified geometry to embed.
+/// One sweep level: simplification ε (meters) + the geometry to embed.
 pub struct Level<'a> {
     pub eps_m: u32,
     pub feats: Vec<&'a Feat>,
+    /// arc vertices actually stored at this level (post topology dedup +
+    /// simplification) — drives the reduction stats; 0 = not tracked
+    pub stored: usize,
 }
 
 /// Full-dataset overlay viewer (`sweep_overlay_template.html`).
-/// `defaults_on`: ε levels toggled on at load.
-pub fn overlay_html(levels: &[Level], defaults_on: &[u32], title: &str, sub: &str) -> anyhow::Result<String> {
+/// `defaults_on`: ε levels toggled on at load. `stored0`: stored arc verts at
+/// ε=0, the baseline the stats panel computes reduction against.
+pub fn overlay_html(levels: &[Level], defaults_on: &[u32], title: &str, sub: &str, stored0: usize) -> anyhow::Result<String> {
     let mut data = String::from("[");
     for (i, l) in levels.iter().enumerate() {
         let verts: usize = l.feats.iter().flat_map(|f| &f.polys).flatten().map(|r| r.len()).sum();
         if i > 0 { data.push(','); }
-        data.push_str(&format!("{{\"eps\":{},\"verts\":{verts},\"geojson\":{}}}", l.eps_m, fc_geojson(&l.feats)));
+        data.push_str(&format!("{{\"eps\":{},\"verts\":{verts},\"stored\":{},\"geojson\":{}}}", l.eps_m, l.stored, fc_geojson(&l.feats)));
     }
     data.push(']');
     let mut defaults = String::from("{");
@@ -33,6 +37,7 @@ pub fn overlay_html(levels: &[Level], defaults_on: &[u32], title: &str, sub: &st
 
     let tpl = std::fs::read_to_string(template_path("sweep_overlay_template.html"))?;
     Ok(tpl.replace("/*DATA*/", &data).replace("/*DEFAULTS*/", &defaults)
+        .replace("/*STORED0*/", &stored0.to_string())
         .replace("__TITLE__", title).replace("__SUB__", sub))
 }
 

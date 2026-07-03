@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["utz", "utz-build"]
+members = ["utz", "utz-build", "utz-simplify"]
 
 [workspace.package]
 edition = "2021"

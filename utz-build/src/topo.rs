@@ -8,6 +8,8 @@
 use std::collections::HashMap;
 
 use crate::Feat;
+// simplification lives in utz-simplify (shared with the viz HTML via WASM)
+pub use utz_simplify::{simplify, Simplify};
 
 // quantization parameterized by bit-width (i16 abs, i24 abs, i32 abs, ...)
 fn qmax_of(bits: u32) -> f64 { ((1u64 << (bits - 1)) - 1) as f64 }
@@ -31,28 +33,6 @@ pub struct TopoOut {
     pub ring_refs: usize,
     pub verts: usize,          // vertices actually stored (after simplification)
     pub simplified: Vec<Feat>, // geometry reconstructed from the (simplified) arcs
-}
-
-/// open-polyline RDP keeping both endpoints; result has >= 2 points.
-fn rdp_open(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
-    if pts.len() < 3 || eps <= 0.0 { return pts.to_vec(); }
-    let mut keep = vec![false; pts.len()];
-    keep[0] = true; *keep.last_mut().unwrap() = true;
-    rec(pts, 0, pts.len() - 1, eps * eps, &mut keep);
-    pts.iter().zip(keep).filter(|(_, k)| *k).map(|(&p, _)| p).collect()
-}
-fn rec(p: &[(f64, f64)], a: usize, b: usize, e2: f64, keep: &mut [bool]) {
-    if b <= a + 1 { return; }
-    let (ax, ay) = p[a]; let (bx, by) = p[b];
-    let (dx, dy) = (bx - ax, by - ay); let len2 = dx * dx + dy * dy;
-    let (mut im, mut dm) = (a, 0.0);
-    for i in a + 1..b {
-        let (px, py) = p[i];
-        let d2 = if len2 == 0.0 { (px - ax).powi(2) + (py - ay).powi(2) }
-            else { let t = ((px - ax) * dx + (py - ay) * dy) / len2; let (cx, cy) = (ax + t * dx, ay + t * dy); (px - cx).powi(2) + (py - cy).powi(2) };
-        if d2 > dm { dm = d2; im = i; }
-    }
-    if dm > e2 { keep[im] = true; rec(p, a, im, e2, keep); rec(p, im, b, e2, keep); }
 }
 
 /// The shared-arc topology itself, before any serialization: what the container
@@ -101,6 +81,12 @@ pub fn encode_topology_q(feats: &[Feat], eps_deg: f64, qbits: u32) -> TopoOut {
 /// Steps 1–4 of Format B: dedup vertices, cut shared arcs at junctions,
 /// topology-aware RDP (each arc simplified exactly once, endpoints fixed).
 pub fn build_topology(feats: &[Feat], eps_deg: f64) -> Topology {
+    build_topology_algo(feats, Simplify::Rdp { eps: eps_deg })
+}
+
+/// [`build_topology`] with the simplification algorithm as a knob
+/// (`utz-simplify` menu: RDP / Visvalingam–Whyatt / Imai–Iri / None).
+pub fn build_topology_algo(feats: &[Feat], algo: Simplify) -> Topology {
     // 1. dedup vertices (bit-exact) -> ids + coords
     let mut vid: HashMap<(u64, u64), VId> = HashMap::new();
     let mut vcoord: Vec<(f64, f64)> = Vec::new();
@@ -174,9 +160,9 @@ pub fn build_topology(feats: &[Feat], eps_deg: f64) -> Topology {
         }
     }
 
-    // 4. arc coords (+ topology-aware RDP, each arc once)
+    // 4. arc coords (+ topology-aware simplification, each arc once)
     let arc_coords: Vec<Vec<(f64, f64)>> = arcs.iter()
-        .map(|a| { let c: Vec<(f64, f64)> = a.iter().map(|&v| vcoord[v as usize]).collect(); rdp_open(&c, eps_deg) })
+        .map(|a| { let c: Vec<(f64, f64)> = a.iter().map(|&v| vcoord[v as usize]).collect(); simplify(algo, &c) })
         .collect();
 
     Topology { arc_coords, ring_refs, structure }

@@ -24,6 +24,9 @@
   .q { display: flex; align-items: center; gap: 8px; padding: 2px 0; cursor: pointer; }
   .q input { accent-color: #ffb454; }
   .qstep { margin-top: 6px; font-size: 11px; color: #ffb454; font-variant-numeric: tabular-nums; min-height: 14px; }
+  .st { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .st .num { margin-left: auto; color: #8b98a8; }
+  .st .pct { color: #7ee787; }
   #panel .foot { margin-top: 9px; padding-top: 8px; border-top: 1px solid #2a3542; font-size: 11px; color: #8b98a8; }
 </style>
 </head>
@@ -34,14 +37,20 @@
   <p class="sub">__SUB__</p>
   <div id="levels"></div>
   <div class="qsec">
-    <div class="qtitle">Quantization <span>· RDP sets only</span></div>
+    <div class="qtitle">Quantization <span>· simplified sets only</span></div>
     <div id="quants"></div>
     <div class="qstep" id="qstep"></div>
   </div>
-  <div class="foot">outline only · toggle RDP levels · quantization snaps every vertex to a grid (full stays f64)</div>
+  <div class="qsec">
+    <div class="qtitle">Reduction <span>· current settings</span></div>
+    <div id="stats"></div>
+  </div>
+  <div class="foot">outline only · toggle ε levels · quantization snaps every vertex to a grid (full stays f64) ·
+    stats: stored arc verts (shared borders deduped) vs ε=0, raw coord bytes at the chosen width — before delta/varint + compression</div>
 </div>
 <script>
 var LEVELS = /*DATA*/;
+var STORED0 = /*STORED0*/;    // stored arc verts at eps=0 (reduction baseline)
 
 var map = L.map('map', { worldCopyJump: true, preferCanvas: true }).setView([25, 5], 2);
 var streets = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' }).addTo(map);
@@ -93,7 +102,7 @@ LEVELS.forEach(function (lv, i) {
   if (rec.on) layer.addTo(map);
   var row = document.createElement('label'); row.className = 'lv';
   var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = rec.on;
-  cb.addEventListener('change', function () { rec.on = cb.checked; if (cb.checked) layer.addTo(map); else map.removeLayer(layer); });
+  cb.addEventListener('change', function () { rec.on = cb.checked; if (cb.checked) layer.addTo(map); else map.removeLayer(layer); updateStats(); });
   var sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = col;
   var txt = document.createElement('span'); txt.className = 'txt'; txt.textContent = lv.eps === 0 ? 'full (f64)' : 'ε = ' + lv.eps + ' m';
   var v = document.createElement('span'); v.className = 'v'; v.textContent = lv.verts.toLocaleString() + ' v';
@@ -108,10 +117,43 @@ Object.keys(Q).forEach(function (k) {
   r.addEventListener('change', function () {
     state.quant = k; qstep.textContent = Q[k].step === 'exact' ? '' : 'grid: ' + Q[k].step;
     levels.forEach(function (rec) { if (rec.lv.eps !== 0) rebuild(rec); });
+    updateStats();
   });
   var t = document.createElement('span'); t.textContent = Q[k].label;
   row.appendChild(r); row.appendChild(t); qbox.appendChild(row);
 });
+
+// reduction stats for whatever is currently toggled on
+var BPC = { f64: 8, f32: 4, i32: 4, i24: 3, i16: 2 };  // bytes per coordinate
+function fmtBytes(b) {
+  return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MiB' : Math.round(b / 1024).toLocaleString() + ' KiB';
+}
+function updateStats() {
+  var el = document.getElementById('stats');
+  el.innerHTML = '';
+  var shown = 0;
+  levels.forEach(function (rec) {
+    if (!rec.on) return;
+    shown++;
+    var lv = rec.lv, m = modeFor(lv);
+    var row = document.createElement('div'); row.className = 'st';
+    var sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = rec.col;
+    var t = document.createElement('span'); t.textContent = lv.eps === 0 ? 'full' : 'ε=' + lv.eps + ' m';
+    var num = document.createElement('span'); num.className = 'num';
+    var stored = lv.stored || lv.verts;
+    var txt = stored.toLocaleString() + ' v';
+    if (STORED0 > 0 && lv.eps !== 0) {
+      var pct = 100 * (1 - stored / STORED0);
+      txt += ' · <span class="pct">−' + pct.toFixed(1) + '%</span>';
+    }
+    txt += ' · ' + fmtBytes(stored * 2 * BPC[m]) + ' @ ' + m;
+    num.innerHTML = txt;
+    row.appendChild(sw); row.appendChild(t); row.appendChild(num);
+    el.appendChild(row);
+  });
+  if (!shown) el.innerHTML = '<div class="st" style="color:#5a6472">no levels enabled</div>';
+}
+updateStats();
 </script>
 </body>
 </html>

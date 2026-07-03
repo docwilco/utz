@@ -13,6 +13,8 @@ geo = { workspace = true }
 geo-types = { workspace = true }
 # tzf-rs's PIP crate (tidwall/geometry port) — pip_bench contender (PLAN.md sec 13)
 geometry-rs = "0.3"
+# polyline simplification menu, shared with the viz HTML via WASM (PLAN.md sec 14.8)
+utz-simplify = { path = "../utz-simplify" }
 # temporary: reading the prebuilt .fgb during exploration (to be replaced by a
 # GeoJSON parser + downloader per PLAN.md).
 flatgeobuf = "5.0"

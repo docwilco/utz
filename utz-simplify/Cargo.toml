@@ -1,0 +1,14 @@
+[package]
+name = "utz-simplify"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# `lib` for the builder (utz-build), `cdylib` so the same code compiles to
+# WASM for the tuning-viewer HTML (PLAN.md §12, §14.8):
+#   cargo build -p utz-simplify --release --target wasm32-unknown-unknown
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[dependencies]
