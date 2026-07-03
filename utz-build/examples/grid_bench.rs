@@ -2,7 +2,7 @@
 // grid prefilter (interior O(1), border cells → dominant-first PIP) vs the
 // plain linear first-hit scan, on the same quantized simplified geometry.
 //
-// usage: cargo run --release -p utz-build --example grid_bench [osm|osm1970] [eps_m] [deg] [npts]
+// usage: cargo run --release -p utz-build --example grid_bench [now|1970] [eps_m] [deg] [npts]
 
 use std::time::Instant;
 
@@ -15,7 +15,7 @@ struct QPoly {
 }
 
 fn main() -> anyhow::Result<()> {
-    let ds = std::env::args().nth(1).unwrap_or_else(|| "osm".into());
+    let ds = std::env::args().nth(1).unwrap_or_else(|| "now".into());
     let eps_m: f64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(500.0);
     let deg: f64 = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(2.0);
     let npts: usize = std::env::args().nth(4).and_then(|s| s.parse().ok()).unwrap_or(100_000);

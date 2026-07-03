@@ -1,6 +1,6 @@
 // Regenerate the tuning viewers (PLAN.md §12).
 //
-// usage: cargo run --release -p utz-build --example visualize [overlay|border] [osm|osm1970] [full]
+// usage: cargo run --release -p utz-build --example visualize [overlay|border] [now|1970] [full]
 //   overlay — whole-dataset RDP overlay viewer   -> <ds>_overlay.html
 //   border  — Portugal/Spain border detail sweep -> border_sweep.html
 //   "full" (overlay only): also embed ε=0 (~73 MB HTML for OSM)
@@ -9,7 +9,7 @@ use utz_build::{topo, viz, Feat};
 
 fn main() -> anyhow::Result<()> {
     let mode = std::env::args().nth(1).unwrap_or_else(|| "overlay".into());
-    let ds = std::env::args().nth(2).unwrap_or_else(|| "osm".into());
+    let ds = std::env::args().nth(2).unwrap_or_else(|| "now".into());
     let feats = utz_build::load(&ds)?;
     match mode.as_str() {
         "overlay" => overlay(&ds, &feats),

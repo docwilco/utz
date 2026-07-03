@@ -2,7 +2,7 @@
 // encode Format B (i24 topology + delta/varint), compress, and measure lookup
 // accuracy vs the FULL-precision reference over a random sample.
 //
-// usage: cargo run --release --example rdp_sweep [osm|osm1970]
+// usage: cargo run --release --example rdp_sweep [now|1970]
 
 use std::io::Write;
 
@@ -11,7 +11,7 @@ use geo::Contains;
 use utz_build::{topo, Feat};
 
 fn main() -> anyhow::Result<()> {
-    let ds = std::env::args().nth(1).unwrap_or_else(|| "osm".into());
+    let ds = std::env::args().nth(1).unwrap_or_else(|| "now".into());
     let feats = utz_build::load(&ds)?;
     let v0: usize = feats.iter().flat_map(|f| &f.polys).flat_map(|p| p).map(|r| r.len()).sum();
     println!("{}: {} features, {v0} vertices\n", ds.to_uppercase(), feats.len());

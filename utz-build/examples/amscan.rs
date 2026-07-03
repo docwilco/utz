@@ -2,12 +2,12 @@
 // already split at ±180°? Flags any edge whose lon span exceeds 180° (a true
 // crossing stored planar) and any coordinate outside [-180, 180] / [-90, 90].
 //
-// usage: cargo run --release -p utz-build --example amscan [osm|osm1970]
+// usage: cargo run --release -p utz-build --example amscan [now|1970]
 
 fn main() -> anyhow::Result<()> {
     let dss: Vec<String> = {
         let v: Vec<String> = std::env::args().skip(1).collect();
-        if v.is_empty() { vec!["osm".into(), "osm1970".into()] } else { v }
+        if v.is_empty() { vec!["now".into(), "1970".into()] } else { v }
     };
     for ds in &dss {
         let feats = utz_build::load(ds)?;

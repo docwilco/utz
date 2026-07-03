@@ -336,9 +336,31 @@ big polygons); benchmark `geo` vs `geometry-rs`.
   candidate sets are now edge-walk ∪ scanline-owners. After the fix, **0 wrong**
   answers; ~0.26% of lookups differ from a linear scan only inside genuine overlap
   (either tzid valid).
-- [ ] **Full pipeline size table** — topology×RDP(ε)×quant(i16/i24)×codec(incl gzip), `-now`/`-1970`.
+- [x] **Full pipeline size table** — done (`size_table`, real container, 2° grid,
+  dominant-first CSR, `-now`; `-1970`/full skipped — `-now` suffices for stats):
+
+  | ε(m) | quant | raw | gzip | zstd22 | br.q11 | xz9 |
+  |--:|--|--:|--:|--:|--:|--:|
+  | 100 | i16 | 538.2 K | 265.7 K | 251.1 K | **231.3 K** | 234.3 K |
+  | 100 | i24 | 1020.0 K | 876.5 K | 872.6 K | **745.1 K** | 758.7 K |
+  | 250 | i16 | 335.4 K | 199.6 K | 193.7 K | **174.7 K** | 178.2 K |
+  | 250 | i24 | 605.5 K | 528.3 K | 526.1 K | **456.0 K** | 463.4 K |
+  | 500 | i16 | 229.9 K | 150.3 K | 145.7 K | **133.2 K** | 134.1 K |
+  | 500 | i24 | 402.1 K | 352.1 K | 349.6 K | **307.2 K** | 312.5 K |
+  | 1000 | i16 | 161.8 K | 108.5 K | 106.0 K | 99.7 K | **98.5 K** |
+  | 1000 | i24 | 270.5 K | 231.2 K | 229.1 K | **203.4 K** | 208.5 K |
+  | 2000 | i16 | 121.7 K | 80.8 K | 78.2 K | **72.9 K** | 73.1 K |
+  | 2000 | i24 | 193.1 K | 155.0 K | 152.5 K | **136.5 K** | 141.6 K |
+
+  The ~125–460 KB goal (§1) is confirmed: ε=500 i16 brotli = 133 K, ε=100 i24
+  brotli = 745 K (full-fidelity end). Note i16's quant step (~305–611 m) makes
+  ε<500 m i16 quant-limited — pair i16 with ε≥500, i24 with ε≤250.
 - [ ] **Grid size × P(PIP) × memory** confirmation with the *real* CSR builder.
-- [ ] **gzip** vs zstd/brotli/xz on the container.
+- [x] **gzip vs zstd/brotli/xz** — answered by the same sweep: brotli q11 wins
+  nearly every cell (xz9 edges it once, by 1%); zstd22 trails brotli 3–8%; gzip
+  trails 5–15% but stays respectable for the smallest pure-Rust decoder
+  (miniz_oxide). Balanced-preset candidate (§14.5): ε=500 m, i16, brotli → 133 K
+  (gzip fallback → 150 K).
 - [x] **Antimeridian** — scanned (`amscan`): TZBB with-oceans is pre-split (414/422
   verts exactly on ±180, 0 out-of-range coords). Single flagged >180° edge is
   Pacific/Auckland's south-pole seam (180,−90)→(−180,−90) — degenerate at the pole,

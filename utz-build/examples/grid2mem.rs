@@ -1,35 +1,17 @@
 // Exact memory of a 2deg grid: measure candidate (zone) counts per border cell,
 // then size several layouts, showing 32- vs 64-bit differences.
-// usage: cargo run --release --example grid2mem <ned|osm|osm1970> [deg]
+// usage: cargo run --release --example grid2mem [now|1970] [deg]
 use std::collections::HashSet;
-use std::io::BufReader;
-use flatgeobuf::{FallibleStreamingIterator, FgbReader};
-use geo_types::Geometry;
-use geozero::ToGeo;
 
 fn main() -> anyhow::Result<()> {
-    let ds = std::env::args().nth(1).unwrap_or_else(|| "osm".into());
+    let ds = std::env::args().nth(1).unwrap_or_else(|| "now".into());
     let d: f64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(2.0);
-    let path = format!("/home/drwilco/spatialtime/assets/timezones_{ds}.fgb");
 
     // rings tagged with their feature (zone) id
-    let mut rings: Vec<(u16, Vec<(f64, f64)>)> = Vec::new();
-    {
-        let bytes = std::fs::read(&path)?;
-        let mut r = BufReader::new(&bytes[..]);
-        let fgb = FgbReader::open(&mut r)?;
-        let mut seq = fgb.select_all_seq()?;
-        let mut fid = 0u16;
-        while let Some(f) = seq.next()? {
-            if let Ok(Geometry::MultiPolygon(mp)) = f.to_geo() {
-                for p in &mp {
-                    rings.push((fid, p.exterior().coords().map(|c| (c.x, c.y)).collect()));
-                    for h in p.interiors() { rings.push((fid, h.coords().map(|c| (c.x, c.y)).collect())); }
-                }
-            }
-            fid += 1;
-        }
-    }
+    let feats = utz_build::load(&ds)?;
+    let rings: Vec<(u16, Vec<(f64, f64)>)> = feats.iter().enumerate()
+        .flat_map(|(fid, f)| f.polys.iter().flatten().map(move |r| (fid as u16, r.clone())))
+        .collect();
     let nfeat = rings.iter().map(|(f, _)| *f).max().unwrap_or(0) as usize + 1;
 
     let ncols = (360.0 / d).ceil() as usize;

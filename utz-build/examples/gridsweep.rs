@@ -1,31 +1,14 @@
 // Grid-size sweep (1..=20 deg). For each size: total cells, "border" cells (a tz
 // boundary edge passes through -> lookup needs PIP), interior cells (single zone ->
 // O(1)), the fraction of area-uniform lookups that hit a border cell, and a memory
-// estimate. usage: cargo run --release --example gridsweep <ned|osm|osm1970>
-use std::io::BufReader;
-use flatgeobuf::{FallibleStreamingIterator, FgbReader};
-use geo_types::Geometry;
-use geozero::ToGeo;
+// estimate. usage: cargo run --release --example gridsweep [now|1970]
 
 fn main() -> anyhow::Result<()> {
-    let ds = std::env::args().nth(1).unwrap_or_else(|| "osm".into());
-    let path = format!("/home/drwilco/spatialtime/assets/timezones_{ds}.fgb");
-    // load all edges as (lon0,lat0,lon1,lat1)
-    let mut rings: Vec<Vec<(f64, f64)>> = Vec::new();
-    {
-        let bytes = std::fs::read(&path)?;
-        let mut r = BufReader::new(&bytes[..]);
-        let fgb = FgbReader::open(&mut r)?;
-        let mut seq = fgb.select_all_seq()?;
-        while let Some(f) = seq.next()? {
-            if let Ok(Geometry::MultiPolygon(mp)) = f.to_geo() {
-                for p in &mp {
-                    rings.push(p.exterior().coords().map(|c| (c.x, c.y)).collect());
-                    for h in p.interiors() { rings.push(h.coords().map(|c| (c.x, c.y)).collect()); }
-                }
-            }
-        }
-    }
+    let ds = std::env::args().nth(1).unwrap_or_else(|| "now".into());
+    let feats = utz_build::load(&ds)?;
+    let rings: Vec<Vec<(f64, f64)>> = feats.iter()
+        .flat_map(|f| f.polys.iter().flatten().cloned())
+        .collect();
     let nedges: usize = rings.iter().map(|r| r.len()).sum();
     println!("{}: {} rings, ~{} edges\n", ds.to_uppercase(), rings.len(), nedges);
     println!("{:>4}{:>12}{:>12}{:>11}{:>13}{:>11}", "deg", "cells", "border", "interior", "P(PIP)", "grid mem");

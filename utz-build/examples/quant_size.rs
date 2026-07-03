@@ -1,10 +1,7 @@
-// Full OSM, topology + topology-aware RDP, at a chosen eps + quant grid.
-// usage: cargo run --release --example quant_size [eps_m] [qbits...]
-use std::io::{BufReader, Write};
-use flatgeobuf::{FallibleStreamingIterator, FeatureProperties, FgbReader};
-use geo_types::Geometry;
-use geozero::ToGeo;
-use utz_build::{topo, Feat, Poly, Ring};
+// Arc-store encoding shootout (delta+varint vs abs-fixed) at a chosen eps +
+// quant grid. usage: cargo run --release --example quant_size [eps_m] [qbits...]
+use std::io::Write;
+use utz_build::topo;
 
 fn main() -> anyhow::Result<()> {
     let eps_m: f64 = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(500.0);
@@ -12,9 +9,9 @@ fn main() -> anyhow::Result<()> {
         let v: Vec<u32> = std::env::args().skip(2).filter_map(|s| s.parse().ok()).collect();
         if v.is_empty() { vec![16, 24] } else { v }
     };
-    let feats = load("/home/drwilco/spatialtime/assets/timezones_osm.fgb")?;
+    let feats = utz_build::load("now")?;
     let v0: usize = feats.iter().flat_map(|f| &f.polys).flat_map(|p| p).map(|r| r.len()).sum();
-    println!("OSM full (with-oceans-now): {} features, {v0} verts", feats.len());
+    println!("with-oceans-now: {} features, {v0} verts", feats.len());
     println!("topology + topology-aware RDP eps={eps_m} m\n");
     println!("{:<16}{:>10}{:>12}{:>12}{:>12}{:>12}", "encoding", "arc-verts", "raw", "zstd22", "br.w24", "xz.dmax");
     println!("{}", "-".repeat(74));
@@ -33,29 +30,6 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn load(path: &str) -> anyhow::Result<Vec<Feat>> {
-    let bytes = std::fs::read(path)?;
-    let mut reader = BufReader::new(&bytes[..]);
-    let fgb = FgbReader::open(&mut reader)?;
-    let mut seq = fgb.select_all_seq()?;
-    let mut feats = Vec::new();
-    while let Some(f) = seq.next()? {
-        let props = f.properties()?;
-        let offset: f64 = props.get("offset").and_then(|s| s.parse().ok()).unwrap_or(0.0);
-        let tzid = props.get("tzid").filter(|s| !s.is_empty()).cloned();
-        let mut polys: Vec<Poly> = Vec::new();
-        if let Ok(Geometry::MultiPolygon(mp)) = f.to_geo() {
-            for p in mp {
-                let mut poly: Poly = vec![strip(p.exterior().coords().map(|c| (c.x, c.y)).collect())];
-                for r in p.interiors() { poly.push(strip(r.coords().map(|c| (c.x, c.y)).collect())); }
-                polys.push(poly);
-            }
-        }
-        feats.push(Feat { offset, tzid, polys });
-    }
-    Ok(feats)
-}
-fn strip(mut r: Ring) -> Ring { if r.len() > 1 && r.first() == r.last() { r.pop(); } r }
 fn brotli_w24(raw: &[u8]) -> usize {
     let params = brotli::enc::BrotliEncoderParams { quality: 11, lgwin: 24, ..Default::default() };
     let mut out = Vec::new();

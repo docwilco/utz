@@ -1,12 +1,12 @@
 // Measurement backlog #4 + #6 (PLAN.md §15): full pipeline size table on the
 // REAL container — topology × RDP(ε) × quant(i16/i24) × codec (incl gzip).
 //
-// usage: cargo run --release -p utz-build --example size_table [osm|osm1970] [grid_deg]
+// usage: cargo run --release -p utz-build --example size_table [now|1970] [grid_deg]
 
 use utz_build::encode::{self, Codec, Params};
 
 fn main() -> anyhow::Result<()> {
-    let ds = std::env::args().nth(1).unwrap_or_else(|| "osm".into());
+    let ds = std::env::args().nth(1).unwrap_or_else(|| "now".into());
     let grid_deg: u32 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(2);
     let feats = utz_build::load(&ds)?;
     println!("{} full container, grid {grid_deg}°, dominant-first CSR", ds.to_uppercase());
@@ -17,7 +17,7 @@ fn main() -> anyhow::Result<()> {
     for eps_m in [100.0f64, 250.0, 500.0, 1000.0, 2000.0] {
         for qbits in [16u32, 24] {
             let p = Params {
-                dataset: if ds == "osm" { 0 } else { 1 },
+                dataset: utz_build::dataset(&ds)?.code(),
                 tzbb_release: "dev",
                 eps_m,
                 quant_bits: qbits,

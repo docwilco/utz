@@ -1,32 +1,21 @@
 // Does geo's integer PIP agree with its f64 PIP? Tests overflow behaviour of the
 // SimpleKernel at different coord types/grids on OSM -now.
-use std::io::BufReader;
-use flatgeobuf::{FallibleStreamingIterator, FeatureProperties, FgbReader};
 use geo::Contains;
-use geo_types::{Geometry, LineString, Point, Polygon};
-use geozero::ToGeo;
+use geo_types::{LineString, Point, Polygon};
 
 fn main() -> anyhow::Result<()> {
-    let bytes = std::fs::read("/home/drwilco/spatialtime/assets/timezones_osm.fgb")?;
     // load geometry once (f64), build parallel i64 / i32 copies at deg*1e6 (~0.11 m)
     let mut f64p: Vec<(String, Polygon<f64>)> = Vec::new();
     let mut i64p: Vec<(String, Polygon<i64>)> = Vec::new();
     let mut i32p: Vec<(String, Polygon<i32>)> = Vec::new();
-    {
-        let mut r = BufReader::new(&bytes[..]);
-        let fgb = FgbReader::open(&mut r)?;
-        let mut seq = fgb.select_all_seq()?;
-        while let Some(f) = seq.next()? {
-            let tz = f.properties()?.get("tzid").cloned().unwrap_or_default();
-            if let Ok(Geometry::MultiPolygon(mp)) = f.to_geo() {
-                for p in &mp {
-                    let ext: Vec<(f64, f64)> = p.exterior().coords().map(|c| (c.x, c.y)).collect();
-                    let holes: Vec<Vec<(f64, f64)>> = p.interiors().iter().map(|r| r.coords().map(|c| (c.x, c.y)).collect()).collect();
-                    f64p.push((tz.clone(), poly_f64(&ext, &holes)));
-                    i64p.push((tz.clone(), poly_i(&ext, &holes, 1e6, |v| v as i64)));
-                    i32p.push((tz.clone(), poly_i(&ext, &holes, 1e6, |v| v as i32)));
-                }
-            }
+    for f in utz_build::load("now")? {
+        let tz = f.tzid.clone().unwrap_or_default();
+        for p in &f.polys {
+            let ext = p[0].clone();
+            let holes: Vec<Vec<(f64, f64)>> = p[1..].to_vec();
+            f64p.push((tz.clone(), poly_f64(&ext, &holes)));
+            i64p.push((tz.clone(), poly_i(&ext, &holes, 1e6, |v| v as i64)));
+            i32p.push((tz.clone(), poly_i(&ext, &holes, 1e6, |v| v as i32)));
         }
     }
     println!("polys={}\n", f64p.len());

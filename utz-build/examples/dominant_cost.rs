@@ -21,7 +21,7 @@ fn main() -> anyhow::Result<()> {
     let deg: f64 = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(2.0);
     let dss: Vec<String> = {
         let v: Vec<String> = std::env::args().skip(2).collect();
-        if v.is_empty() { vec!["osm".into(), "osm1970".into()] } else { v }
+        if v.is_empty() { vec!["now".into(), "1970".into()] } else { v }
     };
     for ds in &dss {
         let feats = utz_build::load(ds)?;

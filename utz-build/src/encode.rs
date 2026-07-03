@@ -41,7 +41,8 @@ pub enum Codec {
 }
 
 pub struct Params<'a> {
-    /// 0 = `-now`, 1 = `-1970`, 2 = full/unmerged
+    /// bits 0–1: vintage (0 = now, 1 = 1970, 2 = all/comprehensive);
+    /// bit 2 set = land-only (clear = with-oceans). See `utz_build::Dataset::code`.
     pub dataset: u8,
     /// TZBB release tag recorded in the header (DST vintage / cache key)
     pub tzbb_release: &'a str,
