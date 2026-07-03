@@ -55,6 +55,11 @@ pub struct Params<'a> {
     /// integer degrees, presets {1, 2, 3, 5, 10}
     pub grid_deg: u32,
     pub codec: Codec,
+    /// population-density-weighted refinement: `eps_m` stays the ceiling and
+    /// the weight model shrinks it toward `eps_m * w_min` along densely
+    /// populated boundary stretches. `None` = uniform eps (default). Only
+    /// arc geometry changes, so the container format is unaffected.
+    pub density: Option<(&'a crate::density::DensityGrid, utz_simplify::DensityWeight)>,
 }
 
 /// Full pipeline: topology → RDP → quantize → grid → serialize → compress.
@@ -72,7 +77,15 @@ pub fn build_payload(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
     let qy = |lat: f64| (lat / 90.0 * qmax).round() as i32;
     let dq = |v: i32, half: f64| v as f64 / qmax * half;
 
-    let t = topo::build_topology(feats, p.eps_m / 111_320.0);
+    let eps_deg = p.eps_m / 111_320.0;
+    let t = match &p.density {
+        None => topo::build_topology(feats, eps_deg),
+        Some((grid, model)) => topo::build_topology_weighted(
+            feats,
+            topo::Simplify::Rdp { eps: eps_deg },
+            &|a, b| model.weight(grid.max_along(a, b)),
+        ),
+    };
 
     // quantize arcs (consecutive dups collapse; endpoints kept)
     let arcs_q: Vec<Vec<(i32, i32)>> = t.arc_coords.iter().map(|a| {
