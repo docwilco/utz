@@ -245,9 +245,10 @@ var slots = [
 
 // raw f64 overlay — built lazily on first enable (drawing 2M verts is slow)
 var rawLayer = null;
+var rawCb = document.getElementById('rawcb');
 document.getElementById('rawv').textContent = STORED0.toLocaleString() + ' v';
-document.getElementById('rawcb').addEventListener('change', function () {
-  if (this.checked) {
+function syncRaw() {
+  if (rawCb.checked) {
     if (!rawLayer) {
       var lls = ARCS.map(function (arc) { return arc.map(function (p) { return [p[1], p[0]]; }); });
       rawLayer = L.polyline(lls, { color: '#00d95f', weight: 1, opacity: 0.8 });
@@ -257,7 +258,8 @@ document.getElementById('rawcb').addEventListener('change', function () {
     map.removeLayer(rawLayer);
   }
   updateStats();
-});
+}
+rawCb.addEventListener('change', syncRaw);
 
 function updateStats() {
   var el = document.getElementById('stats');
@@ -283,7 +285,9 @@ function updateStats() {
 }
 
 slots.forEach(function (s) { if (s.on) { s.layer.addTo(map); s.request(); } });
-updateStats();
+// browsers restore the static checkbox's state across reloads without firing
+// `change` — honor whatever it says at load
+if (rawCb.checked) { syncRaw(); } else { updateStats(); }
 </script>
 </body>
 </html>
