@@ -480,6 +480,8 @@ var layers = [
   new Layer(0, '#ff2d78', { on: true, dsi: 0, algo: 0, eps: 500, quant: 3 }),
   new Layer(1, '#00c8ff', { on: false, dsi: 0, algo: 2, eps: 500, quant: 3 }),
   new Layer(2, '#ffd400', { on: false, dsi: 0, algo: 1, eps: 1000, quant: 3 }),
+  // green raw layer: full-res reference (Raw algo, f64) — heavy to draw
+  new Layer(3, '#00d95f', { on: false, dsi: 0, algo: 3, eps: 500, quant: 0 }),
 ];
 
 // ---- population density heatmap (lazy-fetched raster) ----
@@ -551,7 +553,7 @@ var gridLayerSel = document.getElementById('gridlayer');
 var gridHover = document.getElementById('gridhover');
 var GRID_HINT = gridHover.textContent;
 function fmtDeg(d) { return (Math.round(d * 100) / 100) + '°'; }
-['layer 1', 'layer 2', 'layer 3'].forEach(function (l) {
+['layer 1', 'layer 2', 'layer 3', 'layer 4'].forEach(function (l) {
   var o = document.createElement('option'); o.textContent = l; gridLayerSel.appendChild(o);
 });
 var ZONES_CACHE = {};
