@@ -282,7 +282,7 @@ pub fn imai_iri(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
 const II_MAX: usize = 8192;
 
 /// [`imai_iri`] with per-vertex multipliers: deviation at `pts[i]` ≤
-/// `eps * w[i]`. Above [`II_MAX`] the RDP prefilter composes per point, so
+/// `eps * w[i]`. Above `II_MAX` points the RDP prefilter composes per point, so
 /// that bound is exact only where `w` is locally ~constant across a prefilter
 /// shortcut (negligible for weights sampled from a coarse grid through a
 /// smooth map); the global `eps * max(w)` bound always holds.

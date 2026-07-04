@@ -1,18 +1,23 @@
 <!DOCTYPE html>
+<!-- μTZ webdist viewer: static page + sibling data files (<dataset>.bin.z,
+     heat.bin.z, utz_simplify.wasm) written by `visualize webdist`. Serve over
+     HTTP (fetch() is blocked on file://): python3 -m http.server -d webdist -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>__TITLE__</title>
+<title>μTZ — live simplification</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   html, body, #map { height: 100%; margin: 0; }
-  #panel { position: absolute; top: 12px; right: 12px; z-index: 600; width: 344px;
+  #panel { position: absolute; top: 12px; right: 12px; z-index: 600; width: 384px;
     background: rgba(17,22,28,0.9); color: #e6edf3; border: 1px solid #2a3542; border-radius: 10px;
     padding: 12px 14px; font: 13px/1.4 system-ui, sans-serif; backdrop-filter: blur(6px); max-height: 92vh; overflow-y: auto; }
   #panel h2 { margin: 0 0 2px; font-size: 13px; }
   #panel .sub { margin: 0 0 10px; font-size: 11px; color: #8b98a8; }
+  #clps { position: absolute; top: 9px; right: 10px; width: 22px; height: 22px; cursor: pointer;
+    background: #0d1117; color: #8b98a8; border: 1px solid #2a3542; border-radius: 5px; font: 12px monospace; }
   .qsec { margin-top: 10px; padding-top: 9px; border-top: 1px solid #2a3542; }
   .qtitle { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: #b9c4d0; margin-bottom: 6px; }
   .qtitle span { color: #5a6472; text-transform: none; letter-spacing: 0; }
@@ -20,7 +25,7 @@
   .slot input[type=checkbox] { accent-color: #ffb454; width: 14px; height: 14px; flex: none; }
   .sw { width: 14px; height: 4px; border-radius: 2px; flex: none; }
   .slot select { background: #0d1117; color: #e6edf3; border: 1px solid #2a3542; border-radius: 5px;
-    font: 11px system-ui, sans-serif; padding: 2px 3px; max-width: 86px; }
+    font: 11px system-ui, sans-serif; padding: 2px 3px; max-width: 92px; }
   .slot select:disabled { opacity: 0.4; }
   .slot .raw-label { font-size: 12px; }
   .slot .rawv { color: #8b98a8; font-size: 11px; margin-left: auto; font-variant-numeric: tabular-nums; }
@@ -31,23 +36,18 @@
   .st { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: 11px; font-variant-numeric: tabular-nums; }
   .st .num { margin-left: auto; color: #8b98a8; }
   .st .pct { color: #7ee787; }
-  #panel .foot { margin-top: 9px; padding-top: 8px; border-top: 1px solid #2a3542; font-size: 11px; color: #8b98a8; }
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="panel">
-  <h2>__TITLE__</h2>
-  <p class="sub">__SUB__</p>
-  <div class="qtitle">Sets <span>· algorithm / ε / quantization · pop-weight slider below each</span></div>
+  <h2>μTZ — live simplification</h2>
+  <button id="clps" title="collapse/expand controls">–</button>
+  <div id="pbody">
+  <p class="sub">TZBB datasets · runs the builder's own code (utz-simplify → WASM) in workers</p>
+  <div class="qtitle">Layers <span>· dataset / algorithm / ε / quantization</span></div>
   <div id="slots"></div>
-  <label class="slot" id="rawrow">
-    <input type="checkbox" id="rawcb">
-    <span class="sw" style="background:#00d95f"></span>
-    <span class="raw-label">raw · f64 full-res</span>
-    <span class="rawv" id="rawv"></span>
-  </label>
-  <div class="qsec" id="densec" style="display:none">
+  <div class="qsec">
     <div class="qtitle">Population density <span>· GHS-POP 2020</span></div>
     <label class="slot">
       <input type="checkbox" id="heatcb">
@@ -57,23 +57,77 @@
     </label>
   </div>
   <div class="qsec">
-    <div class="qtitle">Reduction <span>· enabled sets</span></div>
+    <div class="qtitle">PIP grid <span>· cells whose lookups need polygon tests</span></div>
+    <div class="slot">
+      <input type="checkbox" id="gridcb">
+      <span class="sw" style="background:#ffb454"></span>
+      <span class="raw-label">preview</span>
+      <select id="gridlayer" title="which layer's simplified geometry to grid"></select>
+      <span class="rawv" id="gridv"></span>
+    </div>
+    <div class="slot" title="grid cell size (encoder presets)">
+      <span class="raw-label" style="color:#8b98a8">cell size</span>
+      <input type="range" id="gridsl" min="0" max="4" value="1" style="flex:1">
+      <span class="rawv" id="griddeg"></span>
+    </div>
+  </div>
+  <div class="qsec">
+    <div class="qtitle">Reduction <span>· enabled layers</span></div>
     <div id="stats"></div>
   </div>
   <div class="qsec">
     <div class="qtitle">Misassigned <span>· vs raw ε=0, pre-quant</span></div>
     <div id="mstats"></div>
   </div>
+  </div>
 </div>
 <script>
-var ARCS = /*ARCS*/;
-var STORED0 = /*STORED0*/;   // full-res arc verts (the embedded baseline)
-var WASM_B64 = "/*WASM*/";
-// per-vertex population density (p/km², max of incident edges, arc order —
-// same edge sampling the builder uses) and the coarse heat raster
-// {w,h,lon0,lat0,dlon,dlat,b64}; both null when built without GHS-POP
-var DENS = /*DENS*/;
-var HEAT = /*HEAT*/;
+// ---- data files (written next to this page by `visualize webdist`) ----
+var DS_LIST = ['now', '1970', 'all', 'land-now', 'land-1970', 'land-all'];
+var DS_CACHE = {};
+function fetchBinZ(url) {
+  return fetch(url).then(function (r) {
+    if (!r.ok) throw new Error(url + ': HTTP ' + r.status);
+    return new Response(r.body.pipeThrough(new DecompressionStream('deflate'))).arrayBuffer();
+  });
+}
+// <ds>.bin.z: "uTZv" | u32 flags(bit0=dens) | u32 n_arcs | u32 n_verts
+// | u32 offs[n_arcs+1] | pad8 | f64 xy[2n] | f32 dens[n]
+function loadDataset(name) {
+  if (!DS_CACHE[name]) {
+    DS_CACHE[name] = fetchBinZ(name + '.bin.z').then(function (buf) {
+      var h = new Uint32Array(buf, 0, 4);
+      if (h[0] !== 0x765A5475) throw new Error(name + ': bad magic');
+      var nArcs = h[2], nVerts = h[3];
+      var p = 16 + 4 * (nArcs + 1);
+      p += (8 - p % 8) % 8;
+      return {
+        offs: new Uint32Array(buf, 16, nArcs + 1),
+        coords: new Float64Array(buf, p, nVerts * 2),
+        dens: (h[1] & 1) ? new Float32Array(buf, p + nVerts * 16, nVerts) : null,
+        stored0: nVerts,
+      };
+    });
+  }
+  return DS_CACHE[name];
+}
+// heat.bin.z: "uTZh" | u32 w | u32 h | u32 pad | f64 lon0,lat0,dlon,dlat | u8 cells
+var HEAT_P = null;
+function loadHeat() {
+  if (!HEAT_P) {
+    HEAT_P = fetchBinZ('heat.bin.z').then(function (buf) {
+      var h = new Uint32Array(buf, 0, 3);
+      if (h[0] !== 0x685A5475) throw new Error('heat.bin.z: bad magic');
+      var g = new Float64Array(buf, 16, 4);
+      return { w: h[1], h: h[2], lon0: g[0], lat0: g[1], dlon: g[2], dlat: g[3], v: new Uint8Array(buf, 48) };
+    });
+  }
+  return HEAT_P;
+}
+var WASM_P = fetch('utz_simplify.wasm').then(function (r) {
+  if (!r.ok) throw new Error('utz_simplify.wasm: HTTP ' + r.status);
+  return r.arrayBuffer();
+});
 
 var ALGO = [
   { id: 0, key: 'rdp', name: 'RDP' },
@@ -110,30 +164,19 @@ var dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r
 L.control.layers({ 'Streets': streets, 'Satellite': sat, 'Dark': dark }, {}, { position: 'bottomright' }).addTo(map);
 L.control.scale({ position: 'bottomleft', metric: true, imperial: true, maxWidth: 180 }).addTo(map);
 
-// flat copies shipped to each worker once (structured clone = fast memcpy)
-var NARCS = ARCS.length;
-var OFFS = new Uint32Array(NARCS + 1);
-for (var a = 0; a < NARCS; a++) OFFS[a + 1] = OFFS[a] + ARCS[a].length;
-var COORDS = new Float64Array(OFFS[NARCS] * 2);
-for (var a2 = 0, w2 = 0; a2 < NARCS; a2++)
-  for (var i2 = 0; i2 < ARCS[a2].length; i2++) { COORDS[w2++] = ARCS[a2][i2][0]; COORDS[w2++] = ARCS[a2][i2][1]; }
-var WASM_BYTES = (function () {
-  var bin = atob(WASM_B64), u = new Uint8Array(bin.length);
-  for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-  return u;
-})();
-var DENSF = DENS ? new Float64Array(DENS) : null;
-var HEATV = HEAT ? (function () {
-  var bin = atob(HEAT.b64), u = new Uint8Array(bin.length);
-  for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-  return u;
-})() : null;
+// collapse/expand the control panel
+var pbody = document.getElementById('pbody');
+document.getElementById('clps').addEventListener('click', function () {
+  var hide = pbody.style.display !== 'none';
+  pbody.style.display = hide ? 'none' : '';
+  this.textContent = hide ? '+' : '–';
+});
 
 // worker: instantiate utz-simplify WASM, simplify every arc on request, and
 // price the misassignment (pocket decomposition between each raw sub-chain
 // and its shortcut — subset simplifiers make output verts bit-exact copies,
-// so they map back to raw indices; density from the embedded heat raster).
-// Killed and respawned to abort — never blocks the page.
+// so they map back to raw indices). Killed and respawned to abort — never
+// blocks the page.
 function workerBody() {
   var W = null, buf = 0, dbuf = 0, COORDS = null, OFFS = null, DENS = null;
   // pockets between raw sub-chain [i0..i1] (indices within arc at base s)
@@ -222,18 +265,20 @@ function workerBody() {
 }
 var WORKER_URL = URL.createObjectURL(new Blob(['(' + workerBody.toString() + ')()'], { type: 'text/javascript' }));
 
-function Slot(idx, color, def) {
+function Layer(idx, color, def) {
   var self = this;
   this.idx = idx; this.color = color;
-  this.on = def.on; this.algo = def.algo; this.eps = def.eps; this.quant = def.quant;
+  this.on = def.on; this.dsi = def.dsi || 0; this.algo = def.algo; this.eps = def.eps; this.quant = def.quant;
   this.pwv = def.pwv || 0; // pop-weight slider position, 0 = off
   this.gen = 0; this.busy = false; this.ready = false; this.pendingRun = false;
-  this.worker = null; this.result = null;
+  this.worker = null; this.result = null; this.data = null;
   this.layer = L.polyline([], { color: color, weight: 1.2, opacity: 0.95 });
 
   var row = document.createElement('div'); row.className = 'slot';
   this.cb = document.createElement('input'); this.cb.type = 'checkbox'; this.cb.checked = this.on;
   var sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = color;
+  this.selDs = mkSelect(DS_LIST, this.dsi);
+  this.selDs.title = 'TZBB dataset: merge vintage × land-only / with-oceans';
   this.selAlgo = mkSelect(ALGO.map(function (a) { return a.name; }), this.algo);
   this.selEps = mkSelect(
     EPS_M.map(function (e) { return 'ε ' + e + ' m'; }).concat(['ε custom…']),
@@ -241,7 +286,8 @@ function Slot(idx, color, def) {
   this.selQuant = mkSelect(QUANT.map(function (q) { return q.label; }), this.quant);
   this.spin = document.createElement('span'); this.spin.className = 'spin';
   row.appendChild(this.cb); row.appendChild(sw);
-  row.appendChild(this.selAlgo); row.appendChild(this.selEps); row.appendChild(this.selQuant);
+  row.appendChild(this.selDs); row.appendChild(this.selAlgo);
+  row.appendChild(this.selEps); row.appendChild(this.selQuant);
   row.appendChild(this.spin);
   document.getElementById('slots').appendChild(row);
 
@@ -258,27 +304,33 @@ function Slot(idx, color, def) {
   var slEps = function () { return Math.round(Math.pow(10, self.epsSl.value / 25)); };
 
   // pop-weight sub-row: log slider, off (×1) … ×0.01; recompute on release
-  if (DENS) {
-    this.popRow = document.createElement('div'); this.popRow.className = 'slot';
-    this.popRow.title = 'population weighting: ε shrinks toward ε × this factor in the densest areas (GHS-POP); far left = off';
-    var psw = document.createElement('span'); psw.className = 'sw'; psw.style.background = color;
-    psw.style.opacity = '0.45';
-    var plbl = document.createElement('span'); plbl.className = 'raw-label'; plbl.style.color = '#8b98a8';
-    plbl.textContent = 'pop weight';
-    this.popSl = document.createElement('input');
-    this.popSl.type = 'range'; this.popSl.min = 0; this.popSl.max = 100;
-    this.popSl.value = this.pwv; this.popSl.style.flex = '1';
-    this.popV = document.createElement('span'); this.popV.className = 'rawv';
-    this.popRow.appendChild(psw); this.popRow.appendChild(plbl);
-    this.popRow.appendChild(this.popSl); this.popRow.appendChild(this.popV);
-    document.getElementById('slots').appendChild(this.popRow);
-    var syncPop = function () { self.popV.textContent = self.pwv > 0 ? self.popLabel() : 'off'; };
-    this.popSl.addEventListener('input', function () { self.pwv = +self.popSl.value; syncPop(); });
-    this.popSl.addEventListener('change', function () { self.request(); });
-    syncPop();
-  }
+  this.popRow = document.createElement('div'); this.popRow.className = 'slot';
+  this.popRow.title = 'population weighting: ε shrinks toward ε × this factor in the densest areas (GHS-POP); far left = off';
+  var psw = document.createElement('span'); psw.className = 'sw'; psw.style.background = color;
+  psw.style.opacity = '0.45';
+  var plbl = document.createElement('span'); plbl.className = 'raw-label'; plbl.style.color = '#8b98a8';
+  plbl.textContent = 'pop weight';
+  this.popSl = document.createElement('input');
+  this.popSl.type = 'range'; this.popSl.min = 0; this.popSl.max = 100;
+  this.popSl.value = this.pwv; this.popSl.style.flex = '1';
+  this.popV = document.createElement('span'); this.popV.className = 'rawv';
+  this.popRow.appendChild(psw); this.popRow.appendChild(plbl);
+  this.popRow.appendChild(this.popSl); this.popRow.appendChild(this.popV);
+  document.getElementById('slots').appendChild(this.popRow);
+  var syncPop = function () { self.popV.textContent = self.pwv > 0 ? self.popLabel() : 'off'; };
+  this.popSl.addEventListener('input', function () { self.pwv = +self.popSl.value; syncPop(); });
+  this.popSl.addEventListener('change', function () { self.request(); });
+  syncPop();
 
   this.cb.addEventListener('change', function () { self.on = self.cb.checked; self.toggled(); });
+  this.selDs.addEventListener('change', function () {
+    // new dataset → the worker must be re-inited with the new arrays
+    self.dsi = self.selDs.selectedIndex;
+    self.data = null; self.result = null;
+    if (self.worker) { self.worker.terminate(); self.worker = null; self.ready = false; }
+    self.layer.setLatLngs([]);
+    self.request(); updateStats();
+  });
   this.selAlgo.addEventListener('change', function () { self.algo = self.selAlgo.selectedIndex; self.syncDisabled(); self.request(); });
   this.selEps.addEventListener('change', function () {
     if (self.selEps.selectedIndex < EPS_M.length) {
@@ -308,21 +360,22 @@ function mkSelect(labels, sel) {
   return s;
 }
 // ε multiplier at max density from the slider position (log: 0 → ×1 … 100 → ×0.01)
-Slot.prototype.wmin = function () { return this.pwv > 0 ? Math.pow(10, -this.pwv / 50) : 1; };
-Slot.prototype.popLabel = function () {
+Layer.prototype.wmin = function () { return this.pwv > 0 ? Math.pow(10, -this.pwv / 50) : 1; };
+Layer.prototype.popLabel = function () {
   var w = this.wmin();
   return '×' + (w < 0.1 ? w.toFixed(3) : w.toFixed(2));
 };
-Slot.prototype.syncDisabled = function () {
+Layer.prototype.syncDisabled = function () {
   var d = !this.on;
   var raw = ALGO[this.algo].key === 'raw'; // no ε — quant only
+  this.selDs.disabled = d;
   this.selAlgo.disabled = d;
   this.selEps.disabled = d || raw;
   this.epsSl.disabled = d || raw;
   this.selQuant.disabled = d;
-  if (this.popSl) this.popSl.disabled = d || raw;
+  this.popSl.disabled = d || raw;
 };
-Slot.prototype.toggled = function () {
+Layer.prototype.toggled = function () {
   this.syncDisabled();
   if (this.on) {
     this.layer.addTo(map);
@@ -333,8 +386,8 @@ Slot.prototype.toggled = function () {
     updateStats();
   }
 };
-Slot.prototype.spawn = function () {
-  var self = this;
+Layer.prototype.spawn = function () {
+  var self = this, d = this.data;
   this.ready = false;
   this.worker = new Worker(WORKER_URL);
   this.worker.onmessage = function (e) {
@@ -348,30 +401,43 @@ Slot.prototype.spawn = function () {
       self.redraw(); updateStats();
     }
   };
-  this.worker.postMessage({ type: 'init', wasm: WASM_BYTES, coords: COORDS, offs: OFFS, dens: DENSF });
+  WASM_P.then(function (bytes) {
+    if (self.worker && self.data === d) {
+      self.worker.postMessage({ type: 'init', wasm: bytes, coords: d.coords, offs: d.offs, dens: d.dens });
+    }
+  }).catch(function (e) { console.error(e); });
 };
-Slot.prototype.abort = function () {
+Layer.prototype.abort = function () {
   if (this.worker) { this.worker.terminate(); this.worker = null; }
-  this.busy = false; this.pendingRun = false; this.spin.classList.remove('on');
+  this.busy = false; this.pendingRun = false; this.ready = false; this.spin.classList.remove('on');
 };
-Slot.prototype.send = function () {
+Layer.prototype.send = function () {
   var epsDeg = this.eps / 111320;
   this.worker.postMessage({
     type: 'run', gen: this.gen,
     algoId: ALGO[this.algo].id,
     param: ALGO[this.algo].key === 'vw' ? epsDeg * epsDeg : epsDeg,
-    wmin: DENS ? this.wmin() : 1,
+    wmin: this.wmin(),
   });
 };
-Slot.prototype.request = function () {
+Layer.prototype.request = function () {
   if (!this.on) return;
   this.gen++;
   if (this.busy) this.abort(); // abort mid-compute, start fresh
   this.busy = true; this.spin.classList.add('on');
-  if (!this.worker) this.spawn();
-  if (this.ready) { this.send(); } else { this.pendingRun = true; }
+  var self = this, gen = this.gen;
+  loadDataset(DS_LIST[this.dsi]).then(function (d) {
+    if (gen !== self.gen || !self.busy) return; // superseded meanwhile
+    self.data = d;
+    if (!self.worker) self.spawn();
+    if (self.ready) { self.send(); } else { self.pendingRun = true; }
+  }).catch(function (e) {
+    if (gen !== self.gen) return;
+    self.busy = false; self.spin.classList.remove('on');
+    console.error(e);
+  });
 };
-Slot.prototype.redraw = function () {
+Layer.prototype.redraw = function () {
   if (!this.result || !this.on) return;
   var m = QUANT[this.quant].key;
   var lls = [], c = this.result.coords, o = this.result.offs;
@@ -383,123 +449,180 @@ Slot.prototype.redraw = function () {
   this.layer.setLatLngs(lls);
 };
 
-var slots = [
-  new Slot(0, '#ff2d78', { on: true, algo: 0, eps: 500, quant: 0 }),
-  new Slot(1, '#00c8ff', { on: false, algo: 2, eps: 500, quant: 0 }),
-  new Slot(2, '#ffd400', { on: false, algo: 1, eps: 500, quant: 0 }),
+var layers = [
+  new Layer(0, '#ff2d78', { on: true, dsi: 0, algo: 0, eps: 500, quant: 3 }),
+  new Layer(1, '#00c8ff', { on: false, dsi: 0, algo: 2, eps: 500, quant: 3 }),
+  new Layer(2, '#ffd400', { on: false, dsi: 0, algo: 1, eps: 1000, quant: 3 }),
 ];
 
-// raw f64 overlay — built lazily on first enable (drawing 2M verts is slow)
-var rawLayer = null;
-var rawCb = document.getElementById('rawcb');
-document.getElementById('rawv').textContent = STORED0.toLocaleString() + ' v';
-function syncRaw() {
-  if (rawCb.checked) {
-    if (!rawLayer) {
-      var lls = ARCS.map(function (arc) { return arc.map(function (p) { return [p[1], p[0]]; }); });
-      rawLayer = L.polyline(lls, { color: '#00d95f', weight: 1, opacity: 0.8 });
+// ---- population density heatmap (lazy-fetched raster) ----
+map.createPane('heat').style.zIndex = 350; // above tiles, below the vector canvas
+var heatLayer = null;
+var heatCb = document.getElementById('heatcb'), heatOp = document.getElementById('heatop');
+var mercY = function (lat) { return Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)); };
+function buildHeat(HEAT) {
+  var v = HEAT.v;
+  // the raster is equirectangular; Leaflet stretches an imageOverlay
+  // linearly in *Mercator* y — resample rows so latitudes land right
+  var latTop = Math.min(HEAT.lat0, 85.05), latBot = Math.max(HEAT.lat0 - HEAT.h * HEAT.dlat, -85.05);
+  var Wp = HEAT.w, Hp = 1024;
+  var cv = document.createElement('canvas'); cv.width = Wp; cv.height = Hp;
+  var ctx = cv.getContext('2d'), img = ctx.createImageData(Wp, Hp);
+  var yT = mercY(latTop), yB = mercY(latBot);
+  for (var r = 0; r < Hp; r++) {
+    var lat = (2 * Math.atan(Math.exp(yT + (yB - yT) * (r + 0.5) / Hp)) - Math.PI / 2) * 180 / Math.PI;
+    var sr = Math.floor((HEAT.lat0 - lat) / HEAT.dlat);
+    if (sr < 0 || sr >= HEAT.h) continue;
+    for (var c = 0; c < Wp; c++) {
+      var d = v[sr * Wp + c];
+      if (!d) continue;   // unpopulated → fully transparent
+      var t = d / 255, o = (r * Wp + c) * 4;
+      var s = t < 0.5 ? [[13, 60, 120], [245, 200, 30]] : [[245, 200, 30], [255, 45, 45]];
+      var u = t < 0.5 ? t * 2 : t * 2 - 1;
+      img.data[o] = s[0][0] + (s[1][0] - s[0][0]) * u;
+      img.data[o + 1] = s[0][1] + (s[1][1] - s[0][1]) * u;
+      img.data[o + 2] = s[0][2] + (s[1][2] - s[0][2]) * u;
+      img.data[o + 3] = 70 + 185 * t;
     }
-    rawLayer.addTo(map);
-  } else if (rawLayer) {
-    map.removeLayer(rawLayer);
   }
-  updateStats();
+  ctx.putImageData(img, 0, 0);
+  return L.imageOverlay(cv.toDataURL('image/png'),
+    [[latBot, HEAT.lon0], [latTop, HEAT.lon0 + HEAT.w * HEAT.dlon]],
+    { pane: 'heat', opacity: heatOp.value / 100, interactive: false });
 }
-rawCb.addEventListener('change', syncRaw);
-
-// ---- population density: heatmap layer + global weighting strength ----
-if (DENS) {
-  document.getElementById('densec').style.display = '';
-  // heat sits above tiles, below the vector canvas
-  map.createPane('heat').style.zIndex = 350;
-  var heatLayer = null;
-  var heatCb = document.getElementById('heatcb'), heatOp = document.getElementById('heatop');
-  var mercY = function (lat) { return Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)); };
-  function buildHeat() {
-    var v = HEATV;
-    // the raster is equirectangular; Leaflet stretches an imageOverlay
-    // linearly in *Mercator* y — resample rows so latitudes land right
-    var latTop = Math.min(HEAT.lat0, 85.05), latBot = Math.max(HEAT.lat0 - HEAT.h * HEAT.dlat, -85.05);
-    var Wp = HEAT.w, Hp = 1024;
-    var cv = document.createElement('canvas'); cv.width = Wp; cv.height = Hp;
-    var ctx = cv.getContext('2d'), img = ctx.createImageData(Wp, Hp);
-    var yT = mercY(latTop), yB = mercY(latBot);
-    for (var r = 0; r < Hp; r++) {
-      var lat = (2 * Math.atan(Math.exp(yT + (yB - yT) * (r + 0.5) / Hp)) - Math.PI / 2) * 180 / Math.PI;
-      var sr = Math.floor((HEAT.lat0 - lat) / HEAT.dlat);
-      if (sr < 0 || sr >= HEAT.h) continue;
-      for (var c = 0; c < Wp; c++) {
-        var d = v[sr * Wp + c];
-        if (!d) continue;   // unpopulated → fully transparent
-        var t = d / 255, o = (r * Wp + c) * 4;
-        var s = t < 0.5 ? [[13, 60, 120], [245, 200, 30]] : [[245, 200, 30], [255, 45, 45]];
-        var u = t < 0.5 ? t * 2 : t * 2 - 1;
-        img.data[o] = s[0][0] + (s[1][0] - s[0][0]) * u;
-        img.data[o + 1] = s[0][1] + (s[1][1] - s[0][1]) * u;
-        img.data[o + 2] = s[0][2] + (s[1][2] - s[0][2]) * u;
-        img.data[o + 3] = 70 + 185 * t;
-      }
-    }
-    ctx.putImageData(img, 0, 0);
-    return L.imageOverlay(cv.toDataURL('image/png'),
-      [[latBot, HEAT.lon0], [latTop, HEAT.lon0 + HEAT.w * HEAT.dlon]],
-      { pane: 'heat', opacity: heatOp.value / 100, interactive: false });
-  }
-  heatCb.addEventListener('change', function () {
-    if (heatCb.checked) {
-      if (!heatLayer) heatLayer = buildHeat();
+heatCb.addEventListener('change', function () {
+  if (heatCb.checked) {
+    loadHeat().then(function (HEAT) {
+      if (!heatCb.checked) return;
+      if (!heatLayer) heatLayer = buildHeat(HEAT);
       heatLayer.setOpacity(heatOp.value / 100);
       heatLayer.addTo(map);
-    } else if (heatLayer) { map.removeLayer(heatLayer); }
-  });
-  heatOp.addEventListener('input', function () { if (heatLayer) heatLayer.setOpacity(heatOp.value / 100); });
-  if (heatCb.checked) heatCb.dispatchEvent(new Event('change')); // restored state
+    }).catch(function (e) {
+      console.error(e);
+      heatCb.checked = false; heatCb.disabled = true;
+      heatCb.title = 'heat.bin.z unavailable';
+    });
+  } else if (heatLayer) { map.removeLayer(heatLayer); }
+});
+heatOp.addEventListener('input', function () { if (heatLayer) heatLayer.setOpacity(heatOp.value / 100); });
+
+// ---- PIP grid preview ----
+// The encoder's grid prefilter answers most lookups directly; only cells
+// crossed by a zone boundary fall through to polygon tests. Marking every
+// cell the selected layer's *simplified* segments cross reproduces that set
+// live (same Amanatides–Woo walk the density sampling uses).
+var GRID_DEG = [1, 2, 3, 5, 10]; // encoder presets
+map.createPane('pipgrid').style.zIndex = 360; // above heat, below vectors
+var gridOverlay = null;
+var gridCb = document.getElementById('gridcb'), gridSl = document.getElementById('gridsl');
+var gridLayerSel = document.getElementById('gridlayer');
+['layer 1', 'layer 2', 'layer 3'].forEach(function (l) {
+  var o = document.createElement('option'); o.textContent = l; gridLayerSel.appendChild(o);
+});
+function gridRefresh() {
+  var deg = GRID_DEG[gridSl.value];
+  document.getElementById('griddeg').textContent = deg + '°';
+  if (gridOverlay) { map.removeLayer(gridOverlay); gridOverlay = null; }
+  var gv = document.getElementById('gridv');
+  if (!gridCb.checked) { gv.textContent = ''; return; }
+  var ly = layers[gridLayerSel.selectedIndex];
+  if (!ly || !ly.on || !ly.result) { gv.textContent = 'no result'; return; }
+  var nc = Math.round(360 / deg), nr = Math.round(180 / deg);
+  var hit = new Uint8Array(nc * nr);
+  var mark = function (cx, cy) {
+    if (cy < 0) cy = 0;
+    if (cy >= nr) cy = nr - 1;
+    hit[cy * nc + ((cx % nc) + nc) % nc] = 1;
+  };
+  var c = ly.result.coords, o = ly.result.offs;
+  for (var a = 0; a + 1 < o.length; a++) {
+    for (var i = o[a]; i + 1 < o[a + 1]; i++) {
+      var x0 = (c[i * 2] + 180) / deg, y0 = (90 - c[i * 2 + 1]) / deg;
+      var x1 = (c[i * 2 + 2] + 180) / deg, y1 = (90 - c[i * 2 + 3]) / deg;
+      var ix = Math.floor(x0), iy = Math.floor(y0);
+      mark(ix, iy);
+      var dx = x1 - x0, dy = y1 - y0;
+      var sx = dx > 0 ? 1 : -1, sy = dy > 0 ? 1 : -1;
+      var tx = dx !== 0 ? Math.abs((ix + (dx > 0 ? 1 : 0) - x0) / dx) : Infinity;
+      var ty = dy !== 0 ? Math.abs((iy + (dy > 0 ? 1 : 0) - y0) / dy) : Infinity;
+      var tdx = dx !== 0 ? Math.abs(1 / dx) : Infinity;
+      var tdy = dy !== 0 ? Math.abs(1 / dy) : Infinity;
+      for (var st = Math.abs(Math.floor(x1) - ix) + Math.abs(Math.floor(y1) - iy); st > 0; st--) {
+        if (tx < ty) { ix += sx; tx += tdx; } else { iy += sy; ty += tdy; }
+        mark(ix, iy);
+      }
+    }
+  }
+  var n = 0;
+  for (var k = 0; k < hit.length; k++) n += hit[k];
+  gv.textContent = n.toLocaleString() + '/' + (nc * nr).toLocaleString() + ' (' + (100 * n / (nc * nr)).toFixed(1) + '%)';
+  // draw crisp cells on a Mercator-resampled canvas (like the heatmap)
+  var kx = Math.max(1, Math.floor(2048 / nc));
+  var Wp = nc * kx, Hp = 1024;
+  var cv = document.createElement('canvas'); cv.width = Wp; cv.height = Hp;
+  var ctx = cv.getContext('2d'), img = ctx.createImageData(Wp, Hp);
+  var yT = mercY(85.05), yB = mercY(-85.05);
+  for (var r = 0; r < Hp; r++) {
+    var lat = (2 * Math.atan(Math.exp(yT + (yB - yT) * (r + 0.5) / Hp)) - Math.PI / 2) * 180 / Math.PI;
+    var sr = Math.floor((90 - lat) / deg);
+    if (sr < 0 || sr >= nr) continue;
+    for (var cc = 0; cc < nc; cc++) {
+      if (!hit[sr * nc + cc]) continue;
+      for (var px = cc * kx; px < (cc + 1) * kx; px++) {
+        var oo = (r * Wp + px) * 4;
+        img.data[oo] = 255; img.data[oo + 1] = 180; img.data[oo + 2] = 84; img.data[oo + 3] = 80;
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  gridOverlay = L.imageOverlay(cv.toDataURL('image/png'), [[-85.05, -180], [85.05, 180]],
+    { pane: 'pipgrid', interactive: false });
+  gridOverlay.addTo(map);
 }
+gridCb.addEventListener('change', gridRefresh);
+gridSl.addEventListener('input', gridRefresh);
+gridLayerSel.addEventListener('change', gridRefresh);
 
 function updateStats() {
   var el = document.getElementById('stats');
   el.innerHTML = '';
   var shown = 0;
-  if (document.getElementById('rawcb').checked) {
-    shown++;
-    el.innerHTML += '<div class="st"><span class="sw" style="background:#00d95f"></span><span>raw f64</span>' +
-      '<span class="num">' + STORED0.toLocaleString() + ' v · ' + fmtBytes(STORED0 * 16) + '</span></div>';
-  }
-  slots.forEach(function (s) {
-    if (!s.on || !s.result) return;
+  layers.forEach(function (s) {
+    if (!s.on || !s.result || !s.data) return;
     shown++;
     var q = QUANT[s.quant];
     var kept = s.result.kept;
     var isRaw = ALGO[s.algo].key === 'raw';
     el.innerHTML += '<div class="st"><span class="sw" style="background:' + s.color + '"></span>' +
-      '<span>' + ALGO[s.algo].name + (isRaw ? '' : ' ε' + s.eps) + ' @ ' + q.label +
+      '<span>' + DS_LIST[s.dsi] + ' ' + ALGO[s.algo].name + (isRaw ? '' : ' ε' + s.eps) + ' @ ' + q.label +
       (s.pwv > 0 && !isRaw ? ' pop' + s.popLabel() : '') + '</span>' +
       '<span class="num">' + kept.toLocaleString() + ' v · <span class="pct">−' +
-      (100 * (1 - kept / STORED0)).toFixed(1) + '%</span> · ' + fmtBytes(kept * 2 * q.bpc) +
+      (100 * (1 - kept / s.data.stored0)).toFixed(1) + '%</span> · ' + fmtBytes(kept * 2 * q.bpc) +
       ' · ' + s.result.ms.toLocaleString() + ' ms</span></div>';
   });
   if (!shown) el.innerHTML = '<div class="st" style="color:#5a6472">nothing enabled</div>';
 
-  // misassignment vs raw: pocket area, and people when the raster is embedded
+  // misassignment vs raw: pocket area, and people when densities shipped
   var ms = document.getElementById('mstats');
   ms.innerHTML = '';
   var mshown = 0;
-  slots.forEach(function (s) {
-    if (!s.on || !s.result || ALGO[s.algo].key === 'raw') return;
+  layers.forEach(function (s) {
+    if (!s.on || !s.result || !s.data || ALGO[s.algo].key === 'raw') return;
     mshown++;
     ms.innerHTML += '<div class="st"><span class="sw" style="background:' + s.color + '"></span>' +
-      '<span>' + ALGO[s.algo].name + ' ε' + s.eps + (s.pwv > 0 ? ' pop' + s.popLabel() : '') + '</span>' +
+      '<span>' + DS_LIST[s.dsi] + ' ' + ALGO[s.algo].name + ' ε' + s.eps + (s.pwv > 0 ? ' pop' + s.popLabel() : '') + '</span>' +
       '<span class="num">' + Math.round(s.result.area).toLocaleString() + ' km²' +
-      (DENS ? ' · <span class="pct">' + Math.round(s.result.people).toLocaleString() + ' people</span>' : '') +
+      (s.data.dens ? ' · <span class="pct">' + Math.round(s.result.people).toLocaleString() + ' people</span>' : '') +
       '</span></div>';
   });
-  if (!mshown) ms.innerHTML = '<div class="st" style="color:#5a6472">no simplified sets enabled</div>';
+  if (!mshown) ms.innerHTML = '<div class="st" style="color:#5a6472">no simplified layers enabled</div>';
+
+  if (gridCb.checked) gridRefresh(); // grid follows the layer's live geometry
 }
 
-slots.forEach(function (s) { if (s.on) { s.layer.addTo(map); s.request(); } });
-// browsers restore the static checkbox's state across reloads without firing
-// `change` — honor whatever it says at load
-if (rawCb.checked) { syncRaw(); } else { updateStats(); }
+layers.forEach(function (s) { if (s.on) { s.layer.addTo(map); s.request(); } });
+gridRefresh(); // set the cell-size label
+updateStats();
 </script>
 </body>
 </html>

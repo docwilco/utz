@@ -1,0 +1,60 @@
+# Build the webdist viewer (static page + per-dataset binary blobs) and the
+# API docs, and deploy them to GitHub Pages: https://docwilco.github.io/utz/
+# (viewer at /, rustdoc under /doc). Requires Pages to be set to the
+# "GitHub Actions" source in the repo settings.
+name: Deploy viewer to Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      # TZBB release zips + the 460 MB GHS-POP zip and its decoded sidecar.
+      # Fresh key each run (immutable caches), newest restored by prefix;
+      # downloads revalidate via ETag so a hit costs one conditional GET.
+      - name: Cache source data (TZBB + GHS-POP)
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: source-data-${{ github.run_id }}
+          restore-keys: source-data-
+      - name: Build webdist (viewer + dataset blobs)
+        run: cargo run --release -p utz-build --example visualize webdist
+      - name: Build API docs into the site
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          cargo doc --workspace --no-deps
+          cp -r target/doc webdist/doc
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: webdist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

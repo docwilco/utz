@@ -7,8 +7,5 @@
 # Generated assets (all knob variants) and the built container(s).
 /assets/
 *.utz
-# Generated visualization HTML (self-embeds data; regenerate via the viz tool).
-*_viewer.html
-*_overlay.html
-*_live.html
-border_sweep.html
+# Generated viewer site (regenerate: cargo run --release -p utz-build --example visualize).
+/webdist/
