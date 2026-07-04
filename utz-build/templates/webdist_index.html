@@ -11,6 +11,9 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   html, body, #map { height: 100%; margin: 0; }
+  /* plain pointer at rest; grabbing hand only while actually dragging */
+  .leaflet-grab { cursor: default; }
+  .leaflet-dragging .leaflet-grab { cursor: grabbing; }
   #panel { position: absolute; top: 12px; right: 12px; z-index: 600; width: 384px;
     background: rgba(17,22,28,0.9); color: #e6edf3; border: 1px solid #2a3542; border-radius: 10px;
     padding: 12px 14px; font: 13px/1.4 system-ui, sans-serif; backdrop-filter: blur(6px); max-height: 92vh; overflow-y: auto; }
@@ -101,7 +104,10 @@ function fetchBinZ(url) {
 // | u32 offs[n_arcs+1] | pad8 | f64 xy[2n] | f32 dens[n]
 function loadDataset(name) {
   if (!DS_CACHE[name]) {
-    DS_CACHE[name] = fetchBinZ(name + '.bin.z').then(function (buf) {
+    DS_CACHE[name] = fetchBinZ(name + '.bin.z').catch(function (e) {
+      delete DS_CACHE[name]; // don't cache failures — reselecting retries
+      throw e;
+    }).then(function (buf) {
       var h = new Uint32Array(buf, 0, 4);
       if (h[0] !== 0x765A5475) throw new Error(name + ': bad magic');
       var nArcs = h[2], nVerts = h[3];
@@ -121,7 +127,10 @@ function loadDataset(name) {
 var HEAT_P = null;
 function loadHeat() {
   if (!HEAT_P) {
-    HEAT_P = fetchBinZ('heat.bin.z').then(function (buf) {
+    HEAT_P = fetchBinZ('heat.bin.z').catch(function (e) {
+      HEAT_P = null; // don't cache failures
+      throw e;
+    }).then(function (buf) {
       var h = new Uint32Array(buf, 0, 3);
       if (h[0] !== 0x685A5475) throw new Error('heat.bin.z: bad magic');
       var g = new Float64Array(buf, 16, 4);
@@ -203,6 +212,9 @@ var view = (function () {
 })();
 var map = L.map('map', { worldCopyJump: true, preferCanvas: true }).setView([view[0], view[1]], view[2]);
 map.on('moveend', function () { syncHash(); });
+// our own updates go through replaceState (never fires hashchange), so any
+// hashchange is an external paste/navigation — reload to apply it
+window.addEventListener('hashchange', function () { location.reload(); });
 var streets = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' }).addTo(map);
 var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri' });
 var dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' });
@@ -498,6 +510,7 @@ Layer.prototype.send = function () {
 Layer.prototype.request = function () {
   if (!this.on) return;
   this.gen++;
+  this.err = null;
   if (this.busy) this.abort(); // abort mid-compute, start fresh
   this.busy = true; this.spin.classList.add('on');
   var self = this, gen = this.gen;
@@ -509,7 +522,9 @@ Layer.prototype.request = function () {
   }).catch(function (e) {
     if (gen !== self.gen) return;
     self.busy = false; self.spin.classList.remove('on');
+    self.err = String(e && e.message || e);
     console.error(e);
+    updateStats();
   });
 };
 Layer.prototype.redraw = function () {
@@ -610,7 +625,10 @@ var ZONES_CACHE = {}, ZONES_DATA = {}; // promise / resolved (for sync hover rea
 // | pad2 | u16 ids[w*h] (0xFFFF = no zone; row 0 = 90°N)
 function loadZones(name) {
   if (!ZONES_CACHE[name]) {
-    ZONES_CACHE[name] = fetchBinZ('zones-' + name + '.bin.z').then(function (buf) {
+    ZONES_CACHE[name] = fetchBinZ('zones-' + name + '.bin.z').catch(function (e) {
+      delete ZONES_CACHE[name]; // don't cache failures
+      throw e;
+    }).then(function (buf) {
       var h = new Uint32Array(buf, 0, 4);
       if (h[0] !== 0x7A5A5475) throw new Error('zones: bad magic');
       var dv = new DataView(buf), p = 16, names = [];
@@ -875,7 +893,14 @@ function updateStats() {
   el.innerHTML = '';
   var shown = 0;
   layers.forEach(function (s) {
-    if (!s.on || !s.result || !s.data) return;
+    if (!s.on) return;
+    if (s.err) {
+      shown++;
+      el.innerHTML += '<div class="st"><span class="sw" style="background:' + s.color + '"></span>' +
+        '<span style="color:#ff6b6b">' + s.err + ' — re-pick the dataset to retry</span></div>';
+      return;
+    }
+    if (!s.result || !s.data) return;
     shown++;
     var q = QUANT[s.quant];
     var kept = s.result.kept;
