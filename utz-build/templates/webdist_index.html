@@ -545,7 +545,8 @@ heatOp.addEventListener('input', function () { if (heatLayer) heatLayer.setOpaci
 // μTZ runtime at build time.
 var GRID_DEG = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 4 / 3, 1.5, 2, 3, 5, 10]; // slider detents
 var gridDeg = 2; // current cell size (typed values may sit between detents)
-map.createPane('pipgrid').style.zIndex = 360; // above heat, below vectors
+map.createPane('pipgrid').style.zIndex = 360; // above heat, below the layer lines
+var gridRenderer = L.canvas({ pane: 'pipgrid' });
 var gridOverlay = null, gridInfo = null, gridGen = 0;
 var gridCb = document.getElementById('gridcb'), gridSl = document.getElementById('gridsl');
 var gridDegIn = document.getElementById('griddeg');
@@ -687,53 +688,33 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
       n.toLocaleString() + ' cells (' + pct + '%) · grid ≈ ' + fmtBytes(gridBytes) +
       ' · grid-only errs ' + Math.round(errKm2).toLocaleString() + ' km²';
   }
-  // draw crisp cells on a Mercator-resampled canvas (like the heatmap)
-  var kx = Math.max(1, Math.floor(2048 / nc));
-  var Wp = nc * kx, Hp = 1024;
-  var cv = document.createElement('canvas'); cv.width = Wp; cv.height = Hp;
-  var ctx = cv.getContext('2d'), img = ctx.createImageData(Wp, Hp);
-  var yT = mercY(85.05), yB = mercY(-85.05);
-  var edge = function (px, r2) {
-    var oo = (r2 * Wp + px) * 4;
-    img.data[oo] = 12; img.data[oo + 1] = 15; img.data[oo + 2] = 20; img.data[oo + 3] = 235;
-  };
-  var prevSr = -1;
-  for (var r = 0; r < Hp; r++) {
-    var lat = (2 * Math.atan(Math.exp(yT + (yB - yT) * (r + 0.5) / Hp)) - Math.PI / 2) * 180 / Math.PI;
-    var sr = Math.floor((90 - lat) / deg);
-    if (sr < 0 || sr >= nr) { prevSr = -1; continue; }
-    var boundary = prevSr !== sr; // first pixel row of a new cell-row band
-    for (var cc = 0; cc < nc; cc++) {
-      var ci = sr * nc + cc;
-      if (hit[ci]) {
-        var rgb = [255, 180, 84], alpha = 80;
-        if (dom && dom[ci] >= 0) {
-          rgb = dom[ci] === (z ? z.names.length : -1) ? [125, 135, 145] : zoneColor(dom[ci]);
-          // opacity IS the dominance signal: a 50.1% coin-flip cell renders at
-          // ~15%, a fully-dominant cell at ~85% — far apart on purpose
-          var t2 = Math.max(0, Math.min(1, (shr[ci] - 0.5) * 2));
-          alpha = Math.round(38 + 178 * t2);
-        }
-        for (var px = cc * kx; px < (cc + 1) * kx; px++) {
-          var oo = (r * Wp + px) * 4;
-          img.data[oo] = rgb[0]; img.data[oo + 1] = rgb[1]; img.data[oo + 2] = rgb[2]; img.data[oo + 3] = alpha;
-        }
-        // hard cell outline: left/right on every row, top/bottom at band edges
-        edge(cc * kx, r); edge((cc + 1) * kx - 1, r);
-        if (boundary || r === Hp - 1) {
-          for (var hx = cc * kx; hx < (cc + 1) * kx; hx++) edge(hx, r);
-        }
-      }
-      // bottom edge of the band above, drawn on its last pixel row
-      if (boundary && prevSr >= 0 && r > 0 && hit[prevSr * nc + cc]) {
-        for (var bx = cc * kx; bx < (cc + 1) * kx; bx++) edge(bx, r - 1);
-      }
-    }
-    prevSr = sr;
+  // vector cells: crisp screen-space strokes at every zoom, Leaflet does the
+  // Mercator projection (no hand-rolled raster resampling)
+  if (n > 40000) {
+    document.getElementById('gridv').textContent += ' · too many cells to draw — raise cell size';
+    return;
   }
-  ctx.putImageData(img, 0, 0);
-  gridOverlay = L.imageOverlay(cv.toDataURL('image/png'), [[-85.05, -180], [85.05, 180]],
-    { pane: 'pipgrid', interactive: false });
+  var rects = [];
+  for (var cy2 = 0; cy2 < nr; cy2++) {
+    for (var cx2 = 0; cx2 < nc; cx2++) {
+      var ci2 = cy2 * nc + cx2;
+      if (!hit[ci2]) continue;
+      var fill = '#ffb454', fo = 0.3;
+      if (dom && dom[ci2] >= 0) {
+        var rgb = dom[ci2] === z.names.length ? [125, 135, 145] : zoneColor(dom[ci2]);
+        fill = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
+        // fill opacity IS the dominance signal: a 50.1% coin-flip cell renders
+        // at 0.15, a fully-dominant cell at 0.75 — far apart on purpose
+        var t2 = Math.max(0, Math.min(1, (shr[ci2] - 0.5) * 2));
+        fo = 0.15 + 0.6 * t2;
+      }
+      rects.push(L.rectangle(
+        [[90 - (cy2 + 1) * deg, -180 + cx2 * deg], [90 - cy2 * deg, -180 + (cx2 + 1) * deg]],
+        { renderer: gridRenderer, color: '#0c0f14', opacity: 0.55, weight: 1,
+          fillColor: fill, fillOpacity: fo, interactive: false }));
+    }
+  }
+  gridOverlay = L.layerGroup(rects);
   gridOverlay.addTo(map);
 }
 map.on('mousemove', function (e) {
