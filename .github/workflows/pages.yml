@@ -2,8 +2,8 @@
 # API docs, and deploy them to GitHub Pages:
 #   https://docwilco.github.io/utz/live/  — viewer
 #   https://docwilco.github.io/utz/docs/  — rustdoc
-# (root redirects to /live/). Requires Pages to be set to the
-# "GitHub Actions" source in the repo settings.
+# (root is a small landing page linking both). Requires Pages to be set to
+# the "GitHub Actions" source in the repo settings.
 name: Deploy viewer to Pages
 
 on:
@@ -50,10 +50,28 @@ jobs:
           cp -r webdist site/live
           cp -r target/doc site/docs
           cat > site/index.html <<'EOF'
-          <!DOCTYPE html><meta charset="utf-8">
-          <meta http-equiv="refresh" content="0; url=live/">
-          <title>uTZ</title>
-          <p><a href="live/">uTZ live simplification viewer</a> · <a href="docs/utz/">API docs</a></p>
+          <!DOCTYPE html>
+          <html lang="en"><head><meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>μTZ</title>
+          <style>
+            body { background: #0d1117; color: #e6edf3; font: 16px/1.6 system-ui, sans-serif;
+                   max-width: 40rem; margin: 4rem auto; padding: 0 1rem; }
+            a { color: #58a6ff; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+            li { margin: 0.5rem 0; }
+            .sub { color: #8b98a8; font-size: 14px; }
+          </style></head><body>
+          <h1>μTZ</h1>
+          <p class="sub">Tiny, embeddable latitude/longitude → IANA timezone lookup for Rust.</p>
+          <ul>
+            <li><a href="live/">Live simplification viewer</a> — TZBB datasets, algorithms, ε,
+                quantization, population weighting, and the coarse pre-filter grid, running the
+                builder's own code in-browser</li>
+            <li><a href="docs/utz/">API documentation</a> — rustdoc for the μTZ crates</li>
+            <li><a href="https://github.com/docwilco/utz">Source on GitHub</a></li>
+          </ul>
+          </body></html>
           EOF
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

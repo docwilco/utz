@@ -5,10 +5,12 @@
 //
 // usage: cargo run --release -p utz-build --example visualize [outdir]
 //   writes outdir (default webdist/): index.html · utz_simplify.wasm ·
-//   heat.bin.z · <dataset>.bin.z for now/1970/all/land-now/land-1970/land-all
+//   heat.bin.z · <dataset>.bin.z + zones-<dataset>.bin.z for
+//   now/1970/all/land-now/land-1970/land-all
 
 use std::path::{Path, PathBuf};
 
+use utz_build::encode::{self, Codec, Params};
 use utz_build::{topo, viz};
 
 const DATASETS: [&str; 6] = ["now", "1970", "all", "land-now", "land-1970", "land-all"];
@@ -41,15 +43,64 @@ fn main() -> anyhow::Result<()> {
         let verts: usize = topo0.arc_coords.iter().map(|a| a.len()).sum();
         let bin = viz::dataset_bin(&topo0.arc_coords, dens.as_ref());
         let z = write_z(&out.join(format!("{ds}.bin.z")), &bin)?;
+        let zn = write_z(&out.join(format!("zones-{ds}.bin.z")), &zones_bin(&feats, ds)?)?;
         println!(
-            "{ds}: {} arcs, {verts} verts, {:.1} MiB -> {:.1} MiB",
+            "{ds}: {} arcs, {verts} verts, {:.1} MiB -> {:.1} MiB (+ zones {:.1} MiB)",
             topo0.arc_coords.len(),
             bin.len() as f64 / (1 << 20) as f64,
-            z as f64 / (1 << 20) as f64
+            z as f64 / (1 << 20) as f64,
+            zn as f64 / (1 << 20) as f64
         );
     }
     println!("wrote {}", out.display());
     Ok(())
+}
+
+/// Zone lattice for the coarse-prefilter dominance view: encode a fine-ε
+/// container and let the *runtime* answer a 0.1° lattice, so the browser
+/// shows exactly what the shipped grid+PIP would answer. Format
+/// (little-endian): `"uTZz" | u32 w | u32 h | u32 n_zones
+/// | per zone: u16 len + utf8 tzid | pad to 2 | u16 ids[w·h]`
+/// (0xFFFF = no zone; row 0 = 90°N, col 0 = 180°W, cell centers sampled).
+fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> anyhow::Result<Vec<u8>> {
+    const STEP: f64 = 0.1;
+    let p = Params {
+        dataset: utz_build::dataset(ds)?.code(),
+        tzbb_release: "webdist",
+        eps_m: 100.0,
+        quant_bits: 24,
+        grid_deg: 2,
+        codec: Codec::Zstd,
+        density: None,
+    };
+    let finder = utz::Finder::from_vec(encode::encode(feats, &p)?)
+        .map_err(|e| anyhow::anyhow!("finder: {e}"))?;
+    let mut names: Vec<&str> = feats.iter().filter_map(|f| f.tzid.as_deref()).collect();
+    names.sort_unstable();
+    names.dedup();
+    let idx: std::collections::HashMap<&str, u16> =
+        names.iter().enumerate().map(|(i, &n)| (n, i as u16)).collect();
+
+    let (w, h) = ((360.0 / STEP) as usize, (180.0 / STEP) as usize);
+    let mut o = Vec::with_capacity(16 + w * h * 2);
+    o.extend_from_slice(b"uTZz");
+    o.extend_from_slice(&(w as u32).to_le_bytes());
+    o.extend_from_slice(&(h as u32).to_le_bytes());
+    o.extend_from_slice(&(names.len() as u32).to_le_bytes());
+    for n in &names {
+        o.extend_from_slice(&(n.len() as u16).to_le_bytes());
+        o.extend_from_slice(n.as_bytes());
+    }
+    o.resize(o.len().next_multiple_of(2), 0);
+    for r in 0..h {
+        let lat = 90.0 - (r as f64 + 0.5) * STEP;
+        for c in 0..w {
+            let lon = -180.0 + (c as f64 + 0.5) * STEP;
+            let id = finder.lookup(lon, lat).and_then(|t| idx.get(t).copied()).unwrap_or(0xFFFF);
+            o.extend_from_slice(&id.to_le_bytes());
+        }
+    }
+    Ok(o)
 }
 
 /// zlib-deflate (the browser side inflates with `DecompressionStream('deflate')`).
