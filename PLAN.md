@@ -35,7 +35,7 @@ exist for server use).
 utz/                 workspace root
   Cargo.toml         [workspace] members = ["utz", "utz-build"]
   PLAN.md            this file
-  tz.toml            (optional) asset-knob overrides read at build time
+  utz.toml           (optional) asset-knob overrides read at build time (§11)
   .gitignore         cache/, assets/, *.geojson, *.utz, viewers
 
   utz/               runtime library crate
@@ -266,30 +266,62 @@ Decision: **both eager and lazy, feature-selected**, plus `lookup_coarse`.
 
 ---
 
-## 11. Features & config (leaning features; a couple in `tz.toml`)
+## 11. Features & config — **decided**: split by what the knob touches
 
-No default features. Grouped `compile_error!`s that **list the options**:
-```rust
-compile_error!("select a dataset: enable exactly one of `now`, `1970`, or `all`");
-compile_error!("select a codec: one of `uncompressed`,`gzip`,`zstd-sys`,`ruzstd`,`brotli`,`xz`");
+The dividing line is **not** discrete-vs-continuous; it's **decoder-shape vs
+asset-shape**. The format is self-describing (header records every knob, decoder
+stays generic), so only knobs that gate *compiled code* belong in features.
+
+- **Cargo features (change what code compiles):** codec backends (as today:
+  `gzip`/`ruzstd`/`zstd-sys`/`brotli`/`xz`), `std`, memory mode
+  (`eager`/`lazy`/`coarse`), `embed`/`no-embed`, plus **bundle presets**
+  `tiny`/`balanced`/`accurate` — each preset just sets default *asset* knobs
+  (dataset/ε/quant/grid) so the zero-config docs.rs experience works. Enable
+  exactly one preset, or none + `utz.toml`. Keep the grouped `compile_error!`s
+  that **list the options**:
+  ```rust
+  compile_error!("select a codec: one of `uncompressed`,`gzip`,`zstd-sys`,`ruzstd`,`brotli`,`xz`");
+  compile_error!("select a preset (`tiny`/`balanced`/`accurate`) or set knobs in utz.toml (UTZ_CONFIG)");
+  ```
+- **`utz.toml` (changes only the generated asset):** dataset (`now`/`1970`/`all`),
+  `rdp_meters`, quant width (`i16`/`i24`/`i32`), grid degree, TZBB URL override.
+  Values override the preset's defaults, key by key. Single-key `UTZ_*` env vars
+  (e.g. `UTZ_RDP_METERS`) override the toml — esp-config style, handy for one-off
+  experiments.
+
+**Why the one-of-N axes moved out of features:** Cargo features are unified across
+the dependency graph and must be **additive** — two crates enabling `utz/now` and
+`utz/1970` both turn on with no resolution beyond the `compile_error!`. Same reason
+`getrandom` moved backend selection from features to `--cfg` flags. Presets remain
+features because they're *defaults*, overridable in `utz.toml` rather than
+conflicting.
+
+**How `build.rs` finds `utz.toml`:** a dependency's build script runs with
+`CARGO_MANIFEST_DIR` = utz's own read-only registry checkout; it **cannot** discover
+files in the consumer's repo. Consumers set a pointer in their
+`.cargo/config.toml`:
+```toml
+[env]
+UTZ_CONFIG = { value = "utz.toml", relative = true }
 ```
+Cargo discovers that config by walking up from the *invocation* cwd, resolves
+`relative = true` against the directory containing `.cargo/`, and injects the
+absolute path into every build-script environment — utz's `build.rs` just reads
+`env::var("UTZ_CONFIG")`. Committed → reproducible (kills the usual env-var
+objection). `build.rs` emits `rerun-if-env-changed=UTZ_CONFIG` +
+`rerun-if-changed=<path>` (+ `rerun-if-env-changed` per `UTZ_*` key). For this
+workspace, `utz.toml` lives at the repo root. Known cargo gotcha: config discovery
+follows cwd, not `--manifest-path`. Rejected: walking up from `OUT_DIR` (breaks
+under `CARGO_TARGET_DIR`); acceptable later as a convenience fallback only.
+Escape hatch for fully custom builds: `no-embed` + the `utz-build` CLI, embedding
+the `.utz` yourself (`include_bytes!` / flash partition) — the
+`prost-build`/`icu_datagen` consumer-side pattern.
 
-- **Cargo features (discrete):** dataset (`now`/`1970`/`all`), codec (+ size tiers),
-  quant (`i16`/`i24`/`i32`), grid (`g1`/`g2`/`g3`/`g5`/`g10`), memory mode
-  (`eager`/`lazy`/`coarse`), `embed`/`no-embed`. RDP presets (`rdp-100`/`rdp-250`/…).
-- **`tz.toml` (continuous / rare overrides):** an arbitrary `rdp_meters` not covered
-  by a preset, custom grid degree, TZBB URL override. `build.rs` reads it,
-  `rerun-if-changed`.
-
-**Trade-off (discussion continues):**
-- *Features* → reproducible (in Cargo.toml / lockfile), discoverable (docs.rs), but
-  discrete and combinatorial; each "one-of-N" axis needs mutual-exclusion boilerplate.
-- *Env vars* → flexible/continuous, but ambient & non-reproducible (not captured in
-  Cargo.toml; CI must set them).
-- *Config file* → flexible **and** reproducible (committed), but another mechanism.
-- Because the format is **self-describing**, knobs never change decode code — so
-  whichever mechanism sets them, the runtime stays generic. Leaning: **features for
-  the discrete knobs + `tz.toml` for the continuous overrides.** Not final.
+**Prior art consulted:** `esp-config` (typed keys via `[env]`, our ESP32 audience's
+idiom), `getrandom`/`time`/`portable-atomic` (`--cfg` for one-of-N),
+`log` (`max_level_*` tier-features precedent and its N-preset ugliness),
+`openssl-sys`/`ring` (raw env pointers), `sqlx.toml` (config file, but works only
+because *proc macros* see the consumer's `CARGO_MANIFEST_DIR`; build scripts don't).
 
 ---
 
@@ -330,13 +362,15 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
 
 ## 14. Open decisions (continue later)
 
-1. **Build-knob mechanism** — features vs `tz.toml` split (leaning features + toml).
+1. ~~**Build-knob mechanism**~~ — **decided** (§11): features for decoder-shape
+   knobs + `tiny`/`balanced`/`accurate` presets; `utz.toml` (via `UTZ_CONFIG`
+   `[env]` pointer) + `UTZ_*` env overrides for asset-shape knobs.
 2. ~~**`geo` vs hand-rolled PIP**~~ — **decided**: hand-rolled i64 (`utz/src/pip.rs`),
    geo dev-oracle only. 0/20k disagreements, speed parity with geo after
    adopting its loop shape (see §15).
 3. **`LonLat` newtype** vs raw `(lon, lat)` to prevent order footgun.
 4. ~~**Antimeridian**~~ — **verified pre-split** (see §15); no split pass.
-5. **Default preset** values (dataset/ε/quant/grid/codec) for the "balanced" build.
+5. **Preset values** (dataset/ε/quant/grid/codec) for `tiny`/`balanced`/`accurate` (§11).
 6. Crate/repo name confirmed `utz`; public naming of feature groups.
 7. **Alloc-free mode** (discuss): today `no_std` = core+**alloc** — `Finder`
    carries `Vec` scratch (empty until a border-cell lookup) and `from_vec`/
@@ -376,8 +410,8 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
    - Corridor/streaming family (Reumann–Witkam, Opheim, Lang, Zhao–Saalfeld):
      **rejected** — quality-per-vertex worse than RDP; their single-pass
      speed advantage is worthless at build time.
-   Still open: `simplify_algo` header byte + build-knob surface (feature
-   names / tz.toml) for selecting VW/II per asset; size-vs-RDP sweep for
+   Still open: `simplify_algo` header byte + its `utz.toml` key (§11) for
+   selecting VW/II per asset; size-vs-RDP sweep for
    Imai–Iri on real arcs to see if it should become the default.
 
 ---
