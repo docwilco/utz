@@ -1,0 +1,26 @@
+# ESP32-S3 lookup-bench firmware. Excluded from the main workspace: the
+# Xtensa target needs the esp toolchain (see README.md). Standalone root:
+[workspace]
+
+[package]
+name = "utz-bench-firmware"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[dependencies]
+# uncompressed container borrowed zero-copy from flash (Finder::from_static),
+# so no codec features and almost no RAM
+utz = { path = "../utz", default-features = false }
+utz-bench-common = { path = "../utz-bench-common" }
+esp-hal = { version = "1.0.0", features = ["esp32s3", "unstable"] }
+esp-alloc = "0.8"
+esp-println = { version = "0.15", features = ["esp32s3"] }
+esp-backtrace = { version = "0.17", features = ["esp32s3", "panic-handler", "println"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+debug = true # symbols for espflash stack traces; not flashed

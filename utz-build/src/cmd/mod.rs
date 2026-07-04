@@ -7,6 +7,7 @@ pub mod csr_sweep;
 pub mod density_compare;
 pub mod density_probe;
 pub mod dominant_cost;
+pub mod encode;
 pub mod geoquant;
 pub mod grid2mem;
 pub mod grid_bench;

@@ -1,0 +1,4 @@
+# Xtensa is not in mainline rustc — install the esp channel with:
+#   cargo install espup && espup install
+[toolchain]
+channel = "esp"

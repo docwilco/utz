@@ -1941,6 +1941,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "utz-bench-cli"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "utz",
+ "utz-bench-common",
+]
+
+[[package]]
+name = "utz-bench-common"
+version = "0.0.0"
+dependencies = [
+ "utz",
+]
+
+[[package]]
 name = "utz-build"
 version = "0.0.0"
 dependencies = [

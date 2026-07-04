@@ -1,0 +1,14 @@
+[package]
+name = "utz-bench-cli"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# Host-side lookup bench over a .utz container file.
+# Produce one with: cargo run --release -p utz-build -- encode now 500
+[dependencies]
+anyhow = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+utz = { path = "../utz", features = ["std", "gzip", "ruzstd", "brotli", "xz"] }
+utz-bench-common = { path = "../utz-bench-common" }

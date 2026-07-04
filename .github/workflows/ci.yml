@@ -36,6 +36,8 @@ jobs:
       - run: cargo build -p utz --target riscv32imac-unknown-none-elf
       # the pure-Rust no_std+alloc codec features
       - run: cargo build -p utz --target riscv32imac-unknown-none-elf --features gzip,ruzstd
+      # the shared bench harness must stay no_std (the ESP32-S3 firmware uses it)
+      - run: cargo build -p utz-bench-common --target riscv32imac-unknown-none-elf
 
   docs:
     name: Docs
