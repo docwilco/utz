@@ -657,7 +657,10 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
           // no boundary crosses this cell → single candidate: sample center
           var fc = Math.min(z.h - 1, Math.floor((cy + 0.5) * s)) * z.w +
                    Math.min(z.w - 1, Math.floor((cx + 0.5) * s));
-          intern('s' + z.ids[fc], 1);
+          var sid = z.ids[fc] === 0xFFFF ? NONE : z.ids[fc];
+          dom[cy * nc + cx] = sid;
+          shr[cy * nc + cx] = 1;
+          intern('s' + sid, 1);
           continue;
         }
         var fx0 = Math.round(cx * s), fx1 = Math.min(z.w, Math.round((cx + 1) * s));
@@ -682,7 +685,7 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
         for (var t = 0; t < touched.length; t++) counts[touched[t]] = 0;
       }
     }
-    gridInfo = { deg: deg, nc: nc, nr: nr, cells: cells };
+    gridInfo = { deg: deg, nc: nc, nr: nr, cells: cells, dom: dom, names: z.names };
     var gridBytes = 4 + 2 * nc * nr + 2 + 2 * (lists.size + 1) + 2 * listSum;
     document.getElementById('gridv').textContent =
       n.toLocaleString() + ' cells (' + pct + '%) · grid ≈ ' + fmtBytes(gridBytes) +
@@ -694,6 +697,11 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
     document.getElementById('gridv').textContent += ' · too many cells to draw — raise cell size';
     return;
   }
+  var css = function (id) {
+    var rgb = id === z.names.length ? [125, 135, 145] : zoneColor(id);
+    return 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
+  };
+  // contested (boundary-crossed) cells: outline + dominance-opacity fill
   var rects = [];
   for (var cy2 = 0; cy2 < nr; cy2++) {
     for (var cx2 = 0; cx2 < nc; cx2++) {
@@ -701,8 +709,7 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
       if (!hit[ci2]) continue;
       var fill = '#ffb454', fo = 0.3;
       if (dom && dom[ci2] >= 0) {
-        var rgb = dom[ci2] === z.names.length ? [125, 135, 145] : zoneColor(dom[ci2]);
-        fill = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
+        fill = css(dom[ci2]);
         // fill opacity IS the dominance signal: a 50.1% coin-flip cell renders
         // at 0.15, a fully-dominant cell at 0.75 — far apart on purpose
         var t2 = Math.max(0, Math.min(1, (shr[ci2] - 0.5) * 2));
@@ -714,6 +721,36 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
           fillColor: fill, fillOpacity: fo, interactive: false }));
     }
   }
+  // single-zone cells: calm zone-colored backdrop, no grid lines — adjacent
+  // same-zone cells merge into one rectangle per horizontal run
+  if (dom) {
+    var NONE2 = z.names.length;
+    var fills = [];
+    for (var fy = 0; fy < nr; fy++) {
+      var run = -1, runStart = 0;
+      for (var fx = 0; fx <= nc; fx++) {
+        var cur = -1;
+        if (fx < nc) {
+          var cj = fy * nc + fx;
+          if (!hit[cj] && dom[cj] >= 0 && dom[cj] !== NONE2) cur = dom[cj];
+        }
+        if (cur !== run) {
+          if (run >= 0) {
+            fills.push(L.rectangle(
+              [[90 - (fy + 1) * deg, -180 + runStart * deg], [90 - fy * deg, -180 + fx * deg]],
+              { renderer: gridRenderer, stroke: false, fillColor: css(run),
+                fillOpacity: 0.28, interactive: false }));
+          }
+          run = cur; runStart = fx;
+        }
+      }
+    }
+    if (rects.length + fills.length <= 60000) {
+      rects = fills.concat(rects); // fills first → drawn under the outlines
+    } else {
+      document.getElementById('gridv').textContent += ' · backdrop skipped (too many cells)';
+    }
+  }
   gridOverlay = L.layerGroup(rects);
   gridOverlay.addTo(map);
 }
@@ -722,7 +759,12 @@ map.on('mousemove', function (e) {
   var lon = ((e.latlng.lng + 180) % 360 + 360) % 360 - 180;
   var cx = Math.floor((lon + 180) / gridInfo.deg);
   var cy = Math.floor((90 - e.latlng.lat) / gridInfo.deg);
-  var t = gridInfo.cells[cy * gridInfo.nc + cx];
+  var ci = cy * gridInfo.nc + cx;
+  var t = gridInfo.cells[ci];
+  if (!t && gridInfo.dom && gridInfo.dom[ci] >= 0) {
+    var d = gridInfo.dom[ci];
+    t = (d === gridInfo.names.length ? '(none)' : gridInfo.names[d]) + ' 100%';
+  }
   gridHover.textContent = t || GRID_HINT;
 });
 gridCb.addEventListener('change', gridRefresh);
