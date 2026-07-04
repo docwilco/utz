@@ -39,6 +39,9 @@ jobs:
 
   docs:
     name: Docs
+    # PR gate only — on main the Pages workflow builds the docs (same
+    # -D warnings) as part of the deploy, so don't build them twice
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     env:
       RUSTDOCFLAGS: -D warnings
