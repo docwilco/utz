@@ -42,6 +42,9 @@
 </head>
 <body>
 <div id="map"></div>
+<div id="hoverbox" style="position:absolute; bottom:30px; left:12px; z-index:600; display:none;
+  background:rgba(17,22,28,0.9); border:1px solid #2a3542; border-radius:8px; padding:6px 10px 6px 8px;
+  font:11px/1.5 system-ui, sans-serif; color:#e6edf3; backdrop-filter:blur(6px); max-width:46rem"></div>
 <div id="panel">
   <h2>μTZ — live simplification</h2>
   <button id="clps" title="collapse/expand controls">–</button>
@@ -72,7 +75,7 @@
       <input type="range" id="gridsl" min="0" max="11" value="8" style="flex:1">
       <input type="text" class="val" id="griddeg" title="cell size in degrees (editable)">
     </div>
-    <div class="st" id="gridhover" style="color:#8b98a8">cell fill: hue = dominant zone, opacity = dominance · hover a cell for its candidates</div>
+    <div class="st" style="color:#8b98a8">cell fill: hue = dominant zone, opacity = dominance</div>
   </div>
   <div class="qsec">
     <div class="qtitle">Reduction <span>· enabled layers</span></div>
@@ -160,7 +163,46 @@ function fmtBytes(b) {
   return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MiB' : Math.round(b / 1024).toLocaleString() + ' KiB';
 }
 
-var map = L.map('map', { worldCopyJump: true, preferCanvas: true }).setView([25, 5], 2);
+// ---- shareable URL fragment: #m=lat,lng,zoom&l0=ds,algo,eps,quant,w&h=op&g=deg,layer ----
+var HASH = {};
+location.hash.slice(1).split('&').forEach(function (kv) {
+  var i = kv.indexOf('=');
+  if (i > 0) HASH[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1));
+});
+var HASH_READY = false; // suppress syncHash() while restoring
+function layerDef(i, fallback) {
+  var v = HASH['l' + i];
+  if (!v) return fallback;
+  var on = v[0] !== '!';
+  var p = (on ? v : v.slice(1)).split(',');
+  var dsi = DS_LIST.indexOf(p[0]);
+  var algo = ALGO.findIndex(function (a2) { return a2.key === p[1]; });
+  var eps = parseFloat(p[2]);
+  var quant = QUANT.findIndex(function (q) { return q.key === p[3]; });
+  var w = p[4] === 'off' ? null : parseFloat(p[4]);
+  if (dsi < 0 || algo < 0 || !(eps > 0) || quant < 0) return fallback;
+  return { on: on, dsi: dsi, algo: algo, eps: eps, quant: quant, w: (w > 0 && w < 1) ? w : null };
+}
+function syncHash() {
+  if (!HASH_READY) return;
+  var c = map.getCenter();
+  var parts = ['m=' + c.lat.toFixed(4) + ',' + c.lng.toFixed(4) + ',' + map.getZoom()];
+  layers.forEach(function (s, i) {
+    var w = s.wmin();
+    parts.push('l' + i + '=' + (s.on ? '' : '!') + DS_LIST[s.dsi] + ',' + ALGO[s.algo].key + ',' +
+      s.eps + ',' + QUANT[s.quant].key + ',' + (w < 1 ? w : 'off'));
+  });
+  if (heatCb.checked) parts.push('h=' + heatOp.value);
+  if (gridCb.checked) parts.push('g=' + (Math.round(gridDeg * 1000) / 1000) + ',' + gridLayerSel.selectedIndex);
+  history.replaceState(null, '', '#' + parts.join('&'));
+}
+
+var view = (function () {
+  var m = (HASH.m || '').split(',').map(parseFloat);
+  return m.length === 3 && m.every(isFinite) ? m : [25, 5, 2];
+})();
+var map = L.map('map', { worldCopyJump: true, preferCanvas: true }).setView([view[0], view[1]], view[2]);
+map.on('moveend', function () { syncHash(); });
 var streets = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' }).addTo(map);
 var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri' });
 var dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' });
@@ -272,8 +314,8 @@ function Layer(idx, color, def) {
   var self = this;
   this.idx = idx; this.color = color;
   this.on = def.on; this.dsi = def.dsi || 0; this.algo = def.algo; this.eps = def.eps; this.quant = def.quant;
-  this.pwv = def.pwv || 0; // pop-weight slider position, 0 = off
-  this.pwx = null;         // exact typed multiplier, overrides the slider
+  this.pwx = def.w || null; // exact pop multiplier (typed / from URL), overrides the slider
+  this.pwv = this.pwx ? Math.max(1, Math.min(100, Math.round(-50 * Math.log10(this.pwx)))) : (def.pwv || 0);
   this.gen = 0; this.busy = false; this.ready = false; this.pendingRun = false;
   this.worker = null; this.result = null; this.data = null;
   this.layer = L.polyline([], { color: color, weight: 1.2, opacity: 0.95 });
@@ -307,6 +349,12 @@ function Layer(idx, color, def) {
   this.epsRow.appendChild(elbl); this.epsRow.appendChild(this.epsSl); this.epsRow.appendChild(this.epsV);
   document.getElementById('slots').appendChild(this.epsRow);
   var slEps = function () { return Math.round(Math.pow(10, self.epsSl.value / 25)); };
+  if (EPS_M.indexOf(this.eps) < 0) { // custom ε (e.g. restored from the URL)
+    this.selEps.selectedIndex = EPS_M.length;
+    this.epsSl.value = Math.max(0, Math.min(100, Math.round(25 * Math.log10(Math.max(1, this.eps)))));
+    this.epsV.value = this.eps;
+    this.epsRow.style.display = '';
+  }
 
   // pop-weight sub-row: log slider, off (×1) … ×0.01; recompute on release
   this.popRow = document.createElement('div'); this.popRow.className = 'slot';
@@ -477,11 +525,11 @@ Layer.prototype.redraw = function () {
 };
 
 var layers = [
-  new Layer(0, '#ff2d78', { on: true, dsi: 0, algo: 0, eps: 500, quant: 3 }),
-  new Layer(1, '#00c8ff', { on: false, dsi: 0, algo: 2, eps: 500, quant: 3 }),
-  new Layer(2, '#ffd400', { on: false, dsi: 0, algo: 1, eps: 1000, quant: 3 }),
+  new Layer(0, '#ff2d78', layerDef(0, { on: true, dsi: 0, algo: 0, eps: 500, quant: 3 })),
+  new Layer(1, '#00c8ff', layerDef(1, { on: false, dsi: 0, algo: 2, eps: 500, quant: 3 })),
+  new Layer(2, '#ffd400', layerDef(2, { on: false, dsi: 0, algo: 1, eps: 1000, quant: 3 })),
   // green raw layer: full-res reference (Raw algo, f64) — heavy to draw
-  new Layer(3, '#00d95f', { on: false, dsi: 0, algo: 3, eps: 500, quant: 0 }),
+  new Layer(3, '#00d95f', layerDef(3, { on: false, dsi: 0, algo: 3, eps: 500, quant: 0 })),
 ];
 
 // ---- population density heatmap (lazy-fetched raster) ----
@@ -532,8 +580,10 @@ heatCb.addEventListener('change', function () {
       heatCb.title = 'heat.bin.z unavailable';
     });
   } else if (heatLayer) { map.removeLayer(heatLayer); }
+  syncHash();
 });
 heatOp.addEventListener('input', function () { if (heatLayer) heatLayer.setOpacity(heatOp.value / 100); });
+heatOp.addEventListener('change', function () { syncHash(); });
 
 // ---- Coarse pre-filter preview ----
 // The encoder's grid prefilter answers most lookups directly; only cells
@@ -547,17 +597,15 @@ var GRID_DEG = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 4 / 3, 1.5, 2, 3, 5, 10]; // slider 
 var gridDeg = 2; // current cell size (typed values may sit between detents)
 map.createPane('pipgrid').style.zIndex = 360; // above heat, below the layer lines
 var gridRenderer = L.canvas({ pane: 'pipgrid' });
-var gridOverlay = null, gridInfo = null, gridGen = 0;
+var gridOverlay = null, gridGen = 0;
 var gridCb = document.getElementById('gridcb'), gridSl = document.getElementById('gridsl');
 var gridDegIn = document.getElementById('griddeg');
 var gridLayerSel = document.getElementById('gridlayer');
-var gridHover = document.getElementById('gridhover');
-var GRID_HINT = gridHover.textContent;
 function fmtDeg(d) { return (Math.round(d * 100) / 100) + '°'; }
 ['layer 1', 'layer 2', 'layer 3', 'layer 4'].forEach(function (l) {
   var o = document.createElement('option'); o.textContent = l; gridLayerSel.appendChild(o);
 });
-var ZONES_CACHE = {};
+var ZONES_CACHE = {}, ZONES_DATA = {}; // promise / resolved (for sync hover reads)
 // zones-<ds>.bin.z: "uTZz" | u32 w,h,n_zones | per zone u16 len + utf8
 // | pad2 | u16 ids[w*h] (0xFFFF = no zone; row 0 = 90°N)
 function loadZones(name) {
@@ -571,7 +619,8 @@ function loadZones(name) {
         names.push(new TextDecoder().decode(new Uint8Array(buf, p, len))); p += len;
       }
       p += p % 2;
-      return { w: h[1], h: h[2], names: names, ids: new Uint16Array(buf, p, h[1] * h[2]) };
+      ZONES_DATA[name] = { w: h[1], h: h[2], names: names, ids: new Uint16Array(buf, p, h[1] * h[2]) };
+      return ZONES_DATA[name];
     });
   }
   return ZONES_CACHE[name];
@@ -588,10 +637,9 @@ function gridRefresh() {
   var deg = gridDeg;
   gridDegIn.value = fmtDeg(deg);
   if (gridOverlay) { map.removeLayer(gridOverlay); gridOverlay = null; }
-  gridInfo = null;
   var gv = document.getElementById('gridv');
-  gridHover.textContent = GRID_HINT;
   var gen = ++gridGen;
+  syncHash();
   if (!gridCb.checked) { gv.textContent = ''; return; }
   var ly = layers[gridLayerSel.selectedIndex];
   if (!ly || !ly.on || !ly.result) { gv.textContent = 'no result'; return; }
@@ -633,15 +681,14 @@ function gridRefresh() {
   });
 }
 function renderGrid(deg, nc, nr, hit, z, n, pct) {
-  // per crossed cell: dominant zone, its share, top candidates (for hover);
-  // plus a runtime-grid memory estimate (CSR layout: u16 primary per cell +
-  // interned candidate lists) over ALL cells
-  var dom = null, shr = null, cells = null, errKm2 = 0;
+  // per crossed cell: dominant zone + its share; plus a runtime-grid memory
+  // estimate (CSR layout: u16 primary per cell + interned candidate lists)
+  // over ALL cells
+  var dom = null, shr = null, errKm2 = 0;
   if (z) {
     var s = deg * (z.w / 360); // fine lattice cells per grid cell side (may be fractional)
     dom = new Int32Array(nc * nr).fill(-1);
     shr = new Float32Array(nc * nr);
-    cells = {};
     var NONE = z.names.length;
     var counts = new Uint32Array(NONE + 1);
     var lists = new Map(), listSum = 0;
@@ -679,13 +726,9 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
         shr[cy * nc + cx] = share;
         errKm2 += (1 - share) * areaKm2;
         intern(touched.slice().sort(function (a, b) { return a - b; }).join(','), touched.length);
-        cells[cy * nc + cx] = touched.slice(0, 4).map(function (id2) {
-          return (id2 === NONE ? '(none)' : z.names[id2]) + ' ' + (100 * counts[id2] / total).toFixed(0) + '%';
-        }).join(' · ');
         for (var t = 0; t < touched.length; t++) counts[touched[t]] = 0;
       }
     }
-    gridInfo = { deg: deg, nc: nc, nr: nr, cells: cells, dom: dom, names: z.names };
     var gridBytes = 4 + 2 * nc * nr + 2 + 2 * (lists.size + 1) + 2 * listSum;
     document.getElementById('gridv').textContent =
       n.toLocaleString() + ' cells (' + pct + '%) · grid ≈ ' + fmtBytes(gridBytes) +
@@ -754,19 +797,65 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
   gridOverlay = L.layerGroup(rects);
   gridOverlay.addTo(map);
 }
-map.on('mousemove', function (e) {
-  if (!gridInfo) return;
-  var lon = ((e.latlng.lng + 180) % 360 + 360) % 360 - 180;
-  var cx = Math.floor((lon + 180) / gridInfo.deg);
-  var cy = Math.floor((90 - e.latlng.lat) / gridInfo.deg);
-  var ci = cy * gridInfo.nc + cx;
-  var t = gridInfo.cells[ci];
-  if (!t && gridInfo.dom && gridInfo.dom[ci] >= 0) {
-    var d = gridInfo.dom[ci];
-    t = (d === gridInfo.names.length ? '(none)' : gridInfo.names[d]) + ' 100%';
+// ---- map hover: exact + coarse tz per active layer ----
+// exact = the 0.1° runtime-answered lattice at the cursor; coarse = the
+// candidate mix of the cursor's grid cell at the current cell size
+var hoverBox = document.getElementById('hoverbox');
+function zoneName(z, id) { return id === 0xFFFF || id === z.names.length ? '(none)' : z.names[id]; }
+function cellCandidates(z, lon, lat, deg) {
+  var nc = Math.round(360 / deg);
+  var cx = Math.floor((lon + 180) / deg), cy = Math.floor((90 - lat) / deg);
+  var s = deg * (z.w / 360);
+  var fx0 = Math.max(0, Math.round(cx * s)), fx1 = Math.min(z.w, Math.round((cx + 1) * s));
+  var fy0 = Math.max(0, Math.round(cy * s)), fy1 = Math.min(z.h, Math.round((cy + 1) * s));
+  var counts = {}, total = 0;
+  for (var fy = fy0; fy < fy1; fy++) {
+    for (var fx = fx0; fx < fx1; fx++) {
+      var id = z.ids[fy * z.w + fx];
+      counts[id] = (counts[id] || 0) + 1;
+      total++;
+    }
   }
-  gridHover.textContent = t || GRID_HINT;
+  return Object.keys(counts)
+    .sort(function (a, b) { return counts[b] - counts[a]; })
+    .slice(0, 3)
+    .map(function (id2) { return zoneName(z, +id2) + ' ' + (100 * counts[id2] / total).toFixed(0) + '%'; })
+    .join(' · ');
+}
+var lastHover = 0;
+map.on('mousemove', function (e) {
+  var t0 = Date.now();
+  if (t0 - lastHover < 40) return;
+  lastHover = t0;
+  var lat = e.latlng.lat;
+  var lon = ((e.latlng.lng + 180) % 360 + 360) % 360 - 180;
+  var rows = [];
+  layers.forEach(function (s) {
+    if (!s.on) return;
+    var name = DS_LIST[s.dsi];
+    var z = ZONES_DATA[name];
+    var txt;
+    if (!z) {
+      loadZones(name); // kick off; rows fill in on later moves
+      txt = '…';
+    } else if (lat > 90 || lat < -90) {
+      txt = '—';
+    } else {
+      var fx = Math.min(z.w - 1, Math.floor((lon + 180) / 0.1));
+      var fy = Math.min(z.h - 1, Math.max(0, Math.floor((90 - lat) / 0.1)));
+      txt = zoneName(z, z.ids[fy * z.w + fx]) +
+        ' <span style="color:#8b98a8">· cell ' + fmtDeg(gridDeg) + ': ' +
+        cellCandidates(z, lon, lat, gridDeg) + '</span>';
+    }
+    rows.push('<div class="st"><span class="sw" style="background:' + s.color + '"></span><span>' +
+      name + '</span><span class="num" style="margin-left:10px">' + txt + '</span></div>');
+  });
+  if (!rows.length) { hoverBox.style.display = 'none'; return; }
+  hoverBox.innerHTML = rows.join('');
+  hoverBox.style.display = '';
 });
+map.on('mouseout', function () { hoverBox.style.display = 'none'; });
+
 gridCb.addEventListener('change', gridRefresh);
 gridSl.addEventListener('input', function () { gridDeg = GRID_DEG[gridSl.value]; gridRefresh(); });
 gridDegIn.addEventListener('change', function () {
@@ -816,11 +905,35 @@ function updateStats() {
   if (!mshown) ms.innerHTML = '<div class="st" style="color:#5a6472">no simplified layers enabled</div>';
 
   if (gridCb.checked) gridRefresh(); // grid follows the layer's live geometry
+  syncHash();
+}
+
+// restore overlay settings from the URL fragment
+if (HASH.h !== undefined) {
+  var hv = parseInt(HASH.h, 10);
+  if (hv >= 0 && hv <= 100) heatOp.value = hv;
+  heatCb.checked = true;
+}
+if (HASH.g) {
+  var gp = HASH.g.split(',');
+  var gd = parseFloat(gp[0]);
+  if (gd >= 0.1 && gd <= 45) {
+    gridDeg = gd;
+    var gbest = 0;
+    GRID_DEG.forEach(function (d, i) { if (Math.abs(d - gd) < Math.abs(GRID_DEG[gbest] - gd)) gbest = i; });
+    gridSl.value = gbest;
+  }
+  var gl = parseInt(gp[1], 10);
+  if (gl >= 0 && gl < layers.length) gridLayerSel.selectedIndex = gl;
+  gridCb.checked = true;
 }
 
 layers.forEach(function (s) { if (s.on) { s.layer.addTo(map); s.request(); } });
 gridRefresh(); // set the cell-size label
+if (heatCb.checked) heatCb.dispatchEvent(new Event('change')); // URL- or browser-restored
 updateStats();
+HASH_READY = true;
+syncHash();
 </script>
 </body>
 </html>
