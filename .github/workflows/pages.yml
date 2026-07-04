@@ -1,6 +1,8 @@
 # Build the webdist viewer (static page + per-dataset binary blobs) and the
-# API docs, and deploy them to GitHub Pages: https://docwilco.github.io/utz/
-# (viewer at /, rustdoc under /doc). Requires Pages to be set to the
+# API docs, and deploy them to GitHub Pages:
+#   https://docwilco.github.io/utz/live/  — viewer
+#   https://docwilco.github.io/utz/docs/  — rustdoc
+# (root redirects to /live/). Requires Pages to be set to the
 # "GitHub Actions" source in the repo settings.
 name: Deploy viewer to Pages
 
@@ -38,16 +40,25 @@ jobs:
           restore-keys: source-data-
       - name: Build webdist (viewer + dataset blobs)
         run: cargo run --release -p utz-build --example visualize webdist
-      - name: Build API docs into the site
+      - name: Build API docs
         env:
           RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps
+      - name: Assemble site (viewer at /live, rustdoc at /docs)
         run: |
-          cargo doc --workspace --no-deps
-          cp -r target/doc webdist/doc
+          mkdir -p site
+          cp -r webdist site/live
+          cp -r target/doc site/docs
+          cat > site/index.html <<'EOF'
+          <!DOCTYPE html><meta charset="utf-8">
+          <meta http-equiv="refresh" content="0; url=live/">
+          <title>uTZ</title>
+          <p><a href="live/">uTZ live simplification viewer</a> · <a href="docs/utz/">API docs</a></p>
+          EOF
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: webdist
+          path: site
 
   deploy:
     needs: build
