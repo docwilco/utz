@@ -39,7 +39,7 @@ jobs:
           key: source-data-${{ github.run_id }}
           restore-keys: source-data-
       - name: Build webdist (viewer + dataset blobs)
-        run: cargo run --release -p utz-build --example visualize webdist
+        run: cargo run --release -p utz-build -- visualize webdist
       - name: Build API docs
         env:
           RUSTDOCFLAGS: -D warnings

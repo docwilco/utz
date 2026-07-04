@@ -3,7 +3,7 @@
 // `python3 -m http.server -d webdist`). Supersedes the old per-dataset
 // embedded viewers (_overlay/_live/border_sweep).
 //
-// usage: cargo run --release -p utz-build --example visualize [outdir]
+// usage: utz-build visualize [outdir]
 //   writes outdir (default webdist/): index.html · utz_simplify.wasm ·
 //   heat.bin.z · <dataset>.bin.z + zones-<dataset>.bin.z for
 //   now/1970/all/land-now/land-1970/land-all
@@ -15,8 +15,15 @@ use utz_build::{topo, viz};
 
 const DATASETS: [&str; 6] = ["now", "1970", "all", "land-now", "land-1970", "land-all"];
 
-fn main() -> anyhow::Result<()> {
-    let out = PathBuf::from(std::env::args().nth(1).unwrap_or_else(|| "webdist".into()));
+#[derive(clap::Args)]
+pub struct Args {
+    /// output directory for the viewer site
+    #[arg(default_value = "webdist")]
+    out: PathBuf,
+}
+
+pub fn run(a: Args) -> anyhow::Result<()> {
+    let out = a.out;
     std::fs::create_dir_all(&out)?;
 
     let wasm = build_wasm()?;

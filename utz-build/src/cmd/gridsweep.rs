@@ -1,10 +1,17 @@
 // Grid-size sweep (1..=20 deg). For each size: total cells, "border" cells (a tz
 // boundary edge passes through -> lookup needs PIP), interior cells (single zone ->
 // O(1)), the fraction of area-uniform lookups that hit a border cell, and a memory
-// estimate. usage: cargo run --release --example gridsweep [now|1970]
+// estimate. usage: utz-build gridsweep [ds]
 
-fn main() -> anyhow::Result<()> {
-    let ds = std::env::args().nth(1).unwrap_or_else(|| "now".into());
+#[derive(clap::Args)]
+pub struct Args {
+    /// dataset: [land-]now|1970|all
+    #[arg(default_value = "now")]
+    ds: String,
+}
+
+pub fn run(a: Args) -> anyhow::Result<()> {
+    let ds = a.ds;
     let feats = utz_build::load(&ds)?;
     let rings: Vec<Vec<(f64, f64)>> = feats.iter()
         .flat_map(|f| f.polys.iter().flatten().cloned())

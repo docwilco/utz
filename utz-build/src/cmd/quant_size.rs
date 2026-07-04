@@ -1,14 +1,20 @@
 // Arc-store encoding shootout (delta+varint vs abs-fixed) at a chosen eps +
-// quant grid. usage: cargo run --release --example quant_size [eps_m] [qbits...]
+// quant grid. usage: utz-build quant-size [eps_m] [qbits...]
 use std::io::Write;
 use utz_build::topo;
 
-fn main() -> anyhow::Result<()> {
-    let eps_m: f64 = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(500.0);
-    let bits: Vec<u32> = {
-        let v: Vec<u32> = std::env::args().skip(2).filter_map(|s| s.parse().ok()).collect();
-        if v.is_empty() { vec![16, 24] } else { v }
-    };
+#[derive(clap::Args)]
+pub struct Args {
+    /// simplification tolerance in meters
+    #[arg(default_value_t = 500.0)]
+    eps_m: f64,
+    /// quantization widths (16/24/32)
+    #[arg(default_values_t = [16u32, 24])]
+    qbits: Vec<u32>,
+}
+
+pub fn run(a: Args) -> anyhow::Result<()> {
+    let (eps_m, bits) = (a.eps_m, a.qbits);
     let feats = utz_build::load("now")?;
     let v0: usize = feats.iter().flat_map(|f| &f.polys).flat_map(|p| p).map(|r| r.len()).sum();
     println!("with-oceans-now: {} features, {v0} verts", feats.len());

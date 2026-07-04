@@ -3,17 +3,28 @@
 //! delta. The visual comparison lives in the live viewer (`visualize live`),
 //! which has a per-set pop-weight toggle and the density heatmap.
 //!
-//!     cargo run --release -p utz-build --example density_compare [now|1970] [eps_m] [w_min]
+//!     utz-build density-compare [ds] [eps_m] [w_min]
 
 use utz_build::density::DensityGrid;
 use utz_build::encode::{self, Codec, Params};
 use utz_build::topo;
 use utz_simplify::DensityWeight;
 
-fn main() -> anyhow::Result<()> {
-    let ds = std::env::args().nth(1).unwrap_or_else(|| "now".into());
-    let eps_m: f64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(500.0);
-    let w_min: f64 = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(0.1);
+#[derive(clap::Args)]
+pub struct Args {
+    /// dataset: [land-]now|1970|all
+    #[arg(default_value = "now")]
+    ds: String,
+    /// simplification tolerance in meters
+    #[arg(default_value_t = 500.0)]
+    eps_m: f64,
+    /// weighted-floor multiplier at max density
+    #[arg(default_value_t = 0.1)]
+    w_min: f64,
+}
+
+pub fn run(a: Args) -> anyhow::Result<()> {
+    let (ds, eps_m, w_min) = (a.ds, a.eps_m, a.w_min);
 
     let feats = utz_build::load(&ds)?;
     let grid = DensityGrid::load(&utz_build::cache_dir())?;

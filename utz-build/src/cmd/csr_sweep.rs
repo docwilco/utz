@@ -4,7 +4,7 @@
 // P(PIP) over uniform lon/lat points, unique interned lists, and the memory
 // split (primary array vs CSR side table), dominant-first ordering as decided.
 //
-// usage: cargo run --release -p utz-build --example csr_sweep [eps_m]
+// usage: utz-build csr-sweep [eps_m]
 
 use utz_build::grid::{self, Order};
 use utz_build::topo;
@@ -12,8 +12,15 @@ use utz_build::topo;
 const DEGS: [f64; 5] = [1.0, 2.0, 3.0, 5.0, 10.0];
 const NPTS: usize = 200_000;
 
-fn main() -> anyhow::Result<()> {
-    let eps_m: f64 = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(500.0);
+#[derive(clap::Args)]
+pub struct Args {
+    /// simplification tolerance in meters
+    #[arg(default_value_t = 500.0)]
+    eps_m: f64,
+}
+
+pub fn run(a: Args) -> anyhow::Result<()> {
+    let eps_m = a.eps_m;
     let pts = gen_pts(NPTS);
 
     for ds in ["now", "1970"] {

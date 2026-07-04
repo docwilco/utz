@@ -1,11 +1,20 @@
 // Exact memory of a 2deg grid: measure candidate (zone) counts per border cell,
 // then size several layouts, showing 32- vs 64-bit differences.
-// usage: cargo run --release --example grid2mem [now|1970] [deg]
+// usage: utz-build grid2mem [ds] [deg]
 use std::collections::HashSet;
 
-fn main() -> anyhow::Result<()> {
-    let ds = std::env::args().nth(1).unwrap_or_else(|| "now".into());
-    let d: f64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(2.0);
+#[derive(clap::Args)]
+pub struct Args {
+    /// dataset: [land-]now|1970|all
+    #[arg(default_value = "now")]
+    ds: String,
+    /// grid cell size in degrees
+    #[arg(default_value_t = 2.0)]
+    deg: f64,
+}
+
+pub fn run(a: Args) -> anyhow::Result<()> {
+    let (ds, d) = (a.ds, a.deg);
 
     // rings tagged with their feature (zone) id
     let feats = utz_build::load(&ds)?;

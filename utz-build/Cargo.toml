@@ -32,8 +32,9 @@ zip = { version = "2.4", default-features = false, features = ["deflate"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tiff = "0.11"
-
-[dev-dependencies]
-# pure-Rust zstd backend (ruzstd) here; the zstd-sys backend is compile-checked
+# the utz-build CLI (src/main.rs, one module per subcommand under src/cmd/)
+clap = { version = "4", features = ["derive"] }
+# runtime crate, exercised by roundtrip/visualize/bench subcommands; pure-Rust
+# zstd backend (ruzstd) here — the zstd-sys backend is compile-checked
 # separately (cargo check -p utz --features std,zstd-sys)
 utz = { path = "../utz", features = ["std", "gzip", "ruzstd", "brotli", "xz"] }

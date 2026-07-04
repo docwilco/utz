@@ -2,17 +2,28 @@
 // Finder, and validate lookup() against a linear first-hit PIP scan over the
 // same quantized geometry (the grid_bench reference).
 //
-// usage: cargo run --release -p utz-build --example roundtrip [now|1970] [eps_m] [npts]
+// usage: utz-build roundtrip [ds] [eps_m] [npts]
 
 use std::time::Instant;
 
 use utz_build::encode::{self, Codec, Params};
 use utz_build::{topo, Feat};
 
-fn main() -> anyhow::Result<()> {
-    let ds = std::env::args().nth(1).unwrap_or_else(|| "now".into());
-    let eps_m: f64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(500.0);
-    let npts: usize = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(100_000);
+#[derive(clap::Args)]
+pub struct Args {
+    /// dataset: [land-]now|1970|all
+    #[arg(default_value = "now")]
+    ds: String,
+    /// simplification tolerance in meters
+    #[arg(default_value_t = 500.0)]
+    eps_m: f64,
+    /// number of sample points
+    #[arg(default_value_t = 100_000)]
+    npts: usize,
+}
+
+pub fn run(a: Args) -> anyhow::Result<()> {
+    let (ds, eps_m, npts) = (a.ds, a.eps_m, a.npts);
     let qbits = 24u32;
 
     let feats = utz_build::load(&ds)?;

@@ -2,7 +2,7 @@
 // grid prefilter (interior O(1), border cells → dominant-first PIP) vs the
 // plain linear first-hit scan, on the same quantized simplified geometry.
 //
-// usage: cargo run --release -p utz-build --example grid_bench [now|1970] [eps_m] [deg] [npts]
+// usage: utz-build grid-bench [ds] [eps_m] [deg] [npts]
 
 use std::time::Instant;
 
@@ -14,11 +14,24 @@ struct QPoly {
     rings: Vec<Vec<(i32, i32)>>,
 }
 
-fn main() -> anyhow::Result<()> {
-    let ds = std::env::args().nth(1).unwrap_or_else(|| "now".into());
-    let eps_m: f64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(500.0);
-    let deg: f64 = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(2.0);
-    let npts: usize = std::env::args().nth(4).and_then(|s| s.parse().ok()).unwrap_or(100_000);
+#[derive(clap::Args)]
+pub struct Args {
+    /// dataset: [land-]now|1970|all
+    #[arg(default_value = "now")]
+    ds: String,
+    /// simplification tolerance in meters
+    #[arg(default_value_t = 500.0)]
+    eps_m: f64,
+    /// grid cell size in degrees
+    #[arg(default_value_t = 2.0)]
+    deg: f64,
+    /// number of sample points
+    #[arg(default_value_t = 100_000)]
+    npts: usize,
+}
+
+pub fn run(a: Args) -> anyhow::Result<()> {
+    let (ds, eps_m, deg, npts) = (a.ds, a.eps_m, a.deg, a.npts);
 
     let feats = utz_build::load(&ds)?;
     let out = topo::encode_topology(&feats, eps_m / 111_320.0);

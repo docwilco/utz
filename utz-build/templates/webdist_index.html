@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- μTZ webdist viewer: static page + sibling data files (<dataset>.bin.z,
-     heat.bin.z, utz_simplify.wasm) written by `visualize webdist`. Serve over
+     heat.bin.z, utz_simplify.wasm) written by `utz-build visualize`. Serve over
      HTTP (fetch() is blocked on file://): python3 -m http.server -d webdist -->
 <html lang="en">
 <head>
@@ -85,7 +85,7 @@
   </div>
 </div>
 <script>
-// ---- data files (written next to this page by `visualize webdist`) ----
+// ---- data files (written next to this page by `utz-build visualize`) ----
 var DS_LIST = ['now', '1970', 'all', 'land-now', 'land-1970', 'land-all'];
 var DS_CACHE = {};
 function fetchBinZ(url) {

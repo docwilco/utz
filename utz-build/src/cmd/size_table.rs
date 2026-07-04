@@ -1,13 +1,22 @@
 // Measurement backlog #4 + #6 (PLAN.md §15): full pipeline size table on the
 // REAL container — topology × RDP(ε) × quant(i16/i24) × codec (incl gzip).
 //
-// usage: cargo run --release -p utz-build --example size_table [now|1970] [grid_deg]
+// usage: utz-build size-table [ds] [grid_deg]
 
 use utz_build::encode::{self, Codec, Params};
 
-fn main() -> anyhow::Result<()> {
-    let ds = std::env::args().nth(1).unwrap_or_else(|| "now".into());
-    let grid_deg: u32 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(2);
+#[derive(clap::Args)]
+pub struct Args {
+    /// dataset: [land-]now|1970|all
+    #[arg(default_value = "now")]
+    ds: String,
+    /// grid cell size in integer degrees
+    #[arg(default_value_t = 2)]
+    grid_deg: u32,
+}
+
+pub fn run(a: Args) -> anyhow::Result<()> {
+    let (ds, grid_deg) = (a.ds, a.grid_deg);
     let feats = utz_build::load(&ds)?;
     println!("{} full container, grid {grid_deg}°, dominant-first CSR", ds.to_uppercase());
     println!("{:>7}{:>6}{:>12}{:>12}{:>12}{:>12}{:>12}",

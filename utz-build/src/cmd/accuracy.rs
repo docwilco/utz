@@ -11,7 +11,7 @@
 //!     pocket — pockets are ≤ ε wide, far below the 4′ grid, so one sample
 //!     per pocket is essentially exact)
 //!
-//!     cargo run --release -p utz-build --example accuracy [now|1970] [eps_m] [w_min] [rdp|vw|ii]
+//!     utz-build accuracy [ds] [eps_m] [w_min] [rdp|vw|ii]
 
 use utz_build::density::DensityGrid;
 use utz_build::topo::{self, Simplify, Topology};
@@ -19,11 +19,24 @@ use utz_simplify::DensityWeight;
 
 const KM_PER_DEG: f64 = 111.32;
 
-fn main() -> anyhow::Result<()> {
-    let ds = std::env::args().nth(1).unwrap_or_else(|| "now".into());
-    let eps_m: f64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(500.0);
-    let w_min: f64 = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(0.052);
-    let algo_key = std::env::args().nth(4).unwrap_or_else(|| "rdp".into());
+#[derive(clap::Args)]
+pub struct Args {
+    /// dataset: [land-]now|1970|all
+    #[arg(default_value = "now")]
+    ds: String,
+    /// simplification tolerance in meters
+    #[arg(default_value_t = 500.0)]
+    eps_m: f64,
+    /// weighted-floor multiplier at max density
+    #[arg(default_value_t = 0.052)]
+    w_min: f64,
+    /// simplification algorithm: rdp|vw|ii
+    #[arg(default_value = "rdp")]
+    algo: String,
+}
+
+pub fn run(a: Args) -> anyhow::Result<()> {
+    let (ds, eps_m, w_min, algo_key) = (a.ds, a.eps_m, a.w_min, a.algo);
     let algo = |eps_deg: f64| -> Simplify {
         match algo_key.as_str() {
             "rdp" => Simplify::Rdp { eps: eps_deg },

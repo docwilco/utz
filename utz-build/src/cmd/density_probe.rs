@@ -2,11 +2,14 @@
 //! zip and builds the density sidecar; prints spot checks that fail loudly if
 //! the tiff decode or geotransform is off.
 //!
-//!     cargo run --release -p utz-build --example density_probe
+//!     utz-build density-probe
 
 use utz_build::density::DensityGrid;
 
-fn main() -> anyhow::Result<()> {
+#[derive(clap::Args)]
+pub struct Args {}
+
+pub fn run(_a: Args) -> anyhow::Result<()> {
     let t = std::time::Instant::now();
     let g = DensityGrid::load(&utz_build::cache_dir())?;
     println!("loaded {}x{} grid in {:.1?}", g.w, g.h, t.elapsed());

@@ -1,6 +1,6 @@
 // Lookup benchmark: fgb R-tree (current spatialtime) vs fgb full-scan (no index)
 // vs custom in-memory (linear bbox prefilter + integer PIP). Also reports memory.
-// usage: cargo run --release --example bench <fgb-path>
+// usage: utz-build bench [fgb-path]
 use std::io::{BufReader, Cursor};
 use std::time::Instant;
 use flatgeobuf::{FallibleStreamingIterator, FeatureProperties, FgbReader};
@@ -12,8 +12,14 @@ struct CFeat { tzid: String, bbox: [i32; 4], rings: Vec<Vec<(i32, i32)>> }
 const S: f64 = 1e7;
 fn q(v: f64) -> i32 { (v * S).round() as i32 }
 
-fn main() -> anyhow::Result<()> {
-    let path = std::env::args().nth(1).unwrap_or_else(|| utz_build::fgb_path(&utz_build::dataset("now").unwrap()).unwrap());
+#[derive(clap::Args)]
+pub struct Args {
+    /// path to a legacy prebuilt .fgb (default: the spatialtime asset)
+    path: Option<String>,
+}
+
+pub fn run(a: Args) -> anyhow::Result<()> {
+    let path = a.path.unwrap_or_else(|| utz_build::fgb_path(&utz_build::dataset("now").unwrap()).unwrap());
     let bytes = std::fs::read(&path)?;
     let file_mib = bytes.len() as f64 / (1 << 20) as f64;
 
