@@ -246,6 +246,17 @@ pub extern "C" fn utz_enc_stat(i: u32) -> u32 {
     }
 }
 
+/// Pointer to the resident payload of the last [`utz_enc_payload`] (whose
+/// return value is its length; null if none) — lets the JS read the exact
+/// bytes back, e.g. to offer a `.utz` download or diff against the builder.
+#[no_mangle]
+pub extern "C" fn utz_enc_payload_ptr() -> *const u8 {
+    match unsafe { &*core::ptr::addr_of!(STATE) } {
+        Some(st) if !st.payload.is_empty() => st.payload.as_ptr(),
+        _ => core::ptr::null(),
+    }
+}
+
 /// Stage 2: compress the resident payload with one codec byte (1 gzip/zlib,
 /// 3 brotli, 4 xz — zstd is feature-gated off in the wasm build) and return
 /// the compressed size in bytes; the shipped `.utz` adds a 10-byte outer
