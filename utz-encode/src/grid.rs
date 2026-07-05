@@ -119,8 +119,15 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
             }
         }
     }
+    // tie-break by smallest id: HashMap iteration order is seeded per process,
+    // and a tie decided by it made the whole container nondeterministic
     let dominant: Vec<u16> = tallies.iter()
-        .map(|t| t.iter().max_by_key(|(_, &c)| c).map(|(&z, _)| z).unwrap_or(NO_ZONE))
+        .map(|t| {
+            t.iter()
+                .max_by_key(|&(&z, &c)| (c, core::cmp::Reverse(z)))
+                .map(|(&z, _)| z)
+                .unwrap_or(NO_ZONE)
+        })
         .collect();
     let tallies: Vec<Vec<(u16, u32)>> = tallies.into_iter().map(|t| {
         let mut v: Vec<(u16, u32)> = t.into_iter().collect();
