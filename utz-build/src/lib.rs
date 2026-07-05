@@ -8,15 +8,13 @@
 //! dropped; see PLAN.md §1). The only dataset choice is the merge vintage:
 //! `now` (65 zones, default) or `1970` (304 zones).
 
-mod types;
-pub use types::*;
+// encoder core (types, topo, grid, encode) lives in utz-encode (WASM-shared);
+// re-export it all so `utz_build::topo::…` paths keep working
+pub use utz_encode::*;
 
 pub mod density;
 pub mod download;
-pub mod encode;
-pub mod grid;
 pub mod loader;
-pub mod topo;
 pub mod viz;
 
 use std::io::BufReader;
@@ -80,6 +78,23 @@ pub fn load(ds: &str) -> anyhow::Result<Vec<Feat>> {
             _ => loader::load_tzbb(d, &cache_dir()),
         },
     }
+}
+
+/// `encode::encode` with population-density-weighted simplification: the
+/// per-edge ε multiplier is a simplification knob, so it lives here with the
+/// density code — utz-encode itself stays density-agnostic (see the
+/// `encode::encode` docs).
+pub fn encode_weighted(
+    feats: &[Feat],
+    p: &encode::Params,
+    grid: &density::DensityGrid,
+    model: utz_simplify::DensityWeight,
+) -> anyhow::Result<Vec<u8>> {
+    let eps_deg = p.eps_m / 111_320.0;
+    let t = topo::build_topology_weighted(feats, topo::Simplify::Rdp { eps: eps_deg }, &|a, b| {
+        model.weight(grid.max_along(a, b))
+    });
+    Ok(encode::finish(encode::payload_from_topology(&t, &t.arc_coords, feats, p)?.0, p.codec))
 }
 
 /// Workspace-root `cache/` for downloaded TZBB releases (gitignored).

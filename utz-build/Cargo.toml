@@ -15,6 +15,9 @@ geo-types = { workspace = true }
 geometry-rs = "0.3"
 # polyline simplification menu, shared with the viz HTML via WASM (PLAN.md sec 14.8)
 utz-simplify = { path = "../utz-simplify" }
+# encoder core (topology + quantization + grid + container), split out so it
+# also compiles to WASM for the webdist viewer (see utz-encode/src/lib.rs)
+utz-encode = { path = "../utz-encode", features = ["zstd"] }
 # temporary: reading the prebuilt .fgb during exploration (to be replaced by a
 # GeoJSON parser + downloader per PLAN.md).
 flatgeobuf = "5.0"

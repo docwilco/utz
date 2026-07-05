@@ -63,18 +63,20 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let (su, sw) = (hu.iter().sum::<usize>(), hw.iter().sum::<usize>());
     println!("{:>16} {su:>10} {sw:>10} {:>+9}  ({:+.1}%)\n", "total", sw as i64 - su as i64, 100.0 * (sw as f64 / su as f64 - 1.0));
 
-    // container size delta (same knobs, zstd)
-    let params = |density| Params {
+    // container size delta (same knobs, zstd; topologies already built above)
+    let p = Params {
         dataset: 0,
         tzbb_release: "density-compare",
         eps_m,
         quant_bits: 24,
         grid_deg: 2,
         codec: Codec::Zstd,
-        density,
     };
-    let cu = encode::encode(&feats, &params(None))?;
-    let cw = encode::encode(&feats, &params(Some((&grid, model))))?;
+    let container = |t: &topo::Topology| -> anyhow::Result<Vec<u8>> {
+        Ok(encode::finish(encode::payload_from_topology(t, &t.arc_coords, &feats, &p)?.0, p.codec))
+    };
+    let cu = container(&t_u)?;
+    let cw = container(&t_w)?;
     println!(
         "container (i24, zstd): uniform {:.1} KiB -> weighted {:.1} KiB ({:+.1}%)",
         cu.len() as f64 / 1024.0,

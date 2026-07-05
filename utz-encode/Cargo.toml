@@ -1,0 +1,29 @@
+[package]
+name = "utz-encode"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# `lib` for the builder (utz-build); `cdylib` so the same encoder (plus the
+# utz-simplify exports it links in) compiles to WASM for the webdist viewer's
+# live container encode (PLAN.md §12):
+#   cargo build -p utz-encode --release --target wasm32-unknown-unknown
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[features]
+# zstd wraps C libzstd (zstd-sys) — fine natively, a toolchain headache on
+# wasm32-unknown-unknown. utz-build enables it; the wasm build leaves it off
+# (Codec::Zstd then panics with a clear message).
+zstd = ["dep:zstd"]
+
+[dependencies]
+anyhow = { workspace = true }
+# simplification menu + DensityWeight (shared with the viewer via this cdylib)
+utz-simplify = { path = "../utz-simplify" }
+# codecs (all pure Rust except optional zstd)
+miniz_oxide = "0.8"
+brotli = "8.0"
+lzma-rust2 = { version = "0.16", features = ["xz", "encoder"] }
+zstd = { version = "0.13", optional = true }

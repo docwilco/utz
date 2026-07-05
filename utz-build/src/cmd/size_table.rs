@@ -32,7 +32,6 @@ pub fn run(a: Args) -> anyhow::Result<()> {
                 quant_bits: qbits,
                 grid_deg,
                 codec: Codec::Uncompressed,
-                density: None,
             };
             let payload = encode::build_payload(&feats, &p)?;
             let kb = |c: Codec| format!("{:.1}", encode::compress(&payload, c).len() as f64 / 1024.0);

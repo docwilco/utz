@@ -46,10 +46,6 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         c => anyhow::bail!("unknown codec {c:?}: use none|gzip|zstd|brotli|xz"),
     };
     let feats = utz_build::load(&a.ds)?;
-    let dens = match a.w_min {
-        Some(_) => Some(DensityGrid::load(&utz_build::cache_dir())?),
-        None => None,
-    };
     let p = Params {
         dataset: utz_build::dataset(&a.ds)?.code(),
         tzbb_release: "dev", // TODO: thread the real release tag through loader
@@ -57,9 +53,14 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         quant_bits: a.qbits,
         grid_deg: a.grid_deg,
         codec,
-        density: dens.as_ref().map(|g| (g, DensityWeight::new(a.w_min.unwrap()))),
     };
-    let container = encode::encode(&feats, &p)?;
+    let container = match a.w_min {
+        Some(w) => {
+            let grid = DensityGrid::load(&utz_build::cache_dir())?;
+            utz_build::encode_weighted(&feats, &p, &grid, DensityWeight::new(w))?
+        }
+        None => encode::encode(&feats, &p)?,
+    };
 
     // sanity: the runtime must accept what we just wrote
     let f = utz::Finder::from_vec(container.clone()).map_err(|e| anyhow::anyhow!("verify: {e}"))?;

@@ -1976,8 +1976,21 @@ dependencies = [
  "tiff",
  "ureq",
  "utz",
+ "utz-encode",
  "utz-simplify",
  "zip",
+ "zstd",
+]
+
+[[package]]
+name = "utz-encode"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "brotli",
+ "lzma-rust2",
+ "miniz_oxide",
+ "utz-simplify",
  "zstd",
 ]
 

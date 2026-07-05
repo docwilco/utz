@@ -55,14 +55,27 @@ pub struct Params<'a> {
     /// integer degrees, presets {1, 2, 3, 5, 10}
     pub grid_deg: u32,
     pub codec: Codec,
-    /// population-density-weighted refinement: `eps_m` stays the ceiling and
-    /// the weight model shrinks it toward `eps_m * w_min` along densely
-    /// populated boundary stretches. `None` = uniform eps (default). Only
-    /// arc geometry changes, so the container format is unaffected.
-    pub density: Option<(&'a crate::density::DensityGrid, utz_simplify::DensityWeight)>,
 }
 
-/// Full pipeline: topology → RDP → quantize → grid → serialize → compress.
+/// Byte size of each payload section + post-simplification geometry counts —
+/// the viewer's "delta+varint" stage stats.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct PayloadStats {
+    pub header: u32,
+    pub zones: u32,
+    pub arcs: u32,
+    pub rings: u32,
+    pub grid: u32,
+    pub n_arcs: u32,
+    /// vertices actually stored (post-simplify, post-quantize-dedup)
+    pub n_verts: u32,
+}
+
+/// Full uniform-ε pipeline: topology → RDP → quantize → grid → serialize →
+/// compress. Spatially varying tolerance (population weighting) is a
+/// simplification concern, not a serialization one: build the topology
+/// yourself (`topo::build_topology_weighted`) and use
+/// [`payload_from_topology`] + [`finish`] — see utz-build's wrapper.
 pub fn encode(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
     Ok(finish(build_payload(feats, p)?, p.codec))
 }
@@ -70,6 +83,21 @@ pub fn encode(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
 /// Everything but the outer header + compression (so size sweeps can compress
 /// one payload with several codecs).
 pub fn build_payload(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
+    let t = topo::build_topology(feats, p.eps_m / 111_320.0);
+    Ok(payload_from_topology(&t, &t.arc_coords, feats, p)?.0)
+}
+
+/// Serialize an already-simplified topology: quantize → grid → sections.
+/// `arc_coords` may differ from `t.arc_coords` (the wasm viewer simplifies
+/// per-arc itself); `feats` supplies only per-feature metadata (tzid, offset)
+/// — geometry comes from the arcs. `p.eps_m` is recorded in the header, not
+/// applied.
+pub fn payload_from_topology(
+    t: &topo::Topology,
+    arc_coords: &[Vec<(f64, f64)>],
+    feats: &[Feat],
+    p: &Params,
+) -> anyhow::Result<(Vec<u8>, PayloadStats)> {
     anyhow::ensure!(matches!(p.quant_bits, 16 | 24 | 32), "quant_bits must be 16/24/32");
     anyhow::ensure!(feats.len() < 0x7FFF, "feature count exceeds 15-bit zone ids");
     let qmax = ((1u64 << (p.quant_bits - 1)) - 1) as f64;
@@ -77,18 +105,8 @@ pub fn build_payload(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
     let qy = |lat: f64| (lat / 90.0 * qmax).round() as i32;
     let dq = |v: i32, half: f64| v as f64 / qmax * half;
 
-    let eps_deg = p.eps_m / 111_320.0;
-    let t = match &p.density {
-        None => topo::build_topology(feats, eps_deg),
-        Some((grid, model)) => topo::build_topology_weighted(
-            feats,
-            topo::Simplify::Rdp { eps: eps_deg },
-            &|a, b| model.weight(grid.max_along(a, b)),
-        ),
-    };
-
     // quantize arcs (consecutive dups collapse; endpoints kept)
-    let arcs_q: Vec<Vec<(i32, i32)>> = t.arc_coords.iter().map(|a| {
+    let arcs_q: Vec<Vec<(i32, i32)>> = arc_coords.iter().map(|a| {
         let mut q: Vec<(i32, i32)> = a.iter().map(|&(x, y)| (qx(x), qy(y))).collect();
         q.dedup();
         q
@@ -103,6 +121,11 @@ pub fn build_payload(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
     let areas = grid::feat_areas(&quantized);
     let csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
 
+    let mut stats = PayloadStats {
+        n_arcs: arcs_q.len() as u32,
+        n_verts: arcs_q.iter().map(|a| a.len() as u32).sum(),
+        ..Default::default()
+    };
     let mut o = Vec::new();
     // ---- header ----
     o.push(p.dataset);
@@ -115,6 +138,7 @@ pub fn build_payload(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
     o.extend_from_slice(&(feats.len() as u16).to_le_bytes());
     let fixup = o.len(); // arcs_off, rings_off, grid_off patched below
     o.extend_from_slice(&[0u8; 12]);
+    stats.header = o.len() as u32;
 
     // ---- zone table (zone i = feature i) ----
     let mut str_off: Vec<u16> = Vec::with_capacity(feats.len() + 1);
@@ -129,6 +153,7 @@ pub fn build_payload(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
 
     // ---- arc store ----
     let arcs_off = o.len() as u32;
+    stats.zones = arcs_off - stats.header;
     let push_fixed = |o: &mut Vec<u8>, v: i32| {
         let n = (p.quant_bits as usize + 7) / 8;
         o.extend_from_slice(&v.to_le_bytes()[0..n]);
@@ -157,6 +182,7 @@ pub fn build_payload(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
 
     // ---- ring index (per-poly bbox from quantized arcs, for lazy-mode skip) ----
     let rings_off = o.len() as u32;
+    stats.arcs = rings_off - arcs_off;
     let mut ring_data = Vec::new();
     let mut feat_offsets: Vec<u32> = Vec::with_capacity(feats.len() + 1);
     for fi in 0..feats.len() {
@@ -185,6 +211,7 @@ pub fn build_payload(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
 
     // ---- grid ----
     let grid_off = o.len() as u32;
+    stats.rings = grid_off - rings_off;
     o.extend_from_slice(&(g.ncols as u16).to_le_bytes());
     o.extend_from_slice(&(g.nrows as u16).to_le_bytes());
     for v in &csr.primary { o.extend_from_slice(&v.to_le_bytes()); }
@@ -192,10 +219,12 @@ pub fn build_payload(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
     for v in &csr.list_offsets { o.extend_from_slice(&v.to_le_bytes()); }
     for v in &csr.list_ids { o.extend_from_slice(&v.to_le_bytes()); }
 
+    stats.grid = o.len() as u32 - grid_off;
+
     for (i, off) in [arcs_off, rings_off, grid_off].into_iter().enumerate() {
         o[fixup + i * 4..fixup + i * 4 + 4].copy_from_slice(&off.to_le_bytes());
     }
-    Ok(o)
+    Ok((o, stats))
 }
 
 /// Prepend the outer header, compressing the payload with `codec`.
@@ -215,7 +244,10 @@ pub fn compress(raw: &[u8], codec: Codec) -> Vec<u8> {
     match codec {
         Codec::Uncompressed => raw.to_vec(),
         Codec::Gzip => miniz_oxide::deflate::compress_to_vec_zlib(raw, 10),
+        #[cfg(feature = "zstd")]
         Codec::Zstd => zstd::encode_all(raw, 22).expect("zstd"),
+        #[cfg(not(feature = "zstd"))]
+        Codec::Zstd => panic!("utz-encode built without the `zstd` feature"),
         Codec::Brotli => {
             let mut out = Vec::new();
             let mut params = brotli::enc::BrotliEncoderParams::default();

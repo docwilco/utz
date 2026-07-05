@@ -34,7 +34,6 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         quant_bits: qbits,
         grid_deg: 2,
         codec: Codec::Uncompressed,
-        density: None,
     };
     let container = encode::encode(&feats, &p)?;
     println!("{} container: {:.1} KB uncompressed", ds.to_uppercase(), container.len() as f64 / 1024.0);
