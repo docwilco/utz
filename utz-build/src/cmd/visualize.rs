@@ -4,7 +4,7 @@
 // embedded viewers (_overlay/_live/border_sweep).
 //
 // usage: utz-build visualize [outdir]
-//   writes outdir (default webdist/): index.html · utz_simplify.wasm ·
+//   writes outdir (default webdist/): index.html · utz_encode.wasm ·
 //   heat.bin.z · <dataset>.bin.z + zones-<dataset>.bin.z for
 //   now/1970/all/land-now/land-1970/land-all
 
@@ -27,9 +27,9 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     std::fs::create_dir_all(&out)?;
 
     let wasm = build_wasm()?;
-    std::fs::write(out.join("utz_simplify.wasm"), &wasm)?;
+    std::fs::write(out.join("utz_encode.wasm"), &wasm)?;
     std::fs::write(out.join("index.html"), viz::webdist_index()?)?;
-    println!("index.html + utz_simplify.wasm ({:.1} KiB)", wasm.len() as f64 / 1024.0);
+    println!("index.html + utz_encode.wasm ({:.1} KiB)", wasm.len() as f64 / 1024.0);
 
     // density is optional: first use downloads GHS-POP (~460 MB, then cached)
     let dens = match utz_build::density::DensityGrid::load(&utz_build::cache_dir()) {
@@ -48,7 +48,8 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         let feats = utz_build::load(ds)?;
         let topo0 = topo::build_topology(&feats, 0.0);
         let verts: usize = topo0.arc_coords.iter().map(|a| a.len()).sum();
-        let bin = viz::dataset_bin(&topo0.arc_coords, dens.as_ref());
+        let code = utz_build::dataset(ds)?.code();
+        let bin = viz::dataset_bin(&topo0, &feats, code, "webdist", dens.as_ref());
         let z = write_z(&out.join(format!("{ds}.bin.z")), &bin)?;
         let zn = write_z(&out.join(format!("zones-{ds}.bin.z")), &zones_bin(&feats, ds)?)?;
         println!(
@@ -116,13 +117,14 @@ fn write_z(path: &Path, data: &[u8]) -> anyhow::Result<usize> {
     Ok(z.len())
 }
 
-/// Build utz-simplify for wasm32-unknown-unknown and return the cdylib bytes.
+/// Build utz-encode (simplify + live container encode) for
+/// wasm32-unknown-unknown and return the cdylib bytes.
 fn build_wasm() -> anyhow::Result<Vec<u8>> {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
     let status = std::process::Command::new("cargo")
-        .args(["build", "-p", "utz-simplify", "--release", "--target", "wasm32-unknown-unknown"])
+        .args(["build", "-p", "utz-encode", "--release", "--target", "wasm32-unknown-unknown"])
         .current_dir(root)
         .status()?;
     anyhow::ensure!(status.success(), "wasm build failed — try: rustup target add wasm32-unknown-unknown");
-    Ok(std::fs::read(format!("{root}/target/wasm32-unknown-unknown/release/utz_simplify.wasm"))?)
+    Ok(std::fs::read(format!("{root}/target/wasm32-unknown-unknown/release/utz_encode.wasm"))?)
 }

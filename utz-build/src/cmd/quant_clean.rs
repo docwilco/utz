@@ -2,8 +2,9 @@
 //! ring geometry (self-crossings, collinear self-overlaps, self-touches,
 //! zero-area rings), and how much of that does the clean.rs pass remove.
 //! Rings are assembled from the shared arcs exactly like the encoder does.
+//! `--locate` lists each surviving crossing/overlap as a live-viewer URL.
 //!
-//!     utz-build quant-clean [ds] [eps_m] [qbits...]
+//!     utz-build quant-clean [ds] [eps_m] [qbits...] [--locate]
 
 use utz_build::clean::{self, CleanStats};
 use utz_build::topo;
@@ -19,9 +20,15 @@ pub struct Args {
     /// quantization widths to report (16/24/32)
     #[arg(default_values_t = [16u32, 24])]
     qbits: Vec<u32>,
+    /// list each post-cleanup crossing/overlap as zone + live-viewer URL
+    #[arg(long)]
+    locate: bool,
+    /// live viewer base for --locate links
+    #[arg(long, default_value = "https://docwilco.github.io/utz/live/index.html")]
+    viewer: String,
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone)]
 struct Bad {
     /// non-adjacent segment pairs that properly cross
     crossings: usize,
@@ -32,6 +39,8 @@ struct Bad {
     /// rings with < 3 distinct vertices or zero area
     degenerate: usize,
     verts: usize,
+    /// crossing/overlap spots (ring ordinal, kind, x/y in quantized units)
+    locs: Vec<(usize, &'static str, f64, f64)>,
 }
 
 pub fn run(a: Args) -> anyhow::Result<()> {
@@ -64,7 +73,8 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             clean::clean_arc(&mut q, closed, &mut cst);
             q
         }).collect();
-        let (ring_refs, _, arcs) = clean::drop_degenerate_rings(&t.ring_refs, &t.structure, cleaned, &mut cst);
+        let (ring_refs, structure, arcs) =
+            clean::drop_degenerate_rings(&t.ring_refs, &t.structure, cleaned, &mut cst);
         let after = measure(ring_refs.iter().map(|r| clean::ring_coords_q(r, &arcs)));
 
         println!("i{qbits}");
@@ -80,6 +90,34 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             cst.dups, cst.spikes, cst.collinear, cst.rings_dropped, cst.polys_dropped, cst.arcs_dropped
         );
         row("after:", &after);
+
+        if a.locate {
+            // ring ordinal -> owning feature, for the filtered structure
+            let mut owner = vec![usize::MAX; ring_refs.len()];
+            for (fi, f) in structure.iter().enumerate() {
+                for poly in f {
+                    for &ri in poly {
+                        owner[ri] = fi;
+                    }
+                }
+            }
+            // a spot on a shared border shows up once per owning ring —
+            // group the zones per location instead of repeating the URL
+            let mut spots: std::collections::BTreeMap<(String, &str), std::collections::BTreeSet<&str>> =
+                Default::default();
+            for &(ri, kind, x, y) in &after.locs {
+                let (lon, lat) = (x / qmax * 180.0, y / qmax * 90.0);
+                let tz = feats[owner[ri]].tzid.as_deref().unwrap_or("?");
+                spots.entry((format!("{lat:.5},{lon:.5}"), kind)).or_default().insert(tz);
+            }
+            for ((at, kind), tzs) in &spots {
+                let zones = tzs.iter().copied().collect::<Vec<_>>().join(" + ");
+                println!(
+                    "    {kind:<7} {zones:<44} {}#m={at},15&l0={},rdp,{},i{qbits},off",
+                    a.viewer, a.ds, a.eps_m
+                );
+            }
+        }
         println!();
     }
     Ok(())
@@ -87,21 +125,21 @@ pub fn run(a: Args) -> anyhow::Result<()> {
 
 fn measure(rings: impl Iterator<Item = Vec<(i32, i32)>>) -> Bad {
     let mut b = Bad::default();
-    for c in rings {
+    for (ri, c) in rings.enumerate() {
         b.verts += c.len();
         if clean::ring_degenerate(&c) {
             b.degenerate += 1;
             continue;
         }
-        ring_bad(&c, &mut b);
+        ring_bad(ri, &c, &mut b);
     }
     b
 }
 
 /// Count non-adjacent segment pairs of one ring that intersect, split by
 /// kind. Sweep over min-x-sorted segments — O(n log n + pairs-in-x-overlap),
-/// fine at report scale.
-fn ring_bad(c: &[(i32, i32)], b: &mut Bad) {
+/// fine at report scale. Crossing/overlap spots land in `b.locs`.
+fn ring_bad(ri: usize, c: &[(i32, i32)], b: &mut Bad) {
     let n = c.len();
     if n < 4 {
         return;
@@ -127,13 +165,41 @@ fn ring_bad(c: &[(i32, i32)], b: &mut Bad) {
                 continue;
             }
             match seg_class((p1, p2), (q1, q2)) {
-                Class::Cross => b.crossings += 1,
-                Class::Overlap => b.overlaps += 1,
+                Class::Cross => {
+                    b.crossings += 1;
+                    let (x, y) = cross_point((p1, p2), (q1, q2));
+                    b.locs.push((ri, "cross", x, y));
+                }
+                Class::Overlap => {
+                    b.overlaps += 1;
+                    // midpoint of the shared stretch: average the two middle
+                    // endpoints along the sort order
+                    let mut pts = [p1, p2, q1, q2];
+                    pts.sort_unstable();
+                    let (x, y) = (
+                        (pts[1].0 as f64 + pts[2].0 as f64) / 2.0,
+                        (pts[1].1 as f64 + pts[2].1 as f64) / 2.0,
+                    );
+                    b.locs.push((ri, "overlap", x, y));
+                }
                 Class::Touch => b.touches += 1,
                 Class::None => {}
             }
         }
     }
+}
+
+/// Intersection point of two properly crossing segments (denominator is
+/// nonzero exactly because they properly cross).
+fn cross_point(
+    (p1, p2): ((i32, i32), (i32, i32)),
+    (q1, q2): ((i32, i32), (i32, i32)),
+) -> (f64, f64) {
+    let (dx, dy) = ((p2.0 - p1.0) as f64, (p2.1 - p1.1) as f64);
+    let (ex, ey) = ((q2.0 - q1.0) as f64, (q2.1 - q1.1) as f64);
+    let denom = dx * ey - dy * ex;
+    let t = ((q1.0 - p1.0) as f64 * ey - (q1.1 - p1.1) as f64 * ex) / denom;
+    (p1.0 as f64 + t * dx, p1.1 as f64 + t * dy)
 }
 
 enum Class {

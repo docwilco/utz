@@ -13,18 +13,35 @@ pub fn webdist_index() -> anyhow::Result<String> {
 }
 
 /// Binary dataset blob for the webdist viewer (all little-endian):
-/// `"uTZv" | u32 flags (bit0 = densities present) | u32 n_arcs | u32 n_verts
-/// | u32 offs[n_arcs+1] | pad to 8 | f64 xy[2·n_verts] | f32 dens[n_verts]`.
+/// `"uTZv" | u32 flags (bit0 = densities, bit1 = topology) | u32 n_arcs
+/// | u32 n_verts | u32 offs[n_arcs+1] | pad to 8 | f64 xy[2·n_verts]
+/// | f32 dens[n_verts] | topology`.
 /// Densities are per-vertex, flat in arc order: max of the vertex's incident
 /// edges via `max_along` — the same edge sampling the builder's weighted path
 /// uses, so the browser only maps density → weight (in WASM), never
 /// re-samples geometry.
-pub fn dataset_bin(arcs: &[Vec<(f64, f64)>], g: Option<&crate::density::DensityGrid>) -> Vec<u8> {
+///
+/// The topology section carries everything `payload_from_topology` needs
+/// beyond the arcs, so the viewer can run the container encoder live
+/// (utz-encode/src/wasm.rs parses it; the JS only reads the prefix above):
+/// `u8 dataset_code | u8 rel_len | release bytes | u16 n_features
+/// | per feature: f32 offset | u8 len | tzid bytes
+/// | u32 n_rings | per ring: u32 nrefs | u32 refs (id<<1|rev)
+/// | per feature: u16 npolys | per poly: u16 nrings | u32 ring_idx[nrings]`
+/// — byte-packed, no alignment (the WASM parser reads bytewise).
+pub fn dataset_bin(
+    t: &crate::topo::Topology,
+    feats: &[crate::Feat],
+    dataset_code: u8,
+    release: &str,
+    g: Option<&crate::density::DensityGrid>,
+) -> Vec<u8> {
+    let arcs = &t.arc_coords;
     let n_arcs = arcs.len();
     let n_verts: usize = arcs.iter().map(|a| a.len()).sum();
     let mut o = Vec::with_capacity(24 + 4 * n_arcs + 20 * n_verts);
     o.extend_from_slice(b"uTZv");
-    o.extend_from_slice(&u32::from(g.is_some()).to_le_bytes());
+    o.extend_from_slice(&(u32::from(g.is_some()) | 2).to_le_bytes());
     o.extend_from_slice(&(n_arcs as u32).to_le_bytes());
     o.extend_from_slice(&(n_verts as u32).to_le_bytes());
     let mut off = 0u32;
@@ -48,6 +65,31 @@ pub fn dataset_bin(arcs: &[Vec<(f64, f64)>], g: Option<&crate::density::DensityG
                 let right = ew.get(i).copied().unwrap_or(0.0);
                 o.extend_from_slice(&(left.max(right) as f32).to_le_bytes());
             }
+        }
+    }
+    // ---- topology section ----
+    o.push(dataset_code);
+    assert!(release.len() < 256, "release tag too long");
+    o.push(release.len() as u8);
+    o.extend_from_slice(release.as_bytes());
+    o.extend_from_slice(&(feats.len() as u16).to_le_bytes());
+    for f in feats {
+        o.extend_from_slice(&(f.offset as f32).to_le_bytes());
+        let tzid = f.tzid.as_deref().unwrap_or("");
+        assert!(tzid.len() < 256, "tzid too long: {tzid}");
+        o.push(tzid.len() as u8);
+        o.extend_from_slice(tzid.as_bytes());
+    }
+    o.extend_from_slice(&(t.ring_refs.len() as u32).to_le_bytes());
+    for refs in &t.ring_refs {
+        o.extend_from_slice(&(refs.len() as u32).to_le_bytes());
+        for &r in refs { o.extend_from_slice(&r.to_le_bytes()); }
+    }
+    for fi in 0..feats.len() {
+        o.extend_from_slice(&(t.structure[fi].len() as u16).to_le_bytes());
+        for poly in &t.structure[fi] {
+            o.extend_from_slice(&(poly.len() as u16).to_le_bytes());
+            for &ri in poly { o.extend_from_slice(&(ri as u32).to_le_bytes()); }
         }
     }
     o
