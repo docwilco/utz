@@ -24,6 +24,8 @@ enum Cmd {
     SizeTable(cmd::size_table::Args),
     /// Arc-store encoding shootout (delta+varint vs abs-fixed)
     QuantSize(cmd::quant_size::Args),
+    /// Quantization-artifact report: mangled rings before/after cleanup
+    QuantClean(cmd::quant_clean::Args),
     /// Topology-aware RDP sweep: size + lookup accuracy per eps
     RdpSweep(cmd::rdp_sweep::Args),
     /// Grid size × P(PIP) × memory with the real interned-CSR builder
@@ -56,6 +58,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Roundtrip(a) => cmd::roundtrip::run(a),
         Cmd::SizeTable(a) => cmd::size_table::run(a),
         Cmd::QuantSize(a) => cmd::quant_size::run(a),
+        Cmd::QuantClean(a) => cmd::quant_clean::run(a),
         Cmd::RdpSweep(a) => cmd::rdp_sweep::run(a),
         Cmd::CsrSweep(a) => cmd::csr_sweep::run(a),
         Cmd::Gridsweep(a) => cmd::gridsweep::run(a),

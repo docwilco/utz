@@ -26,7 +26,7 @@
 use std::io::Write as _;
 
 use crate::grid::{self, Order};
-use crate::{topo, Feat};
+use crate::{clean, topo, Feat};
 
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
@@ -67,8 +67,10 @@ pub struct PayloadStats {
     pub rings: u32,
     pub grid: u32,
     pub n_arcs: u32,
-    /// vertices actually stored (post-simplify, post-quantize-dedup)
+    /// vertices actually stored (post-simplify, post-quantize-clean)
     pub n_verts: u32,
+    /// what the post-quantization cleanup removed (see clean.rs)
+    pub clean: clean::CleanStats,
 }
 
 /// Full uniform-ε pipeline: topology → RDP → quantize → grid → serialize →
@@ -105,12 +107,20 @@ pub fn payload_from_topology(
     let qy = |lat: f64| (lat / 90.0 * qmax).round() as i32;
     let dq = |v: i32, half: f64| v as f64 / qmax * half;
 
-    // quantize arcs (consecutive dups collapse; endpoints kept)
+    // quantize arcs, then clean the snapping artifacts per shared arc (dups,
+    // zero-area spikes, collinear pass-throughs) and drop rings that
+    // collapsed to zero area — see clean.rs. Junction endpoints stay put, so
+    // neighbouring zones remain stitched.
+    let mut cst = clean::CleanStats::default();
     let arcs_q: Vec<Vec<(i32, i32)>> = arc_coords.iter().map(|a| {
         let mut q: Vec<(i32, i32)> = a.iter().map(|&(x, y)| (qx(x), qy(y))).collect();
-        q.dedup();
+        let closed = a.len() > 1 && a.first() == a.last();
+        clean::clean_arc(&mut q, closed, &mut cst);
         q
     }).collect();
+    let (ring_refs, structure, arcs_q) =
+        clean::drop_degenerate_rings(&t.ring_refs, &t.structure, arcs_q, &mut cst);
+    let t = topo::Topology { arc_coords: Vec::new(), ring_refs, structure };
 
     // grid over the dequantized geometry = exactly what the runtime sees
     let arcs_dq: Vec<Vec<(f64, f64)>> = arcs_q.iter()
@@ -124,6 +134,7 @@ pub fn payload_from_topology(
     let mut stats = PayloadStats {
         n_arcs: arcs_q.len() as u32,
         n_verts: arcs_q.iter().map(|a| a.len() as u32).sum(),
+        clean: cst,
         ..Default::default()
     };
     let mut o = Vec::new();

@@ -13,6 +13,7 @@ pub mod grid2mem;
 pub mod grid_bench;
 pub mod gridsweep;
 pub mod pip_bench;
+pub mod quant_clean;
 pub mod quant_size;
 pub mod rdp_sweep;
 pub mod roundtrip;

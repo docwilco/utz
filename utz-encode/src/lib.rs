@@ -11,6 +11,7 @@
 mod types;
 pub use types::*;
 
+pub mod clean;
 pub mod encode;
 pub mod grid;
 pub mod topo;
