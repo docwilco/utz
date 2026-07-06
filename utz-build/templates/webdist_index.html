@@ -53,7 +53,7 @@
   <button id="clps" title="collapse/expand controls">–</button>
   <div id="pbody">
   <p class="sub">TZBB datasets · runs the builder's own code (utz-encode → WASM) in workers</p>
-  <div class="qtitle">Layers <span>· dataset / algorithm / ε / quantization</span></div>
+  <div class="qtitle">Layers <span>· dataset / algorithm / ε / quantization / order</span></div>
   <div id="slots"></div>
   <div class="qsec">
     <div class="qtitle">Population density <span>· GHS-POP 2020</span></div>
@@ -81,7 +81,7 @@
     <div class="st" style="color:#8b98a8">cell fill: hue = dominant zone, opacity = dominance</div>
   </div>
   <div class="qsec">
-    <div class="qtitle">Container encode <span>· live .utz size per enabled layer: delta+varint payload, then codecs</span></div>
+    <div class="qtitle">Container encode <span>· live .utz size per enabled layer: delta+varint payload, then codecs (always S→Q, the builder's order)</span></div>
     <div class="slot">
       <input type="checkbox" id="encb">
       <span class="raw-label">encode</span>
@@ -95,7 +95,7 @@
     <div id="stats"></div>
   </div>
   <div class="qsec">
-    <div class="qtitle">Misassigned <span>· vs raw ε=0, pre-quant</span></div>
+    <div class="qtitle">Misassigned <span>· vs ε=0 (S→Q: pre-quant raw · Q→S: the snapped line)</span></div>
     <div id="mstats"></div>
   </div>
   </div>
@@ -182,11 +182,15 @@ function qc(v, m, span) {
   if (m === 'i16') return Math.round(v / span * 32767) / 32767 * span;
   return v;
 }
+var ORDER = [
+  { key: 'sq', label: 'S→Q', title: 'simplify the raw line, then quantize (the builder\'s order)' },
+  { key: 'qs', label: 'Q→S', title: 'quantize to the grid first, then simplify the snapped line' },
+];
 function fmtBytes(b) {
   return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MiB' : Math.round(b / 1024).toLocaleString() + ' KiB';
 }
 
-// ---- shareable URL fragment: #m=lat,lng,zoom&l0=ds,algo,eps,quant,w&h=op&g=deg,layer ----
+// ---- shareable URL fragment: #m=lat,lng,zoom&l0=ds,algo,eps,quant,w,order&h=op&g=deg,layer ----
 var HASH = {};
 location.hash.slice(1).split('&').forEach(function (kv) {
   var i = kv.indexOf('=');
@@ -203,8 +207,9 @@ function layerDef(i, fallback) {
   var eps = parseFloat(p[2]);
   var quant = QUANT.findIndex(function (q) { return q.key === p[3]; });
   var w = p[4] === 'off' ? null : parseFloat(p[4]);
+  var order = p[5] === 'qs' ? 1 : 0; // older links omit the field → S→Q
   if (dsi < 0 || algo < 0 || !(eps > 0) || quant < 0) return fallback;
-  return { on: on, dsi: dsi, algo: algo, eps: eps, quant: quant, w: (w > 0 && w < 1) ? w : null };
+  return { on: on, dsi: dsi, algo: algo, eps: eps, quant: quant, w: (w > 0 && w < 1) ? w : null, order: order };
 }
 function syncHash() {
   if (!HASH_READY) return;
@@ -213,7 +218,7 @@ function syncHash() {
   layers.forEach(function (s, i) {
     var w = s.wmin();
     parts.push('l' + i + '=' + (s.on ? '' : '!') + DS_LIST[s.dsi] + ',' + ALGO[s.algo].key + ',' +
-      s.eps + ',' + QUANT[s.quant].key + ',' + (w < 1 ? w : 'off'));
+      s.eps + ',' + QUANT[s.quant].key + ',' + (w < 1 ? w : 'off') + ',' + ORDER[s.order].key);
   });
   if (heatCb.checked) parts.push('h=' + heatOp.value);
   if (gridCb.checked) parts.push('g=' + (Math.round(gridDeg * 1000) / 1000) + ',' + gridLayerSel.selectedIndex);
@@ -251,14 +256,23 @@ document.getElementById('clps').addEventListener('click', function () {
 // blocks the page.
 function workerBody() {
   var W = null, buf = 0, dbuf = 0, COORDS = null, OFFS = null, DENS = null;
-  // pockets between raw sub-chain [i0..i1] (indices within arc at base s)
+  function qc(v, m, span) {
+    if (m === 'f32') return Math.fround(v);
+    if (m === 'i32') return Math.round(v * 1e7) / 1e7;
+    if (m === 'i24') return Math.round(v / span * 8388607) / 8388607 * span;
+    if (m === 'i16') return Math.round(v / span * 32767) / 32767 * span;
+    return v;
+  }
+  // pockets between input sub-chain [i0..i1] (indices within the arc in
+  // `src` at `base`; Q→S feeds the pre-quantized copy, S→Q raw COORDS)
   // and its shortcut; splits at chain/shortcut-line crossings. People are
   // priced with the mean per-vertex density over the pocket's chain — DENS
-  // hugs the boundary exactly where pockets live.
-  function pockets(s, i0, i1, acc) {
-    var X = function (i) { return COORDS[(s + i) * 2]; };
-    var Y = function (i) { return COORDS[(s + i) * 2 + 1]; };
-    var D = function (i) { return DENS ? DENS[s + i] : 0; };
+  // hugs the boundary exactly where pockets live (`dbase` = raw arc start;
+  // quantization keeps vertices 1:1, so densities line up either way).
+  function pockets(src, base, dbase, i0, i1, acc) {
+    var X = function (i) { return src[(base + i) * 2]; };
+    var Y = function (i) { return src[(base + i) * 2 + 1]; };
+    var D = function (i) { return DENS ? DENS[dbase + i] : 0; };
     var ax = X(i0), ay = Y(i0), dx = X(i1) - ax, dy = Y(i1) - ay;
     var len2 = dx * dx + dy * dy;
     var pocket = 0, clat = ay, dsum = D(i0), np = 1;
@@ -304,11 +318,22 @@ function workerBody() {
       var outOffs = new Uint32Array(OFFS.length);
       var kept = 0;
       var weighted = DENS && m.wmin < 1;
+      var pre = m.pre && m.quant !== 'f64'; // Q→S: snap before simplifying
       var acc = { area: 0, people: 0 };
       for (var a = 0; a + 1 < OFFS.length; a++) {
         var s = OFFS[a], n = OFFS[a + 1] - s;
+        // `src` is exactly what the simplifier eats — the walk-match and
+        // pocket pricing below must compare against it, not raw COORDS
+        var src = COORDS, base = s;
+        if (pre) {
+          src = new Float64Array(n * 2); base = 0;
+          for (var i = 0; i < n; i++) {
+            src[i * 2] = qc(COORDS[(s + i) * 2], m.quant, 180);
+            src[i * 2 + 1] = qc(COORDS[(s + i) * 2 + 1], m.quant, 90);
+          }
+        }
         var f = new Float64Array(W.memory.buffer, buf, n * 2);
-        f.set(COORDS.subarray(s * 2, (s + n) * 2));
+        if (pre) { f.set(src); } else { f.set(COORDS.subarray(s * 2, (s + n) * 2)); }
         var k;
         if (weighted) {
           new Float64Array(W.memory.buffer, dbuf, n).set(DENS.subarray(s, s + n));
@@ -319,11 +344,11 @@ function workerBody() {
         var res = new Float64Array(W.memory.buffer, buf, k * 2);
         out.set(res, kept * 2);
         if (k < n) {
-          // walk-match kept verts to raw indices, then price each shortcut
+          // walk-match kept verts to input indices, then price each shortcut
           var j = 0, prev = -1;
           for (var v = 0; v < k; v++) {
-            while (COORDS[(s + j) * 2] !== res[v * 2] || COORDS[(s + j) * 2 + 1] !== res[v * 2 + 1]) j++;
-            if (prev >= 0 && j > prev + 1) pockets(s, prev, j, acc);
+            while (src[(base + j) * 2] !== res[v * 2] || src[(base + j) * 2 + 1] !== res[v * 2 + 1]) j++;
+            if (prev >= 0 && j > prev + 1) pockets(src, base, s, prev, j, acc);
             prev = j; j++;
           }
         }
@@ -341,6 +366,7 @@ function Layer(idx, color, def) {
   var self = this;
   this.idx = idx; this.color = color;
   this.on = def.on; this.dsi = def.dsi || 0; this.algo = def.algo; this.eps = def.eps; this.quant = def.quant;
+  this.order = def.order || 0;
   this.pwx = def.w || null; // exact pop multiplier (typed / from URL), overrides the slider
   this.pwv = this.pwx ? Math.max(1, Math.min(100, Math.round(-50 * Math.log10(this.pwx)))) : (def.pwv || 0);
   this.gen = 0; this.busy = false; this.ready = false; this.pendingRun = false;
@@ -357,10 +383,13 @@ function Layer(idx, color, def) {
     EPS_M.map(function (e) { return 'ε ' + e + ' m'; }).concat(['ε custom…']),
     EPS_M.indexOf(this.eps));
   this.selQuant = mkSelect(QUANT.map(function (q) { return q.label; }), this.quant);
+  this.selOrder = mkSelect(ORDER.map(function (o) { return o.label; }), this.order);
+  ORDER.forEach(function (o, i) { self.selOrder.options[i].title = o.title; });
   this.spin = document.createElement('span'); this.spin.className = 'spin';
   row.appendChild(this.cb); row.appendChild(sw);
   row.appendChild(this.selDs); row.appendChild(this.selAlgo);
   row.appendChild(this.selEps); row.appendChild(this.selQuant);
+  row.appendChild(this.selOrder);
   row.appendChild(this.spin);
   document.getElementById('slots').appendChild(row);
 
@@ -445,10 +474,12 @@ function Layer(idx, color, def) {
     self.request();
   });
   this.selQuant.addEventListener('change', function () {
-    // quantization only snaps the already-simplified result for display
     self.quant = self.selQuant.selectedIndex;
-    self.redraw(); updateStats();
+    // Q→S feeds the simplifier different input — recompute; the S→Q result
+    // only needs its display snap refreshed
+    if (ORDER[self.order].key === 'qs') { self.request(); } else { self.redraw(); updateStats(); }
   });
+  this.selOrder.addEventListener('change', function () { self.order = self.selOrder.selectedIndex; self.request(); });
   this.syncDisabled();
 }
 function mkSelect(labels, sel) {
@@ -469,12 +500,13 @@ Layer.prototype.popLabel = function () {
 };
 Layer.prototype.syncDisabled = function () {
   var d = !this.on;
-  var raw = ALGO[this.algo].key === 'raw'; // no ε — quant only
+  var raw = ALGO[this.algo].key === 'raw'; // no ε, no order — quant only
   this.selDs.disabled = d;
   this.selAlgo.disabled = d;
   this.selEps.disabled = d || raw;
   this.epsSl.disabled = d || raw;
   this.selQuant.disabled = d;
+  this.selOrder.disabled = d || raw;
   this.popSl.disabled = d || raw;
 };
 Layer.prototype.toggled = function () {
@@ -519,6 +551,8 @@ Layer.prototype.send = function () {
     type: 'run', gen: this.gen,
     algoId: ALGO[this.algo].id,
     param: ALGO[this.algo].key === 'vw' ? epsDeg * epsDeg : epsDeg,
+    pre: ORDER[this.order].key === 'qs',
+    quant: QUANT[this.quant].key,
     wmin: this.wmin(),
   });
 };
@@ -544,7 +578,8 @@ Layer.prototype.request = function () {
 };
 Layer.prototype.redraw = function () {
   if (!this.result || !this.on) return;
-  var m = QUANT[this.quant].key;
+  // Q→S output is already on the grid — don't snap twice
+  var m = ORDER[this.order].key === 'qs' ? 'f64' : QUANT[this.quant].key;
   var lls = [], c = this.result.coords, o = this.result.offs;
   for (var a = 0; a + 1 < o.length; a++) {
     var seg = new Array(o[a + 1] - o[a]);
@@ -1137,6 +1172,7 @@ function updateStats() {
     var isRaw = ALGO[s.algo].key === 'raw';
     el.innerHTML += '<div class="st"><span class="sw" style="background:' + s.color + '"></span>' +
       '<span>' + DS_LIST[s.dsi] + ' ' + ALGO[s.algo].name + (isRaw ? '' : ' ε' + s.eps) + ' @ ' + q.label +
+      (isRaw || s.order === 0 ? '' : ' ' + ORDER[s.order].label) +
       (s.pwv > 0 && !isRaw ? ' pop' + s.popLabel() : '') + '</span>' +
       '<span class="num">' + kept.toLocaleString() + ' v · <span class="pct">−' +
       (100 * (1 - kept / s.data.stored0)).toFixed(1) + '%</span> · ' + fmtBytes(kept * 2 * q.bpc) +
