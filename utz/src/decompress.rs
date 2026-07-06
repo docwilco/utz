@@ -24,15 +24,51 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>, Err
     let out = match codec {
         0 => body.to_vec(),
         #[cfg(feature = "gzip")]
-        1 => miniz_oxide::inflate::decompress_to_vec_zlib(body).map_err(|_| Error::Decompress)?,
+        1 => {
+            // Inflate straight into a raw_len-sized buffer (the outer header
+            // gives the exact size): the output slice doubles as the DEFLATE
+            // history, so decode RAM is decoded + ~10 K tables.
+            // decompress_to_vec_zlib would grow an unhinted Vec instead —
+            // realloc overlap peaks at ~1.4× decoded (window-sweep, §7).
+            let mut out = alloc::vec![0u8; raw_len];
+            let n = miniz_oxide::inflate::decompress_slice_iter_to_slice(
+                &mut out,
+                core::iter::once(body),
+                true,  // zlib header
+                false, // verify adler32
+            )
+            .map_err(|_| Error::Decompress)?;
+            out.truncate(n);
+            out
+        }
         #[cfg(feature = "zstd-sys")]
         2 => zstd::stream::decode_all(body).map_err(|_| Error::Decompress)?,
         #[cfg(all(feature = "ruzstd", not(feature = "zstd-sys")))]
         2 => {
-            let mut out = Vec::with_capacity(raw_len);
-            ruzstd::decoding::FrameDecoder::new()
-                .decode_all_to_vec(body, &mut out)
-                .map_err(|_| Error::Decompress)?;
+            use ruzstd::decoding::{BlockDecodingStrategy, FrameDecoder};
+            use ruzstd::io::Read as _;
+            // Drive the decoder block-by-block, draining after each one:
+            // decode_all_to_vec batches up to 1 MiB in the internal decode
+            // buffer before draining, peaking at ~2× decoded regardless of
+            // the frame's window and defeating the window knob (§7). This
+            // loop keeps the internal buffer at window + one block.
+            let mut input = body;
+            let mut dec = FrameDecoder::new();
+            dec.init(&mut input).map_err(|_| Error::Decompress)?;
+            let mut out = alloc::vec![0u8; raw_len];
+            let mut written = 0;
+            loop {
+                dec.decode_blocks(&mut input, BlockDecodingStrategy::UptoBlocks(1))
+                    .map_err(|_| Error::Decompress)?;
+                written += dec.read(&mut out[written..]).map_err(|_| Error::Decompress)?;
+                if dec.can_collect() != 0 {
+                    return Err(Error::BadFormat); // frame holds more than raw_len declared
+                }
+                if dec.is_finished() {
+                    break;
+                }
+            }
+            out.truncate(written);
             out
         }
         #[cfg(feature = "brotli")]
