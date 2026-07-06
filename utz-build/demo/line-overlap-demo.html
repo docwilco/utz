@@ -106,22 +106,39 @@ function makeNoise(seed) {
   };
 }
 
-// Reference "border": broad sweep + detail whose amplitude is gated by a slow
-// envelope, so some stretches are near-straight (variants coincide there) and
-// some are wiggly (variants cut corners there). World space is 1000 x 560.
+// Reference "border": alternating straight and wiggly pieces. Straight pieces
+// are exactly collinear between corner anchors snapped to the coarsest quant
+// grid, so every layer (any eps, q2, q4, raw) collapses them to the identical
+// chord — long stretches of exact overlap, like real borders that follow a
+// meridian. Wiggly pieces are fractal noise, where the variants diverge.
+// World space is 1000 x 560.
 var WORLD_W = 1000, WORLD_H = 560;
 function makeReference() {
-  var nD = makeNoise(11), nE = makeNoise(23), nB = makeNoise(47);
-  var pts = [], N = 420;
-  for (var i = 0; i < N; i++) {
-    var t = i / (N - 1);
-    var env = 0.5 + 0.5 * nE(t * 4.2, 2);          // slow gate in [0,1]
-    env = env * env;
-    var y = 275
-      + 165 * Math.sin(t * 5.2 + 0.6)
-      + env * 85 * nD(t * 22, 4)
-      + 12 * nB(t * 3.1, 2);
-    pts.push([30 + t * (WORLD_W - 60), y]);
+  var rnd = mulberry32(4), nD = makeNoise(11);
+  function snap(v) { return Math.round(v / 4) * 4; }
+  var x = 28, y = 280, straight = true;
+  var pts = [[x, y]];
+  while (x < 968) {
+    var x2 = snap(Math.min(968, x + (straight ? 140 + rnd() * 120 : 90 + rnd() * 110)));
+    var y2 = snap(Math.max(56, Math.min(504, y + (rnd() * 2 - 1) * 170)));
+    var i, t, n;
+    if (straight) {
+      n = Math.max(2, Math.round((x2 - x) / 15));
+      for (i = 1; i <= n; i++) {
+        t = i / n;
+        pts.push([x + (x2 - x) * t, y + (y2 - y) * t]);
+      }
+    } else {
+      var amp = 18 + rnd() * 42, ph = rnd() * 100;
+      n = Math.max(6, Math.round((x2 - x) / 2.4));
+      for (i = 1; i <= n; i++) {
+        t = i / n;
+        var fade = Math.sin(Math.PI * t); // meet the anchors exactly
+        pts.push([x + (x2 - x) * t,
+                  y + (y2 - y) * t + (i === n ? 0 : fade * amp * nD(ph + t * (x2 - x) / 9, 4))]);
+      }
+    }
+    x = x2; y = y2; straight = !straight;
   }
   return pts;
 }
