@@ -1495,8 +1495,9 @@ function gridRefresh() {
   });
 }
 // small histogram of cells with 2+ candidate tzids (the ones that actually
-// need polygon tests); the tooltip carries the full text stats, with
-// single-candidate and uncrossed cells as context lines
+// need polygon tests); the tooltip carries the full text stats of the
+// candidates-per-cell distribution — crossed or not doesn't matter, only
+// how many tzids compete in a cell
 var gridHist = document.getElementById('gridhist');
 function drawGridHist(hist, noneCells, uncrossedZone, uncrossedNone) {
   var ks = Object.keys(hist).map(Number)
@@ -1528,18 +1529,17 @@ function drawGridHist(hist, noneCells, uncrossedZone, uncrossedNone) {
     ctx.fillStyle = '#b9c4d0';
     ctx.fillText(c >= 10000 ? Math.round(c / 1000) + 'k' : String(c), x + bw / 2, 34 - bh - 2);
   });
-  var k1 = hist[1] || 0;
-  var total = multi + k1 + noneCells + uncrossedZone + uncrossedNone;
+  var one = (hist[1] || 0) + uncrossedZone;
+  var none = noneCells + uncrossedNone;
+  var total = multi + one + none;
   gridHist.title = 'cells with 2+ candidate tzids (need polygon tests)\n' +
     ks.map(function (k) {
       return k + ' zones: ' + hist[k].toLocaleString() +
         ' cells (' + (100 * hist[k] / multi).toFixed(1) + '%)';
     }).join('\n') +
     '\nmean ' + (sum / multi).toFixed(2) + ' candidates over ' + multi.toLocaleString() + ' cells' +
-    '\ncrossed but single-candidate: ' + k1.toLocaleString() + ' cells' +
-    (noneCells ? ' · no zone: ' + noneCells.toLocaleString() : '') +
-    '\nuncrossed: ' + (uncrossedZone + uncrossedNone).toLocaleString() + ' cells — ' +
-    uncrossedZone.toLocaleString() + ' single zone · ' + uncrossedNone.toLocaleString() + ' no zone' +
+    '\n' + (none ? '0 tzids: ' + none.toLocaleString() + ' cells · ' : '') +
+    '1 tzid: ' + one.toLocaleString() + ' cells' +
     '\ntotal ' + total.toLocaleString() + ' cells · ' +
     (100 * multi / total).toFixed(1) + '% need polygon tests';
 }
