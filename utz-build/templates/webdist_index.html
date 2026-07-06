@@ -33,7 +33,13 @@
   .prob:hover { background: rgba(255,255,255,0.07); }
   .prob .pkind { flex: none; width: 46px; font-size: 10px; letter-spacing: .03em; }
   .qsec { margin-top: 10px; padding-top: 9px; border-top: 1px solid #2a3542; }
-  .qtitle { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: #b9c4d0; margin-bottom: 6px; }
+  #pbody > div.qsec:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
+  .qtitle { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: #b9c4d0; margin-bottom: 6px;
+    cursor: pointer; user-select: none; }
+  .qtitle::before { content: '▾'; color: #5a6472; margin-right: 5px; font-size: 9px; }
+  .qsec.clp .qtitle { margin-bottom: 0; }
+  .qsec.clp .qtitle::before { content: '▸'; }
+  .qsec.clp .qbody { display: none; }
   .qtitle span { color: #5a6472; text-transform: none; letter-spacing: 0; }
   .slot { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
   .slot input[type=checkbox] { accent-color: #ffb454; width: 14px; height: 14px; flex: none; }
@@ -78,13 +84,15 @@
   <button id="clps" title="collapse/expand controls">–</button>
   <div id="pbody">
   <p class="sub">TZBB datasets · runs the builder's own code (utz-encode → WASM) in workers</p>
-  <div class="qtitle">Layers <span>· dataset / algorithm / ε / quantization / order</span></div>
-  <div id="slots"></div>
-  <div class="slot" title="how coincident layer lines are drawn, so one color doesn't hide the others">
-    <span class="raw-label" style="color:#8b98a8">overlap</span>
-    <select id="ovmode" style="flex:1; max-width:none"></select>
+  <div class="qsec" data-sec="layers">
+    <div class="qtitle">Layers <span>· dataset / algorithm / ε / quantization / order</span></div>
+    <div id="slots"></div>
+    <div class="slot" title="how coincident layer lines are drawn, so one color doesn't hide the others">
+      <span class="raw-label" style="color:#8b98a8">overlap</span>
+      <select id="ovmode" style="flex:1; max-width:none"></select>
+    </div>
   </div>
-  <div class="qsec">
+  <div class="qsec" data-sec="heat">
     <div class="qtitle">Population density <span>· GHS-POP 2020</span></div>
     <label class="slot">
       <input type="checkbox" id="heatcb">
@@ -93,7 +101,7 @@
       <input type="range" id="heatop" min="0" max="100" value="45" style="flex:1" title="heatmap opacity">
     </label>
   </div>
-  <div class="qsec">
+  <div class="qsec" data-sec="grid">
     <div class="qtitle">Coarse pre-filter <span>· grid cells that fall through to polygon tests</span></div>
     <div class="slot">
       <input type="checkbox" id="gridcb">
@@ -109,15 +117,15 @@
     </div>
     <div class="st" style="color:#8b98a8">cell fill: hue = dominant zone, opacity = dominance</div>
   </div>
-  <div class="qsec">
+  <div class="qsec" data-sec="red">
     <div class="qtitle">Reduction</div>
     <div id="stats"></div>
   </div>
-  <div class="qsec">
+  <div class="qsec" data-sec="mis">
     <div class="qtitle">Misassigned <span>· vs raw ε=0 · display snap priced separately as “quant”</span></div>
     <div id="mstats"></div>
   </div>
-  <div class="qsec">
+  <div class="qsec" data-sec="enc">
     <div class="qtitle">Container encode</div>
     <div class="slot" title="live .utz size per enabled layer (always S→Q, the builder's order)">
       <input type="checkbox" id="encb">
@@ -254,7 +262,7 @@ function fmtBytes(b) {
   return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MiB' : Math.round(b / 1024).toLocaleString() + ' KiB';
 }
 
-// ---- shareable URL fragment: #m=lat,lng,zoom&l0=ds,algo,eps,quant,w,order&o=overlap&b=basemap&h=op&g=deg,layer ----
+// ---- shareable URL fragment: #m=lat,lng,zoom&l0=ds,algo,eps,quant,w,order&o=overlap&b=basemap&h=op&g=deg,layer&c=collapsed ----
 var HASH = {};
 location.hash.slice(1).split('&').forEach(function (kv) {
   var i = kv.indexOf('=');
@@ -286,6 +294,9 @@ function syncHash() {
   });
   if (MODE !== 'sbs') parts.push('o=' + MODE);
   if (BASE !== 'streets') parts.push('b=' + BASE);
+  var clp = Array.prototype.map.call(document.querySelectorAll('#pbody .qsec.clp'),
+    function (s) { return s.dataset.sec; });
+  if (clp.length) parts.push('c=' + clp.join(','));
   if (heatCb.checked) parts.push('h=' + heatOp.value);
   if (gridCb.checked) parts.push('g=' + (Math.round(gridDeg * 1000) / 1000) + ',' + gridLayerSel.selectedIndex);
   if (encCb.checked) {
@@ -326,6 +337,20 @@ document.getElementById('clps').addEventListener('click', function () {
   var hide = pbody.style.display !== 'none';
   pbody.style.display = hide ? 'none' : '';
   this.textContent = hide ? '+' : '–';
+});
+// per-section collapse: click a title to fold its body; collapsed section
+// keys ride the hash as c=
+document.querySelectorAll('#pbody .qsec').forEach(function (sec) {
+  var t = sec.querySelector('.qtitle');
+  var body = document.createElement('div');
+  body.className = 'qbody';
+  while (t.nextSibling) body.appendChild(t.nextSibling);
+  sec.appendChild(body);
+  if ((HASH.c || '').split(',').indexOf(sec.dataset.sec) >= 0) sec.classList.add('clp');
+  t.addEventListener('click', function () {
+    sec.classList.toggle('clp');
+    syncHash();
+  });
 });
 
 // worker: instantiate utz-simplify WASM, simplify every arc on request, and
