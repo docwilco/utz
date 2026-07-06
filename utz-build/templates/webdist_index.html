@@ -14,7 +14,10 @@
   /* plain pointer at rest; grabbing hand only while actually dragging */
   .leaflet-grab { cursor: default; }
   .leaflet-dragging .leaflet-grab { cursor: grabbing; }
-  #panel { position: absolute; top: 12px; right: 12px; z-index: 600; width: 384px;
+  /* wide enough for a full layer row (checkbox + swatch + 5 selects +
+     spinner ≈ 458px) — anything narrower forces a horizontal scrollbar */
+  #panel { position: absolute; top: 12px; right: 12px; z-index: 600; width: 512px;
+    max-width: calc(100vw - 24px); box-sizing: border-box;
     background: rgba(17,22,28,0.9); color: #e6edf3; border: 1px solid #2a3542; border-radius: 10px;
     padding: 12px 14px; font: 13px/1.4 system-ui, sans-serif; backdrop-filter: blur(6px); max-height: 92vh; overflow-y: auto; }
   #panel h2 { margin: 0 0 2px; font-size: 13px; }
