@@ -88,14 +88,6 @@
       <span class="spin" id="encspin"></span>
     </div>
     <div id="encstats"></div>
-    <!-- combo-box suggestions for the per-layer grid° inputs (same detents as
-         the coarse pre-filter slider); any 0.1–45 value can be typed -->
-    <datalist id="gridsteps">
-      <option value="0.5"></option><option value="0.6"></option><option value="0.7"></option>
-      <option value="0.8"></option><option value="0.9"></option><option value="1"></option>
-      <option value="1.33"></option><option value="1.5"></option><option value="2"></option>
-      <option value="3"></option><option value="5"></option><option value="10"></option>
-    </datalist>
   </div>
   <div class="qsec">
     <div class="qtitle">Reduction</div>
@@ -611,6 +603,10 @@ var layers = [
   new Layer(3, '#00d95f', layerDef(3, { on: false, dsi: 0, algo: 3, eps: 500, quant: 0 })),
 ];
 
+// grid-cell-size slider detents, shared by the coarse pre-filter and the
+// per-layer encode sliders (typed values may sit between detents)
+var GRID_DEG = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 4 / 3, 1.5, 2, 3, 5, 10];
+
 // ---- live container encode (PLAN.md §12) ----
 // Runs the real utz-encode pipeline for EVERY enabled layer — one worker per
 // layer, so the stat blocks compare side by side and one layer's parameter
@@ -680,22 +676,41 @@ var encSlots = layers.map(function (ly) {
   sw.className = 'sw';
   sw.style.background = ly.color;
   s.label = document.createElement('span');
+  // grid° control mirrors the coarse pre-filter's slider+box, just smaller:
+  // detents on the slider, exact values typed into the box
   s.gridDeg = 2;
+  s.gridSl = document.createElement('input');
+  s.gridSl.type = 'range';
+  s.gridSl.min = 0;
+  s.gridSl.max = GRID_DEG.length - 1;
+  s.gridSl.value = GRID_DEG.indexOf(2);
+  s.gridSl.style.width = '64px';
+  s.gridSl.style.flex = 'none';
+  s.gridSl.style.marginLeft = 'auto';
+  s.gridSl.title = 'prefilter grid cell size for this layer';
   s.gridIn = document.createElement('input');
   s.gridIn.type = 'text';
   s.gridIn.className = 'val';
-  s.gridIn.setAttribute('list', 'gridsteps'); // combo box: detents + free text
-  s.gridIn.value = s.gridDeg;
-  s.gridIn.title = 'prefilter grid cell size in degrees for this layer — pick a detent or type any 0.1–45';
-  s.gridIn.style.marginLeft = 'auto';
-  head.appendChild(sw); head.appendChild(s.label); head.appendChild(s.gridIn);
+  s.gridIn.value = fmtDeg(s.gridDeg);
+  s.gridIn.title = 'grid cell size in degrees (editable, 0.1–45)';
+  head.appendChild(sw); head.appendChild(s.label);
+  head.appendChild(s.gridSl); head.appendChild(s.gridIn);
   s.body = document.createElement('div');
   s.box.appendChild(head); s.box.appendChild(s.body);
   encStatsEl.appendChild(s.box);
+  s.gridSl.addEventListener('input', function () { s.gridIn.value = fmtDeg(GRID_DEG[s.gridSl.value]); });
+  s.gridSl.addEventListener('change', function () {
+    s.gridDeg = GRID_DEG[s.gridSl.value];
+    s.gridIn.value = fmtDeg(s.gridDeg);
+    encRequestSlot(s); syncHash();
+  });
   s.gridIn.addEventListener('change', function () {
     var v = parseFloat(s.gridIn.value);
-    if (!(v >= 0.1 && v <= 45)) { s.gridIn.value = s.gridDeg; return; }
-    s.gridDeg = v;
+    if (!(v >= 0.1 && v <= 45)) { s.gridIn.value = fmtDeg(s.gridDeg); return; }
+    s.gridDeg = v; // typed value used exactly; slider snaps to nearest detent
+    var best = 0;
+    GRID_DEG.forEach(function (d, i) { if (Math.abs(d - v) < Math.abs(GRID_DEG[best] - v)) best = i; });
+    s.gridSl.value = best;
     encRequestSlot(s); syncHash();
   });
   return s;
@@ -923,7 +938,6 @@ heatOp.addEventListener('change', function () { syncHash(); });
 // colored by their dominant zone (hue) and how dominant it is (opacity),
 // aggregated from zones-<ds>.bin.z — a 0.1° lattice answered by the actual
 // μTZ runtime at build time.
-var GRID_DEG = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 4 / 3, 1.5, 2, 3, 5, 10]; // slider detents
 var gridDeg = 2; // current cell size (typed values may sit between detents)
 map.createPane('pipgrid').style.zIndex = 360; // above heat, below the layer lines
 var gridRenderer = L.canvas({ pane: 'pipgrid' });
@@ -1288,7 +1302,12 @@ if (HASH.e) {
   var ep = HASH.e.split(',').map(parseFloat);
   encSlots.forEach(function (s, i) {
     var gv = ep.length === 1 ? ep[0] : ep[i];
-    if (gv >= 0.1 && gv <= 45) { s.gridDeg = gv; s.gridIn.value = gv; }
+    if (!(gv >= 0.1 && gv <= 45)) return;
+    s.gridDeg = gv;
+    s.gridIn.value = fmtDeg(gv);
+    var best = 0;
+    GRID_DEG.forEach(function (d, j) { if (Math.abs(d - gv) < Math.abs(GRID_DEG[best] - gv)) best = j; });
+    s.gridSl.value = best;
   });
   encCb.checked = true;
 }
