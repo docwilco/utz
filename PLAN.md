@@ -321,6 +321,11 @@ generates the asset themselves. No config file, no env vars, no `build.rs` in
 - **Costs accepted:** data crates republished per TZBB release (CI-automated;
   ≤ ~500 KB each, well under crates.io limits); preset+tweak means going custom
   (three lines of build.rs).
+- **Provenance note:** the `.utz` in a data crate is gitignored and published via
+  `cargo publish --allow-dirty`, so the artifact isn't byte-reproducible from a
+  git checkout alone. Reproducibility comes from the self-describing header
+  (TZBB release + all knobs → regenerate and diff); the CI publish job should
+  also attach generation logs + checksums to a GitHub release.
 
 **Prior art:** `prost-build`/`slint-build`/`tonic-build` (consumer build.rs,
 builder-API-as-config), `icu_datagen`/databake + `chrono-tz` (pregenerated /
