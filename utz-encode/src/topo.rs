@@ -163,7 +163,19 @@ fn build_topology_impl(feats: &[Feat], algo: Simplify, edge_weight: Option<&dyn 
             if sig(seq[(i + n - 1) % n], seq[i]) != sig(seq[i], seq[(i + 1) % n]) { cuts.push(i); }
         }
         if cuts.is_empty() {
-            let mut a = seq.clone(); a.push(seq[0]);
+            // junction-free closed ring (an island / lone hole): rotate the
+            // cycle to start at its smallest vertex id, so the same ring
+            // shared by two features (island outline = hole of the zone
+            // around it) interns to ONE arc regardless of where each
+            // feature's ring happens to start; intern() handles winding
+            let m = *seq.iter().min().unwrap();
+            let mut best: Option<Vec<VId>> = None;
+            for i in (0..n).filter(|&i| seq[i] == m) {
+                let rot: Vec<VId> = (0..n).map(|k| seq[(i + k) % n]).collect();
+                if best.as_ref().map_or(true, |b| rot < *b) { best = Some(rot); }
+            }
+            let mut a = best.unwrap();
+            a.push(m);
             ring_refs[ri].push(intern(a, &mut arc_ids, &mut arcs));
         } else {
             for j in 0..cuts.len() {
@@ -273,6 +285,37 @@ mod tests {
         right.extend(shared.iter().rev()); // down the shared border
         let f = |r: Ring| Feat { offset: 0.0, tzid: None, polys: vec![vec![r] as Poly] };
         vec![f(left), f(right)]
+    }
+
+    /// An island whose outline is also the hole of the zone around it — the
+    /// same closed ring, but each feature starts it at a different vertex and
+    /// winds it the opposite way (exactly the Cyprus case). The topology must
+    /// intern that ring as ONE arc, not two rotated copies.
+    #[test]
+    fn shared_island_ring_interns_once() {
+        let island: Ring = vec![(1.0, 1.0), (2.0, 1.0), (2.0, 2.0), (1.0, 2.0)];
+        // same cycle, rotated to a different start and reversed
+        let hole: Ring = vec![(2.0, 2.0), (2.0, 1.0), (1.0, 1.0), (1.0, 2.0)];
+        let sea: Ring = vec![(0.0, 0.0), (3.0, 0.0), (3.0, 3.0), (0.0, 3.0)];
+        let feats = vec![
+            Feat { offset: 0.0, tzid: None, polys: vec![vec![island] as Poly] },
+            Feat { offset: 1.0, tzid: None, polys: vec![vec![sea, hole] as Poly] },
+        ];
+        let t = build_topology_algo(&feats, Simplify::Rdp { eps: 0.0 });
+        // sea outline + island ring shared once = 2 arcs, not 3
+        assert_eq!(t.arc_coords.len(), 2, "island ring duplicated: {:?}", t.arc_coords);
+        // reconstruction must still round-trip both features' ring vertex sets
+        let rec = t.reconstruct(&feats, &t.arc_coords);
+        for (f, r) in rec.iter().zip(&feats) {
+            for (p, q) in f.polys.iter().zip(&r.polys) {
+                for (ring, orig) in p.iter().zip(q) {
+                    let mut a: Vec<_> = ring.iter().map(|&(x, y)| (x.to_bits(), y.to_bits())).collect();
+                    let mut b: Vec<_> = orig.iter().map(|&(x, y)| (x.to_bits(), y.to_bits())).collect();
+                    a.sort_unstable(); b.sort_unstable();
+                    assert_eq!(a, b);
+                }
+            }
+        }
     }
 
     #[test]
