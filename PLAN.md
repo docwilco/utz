@@ -92,7 +92,8 @@ impl Finder {
 - **`from_static`** is the embedded/flash win — borrows the bytes, no RAM copy in
   `uncompressed` mode. `impl Read` can't zero-copy, so it's the std/OTA path.
 - **Availability by environment rung (§11):** `core` = `from_static` +
-  `lookup_coarse`; `alloc` adds `lookup` + `from_vec`; `std` adds `from_reader`.
+  `lookup_coarse` (+ `lookup`, once §14.7 streaming PIP lands); `alloc` adds
+  `from_vec` (compressed assets); `std` adds `from_reader`.
 - **No-embed deployment** (= no preset feature enabled): ship the binary *without*
   the asset, load it at runtime from a flash partition (`from_static`) or file
   (`from_reader`); generate the asset with the `utz-build` CLI (§11). Enables
@@ -267,15 +268,20 @@ next to flash size and accuracy. Preset codecs must be no_std-clean
 Decision: **both eager and lazy — API-selected, not feature-selected** (availability
 falls out of the §11 environment rungs: both need `alloc`), plus `lookup_coarse`
 (the `core` floor).
-- **Lazy** (`lazy`): grid → candidate ids → decode **one polygon at a time** from
-  the arc store (resolve arc refs → i64), PIP, discard. Working set = largest single
-  candidate polygon. Interior cells decode **zero** geometry. Best for embedded.
+- **Lazy** (`lazy`): grid → candidate ids → PIP each candidate straight off the
+  arc store (streaming, below). Working set: O(1) once streaming lands (was:
+  largest single candidate polygon). Interior cells touch **zero** geometry.
+  Best for embedded.
 - **Eager** (`eager`): decode all polygons into RAM in `new()`. Fastest repeat
   lookups, highest RAM. Server/std.
 - **Coarse** (`lookup_coarse`): grid-only, no arcs. ~cell-size error, ~KBs, no geometry loaded.
-- **Per-ring streaming** (even less RAM than per-polygon) is a possible embedded
-  fast-path for a rare huge polygon; needs the hand-rolled PIP (fine, we own it).
-  Defer unless a single simplified polygon is large enough to matter.
+- **Streaming PIP** (decided pending bench — §14.7): the ray-cast is
+  per-segment and direction/order-independent, so PIP runs over the arc bytes
+  *in place* — from flash (`from_static`, uncompressed) or RAM — with O(1)
+  stack state, no polygon buffer at all. Supersedes "decode one polygon at a
+  time" as lazy's inner loop (kills its per-lookup allocs) and puts accurate
+  `lookup` on the `core` rung for zero-copy Finders. Needs the hand-rolled
+  PIP (fine, we own it).
 
 ---
 
@@ -327,7 +333,7 @@ where a forgotten `default-features = false` drags `std` into firmware):
 compile_error!("utz: pick a data tier: a preset (`nano`/`micro`/`balanced`/`accurate`) \
                 or `custom` (bring your own asset, generated with utz-build)");
 compile_error!("utz: choose an environment: `std`, `alloc` (no_std + allocator), \
-                or `core` (bare metal: coarse lookup, uncompressed assets only)");
+                or `core` (bare metal: uncompressed assets only, ~zero heap)");
 ```
 The forcing function is per-tree, not per-consumer (any dependency's choice
 unifies in) — accepted. docs.rs builds with a representative set via
@@ -339,8 +345,8 @@ deliberate bare-metal intent and satisfies choice 2:
 
 | rung | constructors | lookups | codecs |
 |---|---|---|---|
-| `core` | `from_static` (zero-copy) | `lookup_coarse` | uncompressed only |
-| `alloc` | + `from_vec` | + `lookup` (PIP spill/scratch `Vec`) | + `gzip`/`ruzstd` |
+| `core` | `from_static` (zero-copy) | `lookup_coarse`; + `lookup` once §14.7 streaming PIP lands | uncompressed only |
+| `alloc` | + `from_vec` | (`lookup` here until §14.7 lands) | + `gzip`/`ruzstd` |
 | `std` | + `from_reader` | — | + `brotli`/`xz`/`zstd-sys` (as gated today) |
 
 - **Memory-mode features dissolved** (`eager`/`lazy`/`coarse` are no longer
@@ -352,8 +358,10 @@ deliberate bare-metal intent and satisfies choice 2:
   store, header marks "no geometry section" (`lookup` → runtime `Err`), asset
   shrinks to grid + zone table — a coarse-only device pays for exactly what it
   uses. Asset-shape → builder/CLI knob, not a feature.
-- Door open (§14.7): alloc-free accurate lookup (fixed/caller-provided scratch)
-  would later promote `lookup` to the `core` rung — no feature reshuffle needed.
+- **Decided pending bench (§14.7):** streaming PIP promotes `lookup` to the
+  `core` rung for zero-copy Finders (flash-resident uncompressed asset: full
+  accuracy, ~zero heap) — no feature reshuffle needed, the rung just unlocks
+  more.
 
 **The tiers:**
 
@@ -447,7 +455,8 @@ delta-varint); if you don't need embedded/tiny, tzf already exists.
 embed TZBB version; verify antimeridian handling. **Defer:** hierarchical/quadtree
 grid (1°-accuracy at coarse memory); per-polygon YStripe edge index (faster PIP on
 big polygons — note tzf's `geometry-rs` Rust port dropped the Go original's index,
-its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
+its `contains_point` is a plain linear ring walk; needs random edge access, so if
+it ever lands it lives in eager mode, not the §14.7 streaming path). ~~benchmark `geo` vs
 `geometry-rs`~~ — done, see §15 (3-way `pip_bench`).
 
 ---
@@ -471,14 +480,25 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
    non-`now` datasets get preset variants (e.g. `balanced-1970`) or stay
    custom-only.
 6. Crate/repo name confirmed `utz`; public naming of feature groups.
-7. **Alloc-free *accurate* lookup** (discuss): the alloc-free *coarse* floor now
-   ships as §11's `core` rung (`from_static` + `lookup_coarse`, uncompressed).
-   Still open: the accurate path without heap — caller-provided or fixed-size
-   scratch buffer (bound = largest decoded polygon, a build-time-known number
-   that could go in the header). Worth it for heapless targets / ISR-context
-   lookups? Costs: API surface (buffer-passing or const-generic capacity), a
-   header field. Would promote `lookup` from `alloc` to `core` (§11). Decide
-   after a real embedded consumer.
+7. ~~**Alloc-free *accurate* lookup**~~ — **decided: streaming PIP (pending
+   firmware bench)**, which makes the fixed-scratch-buffer idea obsolete.
+   Ray-cast crossing-parity is per-segment and **endpoint-symmetric**
+   (`(y1>y) != (y2>y)` + the x-intersection test don't care which endpoint
+   comes first) and parity accumulation is order-independent — so a ring is
+   PIP-tested by streaming every arc *forward* even where the ring references
+   it reversed; delta-varint streams never need backward decoding. Junction
+   vertices are shared by consecutive arcs, so no connecting segments are
+   reconstructed. Per-lookup state: prev vertex + delta accumulator + parity —
+   stack-only, O(1) RAM. Consequences: no scratch buffer / caller capacity /
+   largest-polygon header field; `lookup` joins the `core` rung for zero-copy
+   Finders (flash-resident uncompressed asset: full accuracy, ~zero heap —
+   niche but unmatched where it fits); lazy mode loses its per-lookup polygon
+   allocs (§15 bench note). Costs: flash reads are slower than RAM, though
+   sequential-per-arc is the cache-friendly pattern and embedded lookups are
+   rare events — quantify (§15); the PIP must stay streaming-shaped, in
+   tension with the deferred YStripe edge index (§13), which needs random
+   edge access (fine: YStripe, if ever, belongs to eager mode where rings sit
+   decoded in RAM).
 8. ~~**Simplification algorithm menu**~~ — **decided + built**: the
    `utz-simplify` crate (workspace member, `lib` + `cdylib`) holds the
    open-polyline menu, shared by the builder (`topo::build_topology_algo`,
@@ -608,6 +628,10 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
 - [ ] **Peak decode RAM** (§7): measured (not computed) peak per codec × window
   on target-ish conditions — verify the `decoded + window + state` model, and
   ruzstd ring-buffer growth vs `lzma-rust2`'s upfront `vec![0; dict_size]`.
+- [ ] **Streaming PIP from flash** (§14.7): extend `pip_bench` to the Xtensa
+  firmware target — lookup latency streaming-from-flash vs streaming-from-RAM
+  vs buffered-decode; confirm the O(1)-state model and the lazy-mode
+  per-lookup-alloc removal.
 - [ ] (later) hierarchical grid; YStripe PIP index; `geometry-rs` comparison.
 
 Prototypes to port from the old `formatlab` crate: `topo.rs` (topology+RDP),
