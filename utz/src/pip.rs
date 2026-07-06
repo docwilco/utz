@@ -13,9 +13,17 @@
 //! Points exactly ON any edge (exterior or hole) report `true`: border points
 //! are ambiguous between adjacent zones, and claiming them keeps lookup
 //! deterministic (first candidate polygon wins).
+//!
+//! Three granularities, one kernel (§9 memory modes):
+//! - [`contains_i64`]/[`contains_i128`] — whole polygon from ring slices.
+//! - [`ring_hit_i64`]/[`ring_hit_i128`] — one decoded ring (eager mode).
+//! - [`edge_i64`]/[`edge_i128`] — one edge, the streaming unit (§14.7): the
+//!   test is per-segment, endpoint-symmetric, and parity accumulation is
+//!   order-independent, so lazy/static lookups fold arcs through it straight
+//!   off the container bytes with O(1) state and no decode buffer.
 
 macro_rules! pip_impl {
-    ($contains:ident, $ring_hit:ident, $wide:ty) => {
+    ($contains:ident, $ring_hit:ident, $edge:ident, $wide:ty) => {
         /// `rings[0]` = exterior, rest = holes; no duplicated closing vertex.
         pub fn $contains(rings: &[&[(i32, i32)]], px: i32, py: i32) -> bool {
             let mut inside = false;
@@ -29,7 +37,9 @@ macro_rules! pip_impl {
             inside
         }
 
-        fn $ring_hit(ring: &[(i32, i32)], px: i32, py: i32) -> RingHit {
+        /// Even-odd scan of one OPEN ring (the closing edge `last→first` is
+        /// implied). `Inside` = odd crossings of the +x ray from `(px, py)`.
+        pub fn $ring_hit(ring: &[(i32, i32)], px: i32, py: i32) -> RingHit {
             let n = ring.len();
             if n < 3 {
                 return RingHit::Outside;
@@ -38,35 +48,10 @@ macro_rules! pip_impl {
             let (mut x0, mut y0) = ring[n - 1];
             for i in 0..n {
                 let (x1, y1) = ring[i];
-                // compute the cross product for any edge whose y-span touches
-                // the scanline; collinear + x-in-span = exactly on the edge
-                // (covers interior points, vertices, and horizontal edges —
-                // every vertex is the endpoint of some touching edge).
-                // Crossing rules (each crossing vertex counted once): an upward
-                // edge excludes its final endpoint, a downward edge excludes
-                // its starting endpoint, horizontal edges never cross.
-                if y0 <= py {
-                    if y1 >= py {
-                        let cross = ((x1 as $wide) - (x0 as $wide)) * ((py as $wide) - (y0 as $wide))
-                            - ((y1 as $wide) - (y0 as $wide)) * ((px as $wide) - (x0 as $wide));
-                        if cross == 0 {
-                            if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
-                                return RingHit::Boundary;
-                            }
-                        } else if cross > 0 && y1 != py {
-                            inside = !inside; // point strictly left of an upward edge
-                        }
-                    }
-                } else if y1 <= py {
-                    let cross = ((x1 as $wide) - (x0 as $wide)) * ((py as $wide) - (y0 as $wide))
-                        - ((y1 as $wide) - (y0 as $wide)) * ((px as $wide) - (x0 as $wide));
-                    if cross == 0 {
-                        if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
-                            return RingHit::Boundary;
-                        }
-                    } else if cross < 0 {
-                        inside = !inside; // point strictly right of a downward edge
-                    }
+                match $edge((x0, y0), (x1, y1), px, py) {
+                    EdgeHit::Boundary => return RingHit::Boundary,
+                    EdgeHit::Cross => inside = !inside,
+                    EdgeHit::Miss => {}
                 }
                 (x0, y0) = (x1, y1);
             }
@@ -76,17 +61,63 @@ macro_rules! pip_impl {
                 RingHit::Outside
             }
         }
+
+        /// One edge vs the +x ray through `(px, py)`.
+        ///
+        /// Compute the cross product for any edge whose y-span touches the
+        /// scanline; collinear + x-in-span = exactly on the edge (covers
+        /// interior points, vertices, and horizontal edges — every vertex is
+        /// the endpoint of some touching edge). Crossing rules (each crossing
+        /// vertex counted once): an upward edge excludes its final endpoint,
+        /// a downward edge excludes its starting endpoint, horizontal edges
+        /// never cross. Direction-symmetric in `a`/`b` by construction.
+        #[inline(always)]
+        pub fn $edge(a: (i32, i32), b: (i32, i32), px: i32, py: i32) -> EdgeHit {
+            let ((x0, y0), (x1, y1)) = (a, b);
+            if y0 <= py {
+                if y1 >= py {
+                    let cross = ((x1 as $wide) - (x0 as $wide)) * ((py as $wide) - (y0 as $wide))
+                        - ((y1 as $wide) - (y0 as $wide)) * ((px as $wide) - (x0 as $wide));
+                    if cross == 0 {
+                        if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
+                            return EdgeHit::Boundary;
+                        }
+                    } else if cross > 0 && y1 != py {
+                        return EdgeHit::Cross; // point strictly left of an upward edge
+                    }
+                }
+            } else if y1 <= py {
+                let cross = ((x1 as $wide) - (x0 as $wide)) * ((py as $wide) - (y0 as $wide))
+                    - ((y1 as $wide) - (y0 as $wide)) * ((px as $wide) - (x0 as $wide));
+                if cross == 0 {
+                    if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
+                        return EdgeHit::Boundary;
+                    }
+                } else if cross < 0 {
+                    return EdgeHit::Cross; // point strictly right of a downward edge
+                }
+            }
+            EdgeHit::Miss
+        }
     };
 }
 
-enum RingHit {
+/// Ring-level verdict: `Inside` toggles polygon parity, `Boundary` claims.
+pub enum RingHit {
     Inside,
     Outside,
     Boundary,
 }
 
-pip_impl!(contains_i64, ring_hit_i64, i64);
-pip_impl!(contains_i128, ring_hit_i128, i128);
+/// Edge-level verdict for streaming accumulation.
+pub enum EdgeHit {
+    Cross,
+    Miss,
+    Boundary,
+}
+
+pip_impl!(contains_i64, ring_hit_i64, edge_i64, i64);
+pip_impl!(contains_i128, ring_hit_i128, edge_i128, i128);
 
 #[cfg(test)]
 mod tests {

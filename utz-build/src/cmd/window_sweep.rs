@@ -43,7 +43,7 @@ unsafe impl GlobalAlloc for Tracking {
 static ALLOC: Tracking = Tracking;
 
 /// Run `f`, returning (result, peak heap growth over entry live, wall ms).
-fn measure<T>(f: impl FnOnce() -> T) -> (T, usize, f64) {
+pub(crate) fn measure<T>(f: impl FnOnce() -> T) -> (T, usize, f64) {
     let base = LIVE.load(Relaxed);
     PEAK.store(base, Relaxed);
     let t = Instant::now();

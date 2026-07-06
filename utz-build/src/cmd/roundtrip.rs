@@ -84,6 +84,31 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let fz = pts.iter().filter(|&&(lo, la)| finder.lookup_coarse(lo, la).is_some()).count();
     println!("lookup_coarse: {fz}/{npts} answered, {:.2} µs/point", t0.elapsed().as_micros() as f64 / npts as f64);
 
+    // zero-copy static source (core-rung path) must answer identically —
+    // lazy lookup streams PIP straight off the borrowed bytes (§9, §14.7)
+    let sf = utz::Finder::from_static(Box::leak(container.clone().into_boxed_slice()))
+        .expect("static decode");
+    let nstatic = npts.min(20_000);
+    for &(lo, la) in pts.iter().take(nstatic) {
+        assert_eq!(sf.lookup(lo, la), finder.lookup(lo, la), "static ({lo},{la})");
+    }
+    println!("from_static lookup: agrees over {nstatic}");
+
+    // eager mode (§9): preload, must agree everywhere; report heap + speedup
+    let mut ef = utz::Finder::from_reader(&container[..]).expect("decode");
+    let ((), heap, ms) = super::window_sweep::measure(|| ef.preload());
+    let t0 = Instant::now();
+    let egot: Vec<Option<&str>> = pts.iter().map(|&(lo, la)| ef.lookup(lo, la)).collect();
+    let edt = t0.elapsed();
+    assert!(egot.iter().zip(&got).all(|(a, b)| a == b), "eager disagrees with lazy");
+    println!(
+        "eager: preload {:.1} KB heap in {:.1} ms; lookup {:.2} µs/point (lazy {:.2})",
+        heap as f64 / 1024.0,
+        ms,
+        edt.as_micros() as f64 / npts as f64,
+        dt.as_micros() as f64 / npts as f64
+    );
+
     // every codec must roundtrip to the same answers as the uncompressed finder
     let payload = encode::build_payload(&feats, &p)?;
     for codec in [Codec::Gzip, Codec::Zstd, Codec::Brotli, Codec::Xz] {
