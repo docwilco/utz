@@ -711,6 +711,10 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   ε=500 i16 shape (raw 226.2 K): gzip 147.7 K, zstd@8K 142.9 K, brotli@32K
   132.2 K, xz@4K 131.4 K. Preset window: **8 K** for ruzstd presets; gzip
   has no knob; brotli/xz any modest window (≤1.5% spread from 1 K to 1 M).
+  lzma-rust2's encoder verified against reference liblzma 5.4.5 (`xz -9`/
+  `-9e` CLI) on the real payloads: ±0.1% both directions (our 4 K-dict
+  output even edges CLI `-9e` by 142 B on ε=500 i16) — the xz numbers are
+  trustworthy, no encoder gap.
 - [x] **Peak decode RAM** (§7) — measured (`window-sweep` tracking allocator;
   realloc counted alloc+copy+free, like a naive embedded allocator). The
   `decoded + window + state` model holds only after fixing two shipped decode
