@@ -57,6 +57,8 @@
     (crafted demo data: one reference path, three Douglas&#8209;Peucker + quantize variants, same
     palette as the live preview). Today the canvas composites <code>source-over</code>, so where the
     lines coincide only the topmost color survives — panel 1. The other panels are candidate fixes.
+    Scroll to zoom any panel, drag to pan, double-click to reset — line widths stay constant while
+    the geometry zooms, so overlaps can be inspected up close.
   </p>
 
   <div id="controls">
@@ -218,7 +220,8 @@ function offsetPolyline(pts, d) {
 
 // Split a variant into runs that agree with / deviate from the reference:
 // sample each segment every `step` screen px, test distance to the reference.
-function divergenceRuns(pts, refScreen, tol, step) {
+// Segments outside the viewport are skipped so deep zooms stay cheap.
+function divergenceRuns(pts, refScreen, tol, step, w, h) {
   function distToRef(p) {
     var best = Infinity;
     for (var i = 0; i + 1 < refScreen.length; i++) {
@@ -236,8 +239,14 @@ function divergenceRuns(pts, refScreen, tol, step) {
     }
     cur.pts.push(p);
   }
+  var M = 60; // viewport margin so runs don't visibly pop at the edges
   for (var i = 0; i + 1 < pts.length; i++) {
     var a = pts[i], b = pts[i + 1];
+    if (Math.max(a[0], b[0]) < -M || Math.min(a[0], b[0]) > w + M ||
+        Math.max(a[1], b[1]) < -M || Math.min(a[1], b[1]) > h + M) {
+      cur = null;
+      continue;
+    }
     var len = Math.hypot(b[0] - a[0], b[1] - a[1]);
     var nSamp = Math.max(1, Math.ceil(len / step));
     for (var s = (i === 0 ? 0 : 1); s <= nSamp; s++) {
@@ -305,12 +314,12 @@ var PANELS = [
     cap: 'The reference is a thin neutral line; a variant is drawn <b>only where it strays</b> beyond ~2.5px of it. ' +
          'Least ink, most signal for judging simplification quality. In the preview: per-segment ' +
          'distance-to-reference test in the worker.',
-    draw: function (ctx, act, toScreen) {
+    draw: function (ctx, act, toScreen, w, h) {
       var refScreen = REF.map(toScreen);
       strokeLayer(ctx, REF, toScreen, state.bg === 'dark' ? '#5a6675' : '#8f9aa6', Math.max(1, state.width * 0.8));
       act.forEach(function (L) {
         if (L.pts === REF) return;
-        var runs = divergenceRuns(L.pts.map(toScreen), refScreen, 2.5, 3);
+        var runs = divergenceRuns(L.pts.map(toScreen), refScreen, 2.5, 3, w, h);
         runs.forEach(function (r) {
           if (!r.dev || r.pts.length < 2) return;
           ctx.beginPath();
@@ -364,25 +373,71 @@ var panelEls = PANELS.map(function (P) {
   return { panel: P, canvas: cv };
 });
 
-function redrawAll() {
+function redrawPanel(pe) {
   var act = activeLayers();
-  panelEls.forEach(function (pe) {
-    var cv = pe.canvas, dpr = window.devicePixelRatio || 1;
-    var w = cv.clientWidth, h = cv.clientHeight;
-    if (!w || !h) return;
-    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
-      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
-    }
-    var ctx = cv.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = MAP_BG[state.bg];
-    ctx.fillRect(0, 0, w, h);
-    var s = Math.min(w / WORLD_W, h / WORLD_H);
-    var ox = (w - WORLD_W * s) / 2, oy = (h - WORLD_H * s) / 2;
-    function toScreen(p) { return [ox + p[0] * s, oy + p[1] * s]; }
-    pe.panel.draw(ctx, act, toScreen);
-  });
+  var cv = pe.canvas, dpr = window.devicePixelRatio || 1;
+  var w = cv.clientWidth, h = cv.clientHeight;
+  if (!w || !h) return;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  }
+  var ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = MAP_BG[state.bg];
+  ctx.fillRect(0, 0, w, h);
+  var s = Math.min(w / WORLD_W, h / WORLD_H);
+  var ox = (w - WORLD_W * s) / 2, oy = (h - WORLD_H * s) / 2;
+  var v = pe.view;
+  // view transform on top of the fit: geometry zooms, stroke widths stay
+  // constant in screen px so overlap behavior can be inspected up close
+  function toScreen(p) {
+    return [(ox + p[0] * s) * v.z + v.tx, (oy + p[1] * s) * v.z + v.ty];
+  }
+  pe.panel.draw(ctx, act, toScreen, w, h);
 }
+
+function redrawAll() { panelEls.forEach(redrawPanel); }
+
+// per-panel zoom (wheel, cursor-centered), pan (drag), reset (double-click)
+panelEls.forEach(function (pe) {
+  var cv = pe.canvas;
+  pe.view = { z: 1, tx: 0, ty: 0 };
+  cv.style.cursor = 'grab';
+  cv.style.touchAction = 'none';
+  cv.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    var v = pe.view;
+    var z = Math.max(1, Math.min(200, v.z * Math.exp(-e.deltaY * 0.0015)));
+    var f = z / v.z;
+    var r = cv.getBoundingClientRect();
+    var mx = e.clientX - r.left, my = e.clientY - r.top;
+    v.tx = mx - (mx - v.tx) * f;
+    v.ty = my - (my - v.ty) * f;
+    v.z = z;
+    if (z === 1) { v.tx = 0; v.ty = 0; }
+    redrawPanel(pe);
+  }, { passive: false });
+  var drag = null;
+  cv.addEventListener('pointerdown', function (e) {
+    drag = [e.clientX, e.clientY];
+    try { cv.setPointerCapture(e.pointerId); } catch (err) { /* synthetic pointer */ }
+    cv.style.cursor = 'grabbing';
+  });
+  cv.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    pe.view.tx += e.clientX - drag[0];
+    pe.view.ty += e.clientY - drag[1];
+    drag = [e.clientX, e.clientY];
+    redrawPanel(pe);
+  });
+  function endDrag() { drag = null; cv.style.cursor = 'grab'; }
+  cv.addEventListener('pointerup', endDrag);
+  cv.addEventListener('pointercancel', endDrag);
+  cv.addEventListener('dblclick', function () {
+    pe.view = { z: 1, tx: 0, ty: 0 };
+    redrawPanel(pe);
+  });
+});
 
 // controls
 var boxes = document.getElementById('layerboxes');
