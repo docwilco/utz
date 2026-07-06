@@ -208,7 +208,9 @@ via `utz` features. Encoder and decoder only need to agree on the codec *byte*:
 CI encodes presets with C `zstd` on the host, devices decode with `ruzstd`.
 `utz-build` mirrors the codec set as features, `default = all` (CLI installs
 get everything); build.rs consumers trim compile time via
-`default-features = false, features = ["zstd"]`.
+`default-features = false, features = ["zstd"]`. Keeping trimmed encoders in
+sync with `utz`'s decoders is the **consumer's responsibility** (§14.9);
+mismatch = runtime `Err` from the self-describing header.
 
 **Window/dict size = the decode-RAM lever** (decided: builder/CLI knob). The
 value is written into the codec's own framing (zstd window descriptor, LZMA2
@@ -356,13 +358,15 @@ deliberate bare-metal intent and satisfies choice 2:
 **The tiers:**
 
 - **Presets (features → data crates):** `utz-data-nano` … `utz-data-accurate`,
-  each containing one CI-generated `.utz` as a static. On `utz`, feature `nano` =
-  `["dep:utz-data-nano", "alloc", <its codec feature>]` — preset assets are
-  compressed, so presets imply `alloc` and their codec must be no_std-clean
-  (`gzip`/`ruzstd`, not `brotli`/`xz`/`zstd-sys`) — constraint on §14.5.
-  Consumer: `utz = { features = ["std", "balanced"] }` → `Finder::new()`.
-  Presets bake dataset `now`; other datasets are custom (or later preset
-  variants — §14.5).
+  each containing one CI-generated `.utz` as a static. Each preset enables
+  **one or zero decoders**. Compressed preset: `nano = ["dep:utz-data-nano",
+  "alloc", <its codec>]` — the codec must be no_std-clean (`gzip`/`ruzstd`,
+  not `brotli`/`xz`/`zstd-sys`; constraint on §14.5) and `alloc` comes along
+  for decompression. Uncompressed preset: enables neither — works on the
+  `core` rung, zero-copy straight from the static, trading flash for zero
+  decode RAM. Consumer: `utz = { features = ["std", "balanced"] }` →
+  `Finder::new()`. Presets bake dataset `now`; other datasets are custom (or
+  later preset variants — §14.5).
 - **Custom (the fifth tier):** a marker feature — gates nothing
   (`from_static`/`from_reader` stay available to everyone; preset users want
   them for OTA), it states intent and satisfies choice 1. Generate the bytes with:
@@ -376,8 +380,9 @@ deliberate bare-metal intent and satisfies choice 2:
     crates. Assets are **never committed to a repo**; they're regenerated
     (downloads are cond-GET-cached, so regeneration is cheap).
 - **Remaining `utz` features are purely code-shape and additive:** the codec
-  decoders (as today). Everything else is API whose availability falls out of
-  the environment rung.
+  decoders (as today). Zero decoders (uncompressed assets only) and multiple
+  decoders (flexibility across OTA-updated assets) are both valid choices.
+  Everything else is API whose availability falls out of the environment rung.
 
 **Why this shape (over features-for-knobs, env vars, or a discovered `utz.toml`):**
 - **Additivity solved, not fought.** Data crates are statics; two crates in the
@@ -461,8 +466,10 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
 4. ~~**Antimeridian**~~ — **verified pre-split** (see §15); no split pass.
 5. **Preset values** (ε/quant/grid/codec/window) for
    `nano`/`micro`/`balanced`/`accurate` (§11, §7 — incl. each preset's
-   documented peak-decode-RAM number); whether non-`now` datasets get preset
-   variants (e.g. `balanced-1970`) or stay custom-only.
+   documented peak-decode-RAM number). Codec may be *none* (uncompressed:
+   `core`-rung-compatible, zero decode RAM, more flash). Also: whether
+   non-`now` datasets get preset variants (e.g. `balanced-1970`) or stay
+   custom-only.
 6. Crate/repo name confirmed `utz`; public naming of feature groups.
 7. **Alloc-free *accurate* lookup** (discuss): the alloc-free *coarse* floor now
    ships as §11's `core` rung (`from_static` + `lookup_coarse`, uncompressed).
@@ -504,20 +511,17 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
    Still open: `simplify_algo` header byte + its builder-API/CLI knob (§11) for
    selecting VW/II per asset; size-vs-RDP sweep for
    Imai–Iri on real arcs to see if it should become the default.
-9. **Custom-tier encoder/decoder sync check** (discuss): build scripts cannot
-   select features (resolution precedes all build scripts), so a custom
-   consumer keeps `utz-build`'s encoder and `utz`'s decoder feature in sync by
-   hand; a mismatch today surfaces only as a runtime `Err` on the device.
-   Proposal: `links = "utz"` + a 5-line hermetic `utz/build.rs` that echoes the
-   resolved decoder features as `cargo::metadata=decoders=...`; cargo then
-   injects `DEP_UTZ_DECODERS` into the build script of every direct dependent —
-   which a custom consumer *is* by definition — and
-   `utz_build::Config::generate()` hard-errors on mismatch at build time.
-   Preset users are unaffected (feature wiring makes mismatch impossible).
-   Cost: reintroduces a build.rs to `utz` (no network/IO — would soften §2's
-   "NO build.rs" to "no codegen/network build.rs"). Alternatives: runtime `Err`
-   only, or best-effort parsing of the consumer's Cargo.toml (unreliable under
-   workspace inheritance/unification).
+9. ~~**Custom-tier encoder/decoder sync check**~~ — **decided: consumer's
+   responsibility.** Build scripts cannot select features (resolution precedes
+   all build scripts), so the sync cannot be automated away; `utz-build`
+   defaults to all encoders, and a consumer who trims them (or `utz`'s
+   decoders) owns keeping the two aligned — a mismatch surfaces as the runtime
+   `Err` from the self-describing header. Zero decoders (uncompressed assets
+   only) and multiple decoders (flexibility across OTA assets) are both valid
+   consumer choices, which is exactly why a hard check would be wrong. The
+   `links = "utz"` / `DEP_UTZ_DECODERS` build-time cross-check was considered
+   and **rejected** — not worth reintroducing a build.rs to `utz` (§2's "NO
+   build.rs" stands).
 
 ---
 
