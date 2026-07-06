@@ -496,7 +496,11 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
    documented peak-decode-RAM number). Codec may be *none* (uncompressed:
    `core`-rung-compatible, zero decode RAM, more flash). Quant: **i24 looking
    like the sweet spot**; i16 a low-accuracy super-low-storage last resort;
-   i32 likely unneeded. Tier anchors (2026-07): **nano = i16**; **balanced =
+   i32 likely unneeded. Tier anchors (2026-07): **nano = i16, RDP
+   ε=10 000 m, pop-density weight floor 1e-4, target ~70 K compressed** —
+   verified (`encode`, 2° grid): raw 134.3 K → gzip 72.3 K / zstd 68.7 K
+   (the no_std pair, on target; brotli 62.5 K / xz 62.1 K), gzip decode RAM
+   = 134 K flat; **balanced =
    i24 at roughly a megabyte** — at that size brotli/xz-class compression is
    worth it, and the §15 sweep already settles its settings (brotli beats xz
    at i24 on flash AND decode speed, and both are window-insensitive, so
