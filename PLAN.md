@@ -216,16 +216,25 @@ mismatch = runtime `Err` from the self-describing header.
 **Window/dict size = the decode-RAM lever** (decided: builder/CLI knob). The
 value is written into the codec's own framing (zstd window descriptor, LZMA2
 dict-size props, brotli `lgwin`; gzip fixed 32 KB), and the decoder allocates
-what the frame declares. Verified in the shipped sources (ruzstd 0.8.3 reserves
-its ring buffer at `window_size`; lzma-rust2 0.16.4 allocates `vec![0;
-dict_size]` up front): no decompressor reuses the output buffer as history, so
-**peak decode RAM ≈ decompressed size + window/dict + decoder state**. Rules:
+what the frame declares. Measured (`window-sweep`, §15): **peak decode RAM ≈
+decompressed size + window/dict + decoder state**, with per-codec state: xz a
+flat ~80 K (lzma-rust2's upfront `vec![0; dict_size]`), ruzstd ~2–7× window
+(ring growth + tables), brotli a ~110–165 K floor at any window (transform
+dictionary), gzip **zero** — after fixing two shipped decode paths that broke
+the model: ruzstd's `decode_all_to_vec` batched up to 1 MiB in its internal
+buffer before draining (~2–3× decoded at any window, defeating the knob; now a
+block-by-block decode+drain loop), and the gzip path grew an unhinted Vec
+(~1.7× decoded; now inflates into the `raw_len`-sized output buffer, which
+doubles as the DEFLATE history — the one decoder that reuses output as
+history). Rules:
 - **Always cap window at decoded size** — beyond it back-references can't reach,
   so larger is pure RAM waste at zero ratio gain. The xz/LZMA defaults (8–64 MB
   dict) are the trap; encoder defaults in `utz-build` apply this cap.
 - **Below decoded size is the real knob** — trades ratio for decode RAM;
   exposed on builder + CLI, preset values picked from the §15 ratio-vs-window
-  sweep. (Outer header already records `raw_len`, so callers can budget the
+  sweep: ratio turned out nearly window-insensitive (zstd knees at 8–16 K,
+  brotli/xz within ~1% of best at 1–4 K), so preset windows go small.
+  (Outer header already records `raw_len`, so callers can budget the
   output buffer before decoding.)
 - zstd *trained dictionaries* are out of scope — "dict" here means the LZMA/LZ
   window; trained dicts pay off for many small blobs, not one big asset.
@@ -486,7 +495,11 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
    `core`-rung-compatible, zero decode RAM, more flash). Quant: **i24 looking
    like the sweet spot**; i16 a low-accuracy super-low-storage last resort;
    i32 likely unneeded. Also: whether non-`now` datasets get preset variants
-   (e.g. `balanced-1970`) or stay custom-only.
+   (e.g. `balanced-1970`) or stay custom-only. Window/codec input now
+   measured (§15): preset windows go small (ruzstd 8 K; gzip has none), and
+   gzip's peak-RAM floor (= decoded size exactly) makes it the likely preset
+   codec over ruzstd — pays ~3% flash for −75 K decode RAM and the smallest
+   pure-Rust decoder.
 6. Crate/repo name confirmed `utz`; public naming of feature groups.
 7. ~~**Alloc-free *accurate* lookup**~~ — **decided: streaming PIP (pending
    firmware bench)**, which makes the fixed-scratch-buffer idea obsolete.
@@ -631,12 +644,24 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   verts exactly on ±180, 0 out-of-range coords). Single flagged >180° edge is
   Pacific/Auckland's south-pole seam (180,−90)→(−180,−90) — degenerate at the pole,
   planar PIP handles it. **No split pass needed.**
-- [ ] **Ratio-vs-window sweep** (§7): per codec (`ruzstd`/`gzip` first — the
-  no_std pair), compression ratio as f(window/dict size) on the real assets,
-  window capped at decoded size; pick preset windows at the knee.
-- [ ] **Peak decode RAM** (§7): measured (not computed) peak per codec × window
-  on target-ish conditions — verify the `decoded + window + state` model, and
-  ruzstd ring-buffer growth vs `lzma-rust2`'s upfront `vec![0; dict_size]`.
+- [x] **Ratio-vs-window sweep** (§7) — done (`window-sweep`, 5 preset-candidate
+  shapes, `-now` 2°): ratio is nearly window-INsensitive. zstd knees at 8–16 K
+  and drifts *worse* above that (until ≥128 K recovers it); brotli/xz sit
+  within ~1% of their best already at 1–4 K (context modeling, not long-range
+  matches, drives them); gzip is fixed 32 K. Codec ≫ window: i24 assets
+  compress to only ~86% under zstd but ~74% under brotli/xz. Balanced
+  candidate (ε=500 i16, raw 226.2 K): gzip 147.7 K, zstd@8K 142.9 K,
+  brotli@32K 132.2 K, xz@4K 131.4 K. Preset window: **8 K** for ruzstd
+  presets; gzip has no knob.
+- [x] **Peak decode RAM** (§7) — measured (`window-sweep` tracking allocator;
+  realloc counted alloc+copy+free, like a naive embedded allocator). The
+  `decoded + window + state` model holds only after fixing two shipped decode
+  paths that broke it (see §7): ruzstd batched 1 MiB before draining, gzip
+  grew an unhinted Vec. Post-fix balanced-candidate peaks: **gzip = decoded
+  exactly, 226 K** (inflate tables live on the stack, output doubles as
+  history), ruzstd@8K 301 K, xz@4K 310 K (state flat 80 K, model-perfect),
+  brotli@32K 365 K. So for presets: gzip is the RAM floor; ruzstd@8K buys
+  ~3% flash for +75 K RAM; host decode speed gzip < zstd < brotli ≪ xz (~10×).
 - [ ] **Streaming PIP from flash** (§14.7): extend `pip_bench` to the Xtensa
   firmware target — lookup latency streaming-from-flash vs streaming-from-RAM
   vs buffered-decode; confirm the O(1)-state model and the lazy-mode
