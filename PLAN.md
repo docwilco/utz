@@ -455,8 +455,15 @@ delta-varint); if you don't need embedded/tiny, tzf already exists.
 embed TZBB version; verify antimeridian handling. **Defer:** hierarchical/quadtree
 grid (1°-accuracy at coarse memory); per-polygon YStripe edge index (faster PIP on
 big polygons — note tzf's `geometry-rs` Rust port dropped the Go original's index,
-its `contains_point` is a plain linear ring walk; needs random edge access, so if
-it ever lands it lives in eager mode, not the §14.7 streaming path). ~~benchmark `geo` vs
+its `contains_point` is a plain linear ring walk). YStripe needs random edge
+access, which two things can provide: **eager mode** (rings decoded in RAM, index
+built at `new()`, invisible to the format) or a **fixed-width arc encoding** — an
+asset-shape header knob mutually exclusive with delta+varint per asset, making
+YStripe flash-resident and `core`-rung-capable (O(n/B) lookups, O(1) RAM) at the
+cost of ~1.5–3× arc-store size (i24: 6 B/vertex fixed vs ~2–4 B delta+varint),
+stripe lists, and per-ring cumulative arc-length tables for edge→(arc,offset).
+Deferred: for-frequent-lookup devices only, and scattered flash reads may eat the
+op-count win (cache misses vs streaming's sequential prefetch) — bench first (§15). ~~benchmark `geo` vs
 `geometry-rs`~~ — done, see §15 (3-way `pip_bench`).
 
 ---
@@ -476,9 +483,10 @@ it ever lands it lives in eager mode, not the §14.7 streaming path). ~~benchmar
 5. **Preset values** (ε/quant/grid/codec/window) for
    `nano`/`micro`/`balanced`/`accurate` (§11, §7 — incl. each preset's
    documented peak-decode-RAM number). Codec may be *none* (uncompressed:
-   `core`-rung-compatible, zero decode RAM, more flash). Also: whether
-   non-`now` datasets get preset variants (e.g. `balanced-1970`) or stay
-   custom-only.
+   `core`-rung-compatible, zero decode RAM, more flash). Quant: **i24 looking
+   like the sweet spot**; i16 a low-accuracy super-low-storage last resort;
+   i32 likely unneeded. Also: whether non-`now` datasets get preset variants
+   (e.g. `balanced-1970`) or stay custom-only.
 6. Crate/repo name confirmed `utz`; public naming of feature groups.
 7. ~~**Alloc-free *accurate* lookup**~~ — **decided: streaming PIP (pending
    firmware bench)**, which makes the fixed-scratch-buffer idea obsolete.
@@ -495,10 +503,11 @@ it ever lands it lives in eager mode, not the §14.7 streaming path). ~~benchmar
    niche but unmatched where it fits); lazy mode loses its per-lookup polygon
    allocs (§15 bench note). Costs: flash reads are slower than RAM, though
    sequential-per-arc is the cache-friendly pattern and embedded lookups are
-   rare events — quantify (§15); the PIP must stay streaming-shaped, in
-   tension with the deferred YStripe edge index (§13), which needs random
-   edge access (fine: YStripe, if ever, belongs to eager mode where rings sit
-   decoded in RAM).
+   rare events — quantify (§15); the PIP must stay streaming-shaped for
+   delta+varint assets. The deferred YStripe edge index (§13) needs random
+   edge access — available via eager mode (decoded RAM) or, later, a
+   fixed-width arc-encoding asset variant (§13); no conflict with deciding
+   streaming now.
 8. ~~**Simplification algorithm menu**~~ — **decided + built**: the
    `utz-simplify` crate (workspace member, `lib` + `cdylib`) holds the
    open-polyline menu, shared by the builder (`topo::build_topology_algo`,
@@ -632,7 +641,9 @@ it ever lands it lives in eager mode, not the §14.7 streaming path). ~~benchmar
   firmware target — lookup latency streaming-from-flash vs streaming-from-RAM
   vs buffered-decode; confirm the O(1)-state model and the lazy-mode
   per-lookup-alloc removal.
-- [ ] (later) hierarchical grid; YStripe PIP index; `geometry-rs` comparison.
+- [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
+  flash-resident via the fixed-width arc encoding — §13; bench scattered flash
+  reads vs streaming's sequential prefetch); `geometry-rs` comparison.
 
 Prototypes to port from the old `formatlab` crate: `topo.rs` (topology+RDP),
 quant/PIP helpers, grid/CSR (`grid2mem`/`gridsweep`), `bench`, `quant_size`,
