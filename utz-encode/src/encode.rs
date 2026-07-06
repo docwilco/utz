@@ -271,6 +271,9 @@ pub fn compress(raw: &[u8], codec: Codec) -> Vec<u8> {
             let bits = (usize::BITS - (raw.len().max(1) - 1).leading_zeros()).clamp(12, 26);
             let mut opts = lzma_rust2::XzOptions::with_preset(9);
             opts.lzma_options.dict_size = 1u32 << bits;
+            // lzma-rust2 has no -9e helper; this is liblzma's extreme delta
+            opts.lzma_options.nice_len = 273;
+            opts.lzma_options.depth_limit = 512;
             let mut w = lzma_rust2::XzWriter::new(Vec::new(), opts).expect("xz");
             w.write_all(raw).expect("xz");
             w.finish().expect("xz")
