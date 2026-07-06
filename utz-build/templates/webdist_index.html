@@ -1497,7 +1497,7 @@ function gridRefresh() {
 // small histogram of candidate-tzid counts over boundary-crossed cells; the
 // tooltip carries the full text stats of the distribution
 var gridHist = document.getElementById('gridhist');
-function drawGridHist(hist, noneCells) {
+function drawGridHist(hist, noneCells, uncrossedZone, uncrossedNone) {
   var ks = Object.keys(hist).map(Number).sort(function (a, b) { return a - b; });
   if (!ks.length) { gridHist.style.display = 'none'; return; }
   gridHist.style.display = '';
@@ -1526,6 +1526,7 @@ function drawGridHist(hist, noneCells) {
     ctx.fillStyle = '#b9c4d0';
     ctx.fillText(c >= 10000 ? Math.round(c / 1000) + 'k' : String(c), x + bw / 2, 34 - bh - 2);
   });
+  var total = cells + noneCells + uncrossedZone + uncrossedNone;
   gridHist.title = 'candidate tzids per boundary-crossed cell\n' +
     ks.map(function (k) {
       return k + ' zone' + (k === 1 ? '' : 's') + ': ' + hist[k].toLocaleString() +
@@ -1533,7 +1534,11 @@ function drawGridHist(hist, noneCells) {
     }).join('\n') +
     (noneCells ? '\nno zone: ' + noneCells.toLocaleString() + ' cells' : '') +
     '\nmean ' + (sum / cells).toFixed(2) + ' candidates · ≥2 zones: ' +
-    (100 * multi / cells).toFixed(1) + '%';
+    (100 * multi / cells).toFixed(1) + '% of crossed' +
+    '\nuncrossed: ' + (uncrossedZone + uncrossedNone).toLocaleString() + ' cells — ' +
+    uncrossedZone.toLocaleString() + ' single zone · ' + uncrossedNone.toLocaleString() + ' no zone' +
+    '\ntotal ' + total.toLocaleString() + ' cells · ' +
+    (100 * multi / total).toFixed(1) + '% need polygon tests (≥2 candidates)';
 }
 function renderGrid(deg, nc, nr, hit, z, n, pct) {
   // per crossed cell: dominant zone + its share; plus a runtime-grid memory
@@ -1543,6 +1548,7 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
   if (z) {
     var s = deg * (z.w / 360); // fine lattice cells per grid cell side (may be fractional)
     var hist = {}, noneCells = 0; // crossed cells by distinct-candidate count
+    var uncrossedZone = 0, uncrossedNone = 0;
     dom = new Int32Array(nc * nr).fill(-1);
     shr = new Float32Array(nc * nr);
     var NONE = z.names.length;
@@ -1564,6 +1570,7 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
           dom[cy * nc + cx] = sid;
           shr[cy * nc + cx] = 1;
           intern('s' + sid, 1);
+          if (sid === NONE) { uncrossedNone++; } else { uncrossedZone++; }
           continue;
         }
         var fx0 = Math.round(cx * s), fx1 = Math.min(z.w, Math.round((cx + 1) * s));
@@ -1600,7 +1607,7 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
     document.getElementById('gridv').textContent =
       n.toLocaleString() + ' cells (' + pct + '%) · grid ≈ ' + fmtBytes(gridBytes) +
       ' · grid-only errs ' + Math.round(errKm2).toLocaleString() + ' km²';
-    drawGridHist(hist, noneCells);
+    drawGridHist(hist, noneCells, uncrossedZone, uncrossedNone);
   } else {
     gridHist.style.display = 'none';
   }
