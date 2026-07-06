@@ -324,11 +324,11 @@ var PANELS = [
   },
   {
     tag: '6 · offset', title: 'side-by-side offset',
-    cap: 'Each layer nudged perpendicular to the line by a couple of screen pixels, so coincident lines sit ' +
-         '<b>next to each other</b> like parallel tracks. Geometry is visually displaced, so best at high zoom / ' +
-         'as a toggle. In the preview: screen-space polyline offset (à la leaflet-polylineoffset).',
+    cap: 'Each layer offset perpendicular by exactly one stroke width, so coincident lines pack ' +
+         '<b>shoulder-to-shoulder into a striped ribbon</b> with no gaps. Geometry is visually displaced, so best ' +
+         'at high zoom / as a toggle. In the preview: screen-space polyline offset (à la leaflet-polylineoffset).',
     draw: function (ctx, act, toScreen) {
-      var n = act.length, spacing = Math.max(2.2, state.width * 1.7);
+      var n = act.length, spacing = state.width;
       act.forEach(function (L, j) {
         var off = offsetPolyline(L.pts.map(toScreen), (j - (n - 1) / 2) * spacing);
         strokeLayer(ctx, off, IDENT, L.color, state.width);
