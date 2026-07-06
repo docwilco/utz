@@ -1494,11 +1494,14 @@ function gridRefresh() {
     if (gen === gridGen) renderGrid(deg, nc, nr, hit, null, n, pct);
   });
 }
-// small histogram of candidate-tzid counts over boundary-crossed cells; the
-// tooltip carries the full text stats of the distribution
+// small histogram of cells with 2+ candidate tzids (the ones that actually
+// need polygon tests); the tooltip carries the full text stats, with
+// single-candidate and uncrossed cells as context lines
 var gridHist = document.getElementById('gridhist');
 function drawGridHist(hist, noneCells, uncrossedZone, uncrossedNone) {
-  var ks = Object.keys(hist).map(Number).sort(function (a, b) { return a - b; });
+  var ks = Object.keys(hist).map(Number)
+    .filter(function (k) { return k >= 2; })
+    .sort(function (a, b) { return a - b; });
   if (!ks.length) { gridHist.style.display = 'none'; return; }
   gridHist.style.display = '';
   var dpr = window.devicePixelRatio || 1;
@@ -1506,12 +1509,11 @@ function drawGridHist(hist, noneCells, uncrossedZone, uncrossedNone) {
   gridHist.width = Math.round(w * dpr); gridHist.height = Math.round(h * dpr);
   var ctx = gridHist.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  var max = 0, sum = 0, cells = 0, multi = 0;
+  var max = 0, sum = 0, multi = 0;
   ks.forEach(function (k) {
     var c = hist[k];
     if (c > max) max = c;
-    sum += k * c; cells += c;
-    if (k >= 2) multi += c;
+    sum += k * c; multi += c;
   });
   var bw = Math.min(36, (w - 4) / ks.length);
   ctx.font = '9px system-ui, sans-serif';
@@ -1526,19 +1528,20 @@ function drawGridHist(hist, noneCells, uncrossedZone, uncrossedNone) {
     ctx.fillStyle = '#b9c4d0';
     ctx.fillText(c >= 10000 ? Math.round(c / 1000) + 'k' : String(c), x + bw / 2, 34 - bh - 2);
   });
-  var total = cells + noneCells + uncrossedZone + uncrossedNone;
-  gridHist.title = 'candidate tzids per boundary-crossed cell\n' +
+  var k1 = hist[1] || 0;
+  var total = multi + k1 + noneCells + uncrossedZone + uncrossedNone;
+  gridHist.title = 'cells with 2+ candidate tzids (need polygon tests)\n' +
     ks.map(function (k) {
-      return k + ' zone' + (k === 1 ? '' : 's') + ': ' + hist[k].toLocaleString() +
-        ' cells (' + (100 * hist[k] / cells).toFixed(1) + '%)';
+      return k + ' zones: ' + hist[k].toLocaleString() +
+        ' cells (' + (100 * hist[k] / multi).toFixed(1) + '%)';
     }).join('\n') +
-    (noneCells ? '\nno zone: ' + noneCells.toLocaleString() + ' cells' : '') +
-    '\nmean ' + (sum / cells).toFixed(2) + ' candidates · ≥2 zones: ' +
-    (100 * multi / cells).toFixed(1) + '% of crossed' +
+    '\nmean ' + (sum / multi).toFixed(2) + ' candidates over ' + multi.toLocaleString() + ' cells' +
+    '\ncrossed but single-candidate: ' + k1.toLocaleString() + ' cells' +
+    (noneCells ? ' · no zone: ' + noneCells.toLocaleString() : '') +
     '\nuncrossed: ' + (uncrossedZone + uncrossedNone).toLocaleString() + ' cells — ' +
     uncrossedZone.toLocaleString() + ' single zone · ' + uncrossedNone.toLocaleString() + ' no zone' +
     '\ntotal ' + total.toLocaleString() + ' cells · ' +
-    (100 * multi / total).toFixed(1) + '% need polygon tests (≥2 candidates)';
+    (100 * multi / total).toFixed(1) + '% need polygon tests';
 }
 function renderGrid(deg, nc, nr, hit, z, n, pct) {
   // per crossed cell: dominant zone + its share; plus a runtime-grid memory
