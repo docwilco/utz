@@ -69,7 +69,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         tzbb_release: "density-compare",
         eps_m,
         quant_bits: 24,
-        grid_deg: 2,
+        grid_deg: 2.0,
         codec: Codec::Zstd,
     };
     let container = |t: &topo::Topology| -> anyhow::Result<Vec<u8>> {

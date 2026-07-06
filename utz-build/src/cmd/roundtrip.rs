@@ -32,7 +32,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         tzbb_release: "roundtrip-dev",
         eps_m,
         quant_bits: qbits,
-        grid_deg: 2,
+        grid_deg: 2.0,
         codec: Codec::Uncompressed,
     };
     let container = encode::encode(&feats, &p)?;

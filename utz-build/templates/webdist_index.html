@@ -88,6 +88,14 @@
       <span class="spin" id="encspin"></span>
     </div>
     <div id="encstats"></div>
+    <!-- combo-box suggestions for the per-layer grid° inputs (same detents as
+         the coarse pre-filter slider); any 0.1–45 value can be typed -->
+    <datalist id="gridsteps">
+      <option value="0.5"></option><option value="0.6"></option><option value="0.7"></option>
+      <option value="0.8"></option><option value="0.9"></option><option value="1"></option>
+      <option value="1.33"></option><option value="1.5"></option><option value="2"></option>
+      <option value="3"></option><option value="5"></option><option value="10"></option>
+    </datalist>
   </div>
   <div class="qsec">
     <div class="qtitle">Reduction</div>
@@ -222,7 +230,7 @@ function syncHash() {
   if (heatCb.checked) parts.push('h=' + heatOp.value);
   if (gridCb.checked) parts.push('g=' + (Math.round(gridDeg * 1000) / 1000) + ',' + gridLayerSel.selectedIndex);
   if (encCb.checked) {
-    parts.push('e=' + encSlots.map(function (s) { return ENC_GRID[s.gridSel.selectedIndex]; }).join(','));
+    parts.push('e=' + encSlots.map(function (s) { return s.gridDeg; }).join(','));
   }
   history.replaceState(null, '', '#' + parts.join('&'));
 }
@@ -650,7 +658,6 @@ var ENC_CODECS = [
   { id: 3, name: 'brotli' },
   { id: 4, name: 'xz' },
 ];
-var ENC_GRID = [1, 2, 3, 5, 10];
 var encCb = document.getElementById('encb'), encSpin = document.getElementById('encspin');
 // one encode slot per layer: worker + progress + last stats + a persistent
 // DOM block — the header row (swatch, params, per-layer grid° select) is
@@ -673,14 +680,24 @@ var encSlots = layers.map(function (ly) {
   sw.className = 'sw';
   sw.style.background = ly.color;
   s.label = document.createElement('span');
-  s.gridSel = mkSelect(ENC_GRID.map(function (d) { return d + '°'; }), 1); // 2°
-  s.gridSel.title = 'prefilter grid cell size for this layer (integer degrees)';
-  s.gridSel.style.marginLeft = 'auto';
-  head.appendChild(sw); head.appendChild(s.label); head.appendChild(s.gridSel);
+  s.gridDeg = 2;
+  s.gridIn = document.createElement('input');
+  s.gridIn.type = 'text';
+  s.gridIn.className = 'val';
+  s.gridIn.setAttribute('list', 'gridsteps'); // combo box: detents + free text
+  s.gridIn.value = s.gridDeg;
+  s.gridIn.title = 'prefilter grid cell size in degrees for this layer — pick a detent or type any 0.1–45';
+  s.gridIn.style.marginLeft = 'auto';
+  head.appendChild(sw); head.appendChild(s.label); head.appendChild(s.gridIn);
   s.body = document.createElement('div');
   s.box.appendChild(head); s.box.appendChild(s.body);
   encStatsEl.appendChild(s.box);
-  s.gridSel.addEventListener('change', function () { encRequestSlot(s); syncHash(); });
+  s.gridIn.addEventListener('change', function () {
+    var v = parseFloat(s.gridIn.value);
+    if (!(v >= 0.1 && v <= 45)) { s.gridIn.value = s.gridDeg; return; }
+    s.gridDeg = v;
+    encRequestSlot(s); syncHash();
+  });
   return s;
 });
 function encQbits(q) { return q === 'i16' ? 16 : q === 'i24' ? 24 : 32; }
@@ -696,6 +713,11 @@ function encAbort(s) {
 function encSpawn(s, d, name) {
   s.dsName = name;
   s.worker = new Worker(ENC_WORKER_URL);
+  s.worker.onerror = function (e) { // e.g. OOM on a very fine grid
+    encAbort(s);
+    s.view = { error: 'encode crashed (' + (e.message || 'worker error') + ') — try a coarser grid' };
+    encRender();
+  };
   s.worker.onmessage = function (e) {
     var m = e.data;
     if (m.type === 'ready') {
@@ -738,7 +760,7 @@ function encParams(s) {
     epsM: ly.eps,
     wmin: ly.wmin(),
     qbits: encQbits(QUANT[ly.quant].key),
-    gridDeg: ENC_GRID[s.gridSel.selectedIndex],
+    gridDeg: s.gridDeg,
   };
 }
 function encSend(s) {
@@ -1022,20 +1044,29 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
           continue;
         }
         var fx0 = Math.round(cx * s), fx1 = Math.min(z.w, Math.round((cx + 1) * s));
-        var touched = [];
+        // 'no zone' never competes (matches the runtime, whose dominance
+        // tallies only count zone-owned subcells): a part-None cell is 100%
+        // its zones, and share/err are relative to the zone-covered part
+        var touched = [], zoneTotal = 0;
         for (var fy = fy0; fy < fy1; fy++) {
           for (var fx = fx0; fx < fx1; fx++) {
             var id = z.ids[fy * z.w + fx];
-            if (id === 0xFFFF) id = NONE;
+            if (id === 0xFFFF) continue;
             if (!counts[id]) touched.push(id);
-            counts[id]++;
+            counts[id]++; zoneTotal++;
           }
         }
+        if (!touched.length) { // boundary grazed the cell but no zone covers it
+          dom[cy * nc + cx] = NONE;
+          shr[cy * nc + cx] = 1;
+          intern('s' + NONE, 1);
+          continue;
+        }
         touched.sort(function (a, b) { return counts[b] - counts[a]; });
-        var total = (fy1 - fy0) * (fx1 - fx0), share = counts[touched[0]] / total;
+        var share = counts[touched[0]] / zoneTotal;
         dom[cy * nc + cx] = touched[0];
         shr[cy * nc + cx] = share;
-        errKm2 += (1 - share) * areaKm2;
+        errKm2 += (1 - share) * areaKm2 * zoneTotal / ((fy1 - fy0) * (fx1 - fx0) || 1);
         intern(touched.slice().sort(function (a, b) { return a - b; }).join(','), touched.length);
         for (var t = 0; t < touched.length; t++) counts[touched[t]] = 0;
       }
@@ -1119,14 +1150,18 @@ function cellCandidates(z, lon, lat, deg) {
   var s = deg * (z.w / 360);
   var fx0 = Math.max(0, Math.round(cx * s)), fx1 = Math.min(z.w, Math.round((cx + 1) * s));
   var fy0 = Math.max(0, Math.round(cy * s)), fy1 = Math.min(z.h, Math.round((cy + 1) * s));
+  // 'no zone' never competes: percentages are of the zone-covered part, so a
+  // part-None cell reads 100% its zone (matches the runtime's dominance)
   var counts = {}, total = 0;
   for (var fy = fy0; fy < fy1; fy++) {
     for (var fx = fx0; fx < fx1; fx++) {
       var id = z.ids[fy * z.w + fx];
+      if (id === 0xFFFF) continue;
       counts[id] = (counts[id] || 0) + 1;
       total++;
     }
   }
+  if (!total) return '(none)';
   return Object.keys(counts)
     .sort(function (a, b) { return counts[b] - counts[a]; })
     .slice(0, 3)
@@ -1248,12 +1283,12 @@ if (HASH.g) {
   gridCb.checked = true;
 }
 if (HASH.e) {
-  // current form e=<g0>,<g1>,… (grid° per layer); a single value (old links)
-  // applies to every layer
-  var ep = HASH.e.split(',').map(function (x) { return ENC_GRID.indexOf(parseInt(x, 10)); });
+  // e=<g0>,<g1>,… (grid° per layer, fractional ok); a single value (old
+  // links) applies to every layer
+  var ep = HASH.e.split(',').map(parseFloat);
   encSlots.forEach(function (s, i) {
-    var gi = ep.length === 1 ? ep[0] : ep[i];
-    if (gi >= 0 && gi !== undefined) s.gridSel.selectedIndex = gi;
+    var gv = ep.length === 1 ? ep[0] : ep[i];
+    if (gv >= 0.1 && gv <= 45) { s.gridDeg = gv; s.gridIn.value = gv; }
   });
   encCb.checked = true;
 }

@@ -5,7 +5,7 @@
 //! outer:  magic "uTZ1" | version u8 | codec u8 | raw_len u32 | payload…
 //!         (raw_len = UNCOMPRESSED payload size, so decoders allocate once)
 //! payload (compressed per codec):
-//!   header:     dataset u8 | quant_bits u8 | grid_deg u8 | eps_m f32
+//!   header:     dataset u8 | quant_bits u8 | grid_deg f32 | eps_m f32
 //!               | tzbb_release (len u8 + bytes)
 //!               | n_features u16 | arcs_off u32 | rings_off u32 | grid_off u32
 //!   zone table: str_offsets u16[n_features+1] | tzid pool bytes   (zone i = feature i)
@@ -52,8 +52,8 @@ pub struct Params<'a> {
     pub eps_m: f64,
     /// 16 / 24 / 32
     pub quant_bits: u32,
-    /// integer degrees, presets {1, 2, 3, 5, 10}
-    pub grid_deg: u32,
+    /// grid cell size in degrees, 0.1–45 — fractional (0.5, 4/3, …) allowed
+    pub grid_deg: f64,
     pub codec: Codec,
 }
 
@@ -101,6 +101,7 @@ pub fn payload_from_topology(
     p: &Params,
 ) -> anyhow::Result<(Vec<u8>, PayloadStats)> {
     anyhow::ensure!(matches!(p.quant_bits, 16 | 24 | 32), "quant_bits must be 16/24/32");
+    anyhow::ensure!((0.1..=45.0).contains(&p.grid_deg), "grid_deg must be within 0.1–45");
     anyhow::ensure!(feats.len() < 0x7FFF, "feature count exceeds 15-bit zone ids");
     let qmax = ((1u64 << (p.quant_bits - 1)) - 1) as f64;
     let qx = |lon: f64| (lon / 180.0 * qmax).round() as i32;
@@ -127,7 +128,7 @@ pub fn payload_from_topology(
         .map(|a| a.iter().map(|&(x, y)| (dq(x, 180.0), dq(y, 90.0))).collect())
         .collect();
     let quantized = t.reconstruct(feats, &arcs_dq);
-    let g = grid::build(&quantized, p.grid_deg as f64, 8);
+    let g = grid::build(&quantized, p.grid_deg, 8);
     let areas = grid::feat_areas(&quantized);
     let csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
 
@@ -141,7 +142,7 @@ pub fn payload_from_topology(
     // ---- header ----
     o.push(p.dataset);
     o.push(p.quant_bits as u8);
-    o.push(p.grid_deg as u8);
+    o.extend_from_slice(&(p.grid_deg as f32).to_le_bytes());
     o.extend_from_slice(&(p.eps_m as f32).to_le_bytes());
     anyhow::ensure!(p.tzbb_release.len() < 256, "tzbb_release too long");
     o.push(p.tzbb_release.len() as u8);

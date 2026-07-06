@@ -26,8 +26,8 @@ pub struct Args {
     #[arg(long, default_value_t = 24)]
     qbits: u32,
     /// grid cell size in integer degrees
-    #[arg(long, default_value_t = 2)]
-    grid_deg: u32,
+    #[arg(long, default_value_t = 2.0)]
+    grid_deg: f64,
     /// enable population weighting with this floor multiplier (e.g. 0.052)
     #[arg(long)]
     w_min: Option<f64>,

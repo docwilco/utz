@@ -77,7 +77,7 @@ fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> anyhow::Result<Vec<u8>> {
         tzbb_release: "webdist",
         eps_m: 100.0,
         quant_bits: 24,
-        grid_deg: 2,
+        grid_deg: 2.0,
         codec: Codec::Zstd,
     };
     let finder = utz::Finder::from_vec(encode::encode(feats, &p)?)

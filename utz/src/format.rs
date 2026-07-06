@@ -17,7 +17,8 @@ pub const VERSION: u8 = 1;
 pub struct Header {
     pub dataset: u8,
     pub quant_bits: u8,
-    pub grid_deg: u8,
+    /// cell size in degrees — fractional (e.g. 0.5) allowed
+    pub grid_deg: f32,
     pub eps_m: f32,
     pub n_features: u16,
     // zone table
@@ -90,16 +91,16 @@ pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize), Error> {
 /// Parse the payload header + section directory.
 pub fn parse(p: &[u8]) -> Result<Header, Error> {
     let need = |n: usize| if p.len() < n { Err(Error::BadFormat) } else { Ok(()) };
-    need(7)?;
+    need(11)?;
     let dataset = p[0];
     let quant_bits = p[1];
-    let grid_deg = p[2];
-    if !matches!(quant_bits, 16 | 24 | 32) || grid_deg == 0 {
+    let grid_deg = f32::from_le_bytes([p[2], p[3], p[4], p[5]]);
+    if !matches!(quant_bits, 16 | 24 | 32) || !(grid_deg > 0.0) {
         return Err(Error::BadFormat);
     }
-    let eps_m = f32::from_le_bytes([p[3], p[4], p[5], p[6]]);
-    let rel_len = p[7] as usize;
-    let mut pos = 8 + rel_len; // tzbb_release skipped (read via header_release)
+    let eps_m = f32::from_le_bytes([p[6], p[7], p[8], p[9]]);
+    let rel_len = p[10] as usize;
+    let mut pos = 11 + rel_len; // tzbb_release skipped (read via header_release)
     need(pos + 14)?;
     let n_features = read_u16(p, pos);
     pos += 2;
@@ -141,6 +142,6 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
 
 /// TZBB release string recorded in the header.
 pub fn release(p: &[u8]) -> &[u8] {
-    let n = p[7] as usize;
-    &p[8..8 + n]
+    let n = p[10] as usize;
+    &p[11..11 + n]
 }

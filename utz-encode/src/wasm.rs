@@ -177,7 +177,7 @@ pub extern "C" fn utz_enc_payload(
     eps_m: f64,
     w_min: f64,
     quant_bits: u32,
-    grid_deg: u32,
+    grid_deg: f64,
 ) -> u32 {
     let Some(st) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else { return 0 };
     let eps_deg = eps_m / 111_320.0;

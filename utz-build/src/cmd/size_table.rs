@@ -11,8 +11,8 @@ pub struct Args {
     #[arg(default_value = "now")]
     ds: String,
     /// grid cell size in integer degrees
-    #[arg(default_value_t = 2)]
-    grid_deg: u32,
+    #[arg(default_value_t = 2.0)]
+    grid_deg: f64,
 }
 
 pub fn run(a: Args) -> anyhow::Result<()> {
