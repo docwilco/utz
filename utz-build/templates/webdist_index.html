@@ -27,7 +27,7 @@
   .slot { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
   .slot input[type=checkbox] { accent-color: #ffb454; width: 14px; height: 14px; flex: none; }
   .sw { width: 14px; height: 4px; border-radius: 2px; flex: none; }
-  .slot select { background: #0d1117; color: #e6edf3; border: 1px solid #2a3542; border-radius: 5px;
+  .slot select, .st select { background: #0d1117; color: #e6edf3; border: 1px solid #2a3542; border-radius: 5px;
     font: 11px system-ui, sans-serif; padding: 2px 3px; max-width: 92px; }
   .slot select:disabled { opacity: 0.4; }
   .slot .raw-label { font-size: 12px; }
@@ -81,11 +81,10 @@
     <div class="st" style="color:#8b98a8">cell fill: hue = dominant zone, opacity = dominance</div>
   </div>
   <div class="qsec">
-    <div class="qtitle">Container encode <span>· live .utz size per enabled layer: delta+varint payload, then codecs (always S→Q, the builder's order)</span></div>
-    <div class="slot">
+    <div class="qtitle">Container encode</div>
+    <div class="slot" title="live .utz size per enabled layer (always S→Q, the builder's order)">
       <input type="checkbox" id="encb">
       <span class="raw-label">encode</span>
-      <select id="encgrid" title="prefilter grid cell size (integer degrees, same for every layer)"></select>
       <span class="spin" id="encspin"></span>
     </div>
     <div id="encstats"></div>
@@ -222,7 +221,9 @@ function syncHash() {
   });
   if (heatCb.checked) parts.push('h=' + heatOp.value);
   if (gridCb.checked) parts.push('g=' + (Math.round(gridDeg * 1000) / 1000) + ',' + gridLayerSel.selectedIndex);
-  if (encCb.checked) parts.push('e=' + ENC_GRID[encGridSel.selectedIndex]);
+  if (encCb.checked) {
+    parts.push('e=' + encSlots.map(function (s) { return ENC_GRID[s.gridSel.selectedIndex]; }).join(','));
+  }
   history.replaceState(null, '', '#' + parts.join('&'));
 }
 
@@ -645,21 +646,42 @@ function encWorkerBody() {
 }
 var ENC_WORKER_URL = URL.createObjectURL(new Blob(['(' + encWorkerBody.toString() + ')()'], { type: 'text/javascript' }));
 var ENC_CODECS = [
-  { id: 1, name: 'gzip (zlib 10)' },
-  { id: 3, name: 'brotli (q11 w24)' },
-  { id: 4, name: 'xz (9e)' },
+  { id: 1, name: 'gzip' },
+  { id: 3, name: 'brotli' },
+  { id: 4, name: 'xz' },
 ];
 var ENC_GRID = [1, 2, 3, 5, 10];
 var encCb = document.getElementById('encb'), encSpin = document.getElementById('encspin');
-var encGridSel = document.getElementById('encgrid');
-ENC_GRID.forEach(function (d) {
-  var o = document.createElement('option'); o.textContent = 'grid ' + d + '°'; encGridSel.appendChild(o);
-});
-encGridSel.selectedIndex = 1; // 2°
-// one encode slot per layer (worker + progress + last stats)
+// one encode slot per layer: worker + progress + last stats + a persistent
+// DOM block — the header row (swatch, params, per-layer grid° select) is
+// created once so the select survives the stat re-renders below it
+var encStatsEl = document.getElementById('encstats');
+var encEmpty = document.createElement('div');
+encEmpty.className = 'st';
+encEmpty.style.color = '#5a6472';
+encEmpty.style.display = 'none';
+encEmpty.textContent = 'no layers enabled';
+encStatsEl.appendChild(encEmpty);
 var encSlots = layers.map(function (ly) {
-  return { ly: ly, worker: null, ready: false, busy: false, pendingRun: false,
+  var s = { ly: ly, worker: null, ready: false, busy: false, pendingRun: false,
     gen: 0, dsName: null, sig: null, view: null };
+  s.box = document.createElement('div');
+  s.box.style.display = 'none';
+  var head = document.createElement('div');
+  head.className = 'st';
+  var sw = document.createElement('span');
+  sw.className = 'sw';
+  sw.style.background = ly.color;
+  s.label = document.createElement('span');
+  s.gridSel = mkSelect(ENC_GRID.map(function (d) { return d + '°'; }), 1); // 2°
+  s.gridSel.title = 'prefilter grid cell size for this layer (integer degrees)';
+  s.gridSel.style.marginLeft = 'auto';
+  head.appendChild(sw); head.appendChild(s.label); head.appendChild(s.gridSel);
+  s.body = document.createElement('div');
+  s.box.appendChild(head); s.box.appendChild(s.body);
+  encStatsEl.appendChild(s.box);
+  s.gridSel.addEventListener('change', function () { encRequestSlot(s); syncHash(); });
+  return s;
 });
 function encQbits(q) { return q === 'i16' ? 16 : q === 'i24' ? 24 : 32; }
 function encSyncSpin() {
@@ -716,7 +738,7 @@ function encParams(s) {
     epsM: ly.eps,
     wmin: ly.wmin(),
     qbits: encQbits(QUANT[ly.quant].key),
-    gridDeg: ENC_GRID[encGridSel.selectedIndex],
+    gridDeg: ENC_GRID[s.gridSel.selectedIndex],
   };
 }
 function encSend(s) {
@@ -771,28 +793,31 @@ function encRequest(force) {
 }
 function fmtB(b) { return b < 1024 ? b + ' B' : fmtBytes(b); }
 function encRender() {
-  var el = document.getElementById('encstats');
-  if (!encCb.checked) { el.innerHTML = ''; return; }
-  var h = '';
+  var any = false;
   encSlots.forEach(function (s) {
-    var v = s.view;
+    var v = encCb.checked ? s.view : null;
+    s.box.style.display = v ? '' : 'none';
     if (!v) return;
-    var sw = '<span class="sw" style="background:' + s.ly.color + '"></span>';
+    any = true;
+    var p = v.params;
+    s.label.textContent = !p ? '' : p.name + ' ' + ALGO[s.ly.algo].name +
+      (ALGO[s.ly.algo].key === 'raw' ? '' : ' ε' + p.epsM) + ' @ i' + p.qbits +
+      (p.wmin < 1 ? ' pop×' + (p.wmin < 0.1 ? p.wmin.toFixed(3) : p.wmin.toFixed(2)) : '');
     if (v.error) {
-      h += '<div class="st">' + sw + '<span style="color:#ff6b6b">' + v.error + '</span></div>';
+      s.body.innerHTML = '<div class="st"><span style="color:#ff6b6b;margin-left:22px">' + v.error + '</span></div>';
       return;
     }
-    var p = v.params;
-    h += '<div class="st">' + sw + '<span>' + p.name + ' ' + ALGO[s.ly.algo].name +
-      (ALGO[s.ly.algo].key === 'raw' ? '' : ' ε' + p.epsM) + ' @ i' + p.qbits +
-      (p.wmin < 1 ? ' pop×' + (p.wmin < 0.1 ? p.wmin.toFixed(3) : p.wmin.toFixed(2)) : '') +
-      '</span></div>';
+    var h = '';
     if (!v.payload) {
       h += '<div class="st"><span style="margin-left:22px">delta+varint payload</span><span class="num">…</span></div>';
     } else {
       var st = v.payload.st;
+      // ratio vs the same container with fixed-width verts instead of the
+      // delta+varint arc stream — what stage 1's entropy coding buys
+      var fixed = v.payload.len - st[2] + st[6] * 2 * (p.qbits / 8);
       h += '<div class="st"><span style="margin-left:22px">delta+varint payload</span><span class="num">' +
-        fmtB(v.payload.len) + ' · ' + v.payload.ms.toLocaleString() + ' ms</span></div>';
+        fmtB(v.payload.len) +
+        ' <span class="pct">(' + (100 * v.payload.len / fixed).toFixed(1) + '%)</span></span></div>';
       h += '<div class="st" style="color:#8b98a8"><span style="margin-left:22px">hdr ' + fmtB(st[0]) +
         ' · zones ' + fmtB(st[1]) + ' · arcs ' + fmtB(st[2]) + ' · rings ' + fmtB(st[3]) +
         ' · grid ' + fmtB(st[4]) + '</span></div>';
@@ -802,20 +827,18 @@ function encRender() {
         (cleanV || st[10] ? ' · clean −' + cleanV.toLocaleString() + ' v −' + st[10] + ' rings' : '') +
         '</span></div>';
     }
-    ENC_CODECS.forEach(function (c) {
+    // one line for all codecs; +10 = outer container header ("uTZ1" | ver |
+    // codec | raw_len) — what a shipped .utz of that codec would weigh
+    h += '<div class="st"><span style="margin-left:22px">' + ENC_CODECS.map(function (c) {
       var r = v.codecs[c.id];
-      // +10: outer container header ("uTZ1" | ver | codec | raw_len) — what a
-      // shipped .utz of this codec would weigh
-      h += '<div class="st"><span style="margin-left:22px">' + c.name + '</span><span class="num">' +
-        (!r ? '…' : !r.bytes ? 'failed' : fmtB(r.bytes + 10) +
-          ' <span class="pct">(' + (100 * (r.bytes + 10) / v.payload.len).toFixed(1) + '%)</span> · ' +
-          r.ms.toLocaleString() + ' ms') + '</span></div>';
-    });
+      return c.name + ' ' + (!r ? '…' : !r.bytes ? 'failed' : fmtB(r.bytes + 10) +
+        ' <span class="pct">(' + (100 * (r.bytes + 10) / v.payload.len).toFixed(1) + '%)</span>');
+    }).join(' · ') + '</span></div>';
+    s.body.innerHTML = h;
   });
-  el.innerHTML = h || '<div class="st" style="color:#5a6472">no layers enabled</div>';
+  encEmpty.style.display = encCb.checked && !any ? '' : 'none';
 }
 encCb.addEventListener('change', function () { encRequest(true); syncHash(); });
-encGridSel.addEventListener('change', function () { encRequest(); syncHash(); });
 
 // ---- population density heatmap (lazy-fetched raster) ----
 map.createPane('heat').style.zIndex = 350; // above tiles, below the vector canvas
@@ -1181,7 +1204,7 @@ function updateStats() {
       (s.pwv > 0 && !isRaw ? ' pop' + s.popLabel() : '') + '</span>' +
       '<span class="num">' + kept.toLocaleString() + ' v · <span class="pct">−' +
       (100 * (1 - kept / s.data.stored0)).toFixed(1) + '%</span> · ' + fmtBytes(kept * 2 * q.bpc) +
-      ' · ' + s.result.ms.toLocaleString() + ' ms</span></div>';
+      '</span></div>';
   });
   if (!shown) el.innerHTML = '<div class="st" style="color:#5a6472">nothing enabled</div>';
 
@@ -1225,10 +1248,13 @@ if (HASH.g) {
   gridCb.checked = true;
 }
 if (HASH.e) {
-  // current form e=<gridDeg>; tolerate the old e=<layer>,<gridDeg> links
-  var ep = HASH.e.split(',');
-  var eg = ENC_GRID.indexOf(parseInt(ep[ep.length - 1], 10));
-  if (eg >= 0) encGridSel.selectedIndex = eg;
+  // current form e=<g0>,<g1>,… (grid° per layer); a single value (old links)
+  // applies to every layer
+  var ep = HASH.e.split(',').map(function (x) { return ENC_GRID.indexOf(parseInt(x, 10)); });
+  encSlots.forEach(function (s, i) {
+    var gi = ep.length === 1 ? ep[0] : ep[i];
+    if (gi >= 0 && gi !== undefined) s.gridSel.selectedIndex = gi;
+  });
   encCb.checked = true;
 }
 
