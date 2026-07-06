@@ -90,18 +90,19 @@ impl Finder {
     fn from_reader(r: impl Read) -> Result<Finder>;          // file / network: owned buffer
 
     fn preload(&mut self);                                   // eager mode: decode all rings once (§9)
-    fn lookup(&self, lon: f64, lat: f64) -> Option<&str>;    // accurate: grid → PIP (lazy streams,
-                                                             // eager scans decoded rings)
+    fn lookup(&self, lon: f64, lat: f64) -> Option<&str>;    // accurate: grid → PIP (zero-copy/lazy
+                                                             // test off the payload bytes; eager
+                                                             // scans decoded rings)
     fn lookup_coarse(&self, lon: f64, lat: f64) -> Option<&str>; // grid-only, no geometry, ~cell-size error
 }
 ```
 
 - **`from_static`** is the embedded/flash win — borrows the bytes, no RAM copy in
   `uncompressed` mode. `impl Read` can't zero-copy, so it's the std/OTA path.
-- **Availability by environment rung (§11):** `core` = `from_static` +
-  `lookup` (streaming, §14.7 — landed) + `lookup_coarse`; `alloc` adds
-  `from_slice`/`from_vec` (compressed assets) + `preload` (eager); `std`
-  adds `from_reader`.
+- **Availability by environment rung (§11):** `core` = `from_static`
+  (zero-copy mode) + `lookup` + `lookup_coarse`; `alloc` adds
+  `from_slice`/`from_vec` (lazy mode: owned payload, typically compressed)
+  + `preload` (eager mode); `std` adds `from_reader`.
 - **No-embed deployment** (= no preset feature enabled): ship the binary *without*
   the asset, load it at runtime from a flash partition (`from_static`) or file
   (`from_reader`); generate the asset with the `utz-build` CLI (§11). Enables
@@ -282,30 +283,39 @@ next to flash size and accuracy. Preset codecs must be no_std-clean
 
 ## 9. Rings / memory strategy
 
-Decision: **both eager and lazy — API-selected, not feature-selected**
-(availability falls out of the §11 environment rungs), plus `lookup_coarse`
-(the `core` floor). **Implemented (2026-07)**, validated by `roundtrip`
-(ε=500 i24 `-now`, 100k pts, 0 wrong vs linear-PIP oracle; all modes agree):
-- **Lazy** (default `lookup`, `core` rung): grid → candidate ids → PIP each
-  candidate by STREAMING its arcs off the container bytes through the
-  per-edge kernel (below). O(1) state, zero allocation, works on zero-copy
-  static sources. Interior cells touch **zero** geometry. Best for embedded.
-  Host: **3.0 µs/pt** — faster than the decode-into-scratch loop it replaced
-  (4.1–4.5 µs), whose scratch buffer is now deleted entirely.
-- **Eager** (`Finder::preload()`, `alloc` rung): decode all rings into flat
-  RAM once, lookups scan decoded slices. Host: **0.54 µs/pt** (5.6× lazy)
-  after preload (3.1 MB heap, 0.9 ms — ~8 B/vertex vs ~2.3 encoded).
-  Server/std, or RAM-rich embedded.
-- **Coarse** (`lookup_coarse`, `core`): grid-only, no arcs. ~cell-size error,
-  0.04 µs/pt.
-- **Streaming PIP** (§14.7, the lazy inner loop): the ray-cast is per-segment
-  and direction/order-independent, and junction vertices are shared by
-  consecutive arcs (ring closure included) — so a ring's segment set is
-  exactly the union of each arc's internal segments, every arc walked
-  *forward* (orientation bit ignored), parity XORed across arcs. Runs over
-  the arc bytes in place — any static source or RAM — with O(1) stack state,
-  no polygon buffer. Puts accurate `lookup` on the `core` rung. Remaining:
-  flash-latency numbers on embedded targets (§15).
+Decision: **three modes — zero-copy, lazy, eager — selected automatically by
+how the container is loaded** (only eager is an explicit request; no mode
+API — the firmware author picks implicitly via codec + constructor;
+availability falls out of the §11 environment rungs), plus `lookup_coarse`
+(the `core` floor, touches no geometry in any mode). **Implemented
+(2026-07)**, validated by `roundtrip` (`-now` 100k + `-1970` 20k pts, 0
+wrong vs linear-PIP oracle; all modes agree point-for-point):
+
+- **Zero-copy** (`from_static`, uncompressed asset): payload borrowed from
+  any static source (flash partition, `include_bytes!`, …) — literally
+  `Cow::Borrowed`. RAM ≈ 0; flash pays the uncompressed size.
+- **Lazy** (`from_slice`/`from_vec`/`from_reader` — whenever the payload
+  must live in owned RAM, typically because the asset is compressed so
+  flash can't hold it uncompressed): lookups run PIP directly off the
+  payload, **no decoded-geometry cache**. RAM = the decompressed payload,
+  nothing more — the per-edge kernel needs no scratch, strictly smaller
+  than the old scratch-buffer lazy (now deleted). An uncompressed owned
+  buffer is lazy too: same cost profile, minus the decompression.
+- **Eager** (`Finder::preload()`, `alloc`): additionally decode all rings
+  into flat RAM once; lookups scan decoded slices. Most RAM (decoded
+  geometry on top of the payload), fastest repeat lookups.
+- **Coarse** (`lookup_coarse`, `core`): grid-only, no arcs, ~cell-size error.
+
+Zero-copy and lazy share the identical inner loop — the §14.7 **streaming
+mechanism** (a mechanism name, not a mode): the ray-cast is per-segment and
+direction/order-independent, and junction vertices are shared by consecutive
+arcs (ring closure included) — so a ring's segment set is exactly the union
+of each arc's internal segments, every arc walked *forward* (orientation bit
+ignored), parity XORed across arcs, O(1) stack state, no polygon buffer.
+The two modes differ only in where the payload resides (borrowed static vs
+owned RAM — the `Cow` variant). Per-mode performance is deliberately not
+quoted here until measured on an actual device with flash; host-only numbers
+live in the §15 entry.
 
 ---
 
@@ -447,7 +457,7 @@ deliberate bare-metal intent and satisfies choice 2:
 **Status (2026-07): skeleton implemented.** `utz` enforces the two mandatory
 choices (tier: `nano`/`custom` so far; env ladder `core` ⊂ `alloc` ⊂ `std`)
 with the compile_error onboarding, and API availability follows the rung:
-`from_static` + `lookup` (streaming) + `lookup_coarse` on `core`;
+`from_static` (zero-copy) + `lookup` + `lookup_coarse` on `core`;
 `from_slice`/`from_vec` + `preload` (eager) on `alloc`; `from_reader` on
 `std`. `utz-data-nano` bakes the §14.5 nano
 recipe (asset gitignored, regenerated via `utz-build gen`); `nano =
@@ -542,9 +552,9 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
    decoder make it the default for the small no_std tiers.
 6. Crate/repo name confirmed `utz`; public naming of feature groups.
 7. ~~**Alloc-free *accurate* lookup**~~ — **decided + implemented (2026-07):
-   streaming PIP** (measured host numbers in §9; the embedded flash-latency
-   bench remains, §15), which made the fixed-scratch-buffer idea obsolete —
-   the scratch buffer is gone.
+   streaming PIP** (host-only numbers in the §15 entry; the embedded
+   flash-latency bench remains), which made the fixed-scratch-buffer idea
+   obsolete — the scratch buffer is gone.
    Ray-cast crossing-parity is per-segment and **endpoint-symmetric**
    (`(y1>y) != (y2>y)` + the x-intersection test don't care which endpoint
    comes first) and parity accumulation is order-independent — so a ring is
