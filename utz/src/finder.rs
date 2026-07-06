@@ -1,16 +1,25 @@
 //! `Finder`: grid prefilter → per-polygon integer PIP (PLAN.md §3, §9).
 //!
-//! Memory modes — API-selected, availability falls out of the environment
-//! rung (§9, §11):
-//! - **lazy** (the default `lookup`): candidates are PIP-tested by streaming
-//!   their arcs straight off the container bytes through the per-edge kernel
-//!   (§14.7) — O(1) state, no decode buffer, no allocation. Works on the
-//!   `core` rung, including zero-copy static sources (`from_static`: flash
-//!   partition, `include_bytes!`, …). Interior cells touch zero geometry.
-//! - **eager** ([`Finder::preload`], `alloc`): decode all polygons into RAM
-//!   once; lookups then scan decoded rings. Fastest repeat lookups.
-//! - **coarse** ([`Finder::lookup_coarse`]): grid-only, ~cell-size border
-//!   error, no geometry ever.
+//! Three memory modes, selected automatically by how the container is loaded
+//! (only eager is an explicit request); availability falls out of the
+//! environment rung (§9, §11):
+//! - **zero-copy** (`from_static`, uncompressed): the payload is borrowed
+//!   from static storage (flash partition, `include_bytes!`, …). No RAM
+//!   payload at all; flash pays the uncompressed size. `core` rung.
+//! - **lazy** (`from_slice`/`from_vec`/`from_reader`): the payload lives in
+//!   owned RAM — typically because the asset is compressed and flash can't
+//!   fit it uncompressed. No decoded-geometry cache: RAM = the decompressed
+//!   payload, nothing more.
+//! - **eager** ([`Finder::preload`], `alloc`): additionally decode all rings
+//!   into RAM once; lookups then scan decoded slices. Most RAM, fastest
+//!   repeat lookups.
+//!
+//! Zero-copy and lazy share the identical lookup mechanism — candidates are
+//! PIP-tested by walking their arcs directly off the payload bytes through
+//! the per-edge kernel (§14.7), O(1) state, no allocation — they differ only
+//! in where the payload resides (borrowed static vs owned RAM), i.e. the
+//! `Cow` variant of [`Payload`]. Interior cells touch zero geometry in every
+//! mode, and [`Finder::lookup_coarse`] never touches geometry at all.
 
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
@@ -22,21 +31,13 @@ use crate::{pip, Error};
 
 const NO_ZONE: u16 = 0x7FFF;
 
-enum Source {
-    Static(&'static [u8]),
-    #[cfg(feature = "alloc")]
-    Owned(Vec<u8>),
-}
-
-impl Source {
-    fn bytes(&self) -> &[u8] {
-        match self {
-            Source::Static(b) => b,
-            #[cfg(feature = "alloc")]
-            Source::Owned(v) => v,
-        }
-    }
-}
+/// The container's payload section. `Cow::Borrowed` = zero-copy mode,
+/// `Cow::Owned` = lazy/eager (§9). `Cow` itself lives in `alloc`; on the
+/// bare-`core` rung borrowed is the only possible variant.
+#[cfg(feature = "alloc")]
+type Payload = alloc::borrow::Cow<'static, [u8]>;
+#[cfg(not(feature = "alloc"))]
+type Payload = &'static [u8];
 
 /// Eager-mode storage: every ring decoded, flat (§9). Ranges are exclusive
 /// ends; a range's start is the previous entry's end (global across
@@ -55,12 +56,13 @@ struct Eager {
 /// A loaded timezone index. Build once, query many.
 ///
 /// Availability follows the environment ladder (§11): `core` gets
-/// [`from_static`](Finder::from_static), [`lookup`](Finder::lookup) (lazy,
-/// streaming) and [`lookup_coarse`](Finder::lookup_coarse); `alloc` adds
-/// owned/compressed containers and [`preload`](Finder::preload) (eager mode);
-/// `std` adds [`from_reader`](Finder::from_reader).
+/// [`from_static`](Finder::from_static) (zero-copy mode),
+/// [`lookup`](Finder::lookup) and [`lookup_coarse`](Finder::lookup_coarse);
+/// `alloc` adds owned/compressed containers (lazy mode) and
+/// [`preload`](Finder::preload) (eager mode); `std` adds
+/// [`from_reader`](Finder::from_reader).
 pub struct Finder {
-    payload: Source,
+    payload: Payload,
     hdr: Header,
     /// eager-mode geometry, populated by `preload`
     #[cfg(feature = "alloc")]
@@ -77,8 +79,9 @@ impl Finder {
         Finder::from_slice(crate::data::NANO)
     }
 
-    /// Borrow a container from `&'static` bytes (e.g. a flash partition).
-    /// Zero-copy: only the `uncompressed` codec is accepted here.
+    /// Borrow a container from `&'static` bytes (flash partition,
+    /// `include_bytes!`, …) — zero-copy mode: no RAM payload. Only the
+    /// `uncompressed` codec is accepted here.
     pub fn from_static(bytes: &'static [u8]) -> Result<Finder, Error> {
         let (codec, _, start) = format::outer(bytes)?;
         if codec != 0 {
@@ -87,16 +90,17 @@ impl Finder {
         let payload = &bytes[start..];
         let hdr = format::parse(payload)?;
         Ok(Finder {
-            payload: Source::Static(payload),
+            payload: payload.into(),
             hdr,
             #[cfg(feature = "alloc")]
             eager: None,
         })
     }
 
-    /// Decode a borrowed container into an owned `Finder`, decompressing per
-    /// the codec byte. For compressed assets already in memory/flash (preset
-    /// statics, OTA blobs) — no copy of the compressed input is made.
+    /// Decode a borrowed container into an owned `Finder` (lazy mode),
+    /// decompressing per the codec byte. For compressed assets already in
+    /// memory/flash (preset statics, OTA blobs) — no copy of the compressed
+    /// input is made.
     #[cfg(feature = "alloc")]
     pub fn from_slice(bytes: &[u8]) -> Result<Finder, Error> {
         let (codec, raw_len, start) = format::outer(bytes)?;
@@ -106,12 +110,14 @@ impl Finder {
             decompress::decompress(codec, raw_len, &bytes[start..])?
         };
         let hdr = format::parse(&payload)?;
-        Ok(Finder { payload: Source::Owned(payload), hdr, eager: None })
+        Ok(Finder { payload: payload.into(), hdr, eager: None })
     }
 
-    /// Take ownership of a container buffer (e.g. read from flash / OTA blob),
-    /// decompressing per the codec byte if a backend is compiled in. The
-    /// `no_std` entry point for compressed containers.
+    /// Take ownership of a container buffer (e.g. an OTA blob), decompressing
+    /// per the codec byte if a backend is compiled in. The `no_std` entry
+    /// point for compressed containers. Lazy mode either way: even an
+    /// uncompressed owned buffer keeps the payload in RAM — zero-copy needs
+    /// [`from_static`](Finder::from_static).
     #[cfg(feature = "alloc")]
     pub fn from_vec(bytes: Vec<u8>) -> Result<Finder, Error> {
         let (codec, raw_len, start) = format::outer(&bytes)?;
@@ -124,7 +130,7 @@ impl Finder {
             decompress::decompress(codec, raw_len, &bytes[start..])?
         };
         let hdr = format::parse(&payload)?;
-        Ok(Finder { payload: Source::Owned(payload), hdr, eager: None })
+        Ok(Finder { payload: payload.into(), hdr, eager: None })
     }
 
     /// Read a container from any `Read` source into an owned buffer.
@@ -137,7 +143,7 @@ impl Finder {
 
     /// TZBB release recorded in the container header.
     pub fn tzbb_release(&self) -> &str {
-        core::str::from_utf8(format::release(self.payload.bytes())).unwrap_or("")
+        core::str::from_utf8(format::release(&self.payload[..])).unwrap_or("")
     }
 
     /// Decode all polygons into RAM once (eager mode, §9): repeat lookups
@@ -148,7 +154,7 @@ impl Finder {
         if self.eager.is_some() {
             return;
         }
-        let (h, b) = (&self.hdr, self.payload.bytes());
+        let (h, b) = (&self.hdr, &self.payload[..]);
         let fb = fixed_bytes(h.quant_bits);
         let mut e = Eager {
             coords: Vec::new(),
@@ -195,8 +201,9 @@ impl Finder {
     /// Accurate lookup: grid cell → interior zone (O(1)) or candidates → PIP.
     /// `(lon, lat)` order — x before y.
     ///
-    /// Lazy by default (streaming PIP over the container bytes, zero alloc);
-    /// eager after [`preload`](Finder::preload).
+    /// Zero-copy/lazy Finders test candidates directly off the payload bytes
+    /// (zero alloc); eager ones (after [`preload`](Finder::preload)) scan
+    /// pre-decoded rings.
     pub fn lookup(&self, lon: f64, lat: f64) -> Option<&str> {
         let (px, py) = self.quantize(lon, lat);
         match self.cell_value(px, py) {
@@ -204,7 +211,7 @@ impl Finder {
             v if v & 0x8000 == 0 => self.tzid(v),
             v => {
                 let (s, e) = self.list_bounds(v & 0x7FFF);
-                let b = self.payload.bytes();
+                let b = &self.payload[..];
                 let mut first = None;
                 for pos in (s..e).step_by(2) {
                     let fid = read_u16(b, pos);
@@ -229,7 +236,7 @@ impl Finder {
             v if v & 0x8000 == 0 => self.tzid(v),
             v => {
                 let (s, _) = self.list_bounds(v & 0x7FFF);
-                self.tzid(read_u16(self.payload.bytes(), s)) // dominant-first head
+                self.tzid(read_u16(&self.payload[..], s)) // dominant-first head
             }
         }
     }
@@ -251,18 +258,18 @@ impl Finder {
         let lat = py as f64 / q * 90.0;
         let c = (((lon + 180.0) / d) as i64).clamp(0, h.ncols as i64 - 1) as usize;
         let r = (((lat + 90.0) / d) as i64).clamp(0, h.nrows as i64 - 1) as usize;
-        read_u16(self.payload.bytes(), h.primary + (r * h.ncols as usize + c) * 2)
+        read_u16(&self.payload[..], h.primary + (r * h.ncols as usize + c) * 2)
     }
 
     fn list_bounds(&self, li: u16) -> (usize, usize) {
-        let (h, b) = (&self.hdr, self.payload.bytes());
+        let (h, b) = (&self.hdr, &self.payload[..]);
         let s = read_u16(b, h.list_offsets + li as usize * 2) as usize;
         let e = read_u16(b, h.list_offsets + li as usize * 2 + 2) as usize;
         (h.list_ids + s * 2, h.list_ids + e * 2)
     }
 
     fn tzid(&self, fid: u16) -> Option<&str> {
-        let (h, b) = (&self.hdr, self.payload.bytes());
+        let (h, b) = (&self.hdr, &self.payload[..]);
         let s = read_u16(b, h.str_offsets + fid as usize * 2) as usize;
         let e = read_u16(b, h.str_offsets + fid as usize * 2 + 2) as usize;
         core::str::from_utf8(&b[h.pool + s..h.pool + e]).ok().filter(|t| !t.is_empty())
@@ -280,7 +287,7 @@ impl Finder {
         if let Some(e) = &self.eager {
             return self.eager_contains(e, fid, px, py);
         }
-        let (h, b) = (&self.hdr, self.payload.bytes());
+        let (h, b) = (&self.hdr, &self.payload[..]);
         let fb = fixed_bytes(h.quant_bits);
         let mut pos = h.ring_data + read_u32(b, h.feat_offsets + fid as usize * 4) as usize;
         let npolys = read_u16(b, pos);
@@ -326,7 +333,7 @@ impl Finder {
     /// Fold one arc's internal segments through the edge kernel. `Inside` =
     /// this arc contributed an odd number of ray crossings.
     fn scan_arc(&self, id: usize, px: i32, py: i32) -> pip::RingHit {
-        let (h, b) = (&self.hdr, self.payload.bytes());
+        let (h, b) = (&self.hdr, &self.payload[..]);
         let wide = h.quant_bits == 32;
         let mut pos = h.arc_data + read_u32(b, h.arc_offsets + id * 4) as usize;
         let (vcount, p2) = read_varint(b, pos);
@@ -403,7 +410,7 @@ impl Finder {
     /// Eager-mode decode only; the lazy path streams via `scan_arc` instead.
     #[cfg(feature = "alloc")]
     fn append_arc(&self, r: u32, coords: &mut Vec<(i32, i32)>) {
-        let (h, b) = (&self.hdr, self.payload.bytes());
+        let (h, b) = (&self.hdr, &self.payload[..]);
         let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
         let mut pos = h.arc_data + read_u32(b, h.arc_offsets + id * 4) as usize;
         let (vcount, p2) = read_varint(b, pos);

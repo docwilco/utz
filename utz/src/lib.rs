@@ -1,9 +1,11 @@
 //! μTZ — micro-timezone: tiny, embeddable lat/lon → IANA tzid lookup.
 //!
 //! Self-describing container (see PLAN.md §4) → one generic decoder: grid
-//! prefilter, then per-polygon integer PIP — streaming off the container
-//! bytes (lazy, zero-alloc, any static source) or over pre-decoded rings
-//! (eager, [`Finder::preload`]). `no_std`-first: API availability follows
+//! prefilter, then per-polygon integer PIP. Three memory modes, selected by
+//! how the container is loaded (§9): **zero-copy** (uncompressed asset
+//! borrowed from any static source), **lazy** (payload decompressed into
+//! owned RAM, no decoded-geometry cache), **eager** ([`Finder::preload`]:
+//! all rings decoded up front). `no_std`-first: API availability follows
 //! the environment ladder `core` ⊂ `alloc` ⊂ `std` (§11).
 
 #![cfg_attr(not(feature = "std"), no_std)]
