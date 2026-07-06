@@ -95,7 +95,7 @@
     <div id="stats"></div>
   </div>
   <div class="qsec">
-    <div class="qtitle">Misassigned <span>· vs ε=0 (S→Q: pre-quant raw · Q→S: the snapped line)</span></div>
+    <div class="qtitle">Misassigned <span>· vs raw ε=0, pre-quant (both orders)</span></div>
     <div id="mstats"></div>
   </div>
   </div>
@@ -263,16 +263,18 @@ function workerBody() {
     if (m === 'i16') return Math.round(v / span * 32767) / 32767 * span;
     return v;
   }
-  // pockets between input sub-chain [i0..i1] (indices within the arc in
-  // `src` at `base`; Q→S feeds the pre-quantized copy, S→Q raw COORDS)
+  // pockets between raw sub-chain [i0..i1] (indices within arc at base s)
   // and its shortcut; splits at chain/shortcut-line crossings. People are
   // priced with the mean per-vertex density over the pocket's chain — DENS
-  // hugs the boundary exactly where pockets live (`dbase` = raw arc start;
-  // quantization keeps vertices 1:1, so densities line up either way).
-  function pockets(src, base, dbase, i0, i1, acc) {
-    var X = function (i) { return src[(base + i) * 2]; };
-    var Y = function (i) { return src[(base + i) * 2 + 1]; };
-    var D = function (i) { return DENS ? DENS[dbase + i] : 0; };
+  // hugs the boundary exactly where pockets live. Always priced on raw
+  // COORDS, so the misassigned stat stays "vs raw ε=0, pre-quant" in both
+  // orders — for Q→S this prices the vertex selection the snapped input
+  // produced, not the snap displacement itself (quantization is excluded
+  // by design, same as S→Q's display snap).
+  function pockets(s, i0, i1, acc) {
+    var X = function (i) { return COORDS[(s + i) * 2]; };
+    var Y = function (i) { return COORDS[(s + i) * 2 + 1]; };
+    var D = function (i) { return DENS ? DENS[s + i] : 0; };
     var ax = X(i0), ay = Y(i0), dx = X(i1) - ax, dy = Y(i1) - ay;
     var len2 = dx * dx + dy * dy;
     var pocket = 0, clat = ay, dsum = D(i0), np = 1;
@@ -344,11 +346,14 @@ function workerBody() {
         var res = new Float64Array(W.memory.buffer, buf, k * 2);
         out.set(res, kept * 2);
         if (k < n) {
-          // walk-match kept verts to input indices, then price each shortcut
+          // walk-match kept verts to input indices (exact equality, so it
+          // must scan `src` — what the simplifier ate); snapping is 1:1 per
+          // vertex, so those indices ARE raw indices and pockets price the
+          // raw chain
           var j = 0, prev = -1;
           for (var v = 0; v < k; v++) {
             while (src[(base + j) * 2] !== res[v * 2] || src[(base + j) * 2 + 1] !== res[v * 2 + 1]) j++;
-            if (prev >= 0 && j > prev + 1) pockets(src, base, s, prev, j, acc);
+            if (prev >= 0 && j > prev + 1) pockets(s, prev, j, acc);
             prev = j; j++;
           }
         }
