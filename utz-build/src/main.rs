@@ -22,6 +22,8 @@ enum Cmd {
     Roundtrip(cmd::roundtrip::Args),
     /// Full-container size table: eps × quant × codec
     SizeTable(cmd::size_table::Args),
+    /// Ratio vs window/dict size per codec + measured peak decode RAM
+    WindowSweep(cmd::window_sweep::Args),
     /// Arc-store encoding shootout (delta+varint vs abs-fixed)
     QuantSize(cmd::quant_size::Args),
     /// Quantization-artifact report: mangled rings before/after cleanup
@@ -57,6 +59,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::DensityProbe(a) => cmd::density_probe::run(a),
         Cmd::Roundtrip(a) => cmd::roundtrip::run(a),
         Cmd::SizeTable(a) => cmd::size_table::run(a),
+        Cmd::WindowSweep(a) => cmd::window_sweep::run(a),
         Cmd::QuantSize(a) => cmd::quant_size::run(a),
         Cmd::QuantClean(a) => cmd::quant_clean::run(a),
         Cmd::RdpSweep(a) => cmd::rdp_sweep::run(a),
