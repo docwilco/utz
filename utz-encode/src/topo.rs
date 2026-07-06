@@ -163,19 +163,27 @@ fn build_topology_impl(feats: &[Feat], algo: Simplify, edge_weight: Option<&dyn 
             if sig(seq[(i + n - 1) % n], seq[i]) != sig(seq[i], seq[(i + 1) % n]) { cuts.push(i); }
         }
         if cuts.is_empty() {
-            // junction-free closed ring (an island / lone hole): rotate the
-            // cycle to start at its smallest vertex id, so the same ring
-            // shared by two features (island outline = hole of the zone
-            // around it) interns to ONE arc regardless of where each
-            // feature's ring happens to start; intern() handles winding
+            // junction-free closed ring (an island / lone hole): the same
+            // ring shared by two features (island outline = hole of the zone
+            // around it) must intern to ONE arc regardless of where each
+            // feature's ring starts or which way it winds. Canonical form =
+            // lexicographically smallest closed walk over BOTH directions
+            // from every occurrence of the smallest vertex id (a pinched
+            // ring can pass through it twice, and the per-direction lexmins
+            // can differ — picking only the forward one would make the two
+            // windings disagree). intern() gets the ring's own-winding walk
+            // so its direction bit still preserves ring orientation.
             let m = *seq.iter().min().unwrap();
-            let mut best: Option<Vec<VId>> = None;
+            let mut best: Option<(Vec<VId>, bool)> = None; // (closed walk, forward here?)
             for i in (0..n).filter(|&i| seq[i] == m) {
-                let rot: Vec<VId> = (0..n).map(|k| seq[(i + k) % n]).collect();
-                if best.as_ref().map_or(true, |b| rot < *b) { best = Some(rot); }
+                let fwd: Vec<VId> = (0..=n).map(|k| seq[(i + k) % n]).collect();
+                let bwd: Vec<VId> = (0..=n).map(|k| seq[(i + n - k) % n]).collect();
+                for (cand, f) in [(fwd, true), (bwd, false)] {
+                    if best.as_ref().map_or(true, |(b, _)| cand < *b) { best = Some((cand, f)); }
+                }
             }
-            let mut a = best.unwrap();
-            a.push(m);
+            let (canon, forward) = best.unwrap();
+            let a = if forward { canon } else { let mut r = canon; r.reverse(); r };
             ring_refs[ri].push(intern(a, &mut arc_ids, &mut arcs));
         } else {
             for j in 0..cuts.len() {
@@ -315,6 +323,31 @@ mod tests {
                     assert_eq!(a, b);
                 }
             }
+        }
+    }
+
+    /// A pinched (figure-eight) ring passes through its smallest vertex
+    /// twice, so the lexicographically smallest FORWARD rotation differs
+    /// between the two windings — canonicalization must consider both walk
+    /// directions or the two features intern two different arcs.
+    #[test]
+    fn shared_pinched_ring_interns_once() {
+        let eight: Ring = vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 0.0), (-1.0, 0.0), (-1.0, -1.0)];
+        // same cycle, reversed and rotated to a different start
+        let eight_rev: Ring = vec![(1.0, 1.0), (1.0, 0.0), (0.0, 0.0), (-1.0, -1.0), (-1.0, 0.0), (0.0, 0.0)];
+        let feats = vec![
+            Feat { offset: 0.0, tzid: None, polys: vec![vec![eight] as Poly] },
+            Feat { offset: 1.0, tzid: None, polys: vec![vec![eight_rev] as Poly] },
+        ];
+        let t = build_topology_algo(&feats, Simplify::Rdp { eps: 0.0 });
+        assert_eq!(t.arc_coords.len(), 1, "pinched ring duplicated: {:?}", t.arc_coords);
+        // both rings still round-trip their vertex multiset
+        let rec = t.reconstruct(&feats, &t.arc_coords);
+        for (f, r) in rec.iter().zip(&feats) {
+            let mut a: Vec<_> = f.polys[0][0].iter().map(|&(x, y)| (x.to_bits(), y.to_bits())).collect();
+            let mut b: Vec<_> = r.polys[0][0].iter().map(|&(x, y)| (x.to_bits(), y.to_bits())).collect();
+            a.sort_unstable(); b.sort_unstable();
+            assert_eq!(a, b);
         }
     }
 
