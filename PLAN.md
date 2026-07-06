@@ -91,6 +91,8 @@ impl Finder {
 
 - **`from_static`** is the embedded/flash win — borrows the bytes, no RAM copy in
   `uncompressed` mode. `impl Read` can't zero-copy, so it's the std/OTA path.
+- **Availability by environment rung (§11):** `core` = `from_static` +
+  `lookup_coarse`; `alloc` adds `lookup` + `from_vec`; `std` adds `from_reader`.
 - **No-embed deployment** (= no preset feature enabled): ship the binary *without*
   the asset, load it at runtime from a flash partition (`from_static`) or file
   (`from_reader`); generate the asset with the `utz-build` CLI (§11). Enables
@@ -229,7 +231,9 @@ dict tiers as before. `uncompressed` enables zero-copy `from_static`.
 
 ## 9. Rings / memory strategy
 
-Decision: **both eager and lazy, feature-selected**, plus `lookup_coarse`.
+Decision: **both eager and lazy — API-selected, not feature-selected** (availability
+falls out of the §11 environment rungs: both need `alloc`), plus `lookup_coarse`
+(the `core` floor).
 - **Lazy** (`lazy`): grid → candidate ids → decode **one polygon at a time** from
   the arc store (resolve arc refs → i64), PIP, discard. Working set = largest single
   candidate polygon. Interior cells decode **zero** geometry. Best for embedded.
@@ -275,19 +279,62 @@ Decision: **both eager and lazy, feature-selected**, plus `lookup_coarse`.
 
 ## 11. Features & config — **decided**: preset data crates + consumer-side custom
 
-One overall setting with five tiers: **`nano` / `micro` / `balanced` / `accurate`
-/ custom**. The first four are **prebuilt data crates**; custom means the consumer
-generates the asset themselves. No config file, no env vars, no `build.rs` in
-`utz` at all.
+Two **mandatory, at-least-one-of feature choices**. (Unification-safe by
+construction: an "at least one of N" error can only be *silenced* by feature
+union, never triggered — unlike "exactly one of N", which union breaks.)
+
+1. **Data tier:** `nano` / `micro` / `balanced` / `accurate` (prebuilt data
+   crates) or `custom` (consumer generates the asset).
+2. **Environment:** `std` / `alloc` / `core` (ladder, see below).
+
+`default = []` — forgetting to choose fails loudly, with the error message as
+onboarding (embedded-friendlier than the ecosystem's silent `default = ["std"]`,
+where a forgotten `default-features = false` drags `std` into firmware):
+```rust
+compile_error!("utz: pick a data tier: a preset (`nano`/`micro`/`balanced`/`accurate`) \
+                or `custom` (bring your own asset, generated with utz-build)");
+compile_error!("utz: choose an environment: `std`, `alloc` (no_std + allocator), \
+                or `core` (bare metal: coarse lookup, uncompressed assets only)");
+```
+The forcing function is per-tree, not per-consumer (any dependency's choice
+unifies in) — accepted. docs.rs builds with a representative set via
+`[package.metadata.docs.rs]`.
+
+**Environment ladder** — `std = ["alloc"]`, each rung a strict superset, so a
+feature union resolves upward. `core` gates nothing extra (marker) but states
+deliberate bare-metal intent and satisfies choice 2:
+
+| rung | constructors | lookups | codecs |
+|---|---|---|---|
+| `core` | `from_static` (zero-copy) | `lookup_coarse` | uncompressed only |
+| `alloc` | + `from_vec` | + `lookup` (PIP spill/scratch `Vec`) | + `gzip`/`ruzstd` |
+| `std` | + `from_reader` | — | + `brotli`/`xz`/`zstd-sys` (as gated today) |
+
+- **Memory-mode features dissolved** (`eager`/`lazy`/`coarse` are no longer
+  features): coarse is what `core` can do, lazy is `lookup` under `alloc`, eager
+  is a constructor option under `alloc`. Availability falls out of the rung —
+  API surface, not features (§9).
+- **`core` pairs naturally with `custom`:** CLI-generate an **uncompressed**
+  asset to a flash partition. The CLI grows `--coarse-only`: strips the arc
+  store, header marks "no geometry section" (`lookup` → runtime `Err`), asset
+  shrinks to grid + zone table — a coarse-only device pays for exactly what it
+  uses. Asset-shape → builder/CLI knob, not a feature.
+- Door open (§14.7): alloc-free accurate lookup (fixed/caller-provided scratch)
+  would later promote `lookup` to the `core` rung — no feature reshuffle needed.
+
+**The tiers:**
 
 - **Presets (features → data crates):** `utz-data-nano` … `utz-data-accurate`,
   each containing one CI-generated `.utz` as a static. On `utz`, feature `nano` =
-  `["dep:utz-data-nano", <its codec feature>]` — a preset auto-enables the decoder
-  it needs. Consumer: `utz = { features = ["balanced"] }` →
-  `Finder::new()`. Presets bake dataset `now`; other datasets are custom (or later
-  preset variants — §14.5).
-- **Custom (the escape hatch is the fifth tier):** no data feature; bring your own
-  bytes via `from_static`/`from_reader`. Generate them with:
+  `["dep:utz-data-nano", "alloc", <its codec feature>]` — preset assets are
+  compressed, so presets imply `alloc` and their codec must be no_std-clean
+  (`gzip`/`ruzstd`, not `brotli`/`xz`/`zstd-sys`) — constraint on §14.5.
+  Consumer: `utz = { features = ["std", "balanced"] }` → `Finder::new()`.
+  Presets bake dataset `now`; other datasets are custom (or later preset
+  variants — §14.5).
+- **Custom (the fifth tier):** a marker feature — gates nothing
+  (`from_static`/`from_reader` stay available to everyone; preset users want
+  them for OTA), it states intent and satisfies choice 1. Generate the bytes with:
   - *consumer `build.rs`* (`prost-build` pattern): `utz-build` as a
     build-dependency; typed builder API **is** the config — rustdoc'd,
     IDE-completable, no file discovery (`CARGO_MANIFEST_DIR`/`OUT_DIR` are the
@@ -297,8 +344,9 @@ generates the asset themselves. No config file, no env vars, no `build.rs` in
     flash-partition/OTA images, experiments, and the CI that builds the data
     crates. Assets are **never committed to a repo**; they're regenerated
     (downloads are cond-GET-cached, so regeneration is cheap).
-- **Remaining `utz` features are purely code-shape:** codec decoders (additive, as
-  today), `std`, memory mode (`eager`/`lazy`/`coarse`).
+- **Remaining `utz` features are purely code-shape and additive:** the codec
+  decoders (as today). Everything else is API whose availability falls out of
+  the environment rung.
 
 **Why this shape (over features-for-knobs, env vars, or a discovered `utz.toml`):**
 - **Additivity solved, not fought.** Data crates are statics; two crates in the
@@ -384,15 +432,14 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
    (§11); whether non-`now` datasets get preset variants (e.g. `balanced-1970`)
    or stay custom-only.
 6. Crate/repo name confirmed `utz`; public naming of feature groups.
-7. **Alloc-free mode** (discuss): today `no_std` = core+**alloc** — `Finder`
-   carries `Vec` scratch (empty until a border-cell lookup) and `from_vec`/
-   decompression need the heap. The grid + `lookup_coarse` path could run truly
-   alloc-free from flash (`from_static`, uncompressed); the accurate path
-   could too with a caller-provided or fixed-size scratch buffer (bound =
-   largest decoded polygon, a build-time-known number that could go in the
-   header). Worth it for heapless targets / ISR-context lookups? Costs: API
-   surface (buffer-passing or const-generic capacity), a header field, and
-   a coarse-only Finder variant. Decide after a real embedded consumer.
+7. **Alloc-free *accurate* lookup** (discuss): the alloc-free *coarse* floor now
+   ships as §11's `core` rung (`from_static` + `lookup_coarse`, uncompressed).
+   Still open: the accurate path without heap — caller-provided or fixed-size
+   scratch buffer (bound = largest decoded polygon, a build-time-known number
+   that could go in the header). Worth it for heapless targets / ISR-context
+   lookups? Costs: API surface (buffer-passing or const-generic capacity), a
+   header field. Would promote `lookup` from `alloc` to `core` (§11). Decide
+   after a real embedded consumer.
 8. ~~**Simplification algorithm menu**~~ — **decided + built**: the
    `utz-simplify` crate (workspace member, `lib` + `cdylib`) holds the
    open-polyline menu, shared by the builder (`topo::build_topology_algo`,
