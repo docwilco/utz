@@ -196,10 +196,41 @@ extend the sweep when the `all` knob lands.)
 
 ## 7. Compression
 
-Codecs (decoder feature-gated, exactly one): **uncompressed, gzip
-(miniz_oxide, pure-Rust), zstd (`zstd-sys` C + `ruzstd` pure-Rust), brotli, xz**
-(`lzma-rust2`). Everything but `zstd-sys` is pure Rust (Xtensa-friendly). Window/
-dict tiers as before. `uncompressed` enables zero-copy `from_static`.
+Codecs: **uncompressed, gzip (miniz_oxide, pure-Rust), zstd (`zstd-sys` C +
+`ruzstd` pure-Rust), brotli, xz (`lzma-rust2`)**. Everything but `zstd-sys` is
+pure Rust (Xtensa-friendly). Decoder features on `utz` are **additive** (§11); a
+codec byte with no compiled decoder is a runtime `Err`. `uncompressed` enables
+zero-copy `from_static` and is all the `core` rung can read.
+
+**Encoders live only in `utz-build`.** Codec choice and window/dict size are
+asset-shape knobs (§11): set via the build.rs builder API / CLI flags — never
+via `utz` features. Encoder and decoder only need to agree on the codec *byte*:
+CI encodes presets with C `zstd` on the host, devices decode with `ruzstd`.
+`utz-build` mirrors the codec set as features, `default = all` (CLI installs
+get everything); build.rs consumers trim compile time via
+`default-features = false, features = ["zstd"]`.
+
+**Window/dict size = the decode-RAM lever** (decided: builder/CLI knob). The
+value is written into the codec's own framing (zstd window descriptor, LZMA2
+dict-size props, brotli `lgwin`; gzip fixed 32 KB), and the decoder allocates
+what the frame declares. Verified in the shipped sources (ruzstd 0.8.3 reserves
+its ring buffer at `window_size`; lzma-rust2 0.16.4 allocates `vec![0;
+dict_size]` up front): no decompressor reuses the output buffer as history, so
+**peak decode RAM ≈ decompressed size + window/dict + decoder state**. Rules:
+- **Always cap window at decoded size** — beyond it back-references can't reach,
+  so larger is pure RAM waste at zero ratio gain. The xz/LZMA defaults (8–64 MB
+  dict) are the trap; encoder defaults in `utz-build` apply this cap.
+- **Below decoded size is the real knob** — trades ratio for decode RAM;
+  exposed on builder + CLI, preset values picked from the §15 ratio-vs-window
+  sweep. (Outer header already records `raw_len`, so callers can budget the
+  output buffer before decoding.)
+- zstd *trained dictionaries* are out of scope — "dict" here means the LZMA/LZ
+  window; trained dicts pay off for many small blobs, not one big asset.
+
+Presets bake codec + window and **document peak decode RAM** (decoded size +
+window + state) as part of their contract — the number an ESP32 user shops by,
+next to flash size and accuracy. Preset codecs must be no_std-clean
+(`gzip`/`ruzstd` — §11, §14.5).
 
 ---
 
@@ -428,9 +459,10 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
    adopting its loop shape (see §15).
 3. **`LonLat` newtype** vs raw `(lon, lat)` to prevent order footgun.
 4. ~~**Antimeridian**~~ — **verified pre-split** (see §15); no split pass.
-5. **Preset values** (ε/quant/grid/codec) for `nano`/`micro`/`balanced`/`accurate`
-   (§11); whether non-`now` datasets get preset variants (e.g. `balanced-1970`)
-   or stay custom-only.
+5. **Preset values** (ε/quant/grid/codec/window) for
+   `nano`/`micro`/`balanced`/`accurate` (§11, §7 — incl. each preset's
+   documented peak-decode-RAM number); whether non-`now` datasets get preset
+   variants (e.g. `balanced-1970`) or stay custom-only.
 6. Crate/repo name confirmed `utz`; public naming of feature groups.
 7. **Alloc-free *accurate* lookup** (discuss): the alloc-free *coarse* floor now
    ships as §11's `core` rung (`from_static` + `lookup_coarse`, uncompressed).
@@ -472,6 +504,20 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
    Still open: `simplify_algo` header byte + its builder-API/CLI knob (§11) for
    selecting VW/II per asset; size-vs-RDP sweep for
    Imai–Iri on real arcs to see if it should become the default.
+9. **Custom-tier encoder/decoder sync check** (discuss): build scripts cannot
+   select features (resolution precedes all build scripts), so a custom
+   consumer keeps `utz-build`'s encoder and `utz`'s decoder feature in sync by
+   hand; a mismatch today surfaces only as a runtime `Err` on the device.
+   Proposal: `links = "utz"` + a 5-line hermetic `utz/build.rs` that echoes the
+   resolved decoder features as `cargo::metadata=decoders=...`; cargo then
+   injects `DEP_UTZ_DECODERS` into the build script of every direct dependent —
+   which a custom consumer *is* by definition — and
+   `utz_build::Config::generate()` hard-errors on mismatch at build time.
+   Preset users are unaffected (feature wiring makes mismatch impossible).
+   Cost: reintroduces a build.rs to `utz` (no network/IO — would soften §2's
+   "NO build.rs" to "no codegen/network build.rs"). Alternatives: runtime `Err`
+   only, or best-effort parsing of the consumer's Cargo.toml (unreliable under
+   workspace inheritance/unification).
 
 ---
 
@@ -552,6 +598,12 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
   verts exactly on ±180, 0 out-of-range coords). Single flagged >180° edge is
   Pacific/Auckland's south-pole seam (180,−90)→(−180,−90) — degenerate at the pole,
   planar PIP handles it. **No split pass needed.**
+- [ ] **Ratio-vs-window sweep** (§7): per codec (`ruzstd`/`gzip` first — the
+  no_std pair), compression ratio as f(window/dict size) on the real assets,
+  window capped at decoded size; pick preset windows at the knee.
+- [ ] **Peak decode RAM** (§7): measured (not computed) peak per codec × window
+  on target-ish conditions — verify the `decoded + window + state` model, and
+  ruzstd ring-buffer growth vs `lzma-rust2`'s upfront `vec![0; dict_size]`.
 - [ ] (later) hierarchical grid; YStripe PIP index; `geometry-rs` comparison.
 
 Prototypes to port from the old `formatlab` crate: `topo.rs` (topology+RDP),
