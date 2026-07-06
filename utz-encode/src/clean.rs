@@ -158,7 +158,10 @@ pub fn ring_coords_q(refs: &[u32], arcs: &[Vec<(i32, i32)>]) -> Vec<(i32, i32)> 
 }
 
 /// Ring collapsed under quantization: fewer than 3 vertices, or shoelace
-/// area exactly 0 (spur-only remnant). Exact in i128 for all qbits.
+/// area exactly 0 with no proper self-crossing. The crossing exemption
+/// matters: a bowtie with equal opposite lobes has signed area 0 yet still
+/// covers both lobes under the runtime's even-odd rule — dropping it would
+/// lose real coverage. Exact in i128 for all qbits.
 pub fn ring_degenerate(c: &[(i32, i32)]) -> bool {
     if c.len() < 3 {
         return true;
@@ -168,7 +171,34 @@ pub fn ring_degenerate(c: &[(i32, i32)]) -> bool {
         let (p, q) = (c[i], c[(i + 1) % c.len()]);
         a2 += p.0 as i128 * q.1 as i128 - q.0 as i128 * p.1 as i128;
     }
-    a2 == 0
+    a2 == 0 && !has_proper_cross(c)
+}
+
+/// Any pair of non-adjacent ring segments that properly cross (interiors
+/// intersect). O(n²), but only reached for zero-area rings, which
+/// quantization keeps tiny.
+fn has_proper_cross(c: &[(i32, i32)]) -> bool {
+    let n = c.len();
+    let orient = |a: (i32, i32), b: (i32, i32), p: (i32, i32)| -> i8 {
+        let v = (b.0 as i128 - a.0 as i128) * (p.1 as i128 - a.1 as i128)
+            - (b.1 as i128 - a.1 as i128) * (p.0 as i128 - a.0 as i128);
+        (v > 0) as i8 - (v < 0) as i8
+    };
+    for i in 0..n {
+        let (p1, p2) = (c[i], c[(i + 1) % n]);
+        for j in i + 2..n {
+            if i == 0 && j == n - 1 {
+                continue; // adjacent around the wrap
+            }
+            let (q1, q2) = (c[j], c[(j + 1) % n]);
+            let (o1, o2) = (orient(p1, p2, q1), orient(p1, p2, q2));
+            let (o3, o4) = (orient(q1, q2, p1), orient(q1, q2, p2));
+            if o1 != o2 && o3 != o4 && o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0 {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Drop rings that quantization collapsed to zero area: a degenerate hole

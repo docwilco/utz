@@ -19,8 +19,16 @@
     padding: 12px 14px; font: 13px/1.4 system-ui, sans-serif; backdrop-filter: blur(6px); max-height: 92vh; overflow-y: auto; }
   #panel h2 { margin: 0 0 2px; font-size: 13px; }
   #panel .sub { margin: 0 0 10px; font-size: 11px; color: #8b98a8; }
-  #clps { position: absolute; top: 9px; right: 10px; width: 22px; height: 22px; cursor: pointer;
+  #clps, #pclps { position: absolute; top: 9px; right: 10px; width: 22px; height: 22px; cursor: pointer;
     background: #0d1117; color: #8b98a8; border: 1px solid #2a3542; border-radius: 5px; font: 12px monospace; }
+  #probpanel { position: absolute; top: 12px; left: 12px; z-index: 600; width: 340px;
+    background: rgba(17,22,28,0.9); color: #e6edf3; border: 1px solid #2a3542; border-radius: 10px;
+    padding: 12px 14px; font: 13px/1.4 system-ui, sans-serif; backdrop-filter: blur(6px); max-height: 92vh; overflow-y: auto; }
+  #probpanel h2 { margin: 0 0 2px; font-size: 13px; }
+  #probpanel .sub { margin: 0 0 10px; font-size: 11px; color: #8b98a8; }
+  .prob { cursor: pointer; border-radius: 4px; }
+  .prob:hover { background: rgba(255,255,255,0.07); }
+  .prob .pkind { flex: none; width: 46px; font-size: 10px; letter-spacing: .03em; }
   .qsec { margin-top: 10px; padding-top: 9px; border-top: 1px solid #2a3542; }
   .qtitle { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: #b9c4d0; margin-bottom: 6px; }
   .qtitle span { color: #5a6472; text-transform: none; letter-spacing: 0; }
@@ -48,6 +56,20 @@
 <div id="hoverbox" style="position:absolute; bottom:30px; left:12px; z-index:600; display:none;
   background:rgba(17,22,28,0.9); border:1px solid #2a3542; border-radius:8px; padding:6px 10px 6px 8px;
   font:11px/1.5 system-ui, sans-serif; color:#e6edf3; backdrop-filter:blur(6px); max-width:46rem"></div>
+<div id="probpanel">
+  <h2>Problem geometry</h2>
+  <button id="pclps" title="collapse/expand problem list">+</button>
+  <div id="pbbody" style="display:none">
+    <p class="sub">ring self-crossings & overlaps that survive quantize + clean — click a row to jump there (settings stay put)</p>
+    <div class="slot">
+      <span class="raw-label" style="color:#8b98a8">layer</span>
+      <select id="problayer"></select>
+      <span class="rawv" id="probsum"></span>
+      <span class="spin" id="probspin"></span>
+    </div>
+    <div id="problist"></div>
+  </div>
+</div>
 <div id="panel">
   <h2>μTZ — live simplification</h2>
   <button id="clps" title="collapse/expand controls">–</button>
@@ -185,6 +207,42 @@ var ORDER = [
   { key: 'sq', label: 'S→Q', title: 'simplify the raw line, then quantize (the builder\'s order)' },
   { key: 'qs', label: 'Q→S', title: 'quantize to the grid first, then simplify the snapped line' },
 ];
+// mirror of utz-encode clean.rs on the display lattice: drop consecutive
+// duplicates, zero-area spikes (path reverses along the same line) and
+// collinear pass-throughs from one arc of integer [x, y] points, in place.
+// Closed arcs (first == last) clean cyclically so artifacts at the arbitrary
+// start vertex go too; open arcs keep their junction endpoints.
+function cleanArc(a, closed) {
+  var eq = function (u, v) { return u[0] === v[0] && u[1] === v[1]; };
+  // 0 = keep, nonzero = spike/collinear (exact: i24 products stay < 2^53)
+  var flat = function (p, q, r) {
+    var ax = q[0] - p[0], ay = q[1] - p[1], bx = r[0] - q[0], by = r[1] - q[1];
+    return ax * by === ay * bx;
+  };
+  if (closed) {
+    if (a.length > 1 && eq(a[0], a[a.length - 1])) a.pop();
+    for (;;) {
+      var changed = false, i = 0;
+      while (a.length >= 3 && i < a.length) {
+        var n = a.length, p = a[(i + n - 1) % n], q = a[i], r = a[(i + 1) % n];
+        if (eq(q, p) || eq(q, r) || flat(p, q, r)) { a.splice(i, 1); changed = true; } else { i++; }
+      }
+      if (!changed || a.length < 3) break;
+    }
+    if (a.length === 2 && eq(a[0], a[1])) a.pop();
+    if (a.length > 1) a.push(a[0]);
+  } else {
+    var j = 1;
+    while (j < a.length) {
+      if (eq(a[j], a[j - 1])) { a.splice(j, 1); j = Math.max(1, j - 1); continue; }
+      if (j + 1 === a.length) break;
+      if (eq(a[j], a[j + 1]) || flat(a[j - 1], a[j], a[j + 1])) {
+        a.splice(j, 1); j = Math.max(1, j - 1);
+      } else { j++; }
+    }
+  }
+  return a;
+}
 function fmtBytes(b) {
   return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MiB' : Math.round(b / 1024).toLocaleString() + ' KiB';
 }
@@ -584,12 +642,28 @@ Layer.prototype.request = function () {
 };
 Layer.prototype.redraw = function () {
   if (!this.result || !this.on) return;
-  // Q→S output is already on the grid — don't snap twice
-  var m = ORDER[this.order].key === 'qs' ? 'f64' : QUANT[this.quant].key;
+  var m = QUANT[this.quant].key;
   var lls = [], c = this.result.coords, o = this.result.offs;
+  // integer lattices get the encoder's post-quantization cleanup before
+  // drawing (i32 is skipped: its cross products overflow doubles, and the
+  // quant-clean report shows zero artifacts there); Q→S output is already
+  // on the grid, so the round-trip through ints only feeds the clean pass
+  var grid = m === 'i16' ? 32767 : m === 'i24' ? 8388607 : 0;
+  var dm = ORDER[this.order].key === 'qs' ? 'f64' : m; // never snap twice
   for (var a = 0; a + 1 < o.length; a++) {
-    var seg = new Array(o[a + 1] - o[a]);
-    for (var i = o[a]; i < o[a + 1]; i++) seg[i - o[a]] = [qc(c[i * 2 + 1], m, 90), qc(c[i * 2], m, 180)];
+    var n = o[a + 1] - o[a], seg;
+    if (grid) {
+      var pts = new Array(n);
+      for (var i = 0; i < n; i++) {
+        pts[i] = [Math.round(c[(o[a] + i) * 2] / 180 * grid), Math.round(c[(o[a] + i) * 2 + 1] / 90 * grid)];
+      }
+      var closed = n > 1 && c[o[a] * 2] === c[(o[a + 1] - 1) * 2] && c[o[a] * 2 + 1] === c[(o[a + 1] - 1) * 2 + 1];
+      cleanArc(pts, closed);
+      seg = pts.map(function (p) { return [p[1] / grid * 90, p[0] / grid * 180]; });
+    } else {
+      seg = new Array(n);
+      for (var i = o[a]; i < o[a + 1]; i++) seg[i - o[a]] = [qc(c[i * 2 + 1], dm, 90), qc(c[i * 2], dm, 180)];
+    }
     lls.push(seg);
   }
   this.layer.setLatLngs(lls);
@@ -645,6 +719,26 @@ function encWorkerBody() {
         postMessage({ type: 'codec', gen: m.gen, codec: c, bytes: sz, ms: Date.now() - t1 });
       });
       postMessage({ type: 'encdone', gen: m.gen });
+    } else if (m.type === 'problems') {
+      // locate surviving ring self-crossings/overlaps (12-byte records:
+      // f32 lon | f32 lat | u16 kind | u16 feature — see utz-encode wasm.rs)
+      var t2 = Date.now();
+      var cnt = W.utz_enc_problems(m.algoId, m.epsM, m.wmin, m.qbits, m.pre ? 1 : 0);
+      var ptr = W.utz_enc_problems_ptr();
+      var td = new TextDecoder();
+      var tz = function (i2) {
+        var len = W.utz_enc_tzid_len(i2);
+        return len ? td.decode(new Uint8Array(W.memory.buffer, W.utz_enc_tzid_ptr(i2), len)) : '(none)';
+      };
+      var recs = [];
+      if (cnt && ptr) {
+        var dv = new DataView(W.memory.buffer, ptr, cnt * 12);
+        for (var i3 = 0; i3 < cnt; i3++) {
+          recs.push({ lon: dv.getFloat32(i3 * 12, true), lat: dv.getFloat32(i3 * 12 + 4, true),
+            kind: dv.getUint16(i3 * 12 + 8, true), tz: tz(dv.getUint16(i3 * 12 + 10, true)) });
+        }
+      }
+      postMessage({ type: 'problems', gen: m.gen, recs: recs, ms: Date.now() - t2 });
     }
   };
 }
@@ -929,6 +1023,134 @@ heatCb.addEventListener('change', function () {
 });
 heatOp.addEventListener('input', function () { if (heatLayer) heatLayer.setOpacity(heatOp.value / 100); });
 heatOp.addEventListener('change', function () { syncHash(); });
+
+// ---- Problem-geometry panel ----
+// Lists the ring self-crossings/overlaps that survive the selected layer's
+// full pipeline (simplify per its S→Q/Q→S order → quantize → clean → drop),
+// computed by utz-encode's validate module in a dedicated worker. Rows only
+// move the viewport — every setting stays as-is.
+var probPanelOpen = false;
+var probBody = document.getElementById('pbbody');
+var probLayerSel = document.getElementById('problayer');
+['layer 1', 'layer 2', 'layer 3', 'layer 4'].forEach(function (l) {
+  var o = document.createElement('option'); o.textContent = l; probLayerSel.appendChild(o);
+});
+var probList = document.getElementById('problist');
+var probSum = document.getElementById('probsum');
+var probSpin = document.getElementById('probspin');
+var prob = { worker: null, ready: false, busy: false, pendingRun: false, gen: 0, dsName: null, sig: null };
+document.getElementById('pclps').addEventListener('click', function () {
+  probPanelOpen = !probPanelOpen;
+  probBody.style.display = probPanelOpen ? '' : 'none';
+  this.textContent = probPanelOpen ? '–' : '+';
+  probRefresh();
+});
+probLayerSel.addEventListener('change', function () { probRefresh(); });
+function probNote(msg) {
+  probSum.textContent = '';
+  probList.innerHTML = '<div class="st" style="color:#5a6472">' + msg + '</div>';
+}
+function probKill() {
+  if (prob.worker) { prob.worker.terminate(); prob.worker = null; }
+  prob.ready = false; prob.pendingRun = false;
+}
+function probParams() {
+  var ly = layers[probLayerSel.selectedIndex];
+  var q = QUANT[ly.quant].key;
+  return {
+    name: DS_LIST[ly.dsi], algoId: ALGO[ly.algo].id, epsM: ly.eps, wmin: ly.wmin(),
+    quant: q, qbits: encQbits(q), pre: ORDER[ly.order].key === 'qs',
+    on: ly.on,
+  };
+}
+function probSpawn(name, d) {
+  prob.worker = new Worker(ENC_WORKER_URL);
+  prob.worker.onmessage = function (e) {
+    var m = e.data;
+    if (m.type === 'ready') {
+      prob.ready = true;
+      if (prob.pendingRun) { prob.pendingRun = false; probSend(); }
+    } else if (m.type === 'initfail') {
+      prob.busy = false; probSpin.classList.remove('on');
+      probNote('dataset blob predates the live encode — re-run utz-build visualize');
+    } else if (m.type === 'problems' && m.gen === prob.gen) {
+      prob.busy = false; probSpin.classList.remove('on');
+      probRender(m.recs, m.ms);
+    }
+  };
+  WASM_P.then(function (bytes) {
+    if (prob.worker && prob.dsName === name) {
+      prob.worker.postMessage({ type: 'init', wasm: bytes, raw: d.raw });
+    }
+  }).catch(function (e) { console.error(e); });
+}
+function probSend() {
+  var p = probParams();
+  prob.worker.postMessage({ type: 'problems', gen: prob.gen,
+    algoId: p.algoId, epsM: p.epsM, wmin: p.wmin, qbits: p.qbits, pre: p.pre });
+}
+function probRefresh(force) {
+  if (!probPanelOpen) return;
+  var p = probParams();
+  if (!p.on) { probKill(); prob.busy = false; prob.sig = null; probSpin.classList.remove('on'); probNote('layer disabled'); return; }
+  if (p.quant !== 'i16' && p.quant !== 'i24' && p.quant !== 'i32') {
+    probKill(); prob.busy = false; prob.sig = null; probSpin.classList.remove('on');
+    probNote('pick an integer quantization (i16/i24/i32) on this layer');
+    return;
+  }
+  var sig = [p.name, p.algoId, p.epsM, p.wmin, p.qbits, p.pre].join('|');
+  if (!force && sig === prob.sig) return;
+  prob.sig = sig;
+  prob.gen++;
+  var gen = prob.gen;
+  if (prob.busy) probKill(); // a WASM call can't be interrupted mid-flight
+  prob.busy = true; probSpin.classList.add('on');
+  loadDataset(p.name).then(function (d) {
+    if (gen !== prob.gen) return;
+    if (!d.hasTopo) { prob.busy = false; probSpin.classList.remove('on'); probNote('dataset blob predates the live encode — re-run utz-build visualize'); return; }
+    if (prob.worker && prob.dsName !== p.name) probKill();
+    prob.dsName = p.name;
+    if (!prob.worker) probSpawn(p.name, d);
+    if (prob.ready) { probSend(); } else { prob.pendingRun = true; }
+  }).catch(function (e) {
+    if (gen !== prob.gen) return;
+    prob.busy = false; probSpin.classList.remove('on');
+    probNote(String(e && e.message || e));
+  });
+}
+function probRender(recs, ms) {
+  // a spot on a shared border arrives once per owning ring — dedupe by
+  // location and pool the zone names, like quant-clean --locate
+  var groups = {}, order = [];
+  recs.forEach(function (r) {
+    var key = r.lat.toFixed(5) + ',' + r.lon.toFixed(5) + '|' + r.kind;
+    if (!groups[key]) { groups[key] = { lat: r.lat, lon: r.lon, kind: r.kind, tzs: {} }; order.push(key); }
+    groups[key].tzs[r.tz] = 1;
+  });
+  probList.innerHTML = '';
+  order.forEach(function (key) {
+    var g = groups[key];
+    var row = document.createElement('div');
+    row.className = 'st prob';
+    var kind = document.createElement('span');
+    kind.className = 'pkind';
+    kind.textContent = g.kind ? 'overlap' : 'cross';
+    kind.style.color = g.kind ? '#ffd400' : '#ff6b6b';
+    var zones = document.createElement('span');
+    zones.textContent = Object.keys(g.tzs).sort().join(' + ');
+    var at = document.createElement('span');
+    at.className = 'num';
+    at.textContent = g.lat.toFixed(4) + ', ' + g.lon.toFixed(4);
+    row.appendChild(kind); row.appendChild(zones); row.appendChild(at);
+    row.title = 'jump to this spot';
+    row.addEventListener('click', function () {
+      map.setView([g.lat, g.lon], Math.max(map.getZoom(), 13));
+    });
+    probList.appendChild(row);
+  });
+  probSum.textContent = order.length + ' spot' + (order.length === 1 ? '' : 's') + ' · ' + ms + ' ms';
+  if (!order.length) probList.innerHTML = '<div class="st" style="color:#5a6472">no crossings or overlaps</div>';
+}
 
 // ---- Coarse pre-filter preview ----
 // The encoder's grid prefilter answers most lookups directly; only cells
@@ -1274,6 +1496,7 @@ function updateStats() {
 
   if (gridCb.checked) gridRefresh(); // grid follows the layer's live geometry
   encRequest(); // encode follows the selected layer's settings (sig-deduped)
+  probRefresh(); // problems panel follows its selected layer too
   syncHash();
 }
 

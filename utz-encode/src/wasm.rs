@@ -22,7 +22,7 @@
 
 use crate::encode::{self, Codec, Params, PayloadStats};
 use crate::topo::Topology;
-use crate::Feat;
+use crate::{validate, Feat};
 use utz_simplify::{simplify_weighted, DensityWeight, Simplify};
 
 struct State {
@@ -36,6 +36,8 @@ struct State {
     /// last utz_enc_payload result (input to utz_enc_compress)
     payload: Vec<u8>,
     stats: PayloadStats,
+    /// last utz_enc_problems result: 12-byte records (see utz_enc_problems)
+    problems: Vec<u8>,
 }
 
 // wasm32-unknown-unknown is single-threaded; one worker = one instance = one
@@ -146,6 +148,7 @@ fn parse_blob(b: &[u8]) -> Option<State> {
         release,
         payload: Vec::new(),
         stats: PayloadStats::default(),
+        problems: Vec::new(),
     })
 }
 
@@ -171,15 +174,11 @@ pub unsafe extern "C" fn utz_enc_init(ptr: *mut u8, len: usize) -> u32 {
 /// quantize → clean → grid → serialize via `payload_from_topology`. Returns
 /// the payload length in bytes (0 = error / no init), stats via
 /// [`utz_enc_stat`], the payload staying resident for [`utz_enc_compress`].
-#[no_mangle]
-pub extern "C" fn utz_enc_payload(
-    algo: u32,
-    eps_m: f64,
-    w_min: f64,
-    quant_bits: u32,
-    grid_deg: f64,
-) -> u32 {
-    let Some(st) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else { return 0 };
+/// The simplify stage shared by [`utz_enc_payload`] and
+/// [`utz_enc_problems`]. `pre_snap_bits` = Some(qbits) snaps every arc to
+/// that grid BEFORE simplifying (the viewer's Q→S order); the later
+/// quantize step then re-snaps the already-on-grid coords, a no-op.
+fn simplified_arcs(st: &State, algo: u32, eps_m: f64, w_min: f64, pre_snap_bits: Option<u32>) -> Vec<Vec<(f64, f64)>> {
     let eps_deg = eps_m / 111_320.0;
     let algo = match algo {
         0 => Simplify::Rdp { eps: eps_deg },
@@ -189,18 +188,41 @@ pub extern "C" fn utz_enc_payload(
     };
     let model = DensityWeight::new(w_min);
     let weighted = w_min < 1.0 && !st.dens.is_empty();
+    let qmax = pre_snap_bits.map(|b| ((1u64 << (b - 1)) - 1) as f64);
     let mut base = 0usize;
-    let arcs: Vec<Vec<(f64, f64)>> = st.topo.arc_coords.iter().map(|a| {
+    st.topo.arc_coords.iter().map(|a| {
+        let snapped: Vec<(f64, f64)>;
+        let input = match qmax {
+            Some(q) => {
+                snapped = a.iter()
+                    .map(|&(x, y)| ((x / 180.0 * q).round() / q * 180.0, (y / 90.0 * q).round() / q * 90.0))
+                    .collect();
+                &snapped
+            }
+            None => a,
+        };
         let out = if weighted {
             let w: Vec<f64> =
                 st.dens[base..base + a.len()].iter().map(|&d| model.weight(d as f64)).collect();
-            simplify_weighted(algo, a, &w)
+            simplify_weighted(algo, input, &w)
         } else {
-            utz_simplify::simplify(algo, a)
+            utz_simplify::simplify(algo, input)
         };
         base += a.len();
         out
-    }).collect();
+    }).collect()
+}
+
+#[no_mangle]
+pub extern "C" fn utz_enc_payload(
+    algo: u32,
+    eps_m: f64,
+    w_min: f64,
+    quant_bits: u32,
+    grid_deg: f64,
+) -> u32 {
+    let Some(st) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else { return 0 };
+    let arcs = simplified_arcs(st, algo, eps_m, w_min, None);
     let p = Params {
         dataset: st.dataset_code,
         tzbb_release: &st.release,
@@ -254,6 +276,69 @@ pub extern "C" fn utz_enc_payload_ptr() -> *const u8 {
     match unsafe { &*core::ptr::addr_of!(STATE) } {
         Some(st) if !st.payload.is_empty() => st.payload.as_ptr(),
         _ => core::ptr::null(),
+    }
+}
+
+/// Locate problematic geometry (surviving ring self-crossings / collinear
+/// overlaps) for the given knobs — the viewer's problems panel. Runs
+/// simplify (Q→S when `pre` != 0: arcs snap to the `quant_bits` grid first)
+/// → quantize → clean → drop, then sweeps every ring. Returns the record
+/// count; records via [`utz_enc_problems_ptr`], 12 bytes each:
+/// f32 lon | f32 lat | u16 kind (0 cross, 1 overlap) | u16 feature.
+/// A spot on a shared border yields one record per owning ring — the JS
+/// dedupes by location and joins the zone names.
+#[no_mangle]
+pub extern "C" fn utz_enc_problems(
+    algo: u32,
+    eps_m: f64,
+    w_min: f64,
+    quant_bits: u32,
+    pre: u32,
+) -> u32 {
+    let Some(st) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else { return 0 };
+    if !matches!(quant_bits, 16 | 24 | 32) {
+        return 0;
+    }
+    let arcs = simplified_arcs(st, algo, eps_m, w_min, (pre != 0).then_some(quant_bits));
+    let problems = validate::find_problems(&st.topo, &arcs, quant_bits);
+    let mut out = Vec::with_capacity(problems.len() * 12);
+    for p in &problems {
+        out.extend_from_slice(&(p.lon as f32).to_le_bytes());
+        out.extend_from_slice(&(p.lat as f32).to_le_bytes());
+        let kind: u16 = match p.kind { validate::Kind::Cross => 0, validate::Kind::Overlap => 1 };
+        out.extend_from_slice(&kind.to_le_bytes());
+        out.extend_from_slice(&(p.feat as u16).to_le_bytes());
+    }
+    st.problems = out;
+    problems.len() as u32
+}
+
+/// Pointer to the records of the last [`utz_enc_problems`] (null if none).
+#[no_mangle]
+pub extern "C" fn utz_enc_problems_ptr() -> *const u8 {
+    match unsafe { &*core::ptr::addr_of!(STATE) } {
+        Some(st) if !st.problems.is_empty() => st.problems.as_ptr(),
+        _ => core::ptr::null(),
+    }
+}
+
+/// tzid of feature `i` as (ptr, len) — for labelling problem records.
+#[no_mangle]
+pub extern "C" fn utz_enc_tzid_ptr(i: u32) -> *const u8 {
+    match unsafe { &*core::ptr::addr_of!(STATE) } {
+        Some(st) => st.feats.get(i as usize)
+            .and_then(|f| f.tzid.as_deref())
+            .map_or(core::ptr::null(), |s| s.as_ptr()),
+        None => core::ptr::null(),
+    }
+}
+#[no_mangle]
+pub extern "C" fn utz_enc_tzid_len(i: u32) -> u32 {
+    match unsafe { &*core::ptr::addr_of!(STATE) } {
+        Some(st) => st.feats.get(i as usize)
+            .and_then(|f| f.tzid.as_deref())
+            .map_or(0, |s| s.len() as u32),
+        None => 0,
     }
 }
 

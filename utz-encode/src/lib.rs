@@ -15,6 +15,7 @@ pub mod clean;
 pub mod encode;
 pub mod grid;
 pub mod topo;
+pub mod validate;
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
