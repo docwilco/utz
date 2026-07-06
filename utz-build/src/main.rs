@@ -10,8 +10,10 @@ mod cmd;
 enum Cmd {
     /// Generate the webdist viewer (static page + per-dataset binary blobs)
     Visualize(cmd::visualize::Args),
-    /// Encode a .utz container to disk (bench-cli / firmware input)
-    Encode(cmd::encode::Args),
+    /// Generate a .utz container to disk (the §11 custom-tier CLI;
+    /// also feeds bench-cli / firmware)
+    #[command(visible_alias = "encode")]
+    Gen(cmd::encode::Args),
     /// Misassigned area/population of simplified topologies vs raw arcs
     Accuracy(cmd::accuracy::Args),
     /// Uniform vs population-weighted simplification: verts by density band
@@ -53,7 +55,7 @@ enum Cmd {
 fn main() -> anyhow::Result<()> {
     match Cmd::parse() {
         Cmd::Visualize(a) => cmd::visualize::run(a),
-        Cmd::Encode(a) => cmd::encode::run(a),
+        Cmd::Gen(a) => cmd::encode::run(a),
         Cmd::Accuracy(a) => cmd::accuracy::run(a),
         Cmd::DensityCompare(a) => cmd::density_compare::run(a),
         Cmd::DensityProbe(a) => cmd::density_probe::run(a),

@@ -10,12 +10,37 @@ license.workspace = true
 # `brotli`/`xz` currently pull `std` (their no_std modes need custom io/alloc
 # plumbing — upgrade path noted in decompress.rs); `zstd-sys` is C + std.
 [features]
-std = []
-gzip = ["dep:miniz_oxide"]
-ruzstd = ["dep:ruzstd"]
+# Two mandatory, at-least-one-of choices (§11) — forgetting one is a
+# compile_error! whose message is the onboarding. default = [] on purpose.
+default = []
+
+# ---- choice 1: data tier ---------------------------------------------------
+# Presets bake one CI-generated asset + the codec to read it (`alloc` comes
+# along for decompression). `custom` is a marker: bring your own asset,
+# generated with utz-build (§11). micro/balanced/accurate land once their
+# recipes are pinned (§14.5).
+nano = ["dep:utz-data-nano", "alloc", "gzip"]
+custom = []
+
+# ---- choice 2: environment ladder (§11): std ⊃ alloc ⊃ core -----------------
+# Strict supersets, so a feature union across the tree resolves upward.
+# `core` gates nothing extra — it's the deliberate bare-metal marker
+# (uncompressed assets, zero-copy `from_static`, `lookup_coarse`).
+core = []
+alloc = []
+std = ["alloc"]
+
+# ---- codec decoders (additive, §7) ------------------------------------------
+gzip = ["dep:miniz_oxide", "alloc"]
+ruzstd = ["dep:ruzstd", "alloc"]
 zstd-sys = ["dep:zstd", "std"]
 brotli = ["dep:brotli-decompressor", "std"]
 xz = ["dep:lzma-rust2", "std"]
+
+[package.metadata.docs.rs]
+# representative set (§11): the mandatory choices can't be defaulted, so
+# docs.rs picks one of each + the decoders
+features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz"]
 
 [dependencies]
 # no default features: keeps the derives no_std (Error derive = core::error::Error)
@@ -25,6 +50,7 @@ ruzstd = { version = "0.8", optional = true, default-features = false }
 zstd = { version = "0.13", optional = true }
 brotli-decompressor = { version = "5.0", optional = true }
 lzma-rust2 = { version = "0.16", optional = true, default-features = false, features = ["std", "xz"] }
+utz-data-nano = { path = "../utz-data-nano", optional = true }
 
 [dev-dependencies]
 geo = { workspace = true }

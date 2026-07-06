@@ -12,10 +12,13 @@
 // re-export it all so `utz_build::topo::…` paths keep working
 pub use utz_encode::*;
 
+pub mod config;
 pub mod density;
 pub mod download;
 pub mod loader;
 pub mod viz;
+
+pub use config::Config;
 
 use std::io::BufReader;
 use std::path::PathBuf;

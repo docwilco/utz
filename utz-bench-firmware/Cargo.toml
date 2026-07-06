@@ -12,7 +12,7 @@ publish = false
 [dependencies]
 # uncompressed container borrowed zero-copy from flash (Finder::from_static),
 # so no codec features and almost no RAM
-utz = { path = "../utz", default-features = false }
+utz = { path = "../utz", default-features = false, features = ["alloc", "custom"] }
 utz-bench-common = { path = "../utz-bench-common" }
 esp-hal = { version = "1.0.0", features = ["esp32s3", "unstable"] }
 esp-alloc = "0.8"

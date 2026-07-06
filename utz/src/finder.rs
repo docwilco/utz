@@ -4,16 +4,23 @@
 //! bbox contains the point, one at a time, into a reused scratch buffer.
 //! Interior cells answer O(1) from the grid with zero geometry decoded.
 
+#[cfg(feature = "alloc")]
 use alloc::vec::Vec;
+#[cfg(feature = "alloc")]
 use core::cell::RefCell;
 
-use crate::format::{self, fixed_bytes, read_fixed, read_u16, read_u32, read_varint, unzigzag, Header};
-use crate::{decompress, pip, Error};
+#[cfg(feature = "alloc")]
+use crate::format::{fixed_bytes, read_fixed, read_u32, read_varint, unzigzag};
+use crate::format::{self, read_u16, Header};
+#[cfg(feature = "alloc")]
+use crate::{decompress, pip};
+use crate::Error;
 
 const NO_ZONE: u16 = 0x7FFF;
 
 enum Source {
     Static(&'static [u8]),
+    #[cfg(feature = "alloc")]
     Owned(Vec<u8>),
 }
 
@@ -21,20 +28,37 @@ impl Source {
     fn bytes(&self) -> &[u8] {
         match self {
             Source::Static(b) => b,
+            #[cfg(feature = "alloc")]
             Source::Owned(v) => v,
         }
     }
 }
 
 /// A loaded timezone index. Build once, query many.
+///
+/// Availability follows the environment ladder (§11): on `core`,
+/// [`from_static`](Finder::from_static) + [`lookup_coarse`](Finder::lookup_coarse);
+/// `alloc` adds owned/compressed containers and the accurate
+/// [`lookup`](Finder::lookup) (until §14.7 streaming PIP moves it down to
+/// `core`); `std` adds [`from_reader`](Finder::from_reader).
 pub struct Finder {
     payload: Source,
     hdr: Header,
     /// scratch for the polygon being tested (coords + ring split points)
+    #[cfg(feature = "alloc")]
     scratch: RefCell<(Vec<(i32, i32)>, Vec<usize>)>,
 }
 
 impl Finder {
+    /// Load the preset selected by the (single) enabled preset feature.
+    /// Cfg'd out when several presets are in the tree — load explicitly with
+    /// `from_slice(utz::data::NANO)` instead.
+    // extend per preset: all(feature = "nano", not(any(feature = "micro", …)))
+    #[cfg(feature = "nano")]
+    pub fn new() -> Result<Finder, Error> {
+        Finder::from_slice(crate::data::NANO)
+    }
+
     /// Borrow a container from `&'static` bytes (e.g. a flash partition).
     /// Zero-copy: only the `uncompressed` codec is accepted here.
     pub fn from_static(bytes: &'static [u8]) -> Result<Finder, Error> {
@@ -44,12 +68,37 @@ impl Finder {
         }
         let payload = &bytes[start..];
         let hdr = format::parse(payload)?;
-        Ok(Finder { payload: Source::Static(payload), hdr, scratch: RefCell::new((Vec::new(), Vec::new())) })
+        Ok(Finder {
+            payload: Source::Static(payload),
+            hdr,
+            #[cfg(feature = "alloc")]
+            scratch: RefCell::new((Vec::new(), Vec::new())),
+        })
+    }
+
+    /// Decode a borrowed container into an owned `Finder`, decompressing per
+    /// the codec byte. For compressed assets already in memory/flash (preset
+    /// statics, OTA blobs) — no copy of the compressed input is made.
+    #[cfg(feature = "alloc")]
+    pub fn from_slice(bytes: &[u8]) -> Result<Finder, Error> {
+        let (codec, raw_len, start) = format::outer(bytes)?;
+        let payload = if codec == 0 {
+            bytes[start..].to_vec()
+        } else {
+            decompress::decompress(codec, raw_len, &bytes[start..])?
+        };
+        let hdr = format::parse(&payload)?;
+        Ok(Finder {
+            payload: Source::Owned(payload),
+            hdr,
+            scratch: RefCell::new((Vec::new(), Vec::new())),
+        })
     }
 
     /// Take ownership of a container buffer (e.g. read from flash / OTA blob),
     /// decompressing per the codec byte if a backend is compiled in. The
     /// `no_std` entry point for compressed containers.
+    #[cfg(feature = "alloc")]
     pub fn from_vec(bytes: Vec<u8>) -> Result<Finder, Error> {
         let (codec, raw_len, start) = format::outer(&bytes)?;
         let payload = if codec == 0 {
@@ -61,7 +110,11 @@ impl Finder {
             decompress::decompress(codec, raw_len, &bytes[start..])?
         };
         let hdr = format::parse(&payload)?;
-        Ok(Finder { payload: Source::Owned(payload), hdr, scratch: RefCell::new((Vec::new(), Vec::new())) })
+        Ok(Finder {
+            payload: Source::Owned(payload),
+            hdr,
+            scratch: RefCell::new((Vec::new(), Vec::new())),
+        })
     }
 
     /// Read a container from any `Read` source into an owned buffer.
@@ -79,6 +132,10 @@ impl Finder {
 
     /// Accurate lookup: grid cell → interior zone (O(1)) or candidates → PIP.
     /// `(lon, lat)` order — x before y.
+    ///
+    /// `alloc`-rung for now (per-polygon scratch); moves to `core` when §14.7
+    /// streaming PIP lands.
+    #[cfg(feature = "alloc")]
     pub fn lookup(&self, lon: f64, lat: f64) -> Option<&str> {
         let (px, py) = self.quantize(lon, lat);
         match self.cell_value(px, py) {
@@ -152,6 +209,7 @@ impl Finder {
 
     /// Lazy per-polygon test: bbox skip, then decode one polygon into the
     /// scratch buffer and run the integer PIP at the width the header demands.
+    #[cfg(feature = "alloc")]
     fn feature_contains(&self, fid: u16, px: i32, py: i32) -> bool {
         let (h, b) = (&self.hdr, self.payload.bytes());
         let fb = fixed_bytes(h.quant_bits);
@@ -211,6 +269,7 @@ impl Finder {
     }
 
     /// Decode one signed arc ref onto the end of `coords` (join-deduplicated).
+    #[cfg(feature = "alloc")]
     fn append_arc(&self, r: u32, coords: &mut Vec<(i32, i32)>) {
         let (h, b) = (&self.hdr, self.payload.bytes());
         let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);

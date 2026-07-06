@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["utz", "utz-build", "utz-encode", "utz-simplify", "utz-bench-common", "utz-bench-cli"]
+members = ["utz", "utz-build", "utz-data-nano", "utz-encode", "utz-simplify", "utz-bench-common", "utz-bench-cli"]
 # Xtensa target — needs the esp toolchain (espup); built standalone, see its README
 exclude = ["utz-bench-firmware"]
 

@@ -8,4 +8,4 @@ publish = false
 # Shared lookup-bench harness for utz-bench-cli (host) and utz-bench-firmware
 # (ESP32-S3). no_std + alloc; the time source is injected by the caller.
 [dependencies]
-utz = { path = "../utz", default-features = false }
+utz = { path = "../utz", default-features = false, features = ["alloc", "custom"] }

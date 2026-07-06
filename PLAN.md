@@ -430,6 +430,19 @@ deliberate bare-metal intent and satisfies choice 2:
   (TZBB release + all knobs → regenerate and diff); the CI publish job should
   also attach generation logs + checksums to a GitHub release.
 
+**Status (2026-07): skeleton implemented.** `utz` enforces the two mandatory
+choices (tier: `nano`/`custom` so far; env ladder `core` ⊂ `alloc` ⊂ `std`)
+with the compile_error onboarding, and API availability follows the rung:
+`from_static` + `lookup_coarse` on `core`; `from_slice`/`from_vec`/`lookup`
+on `alloc`; `from_reader` on `std`. `utz-data-nano` bakes the §14.5 nano
+recipe (asset gitignored, regenerated via `utz-build gen`); `nano =
+["dep:utz-data-nano", "alloc", "gzip"]` wires `Finder::new()` +
+`utz::data::NANO` (integration-tested). The custom tier has the
+`utz_build::Config` builder (build.rs pattern) and the `gen` CLI (alias
+`encode`). Remaining: micro/balanced/accurate data crates when their recipes
+pin (§14.5), the CI publish job, and a real user-cache dir + pre-fetched-
+source knob so hermetic build.rs consumers work (TODO in `Config::generate`).
+
 **Prior art:** `prost-build`/`slint-build`/`tonic-build` (consumer build.rs,
 builder-API-as-config), `icu_datagen`/databake + `chrono-tz` (pregenerated /
 data-in-crate), `getrandom` (why one-of-N features fail: additivity).

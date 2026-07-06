@@ -10,5 +10,5 @@ publish = false
 [dependencies]
 anyhow = { workspace = true }
 clap = { version = "4", features = ["derive"] }
-utz = { path = "../utz", features = ["std", "gzip", "ruzstd", "brotli", "xz"] }
+utz = { path = "../utz", features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz"] }
 utz-bench-common = { path = "../utz-bench-common" }

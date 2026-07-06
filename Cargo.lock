@@ -1937,6 +1937,7 @@ dependencies = [
  "lzma-rust2",
  "miniz_oxide",
  "ruzstd",
+ "utz-data-nano",
  "zstd",
 ]
 
@@ -1981,6 +1982,10 @@ dependencies = [
  "zip",
  "zstd",
 ]
+
+[[package]]
+name = "utz-data-nano"
+version = "0.0.0"
 
 [[package]]
 name = "utz-encode"
