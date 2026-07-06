@@ -116,6 +116,8 @@
       <input type="text" class="val" id="griddeg" title="cell size in degrees (editable)">
     </div>
     <div class="st" style="color:#8b98a8">cell fill: hue = dominant zone, opacity = dominance</div>
+    <canvas id="gridhist" height="46" style="width:100%; height:46px; display:none"
+      title="candidate tzids per boundary-crossed cell"></canvas>
   </div>
   <div class="qsec" data-sec="red">
     <div class="qtitle">Reduction</div>
@@ -1452,9 +1454,9 @@ function gridRefresh() {
   var gv = document.getElementById('gridv');
   var gen = ++gridGen;
   syncHash();
-  if (!gridCb.checked) { gv.textContent = ''; return; }
+  if (!gridCb.checked) { gv.textContent = ''; gridHist.style.display = 'none'; return; }
   var ly = layers[gridLayerSel.selectedIndex];
-  if (!ly || !ly.on || !ly.result) { gv.textContent = 'no result'; return; }
+  if (!ly || !ly.on || !ly.result) { gv.textContent = 'no result'; gridHist.style.display = 'none'; return; }
   var nc = Math.round(360 / deg), nr = Math.round(180 / deg);
   var hit = new Uint8Array(nc * nr);
   var mark = function (cx, cy) {
@@ -1492,6 +1494,47 @@ function gridRefresh() {
     if (gen === gridGen) renderGrid(deg, nc, nr, hit, null, n, pct);
   });
 }
+// small histogram of candidate-tzid counts over boundary-crossed cells; the
+// tooltip carries the full text stats of the distribution
+var gridHist = document.getElementById('gridhist');
+function drawGridHist(hist, noneCells) {
+  var ks = Object.keys(hist).map(Number).sort(function (a, b) { return a - b; });
+  if (!ks.length) { gridHist.style.display = 'none'; return; }
+  gridHist.style.display = '';
+  var dpr = window.devicePixelRatio || 1;
+  var w = gridHist.clientWidth || 460, h = 46;
+  gridHist.width = Math.round(w * dpr); gridHist.height = Math.round(h * dpr);
+  var ctx = gridHist.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  var max = 0, sum = 0, cells = 0, multi = 0;
+  ks.forEach(function (k) {
+    var c = hist[k];
+    if (c > max) max = c;
+    sum += k * c; cells += c;
+    if (k >= 2) multi += c;
+  });
+  var bw = Math.min(36, (w - 4) / ks.length);
+  ctx.font = '9px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ks.forEach(function (k, i) {
+    var x = 2 + i * bw, c = hist[k];
+    var bh = Math.max(1, Math.round(24 * c / max));
+    ctx.fillStyle = '#6b87a8';
+    ctx.fillRect(x + 2, 34 - bh, bw - 4, bh);
+    ctx.fillStyle = '#8b98a8';
+    ctx.fillText(String(k), x + bw / 2, 44);
+    ctx.fillStyle = '#b9c4d0';
+    ctx.fillText(c >= 10000 ? Math.round(c / 1000) + 'k' : String(c), x + bw / 2, 34 - bh - 2);
+  });
+  gridHist.title = 'candidate tzids per boundary-crossed cell\n' +
+    ks.map(function (k) {
+      return k + ' zone' + (k === 1 ? '' : 's') + ': ' + hist[k].toLocaleString() +
+        ' cells (' + (100 * hist[k] / cells).toFixed(1) + '%)';
+    }).join('\n') +
+    (noneCells ? '\nno zone: ' + noneCells.toLocaleString() + ' cells' : '') +
+    '\nmean ' + (sum / cells).toFixed(2) + ' candidates · ≥2 zones: ' +
+    (100 * multi / cells).toFixed(1) + '%';
+}
 function renderGrid(deg, nc, nr, hit, z, n, pct) {
   // per crossed cell: dominant zone + its share; plus a runtime-grid memory
   // estimate (CSR layout: u16 primary per cell + interned candidate lists)
@@ -1499,6 +1542,7 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
   var dom = null, shr = null, errKm2 = 0;
   if (z) {
     var s = deg * (z.w / 360); // fine lattice cells per grid cell side (may be fractional)
+    var hist = {}, noneCells = 0; // crossed cells by distinct-candidate count
     dom = new Int32Array(nc * nr).fill(-1);
     shr = new Float32Array(nc * nr);
     var NONE = z.names.length;
@@ -1539,8 +1583,10 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
           dom[cy * nc + cx] = NONE;
           shr[cy * nc + cx] = 1;
           intern('s' + NONE, 1);
+          noneCells++;
           continue;
         }
+        hist[touched.length] = (hist[touched.length] || 0) + 1;
         touched.sort(function (a, b) { return counts[b] - counts[a]; });
         var share = counts[touched[0]] / zoneTotal;
         dom[cy * nc + cx] = touched[0];
@@ -1554,6 +1600,9 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
     document.getElementById('gridv').textContent =
       n.toLocaleString() + ' cells (' + pct + '%) · grid ≈ ' + fmtBytes(gridBytes) +
       ' · grid-only errs ' + Math.round(errKm2).toLocaleString() + ' km²';
+    drawGridHist(hist, noneCells);
+  } else {
+    gridHist.style.display = 'none';
   }
   // vector cells: crisp screen-space strokes at every zoom, Leaflet does the
   // Mercator projection (no hand-rolled raster resampling)
