@@ -250,8 +250,10 @@ history). Rules:
 
 Presets bake codec + window and **document peak decode RAM** (decoded size +
 window + state) as part of their contract — the number an ESP32 user shops by,
-next to flash size and accuracy. Preset codecs must be no_std-clean
-(`gzip`/`ruzstd` — §11, §14.5).
+next to flash size and accuracy. Preset codecs must be no_std-clean —
+`gzip`/`ruzstd`/`brotli` qualify (brotli since 2026-07: no-stdlib mode +
+a global-allocator shim in decompress.rs, verified on a bare-metal RISC-V
+target, peak decode RAM unchanged; §11, §14.5).
 
 ---
 
@@ -380,8 +382,8 @@ deliberate bare-metal intent and satisfies choice 2:
 | rung | constructors | lookups | codecs |
 |---|---|---|---|
 | `core` | `from_static` (zero-copy) | `lookup` (streaming PIP, **landed**) + `lookup_coarse` | uncompressed only |
-| `alloc` | + `from_slice`/`from_vec` | + eager mode (`preload`) | + `gzip`/`ruzstd` |
-| `std` | + `from_reader` | — | + `brotli`/`xz`/`zstd-sys` (as gated today) |
+| `alloc` | + `from_slice`/`from_vec` | + eager mode (`preload`) | + `gzip`/`ruzstd`/`brotli` |
+| `std` | + `from_reader` | — | + `xz`/`zstd-sys` (as gated today) |
 
 - **Memory-mode features dissolved** (`eager`/`lazy`/`coarse` are no longer
   features): coarse is what `core` can do, lazy is `lookup` under `alloc`, eager
@@ -403,8 +405,8 @@ deliberate bare-metal intent and satisfies choice 2:
 - **Presets (features → data crates):** `utz-data-nano` … `utz-data-accurate`,
   each containing one CI-generated `.utz` as a static. Each preset enables
   **one or zero decoders**. Compressed preset: `nano = ["dep:utz-data-nano",
-  "alloc", <its codec>]` — the codec must be no_std-clean (`gzip`/`ruzstd`,
-  not `brotli`/`xz`/`zstd-sys`; constraint on §14.5) and `alloc` comes along
+  "alloc", <its codec>]` — the codec must be no_std-clean (`gzip`/`ruzstd`/
+  `brotli`, not `xz`/`zstd-sys`; constraint on §14.5) and `alloc` comes along
   for decompression. Uncompressed preset: enables neither — works on the
   `core` rung, zero-copy straight from the static, trading flash for zero
   decode RAM. Consumer: `utz = { features = ["std", "balanced"] }` →
@@ -538,13 +540,14 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
    ε=10 000 m, pop-density weight floor 1e-4, target ~70 K compressed** —
    verified (`encode`, 2° grid): raw 134.3 K → gzip 72.3 K / zstd 68.7 K
    (the no_std pair, on target; brotli 62.5 K / xz 62.1 K), gzip decode RAM
-   = 134 K flat; **balanced =
+   = 134 K flat. (Brotli is preset-eligible too since 2026-07 — its 62.5 K
+   would trade ~10 K flash for ~+110 K decode RAM vs gzip.) **balanced =
    i24 at roughly a megabyte** — at that size brotli/xz-class compression is
    worth it, and the §15 sweep already settles its settings (brotli beats xz
    at i24 on flash AND decode speed, and both are window-insensitive, so
    brotli q11 with a modest lgwin is the pick whenever balanced lands —
-   prerequisite: take the brotli decoder off `std`, brotli-decompressor has a
-   `no-stdlib` mode, per §7 preset codecs must be no_std-clean); **micro
+   prerequisite ~~take the brotli decoder off `std`~~ **done 2026-07**:
+   no-stdlib mode + allocator shim, brotli is preset-eligible); **micro
    quant still open** (i16 vs i24). Also: whether non-`now` datasets get
    preset variants (e.g. `balanced-1970`) or stay custom-only. Window/codec
    input measured (§15): preset windows go small (ruzstd 8 K; gzip has none);
