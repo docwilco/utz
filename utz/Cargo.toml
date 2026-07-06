@@ -30,5 +30,5 @@ lzma-rust2 = { version = "0.16", optional = true, default-features = false, feat
 geo = { workspace = true }
 geo-types = { workspace = true }
 
-# [build-dependencies]
-# utz-build = { path = "../utz-build" }   # enabled once the GeoJSON pipeline lands
+# No build.rs / build-dependencies by design (PLAN.md sec 11): preset data ships
+# as utz-data-* crates; custom assets are generated consumer-side via utz-build.

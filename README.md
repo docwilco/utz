@@ -46,4 +46,4 @@ build-time knob and adds general-purpose compression + integer quantization to g
 
 Code: MIT. Timezone data is derived from
 [timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder)
-(OpenStreetMap, **ODbL**) — downloaded and built on demand, never committed.
+(OpenStreetMap, **ODbL**)

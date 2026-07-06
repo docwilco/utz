@@ -35,12 +35,10 @@ exist for server use).
 utz/                 workspace root
   Cargo.toml         [workspace] members = ["utz", "utz-build"]
   PLAN.md            this file
-  utz.toml           (optional) asset-knob overrides read at build time (§11)
   .gitignore         cache/, assets/, *.geojson, *.utz, viewers
 
-  utz/               runtime library crate
-    build.rs         download (cond-GET) + cache + invoke utz-build + embed
-    src/
+  utz/               runtime library crate — NO build.rs (§11: data ships as
+    src/             preset data crates; custom assets are consumer-generated)
       lib.rs         public API, feature gates, grouped compile_errors
       decompress.rs  codec backends (uncompressed/gzip/zstd/brotli/xz)
       format.rs      self-describing header, zone table, arc store, ring index
@@ -53,8 +51,11 @@ utz/                 workspace root
       lib.rs         the tuning HTML (§14.8); wasm.rs = raw extern "C" surface
       wasm.rs
 
-  utz-build/         build-dependency + dev/exploration + viz tool
-    src/
+  utz-data-*/        preset data crates (§11): nano/micro/balanced/accurate —
+                     generated + published by CI per TZBB release, not committed
+
+  utz-build/         consumer build-dependency (builder API) + CLI (`gen`)
+    src/             + dev/exploration + viz tool
       lib.rs         re-exports encoder + measurement helpers
       types.rs       Feat/Ring/Poly, quantization helpers
       loader.rs      source → Vec<Feat>  (geojson; fgb reader kept for now)
@@ -67,8 +68,9 @@ utz/                 workspace root
 ```
 
 `utz-build` is where the exploration/measurement continues (the `formatlab`
-prototypes get ported here). It is both a build-dependency of `utz` and the home
-of the viz tool and benchmarks.
+prototypes get ported here). It is a build-dependency of *consumers* (custom tier,
+§11), the CLI, the generator behind the `utz-data-*` crates, and the home of the
+viz tool and benchmarks. `utz` itself never depends on it.
 
 ---
 
@@ -78,7 +80,7 @@ Self-describing format ⇒ one `Finder` type, any variant, multiple sources:
 
 ```rust
 impl Finder {
-    fn new() -> Result<Finder>;                    // embedded asset (feature `embed`)
+    fn new() -> Result<Finder>;                    // preset asset (exactly one data feature on, §11)
     fn from_static(bytes: &'static [u8]) -> Result<Finder>;  // flash partition: ZERO-COPY (uncompressed)
     fn from_reader(r: impl Read) -> Result<Finder>;          // file / network / OTA: owned buffer
 
@@ -89,9 +91,11 @@ impl Finder {
 
 - **`from_static`** is the embedded/flash win — borrows the bytes, no RAM copy in
   `uncompressed` mode. `impl Read` can't zero-copy, so it's the std/OTA path.
-- **`no-embed` mode:** ship the binary *without* the asset, load it at runtime from
-  a flash partition (`from_static`) or file (`from_reader`). Enables **OTA-updatable
-  tz data** (swap `-now`↔`-1970`, new TZBB vintage) without reflashing firmware.
+- **No-embed deployment** (= no preset feature enabled): ship the binary *without*
+  the asset, load it at runtime from a flash partition (`from_static`) or file
+  (`from_reader`); generate the asset with the `utz-build` CLI (§11). Enables
+  **OTA-updatable tz data** (swap `-now`↔`-1970`, new TZBB vintage) without
+  reflashing firmware.
 - **`lookup_coarse`** (learned from tzf's FuzzyFinder): answer from the grid alone — no arcs
   loaded, ~cell-size border error, tiny + instant. Optional mode.
 - **Return `Option<&str>`** (tzid, borrowed from the zone table). DST resolved
@@ -126,7 +130,7 @@ edges; validated by tzf/ZoneDetect-v1 independently converging on the same desig
 
 ---
 
-## 5. Build pipeline (build time)
+## 5. Build pipeline (runs in `utz-build`: consumer build.rs, CLI, or data-crate CI — §11)
 
 1. **Download** `timezones-with-oceans[-now|-1970].geojson.zip` (no suffix =
    `all`) → `cache/`.
@@ -139,11 +143,14 @@ edges; validated by tzf/ZoneDetect-v1 independently converging on the same desig
 5. **Quantize** arcs (i16/i24/i32), delta + zigzag-varint.
 6. **Grid** at cell size: rasterize borders → `Array2<u16>` (zone-id | spill-index)
    + interned-CSR spillover.
-7. **Serialize** self-describing container → **compress** (chosen codec) → `OUT_DIR`
-   → `include_bytes!` (when `embed`).
+7. **Serialize** self-describing container → **compress** (chosen codec) → the
+   caller's sink: consumer `$OUT_DIR/tz.utz` (build.rs → `include_bytes!`), a
+   file (CLI `-o`), or a data crate's static (CI).
 8. **Two-level cache**: cache the built artifact keyed by hash(TZBB release + all
    knobs), so unchanged rebuilds are instant.
-- **docs.rs**: skip download/build, embed empty slice.
+- **docs.rs / hermetic**: `utz` itself has no build.rs, so presets are trivially
+  fine; custom consumer build.rs can pass a pre-fetched source zip (URL/path knob)
+  where downloads are forbidden.
 - **Cost note**: first build is heavy (47 MB zip, 156 MB json, topology over
   millions of verts + q11 compression). The two caches make it one-time.
 
@@ -266,62 +273,58 @@ Decision: **both eager and lazy, feature-selected**, plus `lookup_coarse`.
 
 ---
 
-## 11. Features & config — **decided**: split by what the knob touches
+## 11. Features & config — **decided**: preset data crates + consumer-side custom
 
-The dividing line is **not** discrete-vs-continuous; it's **decoder-shape vs
-asset-shape**. The format is self-describing (header records every knob, decoder
-stays generic), so only knobs that gate *compiled code* belong in features.
+One overall setting with five tiers: **`nano` / `micro` / `balanced` / `accurate`
+/ custom**. The first four are **prebuilt data crates**; custom means the consumer
+generates the asset themselves. No config file, no env vars, no `build.rs` in
+`utz` at all.
 
-- **Cargo features (change what code compiles):** codec backends (as today:
-  `gzip`/`ruzstd`/`zstd-sys`/`brotli`/`xz`), `std`, memory mode
-  (`eager`/`lazy`/`coarse`), `embed`/`no-embed`, plus **bundle presets**
-  `tiny`/`balanced`/`accurate` — each preset just sets default *asset* knobs
-  (dataset/ε/quant/grid) so the zero-config docs.rs experience works. Enable
-  exactly one preset, or none + `utz.toml`. Keep the grouped `compile_error!`s
-  that **list the options**:
-  ```rust
-  compile_error!("select a codec: one of `uncompressed`,`gzip`,`zstd-sys`,`ruzstd`,`brotli`,`xz`");
-  compile_error!("select a preset (`tiny`/`balanced`/`accurate`) or set knobs in utz.toml (UTZ_CONFIG)");
-  ```
-- **`utz.toml` (changes only the generated asset):** dataset (`now`/`1970`/`all`),
-  `rdp_meters`, quant width (`i16`/`i24`/`i32`), grid degree, TZBB URL override.
-  Values override the preset's defaults, key by key. Single-key `UTZ_*` env vars
-  (e.g. `UTZ_RDP_METERS`) override the toml — esp-config style, handy for one-off
-  experiments.
+- **Presets (features → data crates):** `utz-data-nano` … `utz-data-accurate`,
+  each containing one CI-generated `.utz` as a static. On `utz`, feature `nano` =
+  `["dep:utz-data-nano", <its codec feature>]` — a preset auto-enables the decoder
+  it needs. Consumer: `utz = { features = ["balanced"] }` →
+  `Finder::new()`. Presets bake dataset `now`; other datasets are custom (or later
+  preset variants — §14.5).
+- **Custom (the escape hatch is the fifth tier):** no data feature; bring your own
+  bytes via `from_static`/`from_reader`. Generate them with:
+  - *consumer `build.rs`* (`prost-build` pattern): `utz-build` as a
+    build-dependency; typed builder API **is** the config — rustdoc'd,
+    IDE-completable, no file discovery (`CARGO_MANIFEST_DIR`/`OUT_DIR` are the
+    consumer's own): `utz_build::Config::new().dataset(Now).rdp_meters(500.0)
+    .generate()?` → `include_bytes!(concat!(env!("OUT_DIR"), "/tz.utz"))`.
+  - *CLI* (`icu_datagen` pattern): `utz-build gen --rdp 500 -o tz.utz` — for
+    flash-partition/OTA images, experiments, and the CI that builds the data
+    crates. Assets are **never committed to a repo**; they're regenerated
+    (downloads are cond-GET-cached, so regeneration is cheap).
+- **Remaining `utz` features are purely code-shape:** codec decoders (additive, as
+  today), `std`, memory mode (`eager`/`lazy`/`coarse`).
 
-**Why the one-of-N axes moved out of features:** Cargo features are unified across
-the dependency graph and must be **additive** — two crates enabling `utz/now` and
-`utz/1970` both turn on with no resolution beyond the `compile_error!`. Same reason
-`getrandom` moved backend selection from features to `--cfg` flags. Presets remain
-features because they're *defaults*, overridable in `utz.toml` rather than
-conflicting.
+**Why this shape (over features-for-knobs, env vars, or a discovered `utz.toml`):**
+- **Additivity solved, not fought.** Data crates are statics; two crates in the
+  tree enabling different presets both link, the unreferenced one is dead-stripped.
+  No one-of-N `compile_error!` boilerplate anywhere. `Finder::new()` exists only
+  when *exactly one* preset feature is on (cfg'd out otherwise — use
+  `from_static(utz::data::NANO)` explicitly); an asset whose codec byte has no
+  compiled decoder is a runtime `Err`, not a compile error (self-describing header).
+- **Hermetic where it matters.** The old plan had `utz/build.rs` downloading TZBB
+  in *every consumer's* build — broken on docs.rs, Nix, Bazel, Debian, offline CI.
+  Now the presets (the common path) are plain bytes from crates.io. The custom
+  tier *does* download TZBB — deliberately, since source data is fetched, never
+  committed — but it's opt-in, cond-GET-cached, and hermetic consumers can point
+  `Config` at a pre-fetched source zip (URL/path knob).
+- **No ambient config.** Env/`[env]`-based schemes (incl. the earlier
+  `UTZ_CONFIG` + `relative = true` design) hinge on cargo *finding*
+  `.cargo/config.toml` by cwd walk-up — `--manifest-path` / IDE / multi-checkout
+  CI invocations silently miss it and build with default knobs. Rejected for that
+  silent-misconfiguration mode; a builder API or committed asset can't be missed.
+- **Costs accepted:** data crates republished per TZBB release (CI-automated;
+  ≤ ~500 KB each, well under crates.io limits); preset+tweak means going custom
+  (three lines of build.rs).
 
-**How `build.rs` finds `utz.toml`:** a dependency's build script runs with
-`CARGO_MANIFEST_DIR` = utz's own read-only registry checkout; it **cannot** discover
-files in the consumer's repo. Consumers set a pointer in their
-`.cargo/config.toml`:
-```toml
-[env]
-UTZ_CONFIG = { value = "utz.toml", relative = true }
-```
-Cargo discovers that config by walking up from the *invocation* cwd, resolves
-`relative = true` against the directory containing `.cargo/`, and injects the
-absolute path into every build-script environment — utz's `build.rs` just reads
-`env::var("UTZ_CONFIG")`. Committed → reproducible (kills the usual env-var
-objection). `build.rs` emits `rerun-if-env-changed=UTZ_CONFIG` +
-`rerun-if-changed=<path>` (+ `rerun-if-env-changed` per `UTZ_*` key). For this
-workspace, `utz.toml` lives at the repo root. Known cargo gotcha: config discovery
-follows cwd, not `--manifest-path`. Rejected: walking up from `OUT_DIR` (breaks
-under `CARGO_TARGET_DIR`); acceptable later as a convenience fallback only.
-Escape hatch for fully custom builds: `no-embed` + the `utz-build` CLI, embedding
-the `.utz` yourself (`include_bytes!` / flash partition) — the
-`prost-build`/`icu_datagen` consumer-side pattern.
-
-**Prior art consulted:** `esp-config` (typed keys via `[env]`, our ESP32 audience's
-idiom), `getrandom`/`time`/`portable-atomic` (`--cfg` for one-of-N),
-`log` (`max_level_*` tier-features precedent and its N-preset ugliness),
-`openssl-sys`/`ring` (raw env pointers), `sqlx.toml` (config file, but works only
-because *proc macros* see the consumer's `CARGO_MANIFEST_DIR`; build scripts don't).
+**Prior art:** `prost-build`/`slint-build`/`tonic-build` (consumer build.rs,
+builder-API-as-config), `icu_datagen`/databake + `chrono-tz` (pregenerated /
+data-in-crate), `getrandom` (why one-of-N features fail: additivity).
 
 ---
 
@@ -362,15 +365,19 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
 
 ## 14. Open decisions (continue later)
 
-1. ~~**Build-knob mechanism**~~ — **decided** (§11): features for decoder-shape
-   knobs + `tiny`/`balanced`/`accurate` presets; `utz.toml` (via `UTZ_CONFIG`
-   `[env]` pointer) + `UTZ_*` env overrides for asset-shape knobs.
+1. ~~**Build-knob mechanism**~~ — **decided** (§11): preset data crates
+   (`nano`/`micro`/`balanced`/`accurate` features) + consumer-side custom
+   generation via the `utz-build` builder API / CLI. Supersedes the earlier
+   `utz.toml`/`UTZ_CONFIG` `[env]` design (rejected: silent cwd-discovery
+   failure, non-hermetic build.rs downloads in every consumer).
 2. ~~**`geo` vs hand-rolled PIP**~~ — **decided**: hand-rolled i64 (`utz/src/pip.rs`),
    geo dev-oracle only. 0/20k disagreements, speed parity with geo after
    adopting its loop shape (see §15).
 3. **`LonLat` newtype** vs raw `(lon, lat)` to prevent order footgun.
 4. ~~**Antimeridian**~~ — **verified pre-split** (see §15); no split pass.
-5. **Preset values** (dataset/ε/quant/grid/codec) for `tiny`/`balanced`/`accurate` (§11).
+5. **Preset values** (ε/quant/grid/codec) for `nano`/`micro`/`balanced`/`accurate`
+   (§11); whether non-`now` datasets get preset variants (e.g. `balanced-1970`)
+   or stay custom-only.
 6. Crate/repo name confirmed `utz`; public naming of feature groups.
 7. **Alloc-free mode** (discuss): today `no_std` = core+**alloc** — `Finder`
    carries `Vec` scratch (empty until a border-cell lookup) and `from_vec`/
@@ -410,7 +417,7 @@ its `contains_point` is a plain linear ring walk). ~~benchmark `geo` vs
    - Corridor/streaming family (Reumann–Witkam, Opheim, Lang, Zhao–Saalfeld):
      **rejected** — quality-per-vertex worse than RDP; their single-pass
      speed advantage is worthless at build time.
-   Still open: `simplify_algo` header byte + its `utz.toml` key (§11) for
+   Still open: `simplify_algo` header byte + its builder-API/CLI knob (§11) for
    selecting VW/II per asset; size-vs-RDP sweep for
    Imai–Iri on real arcs to see if it should become the default.
 
