@@ -254,7 +254,7 @@ function fmtBytes(b) {
   return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MiB' : Math.round(b / 1024).toLocaleString() + ' KiB';
 }
 
-// ---- shareable URL fragment: #m=lat,lng,zoom&l0=ds,algo,eps,quant,w,order&o=overlap&h=op&g=deg,layer ----
+// ---- shareable URL fragment: #m=lat,lng,zoom&l0=ds,algo,eps,quant,w,order&o=overlap&b=basemap&h=op&g=deg,layer ----
 var HASH = {};
 location.hash.slice(1).split('&').forEach(function (kv) {
   var i = kv.indexOf('=');
@@ -285,6 +285,7 @@ function syncHash() {
       s.eps + ',' + QUANT[s.quant].key + ',' + (w < 1 ? w : 'off') + ',' + ORDER[s.order].key);
   });
   if (MODE !== 'sbs') parts.push('o=' + MODE);
+  if (BASE !== 'streets') parts.push('b=' + BASE);
   if (heatCb.checked) parts.push('h=' + heatOp.value);
   if (gridCb.checked) parts.push('g=' + (Math.round(gridDeg * 1000) / 1000) + ',' + gridLayerSel.selectedIndex);
   if (encCb.checked) {
@@ -302,10 +303,17 @@ map.on('moveend', function () { syncHash(); });
 // our own updates go through replaceState (never fires hashchange), so any
 // hashchange is an external paste/navigation — reload to apply it
 window.addEventListener('hashchange', function () { location.reload(); });
-var streets = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' }).addTo(map);
+var streets = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' });
 var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri' });
 var dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' });
+var BASEMAPS = { streets: streets, sat: sat, dark: dark };
+var BASE = BASEMAPS[HASH.b] ? HASH.b : 'streets';
+BASEMAPS[BASE].addTo(map);
 L.control.layers({ 'Streets': streets, 'Satellite': sat, 'Dark': dark }, {}, { position: 'bottomright' }).addTo(map);
+map.on('baselayerchange', function (e) {
+  BASE = e.layer === sat ? 'sat' : e.layer === dark ? 'dark' : 'streets';
+  syncHash();
+});
 L.control.scale({ position: 'bottomleft', metric: true, imperial: true, maxWidth: 180 }).addTo(map);
 
 // one pane (→ one canvas) per layer: deterministic z-order by layer index and
