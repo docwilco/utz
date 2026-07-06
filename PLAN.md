@@ -10,11 +10,13 @@ Working crate name: **`utz`** (project: μTZ / micro-timezone).
 
 ## 1. Goals
 
-- **Tiny.** OSM timezone data down to ~125–460 KB (vs tzf-rs ~5–7 MB) via
+- **Tiny.** OSM timezone data down to ~125 KB at the small end, ~1 MB for the
+  i24 balanced tier (vs tzf-rs ~5–7 MB) via
   shared-arc topology + tunable line simplification (Ramer–Douglas–Peucker,
   "RDP", today; §14 for alternatives) + integer quantization + general compression.
 - **Embeddable / `no_std`-friendly.** Pure-Rust codecs, integer PIP, flat arrays
-  that borrow zero-copy from a flash partition. Targets ESP32/Xtensa-class.
+  that borrow zero-copy from a flash partition. Targets small embedded parts
+  broadly (Cortex-M, RISC-V, ESP32/Xtensa, …) — no single-platform bias.
 - **Tunable at build time.** Dataset, simplification ε, quant grid, grid cell size, codec —
   build exactly the size/RAM/accuracy point you need, guided by a viz tool.
 - **DST-correct.** Returns the IANA `tzid`; resolve offsets/DST downstream
@@ -494,12 +496,18 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
    documented peak-decode-RAM number). Codec may be *none* (uncompressed:
    `core`-rung-compatible, zero decode RAM, more flash). Quant: **i24 looking
    like the sweet spot**; i16 a low-accuracy super-low-storage last resort;
-   i32 likely unneeded. Also: whether non-`now` datasets get preset variants
-   (e.g. `balanced-1970`) or stay custom-only. Window/codec input now
-   measured (§15): preset windows go small (ruzstd 8 K; gzip has none), and
-   gzip's peak-RAM floor (= decoded size exactly) makes it the likely preset
-   codec over ruzstd — pays ~3% flash for −75 K decode RAM and the smallest
-   pure-Rust decoder.
+   i32 likely unneeded. Tier anchors (2026-07): **nano = i16**; **balanced =
+   i24 at roughly a megabyte** — at that size brotli/xz-class compression is
+   worth it, and the §15 sweep already settles its settings (brotli beats xz
+   at i24 on flash AND decode speed, and both are window-insensitive, so
+   brotli q11 with a modest lgwin is the pick whenever balanced lands —
+   prerequisite: take the brotli decoder off `std`, brotli-decompressor has a
+   `no-stdlib` mode, per §7 preset codecs must be no_std-clean); **micro
+   quant still open** (i16 vs i24). Also: whether non-`now` datasets get
+   preset variants (e.g. `balanced-1970`) or stay custom-only. Window/codec
+   input measured (§15): preset windows go small (ruzstd 8 K; gzip has none);
+   gzip's peak-RAM floor (= decoded size exactly) plus smallest pure-Rust
+   decoder make it the default for the small no_std tiers.
 6. Crate/repo name confirmed `utz`; public naming of feature groups.
 7. ~~**Alloc-free *accurate* lookup**~~ — **decided: streaming PIP (pending
    firmware bench)**, which makes the fixed-scratch-buffer idea obsolete.
@@ -638,8 +646,9 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
 - [x] **gzip vs zstd/brotli/xz** — answered by the same sweep: brotli q11 wins
   nearly every cell (xz9 edges it once, by 1%); zstd22 trails brotli 3–8%; gzip
   trails 5–15% but stays respectable for the smallest pure-Rust decoder
-  (miniz_oxide). Balanced-preset candidate (§14.5): ε=500 m, i16, brotli → 133 K
-  (gzip fallback → 150 K).
+  (miniz_oxide). (An earlier "balanced = ε=500 i16 brotli → 133 K" candidate
+  here is superseded: balanced is i24 at ~1 MB, ε=500 i16 is nano/micro
+  territory — §14.5.)
 - [x] **Antimeridian** — scanned (`amscan`): TZBB with-oceans is pre-split (414/422
   verts exactly on ±180, 0 out-of-range coords). Single flagged >180° edge is
   Pacific/Auckland's south-pole seam (180,−90)→(−180,−90) — degenerate at the pole,
@@ -649,22 +658,27 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   and drifts *worse* above that (until ≥128 K recovers it); brotli/xz sit
   within ~1% of their best already at 1–4 K (context modeling, not long-range
   matches, drives them); gzip is fixed 32 K. Codec ≫ window: i24 assets
-  compress to only ~86% under zstd but ~74% under brotli/xz. Balanced
-  candidate (ε=500 i16, raw 226.2 K): gzip 147.7 K, zstd@8K 142.9 K,
-  brotli@32K 132.2 K, xz@4K 131.4 K. Preset window: **8 K** for ruzstd
-  presets; gzip has no knob.
+  compress to only ~86% under zstd but ~74% under brotli/xz — at the i24
+  tiers (balanced and up, §14.5) brotli/xz are the only codecs pulling their
+  weight, and brotli beats xz there on both flash and decode speed. The
+  ε=500 i16 shape (raw 226.2 K): gzip 147.7 K, zstd@8K 142.9 K, brotli@32K
+  132.2 K, xz@4K 131.4 K. Preset window: **8 K** for ruzstd presets; gzip
+  has no knob; brotli/xz any modest window (≤1.5% spread from 1 K to 1 M).
 - [x] **Peak decode RAM** (§7) — measured (`window-sweep` tracking allocator;
   realloc counted alloc+copy+free, like a naive embedded allocator). The
   `decoded + window + state` model holds only after fixing two shipped decode
   paths that broke it (see §7): ruzstd batched 1 MiB before draining, gzip
-  grew an unhinted Vec. Post-fix balanced-candidate peaks: **gzip = decoded
-  exactly, 226 K** (inflate tables live on the stack, output doubles as
-  history), ruzstd@8K 301 K, xz@4K 310 K (state flat 80 K, model-perfect),
-  brotli@32K 365 K. So for presets: gzip is the RAM floor; ruzstd@8K buys
-  ~3% flash for +75 K RAM; host decode speed gzip < zstd < brotli ≪ xz (~10×).
-- [ ] **Streaming PIP from flash** (§14.7): extend `pip_bench` to the Xtensa
-  firmware target — lookup latency streaming-from-flash vs streaming-from-RAM
-  vs buffered-decode; confirm the O(1)-state model and the lazy-mode
+  grew an unhinted Vec. Post-fix peaks on the ε=500 i16 shape (raw 226.2 K):
+  **gzip = decoded exactly, 226 K** (inflate tables live on the stack, output
+  doubles as history), ruzstd@8K 301 K, xz@4K 310 K (state flat 80 K,
+  model-perfect), brotli@32K 365 K. So for the small tiers: gzip is the RAM
+  floor; ruzstd@8K buys ~3% flash for +75 K RAM. Host decode speed
+  gzip < zstd < brotli ≪ xz (~10×).
+- [ ] **Streaming PIP from flash** (§14.7): extend `pip_bench` to embedded
+  firmware targets — Xtensa is one convenient case, not the design center;
+  flash interfaces differ across Cortex-M / RISC-V / ESP32-class parts —
+  lookup latency streaming-from-flash vs streaming-from-RAM vs
+  buffered-decode; confirm the O(1)-state model and the lazy-mode
   per-lookup-alloc removal.
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
