@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overlapping line rendering — technique demo</title>
+</head>
+<body>
+<style>
+  :root {
+    --bg: #0e1319; --surface: #151d26; --edge: #232e3b;
+    --text: #dbe4ee; --muted: #8b98a8;
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--sans); }
+  main { max-width: 1500px; margin: 0 auto; padding: 20px 22px 40px; }
+  h1 { font-family: var(--mono); font-size: 17px; font-weight: 600; margin: 0 0 4px; letter-spacing: .02em; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 16px; max-width: 72ch; line-height: 1.5; }
+  .sub code, .cap code { font-family: var(--mono); font-size: 12px; color: var(--text); background: #1c2632; padding: 1px 4px; border-radius: 3px; }
+
+  #controls {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px;
+    font-family: var(--mono); font-size: 12.5px;
+    background: var(--surface); border: 1px solid var(--edge); border-radius: 6px;
+    padding: 10px 14px; margin-bottom: 18px;
+  }
+  #controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; white-space: nowrap; }
+  #controls input[type=checkbox] { accent-color: #6b87a8; }
+  .sw { display: inline-block; width: 14px; height: 5px; border-radius: 2px; }
+  .grp { display: flex; align-items: center; gap: 10px; }
+  .grp .lbl { color: var(--muted); text-transform: uppercase; font-size: 10.5px; letter-spacing: .09em; }
+  input[type=range] { width: 110px; accent-color: #6b87a8; }
+  select {
+    background: #1c2632; color: var(--text); border: 1px solid var(--edge);
+    border-radius: 4px; font-family: var(--mono); font-size: 12px; padding: 2px 4px;
+  }
+  .val { font-variant-numeric: tabular-nums; min-width: 4.5ch; display: inline-block; }
+
+  #grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(430px, 1fr)); gap: 16px; }
+  @media (max-width: 470px) { #grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--surface); border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; }
+  .phead {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+    padding: 9px 12px 7px; font-family: var(--mono); font-size: 13px; font-weight: 600;
+  }
+  .phead .tag { color: var(--muted); font-size: 10.5px; font-weight: 400; text-transform: uppercase; letter-spacing: .09em; }
+  .panel canvas { display: block; width: 100%; aspect-ratio: 16 / 9; }
+  .cap { padding: 9px 12px 12px; font-size: 12.5px; color: var(--muted); line-height: 1.5; margin: 0; }
+  .cap b { color: var(--text); font-weight: 600; }
+</style>
+
+<main>
+  <h1>overlapping line rendering — technique demo</h1>
+  <p class="sub">
+    Four preview layers draw the <em>same</em> border at different simplification settings
+    (crafted demo data: one reference path, three Douglas&#8209;Peucker + quantize variants, same
+    palette as the live preview). Today the canvas composites <code>source-over</code>, so where the
+    lines coincide only the topmost color survives — panel 1. The other panels are candidate fixes.
+  </p>
+
+  <div id="controls">
+    <span class="grp" id="layerboxes"><span class="lbl">layers</span></span>
+    <span class="grp">
+      <span class="lbl">width</span>
+      <input type="range" id="wslider" min="6" max="40" value="12">
+      <span class="val" id="wval">1.2px</span>
+    </span>
+    <span class="grp">
+      <span class="lbl">map bg</span>
+      <select id="bgsel"><option value="dark" selected>dark</option><option value="light">light</option></select>
+    </span>
+  </div>
+
+  <div id="grid"></div>
+</main>
+
+<script>
+'use strict';
+
+// ---- deterministic demo data ------------------------------------------------
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// 1-D fractal value noise in [-1, 1]
+function makeNoise(seed) {
+  var rnd = mulberry32(seed);
+  var g = []; for (var i = 0; i < 512; i++) g.push(rnd() * 2 - 1);
+  function n(x) {
+    var i0 = Math.floor(x), f = x - i0, u = f * f * (3 - 2 * f);
+    return g[i0 & 511] * (1 - u) + g[(i0 + 1) & 511] * u;
+  }
+  return function (x, oct) {
+    var s = 0, amp = 1, fr = 1, norm = 0;
+    for (var o = 0; o < oct; o++) { s += amp * n(x * fr); norm += amp; amp *= 0.5; fr *= 2.03; }
+    return s / norm;
+  };
+}
+
+// Reference "border": broad sweep + detail whose amplitude is gated by a slow
+// envelope, so some stretches are near-straight (variants coincide there) and
+// some are wiggly (variants cut corners there). World space is 1000 x 560.
+var WORLD_W = 1000, WORLD_H = 560;
+function makeReference() {
+  var nD = makeNoise(11), nE = makeNoise(23), nB = makeNoise(47);
+  var pts = [], N = 420;
+  for (var i = 0; i < N; i++) {
+    var t = i / (N - 1);
+    var env = 0.5 + 0.5 * nE(t * 4.2, 2);          // slow gate in [0,1]
+    env = env * env;
+    var y = 275
+      + 165 * Math.sin(t * 5.2 + 0.6)
+      + env * 85 * nD(t * 22, 4)
+      + 12 * nB(t * 3.1, 2);
+    pts.push([30 + t * (WORLD_W - 60), y]);
+  }
+  return pts;
+}
+
+function segDist(p, a, b) {
+  var dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
+  var t = l2 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+}
+
+function simplifyDP(pts, eps) {
+  var keep = new Uint8Array(pts.length);
+  keep[0] = keep[pts.length - 1] = 1;
+  var stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    var r = stack.pop(), a = r[0], b = r[1], dmax = 0, idx = -1;
+    for (var i = a + 1; i < b; i++) {
+      var d = segDist(pts[i], pts[a], pts[b]);
+      if (d > dmax) { dmax = d; idx = i; }
+    }
+    if (dmax > eps) { keep[idx] = 1; stack.push([a, idx], [idx, b]); }
+  }
+  return pts.filter(function (_, i) { return keep[i]; });
+}
+
+function quantize(pts, step) {
+  return pts.map(function (p) {
+    return [Math.round(p[0] / step) * step, Math.round(p[1] / step) * step];
+  });
+}
+
+var REF = makeReference();
+// Same palette + stacking order as the live preview: layer 0 at the bottom,
+// green raw reference on top.
+var LAYERS = [
+  { color: '#ff2d78', name: 'ε 5 · q2',  pts: quantize(simplifyDP(REF, 5), 2) },
+  { color: '#00c8ff', name: 'ε 9 · q2',  pts: quantize(simplifyDP(REF, 9), 2) },
+  { color: '#ffd400', name: 'ε 16 · q4', pts: quantize(simplifyDP(REF, 16), 4) },
+  { color: '#00d95f', name: 'raw ref',   pts: REF },
+];
+
+// ---- shared state + helpers -------------------------------------------------
+
+var state = { on: [true, true, true, true], width: 1.2, bg: 'dark', blend: 'auto' };
+if (new URLSearchParams(location.search).get('bg') === 'light') state.bg = 'light';
+var MAP_BG = { dark: '#10161c', light: '#dfe6e8' };
+
+function activeLayers() {
+  return LAYERS.filter(function (_, i) { return state.on[i]; });
+}
+
+function tracePath(ctx, pts, toScreen) {
+  ctx.beginPath();
+  for (var i = 0; i < pts.length; i++) {
+    var p = toScreen(pts[i]);
+    if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+  }
+}
+
+function strokeLayer(ctx, pts, toScreen, color, width, alpha) {
+  tracePath(ctx, pts, toScreen);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.globalAlpha = alpha == null ? 0.95 : alpha;
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+// Perpendicular offset in screen space: averaged adjacent-segment normals,
+// miter length clamped so sharp corners don't spike.
+function offsetPolyline(pts, d) {
+  var n = pts.length, out = new Array(n);
+  for (var i = 0; i < n; i++) {
+    var b = pts[i];
+    var n1x = 0, n1y = 0, n2x = 0, n2y = 0, dx, dy, l;
+    if (i > 0) {
+      var a = pts[i - 1];
+      dx = b[0] - a[0]; dy = b[1] - a[1]; l = Math.hypot(dx, dy) || 1;
+      n1x = -dy / l; n1y = dx / l;
+    }
+    if (i < n - 1) {
+      var c = pts[i + 1];
+      dx = c[0] - b[0]; dy = c[1] - b[1]; l = Math.hypot(dx, dy) || 1;
+      n2x = -dy / l; n2y = dx / l;
+    }
+    var nx = n1x + n2x, ny = n1y + n2y, nl = Math.hypot(nx, ny);
+    if (nl < 1e-6) { nx = n1x || n2x; ny = n1y || n2y; } else { nx /= nl; ny /= nl; }
+    var m = 1;
+    if (i > 0 && i < n - 1) m = Math.min(3, 1 / Math.max(0.33, nx * n1x + ny * n1y));
+    out[i] = [b[0] + nx * d * m, b[1] + ny * d * m];
+  }
+  return out;
+}
+
+// Split a variant into runs that agree with / deviate from the reference:
+// sample each segment every `step` screen px, test distance to the reference.
+function divergenceRuns(pts, refScreen, tol, step) {
+  function distToRef(p) {
+    var best = Infinity;
+    for (var i = 0; i + 1 < refScreen.length; i++) {
+      var d = segDist(p, refScreen[i], refScreen[i + 1]);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+  var runs = [], cur = null;
+  function push(p, dev) {
+    if (!cur || cur.dev !== dev) {
+      var start = cur ? cur.pts[cur.pts.length - 1] : null;
+      cur = { dev: dev, pts: start ? [start] : [] };
+      runs.push(cur);
+    }
+    cur.pts.push(p);
+  }
+  for (var i = 0; i + 1 < pts.length; i++) {
+    var a = pts[i], b = pts[i + 1];
+    var len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    var nSamp = Math.max(1, Math.ceil(len / step));
+    for (var s = (i === 0 ? 0 : 1); s <= nSamp; s++) {
+      var t = s / nSamp;
+      var p = [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+      push(p, distToRef(p) > tol);
+    }
+  }
+  return runs;
+}
+
+// ---- panels -----------------------------------------------------------------
+
+var PANELS = [
+  {
+    tag: '1 · today', title: 'current: source-over',
+    cap: 'Layers stroked bottom-to-top at 0.95 opacity, exactly like the preview now. ' +
+         'Wherever the simplified lines coincide, the <b>topmost color wins</b> and the others vanish.',
+    draw: function (ctx, act, toScreen) {
+      act.forEach(function (L) { strokeLayer(ctx, L.pts, toScreen, L.color, state.width); });
+    }
+  },
+  {
+    tag: '2 · blend', title: 'color mixing (blend mode)',
+    sel: { options: ['auto', 'screen', 'lighter', 'multiply', 'overlay'], key: 'blend' },
+    cap: 'Same strokes, composited with a blend mode (<code>auto</code> = screen on dark, multiply on light). ' +
+         'Coincident lines mix into a <b>distinct hue</b> — agreement gets its own color. In the preview: one map ' +
+         'pane per layer with <code>pane.style.mixBlendMode</code>.',
+    draw: function (ctx, act, toScreen) {
+      var mode = state.blend === 'auto' ? (state.bg === 'dark' ? 'screen' : 'multiply') : state.blend;
+      ctx.globalCompositeOperation = mode;
+      act.forEach(function (L) { strokeLayer(ctx, L.pts, toScreen, L.color, state.width); });
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  },
+  {
+    tag: '3 · dash', title: 'dash interleave',
+    cap: 'One shared dash cadence, phase-shifted per layer, so a coincident line reads as ' +
+         '<b>alternating colored dashes</b> and divergences as separate dashed strands. In the preview: ' +
+         '<code>dashArray</code> plus a ~6-line canvas-renderer subclass (Leaflet’s canvas renderer ignores <code>dashOffset</code>). ' +
+         'Caveat: phase drifts where the variants’ path lengths differ, so slots can partially collide.',
+    draw: function (ctx, act, toScreen) {
+      var n = act.length, dash = 7;
+      act.forEach(function (L, j) {
+        if (n > 1) { ctx.setLineDash([dash, dash * (n - 1)]); ctx.lineDashOffset = -j * dash; }
+        strokeLayer(ctx, L.pts, toScreen, L.color, state.width);
+      });
+      ctx.setLineDash([]); ctx.lineDashOffset = 0;
+    }
+  },
+  {
+    tag: '4 · casing', title: 'width cascade',
+    cap: 'Lower layers stroked wider, so each color survives as a <b>concentric fringe</b> around the ones ' +
+         'above it. Cheapest option — per-layer <code>weight</code> only — but bulky with 4 layers, and which ' +
+         'color sits inside is fixed by z-order.',
+    draw: function (ctx, act, toScreen) {
+      var n = act.length;
+      act.forEach(function (L, j) {
+        strokeLayer(ctx, L.pts, toScreen, L.color, state.width + 1.9 * (n - 1 - j));
+      });
+    }
+  },
+  {
+    tag: '5 · diff', title: 'divergence highlighting',
+    cap: 'The reference is a thin neutral line; a variant is drawn <b>only where it strays</b> beyond ~2.5px of it. ' +
+         'Least ink, most signal for judging simplification quality. In the preview: per-segment ' +
+         'distance-to-reference test in the worker.',
+    draw: function (ctx, act, toScreen) {
+      var refScreen = REF.map(toScreen);
+      strokeLayer(ctx, REF, toScreen, state.bg === 'dark' ? '#5a6675' : '#8f9aa6', Math.max(1, state.width * 0.8));
+      act.forEach(function (L) {
+        if (L.pts === REF) return;
+        var runs = divergenceRuns(L.pts.map(toScreen), refScreen, 2.5, 3);
+        runs.forEach(function (r) {
+          if (!r.dev || r.pts.length < 2) return;
+          ctx.beginPath();
+          r.pts.forEach(function (p, i) { if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]); });
+          ctx.strokeStyle = L.color; ctx.lineWidth = state.width + 0.6;
+          ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+          ctx.globalAlpha = 0.95; ctx.stroke(); ctx.globalAlpha = 1;
+        });
+      });
+    }
+  },
+  {
+    tag: '6 · offset', title: 'side-by-side offset',
+    cap: 'Each layer nudged perpendicular to the line by a couple of screen pixels, so coincident lines sit ' +
+         '<b>next to each other</b> like parallel tracks. Geometry is visually displaced, so best at high zoom / ' +
+         'as a toggle. In the preview: screen-space polyline offset (à la leaflet-polylineoffset).',
+    draw: function (ctx, act, toScreen) {
+      var n = act.length, spacing = Math.max(2.2, state.width * 1.7);
+      act.forEach(function (L, j) {
+        var off = offsetPolyline(L.pts.map(toScreen), (j - (n - 1) / 2) * spacing);
+        strokeLayer(ctx, off, IDENT, L.color, state.width);
+      });
+    }
+  },
+];
+function IDENT(p) { return p; }
+
+// ---- scaffolding ------------------------------------------------------------
+
+var grid = document.getElementById('grid');
+var panelEls = PANELS.map(function (P) {
+  var div = document.createElement('div'); div.className = 'panel';
+  var head = document.createElement('div'); head.className = 'phead';
+  var title = document.createElement('span'); title.textContent = P.title;
+  var right = document.createElement('span'); right.className = 'tag'; right.textContent = P.tag;
+  head.appendChild(title);
+  if (P.sel) {
+    var sel = document.createElement('select');
+    P.sel.options.forEach(function (o) {
+      var op = document.createElement('option'); op.value = o; op.textContent = o; sel.appendChild(op);
+    });
+    sel.value = state[P.sel.key];
+    sel.addEventListener('change', function () { state[P.sel.key] = sel.value; redrawAll(); });
+    head.appendChild(sel);
+  }
+  head.appendChild(right);
+  var cv = document.createElement('canvas');
+  var cap = document.createElement('p'); cap.className = 'cap'; cap.innerHTML = P.cap;
+  div.appendChild(head); div.appendChild(cv); div.appendChild(cap);
+  grid.appendChild(div);
+  return { panel: P, canvas: cv };
+});
+
+function redrawAll() {
+  var act = activeLayers();
+  panelEls.forEach(function (pe) {
+    var cv = pe.canvas, dpr = window.devicePixelRatio || 1;
+    var w = cv.clientWidth, h = cv.clientHeight;
+    if (!w || !h) return;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    }
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = MAP_BG[state.bg];
+    ctx.fillRect(0, 0, w, h);
+    var s = Math.min(w / WORLD_W, h / WORLD_H);
+    var ox = (w - WORLD_W * s) / 2, oy = (h - WORLD_H * s) / 2;
+    function toScreen(p) { return [ox + p[0] * s, oy + p[1] * s]; }
+    pe.panel.draw(ctx, act, toScreen);
+  });
+}
+
+// controls
+var boxes = document.getElementById('layerboxes');
+LAYERS.forEach(function (L, i) {
+  var lab = document.createElement('label');
+  var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = state.on[i];
+  cb.addEventListener('change', function () { state.on[i] = cb.checked; redrawAll(); });
+  var sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = L.color;
+  lab.appendChild(cb); lab.appendChild(sw); lab.appendChild(document.createTextNode(L.name));
+  boxes.appendChild(lab);
+});
+var wsl = document.getElementById('wslider'), wval = document.getElementById('wval');
+wsl.addEventListener('input', function () {
+  state.width = wsl.value / 10;
+  wval.textContent = state.width.toFixed(1) + 'px';
+  redrawAll();
+});
+var bgsel = document.getElementById('bgsel');
+bgsel.value = state.bg;
+bgsel.addEventListener('change', function (e) {
+  state.bg = e.target.value; redrawAll();
+});
+
+var resizeRaf = 0;
+window.addEventListener('resize', function () {
+  cancelAnimationFrame(resizeRaf);
+  resizeRaf = requestAnimationFrame(redrawAll);
+});
+
+redrawAll();
+</script>
+</body>
+</html>
