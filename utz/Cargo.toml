@@ -6,9 +6,9 @@ license.workspace = true
 
 # Runtime crate — kept lean / no_std-friendly. geo is a DEV-dependency only
 # (PIP oracle). Codec features (PLAN.md §7): each compiles in the decoder for
-# one codec byte. `gzip`/`ruzstd` are pure-Rust and no_std+alloc clean;
-# `brotli`/`xz` currently pull `std` (their no_std modes need custom io/alloc
-# plumbing — upgrade path noted in decompress.rs); `zstd-sys` is C + std.
+# one codec byte. `gzip`/`ruzstd`/`brotli` are pure-Rust and no_std+alloc
+# clean; `xz` currently pulls `std` (lzma-rust2's no_std mode is an upgrade
+# path); `zstd-sys` is C + std.
 [features]
 # Two mandatory, at-least-one-of choices (§11) — forgetting one is a
 # compile_error! whose message is the onboarding. default = [] on purpose.
@@ -34,7 +34,7 @@ std = ["alloc"]
 gzip = ["dep:miniz_oxide", "alloc"]
 ruzstd = ["dep:ruzstd", "alloc"]
 zstd-sys = ["dep:zstd", "std"]
-brotli = ["dep:brotli-decompressor", "std"]
+brotli = ["dep:brotli-decompressor", "alloc"]
 xz = ["dep:lzma-rust2", "std"]
 
 [package.metadata.docs.rs]
@@ -48,7 +48,9 @@ derive_more = { version = "2", default-features = false, features = ["display", 
 miniz_oxide = { version = "0.8", optional = true, default-features = false, features = ["with-alloc"] }
 ruzstd = { version = "0.8", optional = true, default-features = false }
 zstd = { version = "0.13", optional = true }
-brotli-decompressor = { version = "5.0", optional = true }
+# no-stdlib mode: no default `std` feature; utz supplies a global-allocator
+# shim (decompress.rs), keeping the decoder alloc-clean → preset-eligible
+brotli-decompressor = { version = "5.0", optional = true, default-features = false }
 lzma-rust2 = { version = "0.16", optional = true, default-features = false, features = ["std", "xz"] }
 utz-data-nano = { path = "../utz-data-nano", optional = true }
 

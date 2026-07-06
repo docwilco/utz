@@ -8,7 +8,7 @@
 //! | `gzip`     | 1          | miniz_oxide          | no (alloc)   |
 //! | `ruzstd`   | 2          | ruzstd (pure Rust)   | no (alloc)   |
 //! | `zstd-sys` | 2          | zstd (C libzstd)     | yes          |
-//! | `brotli`   | 3          | brotli-decompressor  | yes (for now)|
+//! | `brotli`   | 3          | brotli-decompressor (no-stdlib) | no (alloc) |
 //! | `xz`       | 4          | lzma-rust2           | yes (for now)|
 //!
 //! If both zstd backends are enabled, `zstd-sys` wins (faster).
@@ -73,9 +73,29 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>, Err
         }
         #[cfg(feature = "brotli")]
         3 => {
-            let mut out = Vec::with_capacity(raw_len);
-            brotli_decompressor::BrotliDecompress(&mut &body[..], &mut out)
-                .map_err(|_| Error::Decompress)?;
+            use brotli_decompressor::{BrotliDecompressStream, BrotliResult, BrotliState};
+            let mut out = alloc::vec![0u8; raw_len];
+            let mut state = BrotliState::new(HeapAlloc, HeapAlloc, HeapAlloc);
+            let (mut avail_in, mut in_off) = (body.len(), 0usize);
+            let (mut avail_out, mut out_off) = (raw_len, 0usize);
+            let mut total = 0usize;
+            match BrotliDecompressStream(
+                &mut avail_in,
+                &mut in_off,
+                body,
+                &mut avail_out,
+                &mut out_off,
+                &mut out,
+                &mut total,
+                &mut state,
+            ) {
+                // whole input + exact-size output in one call: anything but
+                // success (incl. NeedsMoreInput/Output) is corrupt or a
+                // raw_len mismatch
+                BrotliResult::ResultSuccess => {}
+                _ => return Err(Error::Decompress),
+            }
+            out.truncate(out_off);
             out
         }
         #[cfg(feature = "xz")]
@@ -93,4 +113,43 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>, Err
         return Err(Error::BadFormat); // header lied about the payload size
     }
     Ok(out)
+}
+
+/// Global-allocator-backed allocator for the no-stdlib brotli decoder —
+/// mirrors alloc-stdlib's `StandardAlloc` (zero-initialized cells), which
+/// is `std`-only.
+#[cfg(feature = "brotli")]
+struct HeapAlloc;
+
+#[cfg(feature = "brotli")]
+struct HeapCell<T>(alloc::boxed::Box<[T]>);
+
+#[cfg(feature = "brotli")]
+impl<T> Default for HeapCell<T> {
+    fn default() -> Self {
+        HeapCell(Vec::new().into_boxed_slice())
+    }
+}
+
+#[cfg(feature = "brotli")]
+impl<T> brotli_decompressor::SliceWrapper<T> for HeapCell<T> {
+    fn slice(&self) -> &[T] {
+        &self.0
+    }
+}
+
+#[cfg(feature = "brotli")]
+impl<T> brotli_decompressor::SliceWrapperMut<T> for HeapCell<T> {
+    fn slice_mut(&mut self) -> &mut [T] {
+        &mut self.0
+    }
+}
+
+#[cfg(feature = "brotli")]
+impl<T: Clone + Default> brotli_decompressor::Allocator<T> for HeapAlloc {
+    type AllocatedMemory = HeapCell<T>;
+    fn alloc_cell(&mut self, len: usize) -> HeapCell<T> {
+        HeapCell(alloc::vec![T::default(); len].into_boxed_slice())
+    }
+    fn free_cell(&mut self, _cell: HeapCell<T>) {}
 }
