@@ -120,7 +120,7 @@
     <div id="stats"></div>
   </div>
   <div class="qsec">
-    <div class="qtitle">Misassigned <span>· vs raw ε=0, pre-quant</span></div>
+    <div class="qtitle">Misassigned <span>· vs raw ε=0 · display snap priced separately as “quant”</span></div>
     <div id="mstats"></div>
   </div>
   </div>
@@ -370,6 +370,28 @@ function workerBody() {
     }
     flush();
   }
+  // area (km²) and people between a pre-snap segment a→b and its drawn
+  // (quantized) counterpart qa→qb — the misassignment the display snap adds
+  // on top of the simplification pockets. Split at the crossing when the two
+  // segments intersect (snap usually moves the ends to opposite sides).
+  function quantQuad(ax, ay, bx, by, qax, qay, qbx, qby, dens, acc) {
+    var tri = function (x1, y1, x2, y2, x3, y3) {
+      return Math.abs((x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1)) / 2;
+    };
+    var rx = bx - ax, ry = by - ay, sx = qbx - qax, sy = qby - qay;
+    var den = rx * sy - ry * sx, area;
+    var t = den ? ((qax - ax) * sy - (qay - ay) * sx) / den : -1;
+    var u = den ? ((qax - ax) * ry - (qay - ay) * rx) / den : -1;
+    if (t > 0 && t < 1 && u > 0 && u < 1) {
+      var xx = ax + t * rx, xy = ay + t * ry;
+      area = tri(ax, ay, xx, xy, qax, qay) + tri(bx, by, xx, xy, qbx, qby);
+    } else {
+      area = Math.abs(ax * (by - qay) + bx * (qby - ay) + qbx * (qay - by) + qax * (ay - qby)) / 2;
+    }
+    var km2 = area * 111.32 * 111.32 * Math.cos((ay + by) / 2 * Math.PI / 180);
+    acc.area += km2;
+    acc.people += km2 * dens;
+  }
   // max perpendicular deviation (meters) of raw verts (i0..i1) from the raw
   // chord i0→i1 (indices within arc at base s) — same "vs raw ε=0, pre-quant"
   // reference as the misassigned stat, so divergence highlighting shows where
@@ -412,6 +434,7 @@ function workerBody() {
       var weighted = DENS && m.wmin < 1;
       var pre = m.pre && m.quant !== 'f64'; // Q→S: snap before simplifying
       var acc = { area: 0, people: 0 };
+      var qacc = { area: 0, people: 0 }; // display-snap misassignment
       for (var a = 0; a + 1 < OFFS.length; a++) {
         var s = OFFS[a], n = OFFS[a + 1] - s;
         // `src` is exactly what the simplifier eats — the walk-match and
@@ -435,14 +458,17 @@ function workerBody() {
         }
         var res = new Float64Array(W.memory.buffer, buf, k * 2);
         out.set(res, kept * 2);
+        var rawIdx = null;
         if (k < n) {
           // walk-match kept verts to input indices (exact equality, so it
           // must scan `src` — what the simplifier ate); snapping is 1:1 per
           // vertex, so those indices ARE raw indices and pockets price the
           // raw chain
+          rawIdx = new Int32Array(k);
           var j = 0, prev = -1;
           for (var v = 0; v < k; v++) {
             while (src[(base + j) * 2] !== res[v * 2] || src[(base + j) * 2 + 1] !== res[v * 2 + 1]) j++;
+            rawIdx[v] = j;
             if (prev >= 0 && j > prev + 1) {
               pockets(s, prev, j, acc);
               devsAll[kept + v] = devMax(s, prev, j);
@@ -450,11 +476,32 @@ function workerBody() {
             prev = j; j++;
           }
         }
+        if (m.quant !== 'f64') {
+          // price the display snap per drawn segment, on top of the pockets
+          // (which deliberately exclude quantization)
+          for (var v2 = 1; v2 < k; v2++) {
+            var iA = rawIdx ? rawIdx[v2 - 1] : v2 - 1, iB = rawIdx ? rawIdx[v2] : v2;
+            var ax2, ay2, bx2, by2, qax, qay, qbx, qby;
+            if (pre) { // Q→S: drawn = output (already snapped); pre-snap = raw
+              ax2 = COORDS[(s + iA) * 2]; ay2 = COORDS[(s + iA) * 2 + 1];
+              bx2 = COORDS[(s + iB) * 2]; by2 = COORDS[(s + iB) * 2 + 1];
+              qax = res[(v2 - 1) * 2]; qay = res[(v2 - 1) * 2 + 1];
+              qbx = res[v2 * 2]; qby = res[v2 * 2 + 1];
+            } else { // S→Q: output is raw copies; drawn = display snap of it
+              ax2 = res[(v2 - 1) * 2]; ay2 = res[(v2 - 1) * 2 + 1];
+              bx2 = res[v2 * 2]; by2 = res[v2 * 2 + 1];
+              qax = qc(ax2, m.quant, 180); qay = qc(ay2, m.quant, 90);
+              qbx = qc(bx2, m.quant, 180); qby = qc(by2, m.quant, 90);
+            }
+            quantQuad(ax2, ay2, bx2, by2, qax, qay, qbx, qby,
+              DENS ? (DENS[s + iA] + DENS[s + iB]) / 2 : 0, qacc);
+          }
+        }
         kept += k; outOffs[a + 1] = kept;
       }
       var coords = out.slice(0, kept * 2);
       var devs = devsAll.slice(0, kept);
-      postMessage({ type: 'done', gen: m.gen, kept: kept, ms: Date.now() - t0, coords: coords, offs: outOffs, devs: devs, area: acc.area, people: acc.people },
+      postMessage({ type: 'done', gen: m.gen, kept: kept, ms: Date.now() - t0, coords: coords, offs: outOffs, devs: devs, area: acc.area, people: acc.people, qarea: qacc.area, qpeople: qacc.people },
         [coords.buffer, outOffs.buffer, devs.buffer]);
     }
   };
@@ -1639,20 +1686,33 @@ function updateStats() {
   });
   if (!shown) el.innerHTML = '<div class="st" style="color:#5a6472">nothing enabled</div>';
 
-  // misassignment vs raw: pocket area, and people when densities shipped
+  // misassignment vs raw: simplification pockets, plus the display snap's
+  // own contribution as a separate muted "quant" component (a Raw layer with
+  // quantization shows just that part)
   var ms = document.getElementById('mstats');
   ms.innerHTML = '';
   var mshown = 0;
   layers.forEach(function (s) {
-    if (!s.on || !s.result || !s.data || ALGO[s.algo].key === 'raw') return;
+    if (!s.on || !s.result || !s.data) return;
+    var isRaw = ALGO[s.algo].key === 'raw';
+    var qa = s.result.qarea || 0;
+    if (isRaw && !(qa > 0)) return; // raw @ f64: nothing lossy to price
     mshown++;
+    var num = isRaw ? '' :
+      Math.round(s.result.area).toLocaleString() + ' km²' +
+      (s.data.dens ? ' · <span class="pct">' + Math.round(s.result.people).toLocaleString() + ' people</span>' : '');
+    if (qa > 0) {
+      num += '<span style="color:#8b98a8">' + (isRaw ? '' : ' + ') +
+        Math.round(qa).toLocaleString() + ' km²' +
+        (s.data.dens ? ' · ' + Math.round(s.result.qpeople).toLocaleString() + ' people' : '') +
+        ' quant</span>';
+    }
     ms.innerHTML += '<div class="st"><span class="sw" style="background:' + s.color + '"></span>' +
-      '<span>' + DS_LIST[s.dsi] + ' ' + ALGO[s.algo].name + ' ε' + s.eps + (s.pwv > 0 ? ' pop' + s.popLabel() : '') + '</span>' +
-      '<span class="num">' + Math.round(s.result.area).toLocaleString() + ' km²' +
-      (s.data.dens ? ' · <span class="pct">' + Math.round(s.result.people).toLocaleString() + ' people</span>' : '') +
-      '</span></div>';
+      '<span>' + DS_LIST[s.dsi] + ' ' + ALGO[s.algo].name + (isRaw ? ' @ ' + QUANT[s.quant].label : ' ε' + s.eps) +
+      (s.pwv > 0 && !isRaw ? ' pop' + s.popLabel() : '') + '</span>' +
+      '<span class="num">' + num + '</span></div>';
   });
-  if (!mshown) ms.innerHTML = '<div class="st" style="color:#5a6472">no simplified layers enabled</div>';
+  if (!mshown) ms.innerHTML = '<div class="st" style="color:#5a6472">no lossy layers enabled</div>';
 
   if (gridCb.checked) gridRefresh(); // grid follows the layer's live geometry
   encRequest(); // encode follows the selected layer's settings (sig-deduped)
