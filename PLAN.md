@@ -128,12 +128,21 @@ and the known-point tests as regression fixtures. Nothing else survives.
 
 ```
 header:      magic, version, dataset(now|1970|all), tzbb_release,
-             eps, quant_bits, simplify_algo (rdp|vw|ii, §14.8), grid_deg, codec
+             eps, quant_bits, simplify_algo (rdp|vw|ii, §14.8), grid_deg, codec,
+             eager_coords/eager_rings/eager_polys u32 (v2)
 zone table:  tzid string pool + offsets
 arc store:   per arc: [varint vcount][i{16,24,32} first vertex][zigzag-varint deltas]
 ring index:  feature → polygon → ring = signed arc refs
 grid:        Array2<u16> primary (tagged) + interned-CSR (list_offsets u16, list_ids u16)
 ```
+
+**v2 (2026-07): eager-cache counts in the header.** The encoder knows exactly
+what `preload` will hold (coords as Σ referenced-arc vcounts — reservation may
+only over-estimate, by the deduped junctions), so eager mode reserves every Vec
+exactly: peak heap = final cache size, `Finder::preload_bytes()` is O(1). Found
+on the ESP32-S3: push-doubling growth OOMed balanced's 7.83 MiB cache inside
+8 MiB PSRAM (the 4→8 MiB doubling needs 12 MiB transient; exact reservation
+fits with room to spare — §15).
 
 The header records **every knob**, so the runtime decoder is **generic** — changing
 ε/quant/grid regenerates the asset but never the decode code. This keeps the
@@ -654,6 +663,21 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
    `links = "utz"` / `DEP_UTZ_DECODERS` build-time cross-check was considered
    and **rejected** — not worth reintroducing a build.rs to `utz` (§2's "NO
    build.rs" stands).
+10. **Streaming-eager ("eager v2") — open, designed 2026-07.** Today an eager
+    Finder needs the payload resident (grid/tzids/ring index live there), so
+    eager mode from a *compressed* asset peaks at payload + cache. The idea:
+    stream-decompress from flash, retain only the small sections (zone table,
+    ring index, grid — tens of KB), decode each arc into the cache as it
+    streams past, never holding the full payload. Requires an **arc-indexed**
+    eager layout (ring assembly needs random arc access a stream can't give):
+    coords stored per arc + an arc_ends index, rings PIP-folded
+    per-arc-forward at lookup — the same order-independent parity argument
+    that justified streaming PIP (§14.7), minus the varint decode. Prereqs in
+    place: v2 header counts size the cache exactly (§4), and all shipped
+    decoders have streaming cores. Payoff: eager mode where payload + cache
+    doesn't fit. Not built yet: for uncompressed assets `from_static` +
+    `preload` already leaves the payload in flash, which covered every case
+    measured so far (§15).
 
 ---
 
@@ -760,13 +784,38 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   model-perfect), brotli@32K 365 K. So for the small tiers: gzip is the RAM
   floor; ruzstd@8K buys ~3% flash for +75 K RAM. Host decode speed
   gzip < zstd < brotli ≪ xz (~10×).
-- [ ] **Streaming PIP from flash** (§14.7): the implementation landed
+- [x] **Streaming PIP from flash** (§14.7): the implementation landed
   host-side (2026-07 — `roundtrip`: 0 wrong over 100k, static/lazy/eager all
   agree; lazy 3.0 µs/pt streaming vs 4.1–4.5 with the old decode-into-scratch
-  loop; eager 0.54 µs after 3.1 MB preload). Remaining: lookup latency
-  streaming-from-flash vs streaming-from-RAM vs buffered-decode on embedded
-  firmware targets — Xtensa is one convenient case, not the design center;
-  flash interfaces differ across Cortex-M / RISC-V / ESP32-class parts.
+  loop; eager 0.54 µs after 3.1 MB preload). **Embedded: measured 2026-07-07
+  on ESP32-S3 @ 240 MHz** (N16R8 — 16 MB flash, 8 MB octal PSRAM;
+  `utz-bench-firmware`, 2000 uniform pts, fastest of 3 rounds, every leg's
+  checksum = the host run's). µs/lookup:
+
+  | mode | tiny | compact | balanced |
+  |---|--:|--:|--:|
+  | host (lazy, x86, for scale) | 0.84 | 4.75 | 9.4 |
+  | XIP flash (`from_static`) | 256 | 1216 | 2186 |
+  | RAM copy — SRAM / PSRAM | 242 / 252 | — / 1202 | — / 2164 |
+  | buffered decode → RAM | 242 | 1202 | 2164 |
+  | eager (`preload`, PSRAM) | 83 | 298 | 524 |
+
+  Conclusions: **streaming PIP from flash costs 1–6% over RAM** (the S3's
+  cache absorbs the sequential-per-arc access pattern) — zero-copy flash
+  mode needs no RAM apology, `-static` assets are genuinely free. PSRAM vs
+  SRAM: +4%. Buffered-decode equals RAM-copy at steady state (same memory
+  after decode); its price is one-time decode on-device: gzip 26 ms
+  (67→119 K), xz 1 251 ms (441→600 K), brotli 1 851 ms (1 257→1 951 K) —
+  same ranking as the host sweep (§7). **Eager is the real lever: 2.9–4.2×
+  over streaming** (soft-float f64 PIP dominates everything; eager only
+  removes the per-lookup varint+delta decode, and that's already 3–4×).
+  Overall the S3 runs ~250–300× the host per lookup — soft-float, not the
+  memory system, is the wall (80 MHz default-clock numbers are ≈2.9× these).
+  Balanced eager (7.83 MiB cache, preload 1 854 ms) fits the 8 MiB PSRAM
+  **only** with the v2 exact reservation (§4) — push-doubling growth OOMed
+  at the 4→8 MiB step. Caveats: one part, one flash interface —
+  Cortex-M/RISC-V QSPI parts unmeasured; f32 or fixed-point lookup input is
+  the obvious next lever if embedded speed ever matters (§13).
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
   reads vs streaming's sequential prefetch); `geometry-rs` comparison.
