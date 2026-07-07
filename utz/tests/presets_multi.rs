@@ -19,6 +19,6 @@ fn tiny_and_tiny_static_agree() {
         (77.209, 28.6139),   // Delhi
         (0.0, 0.0),          // gulf of Guinea (ocean)
     ] {
-        assert_eq!(lazy.lookup(lon, lat), flat.lookup(lon, lat), "({lon}, {lat})");
+        assert_eq!(lazy.lookup(utz::Position { lon, lat }), flat.lookup(utz::Position { lon, lat }), "({lon}, {lat})");
     }
 }

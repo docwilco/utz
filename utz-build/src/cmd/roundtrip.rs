@@ -58,7 +58,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
 
     let pts = gen_pts(npts);
     let t0 = Instant::now();
-    let got: Vec<Option<&str>> = pts.iter().map(|&(lo, la)| finder.lookup(lo, la)).collect();
+    let got: Vec<Option<&str>> = pts.iter().map(|&(lo, la)| finder.lookup(utz::Position { lon: lo, lat: la })).collect();
     let dt = t0.elapsed();
 
     let (mut diff, mut wrong, mut shown) = (0usize, 0usize, 0usize);
@@ -81,7 +81,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
 
     // coarse sanity: must answer everywhere with-oceans covers, cheaply
     let t0 = Instant::now();
-    let fz = pts.iter().filter(|&&(lo, la)| finder.lookup_coarse(lo, la).is_some()).count();
+    let fz = pts.iter().filter(|&&(lo, la)| finder.lookup_coarse(utz::Position { lon: lo, lat: la }).is_some()).count();
     println!("lookup_coarse: {fz}/{npts} answered, {:.2} µs/point", t0.elapsed().as_micros() as f64 / npts as f64);
 
     // zero-copy static source (core-rung path) must answer identically —
@@ -90,7 +90,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         .expect("static decode");
     let nstatic = npts.min(20_000);
     for &(lo, la) in pts.iter().take(nstatic) {
-        assert_eq!(sf.lookup(lo, la), finder.lookup(lo, la), "static ({lo},{la})");
+        assert_eq!(sf.lookup(utz::Position { lon: lo, lat: la }), finder.lookup(utz::Position { lon: lo, lat: la }), "static ({lo},{la})");
     }
     println!("from_static lookup: agrees over {nstatic}");
 
@@ -98,7 +98,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let mut ef = utz::Finder::from_reader(&container[..]).expect("decode");
     let ((), heap, ms) = super::window_sweep::measure(|| ef.preload());
     let t0 = Instant::now();
-    let egot: Vec<Option<&str>> = pts.iter().map(|&(lo, la)| ef.lookup(lo, la)).collect();
+    let egot: Vec<Option<&str>> = pts.iter().map(|&(lo, la)| ef.lookup(utz::Position { lon: lo, lat: la })).collect();
     let edt = t0.elapsed();
     assert!(egot.iter().zip(&got).all(|(a, b)| a == b), "eager disagrees with lazy");
     println!(
@@ -117,7 +117,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             .unwrap_or_else(|e| panic!("{codec:?} decode failed: {e:?}"));
         assert_eq!(f.tzbb_release(), "roundtrip-dev");
         for &(lo, la) in pts.iter().take(2_000) {
-            assert_eq!(f.lookup(lo, la), finder.lookup(lo, la), "{codec:?} ({lo},{la})");
+            assert_eq!(f.lookup(utz::Position { lon: lo, lat: la }), finder.lookup(utz::Position { lon: lo, lat: la }), "{codec:?} ({lo},{la})");
         }
         println!("{codec:?}: {:.1} KB, roundtrip OK", c.len() as f64 / 1024.0);
     }

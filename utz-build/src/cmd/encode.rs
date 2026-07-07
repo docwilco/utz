@@ -64,7 +64,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
 
     // sanity: the runtime must accept what we just wrote
     let f = utz::Finder::from_vec(container.clone()).map_err(|e| anyhow::anyhow!("verify: {e}"))?;
-    anyhow::ensure!(f.lookup(-0.1276, 51.5072).is_some(), "verify lookup failed");
+    anyhow::ensure!(f.lookup(utz::Position { lon: -0.1276, lat: 51.5072 }).is_some(), "verify lookup failed");
 
     let out = a.out.unwrap_or_else(|| {
         let w = a.w_min.map(|w| format!("-w{w}")).unwrap_or_default();

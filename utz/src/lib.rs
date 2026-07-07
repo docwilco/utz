@@ -42,7 +42,7 @@ pub mod format;
 pub mod pip;
 
 mod finder;
-pub use finder::Finder;
+pub use finder::{Finder, Position};
 
 /// Preset assets baked in by the data-tier features (§11). With exactly one
 /// preset enabled, [`Finder::new`] loads it; with several in the tree, pick

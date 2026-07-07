@@ -31,6 +31,21 @@ use crate::{pip, Error};
 
 const NO_ZONE: u16 = 0x7FFF;
 
+/// A geographic position in degrees — **order-neutral by design** (§14.3):
+/// construct with named fields, so there is no argument order to get wrong,
+/// only values. `Position { lat: 51.5, lon: -0.13 }` and
+/// `Position { lon: -0.13, lat: 51.5 }` are the same position.
+///
+/// Deliberately no positional constructor and no `From<(f64, f64)>` — either
+/// would reintroduce the lon/lat-swap footgun this type exists to kill.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Position {
+    /// longitude in degrees, −180..=180 (x)
+    pub lon: f64,
+    /// latitude in degrees, −90..=90 (y)
+    pub lat: f64,
+}
+
 /// The container's payload section. `Cow::Borrowed` = zero-copy mode,
 /// `Cow::Owned` = lazy/eager (§9). `Cow` itself lives in `alloc`; on the
 /// bare-`core` rung borrowed is the only possible variant.
@@ -268,13 +283,12 @@ impl Finder {
     }
 
     /// Accurate lookup: grid cell → interior zone (O(1)) or candidates → PIP.
-    /// `(lon, lat)` order — x before y.
     ///
     /// Zero-copy/lazy Finders test candidates directly off the payload bytes
     /// (zero alloc); eager ones (after [`preload`](Finder::preload)) scan
     /// pre-decoded rings.
-    pub fn lookup(&self, lon: f64, lat: f64) -> Option<&str> {
-        let (px, py) = self.quantize(lon, lat);
+    pub fn lookup(&self, pos: Position) -> Option<&str> {
+        let (px, py) = self.quantize(pos);
         match self.cell_value(px, py) {
             v if v == NO_ZONE => None,
             v if v & 0x8000 == 0 => self.tzid(v),
@@ -298,8 +312,8 @@ impl Finder {
 
     /// Grid-only approximate lookup: no geometry decoded, ~cell-size border
     /// error. Border cells answer with the cell's dominant zone.
-    pub fn lookup_coarse(&self, lon: f64, lat: f64) -> Option<&str> {
-        let (px, py) = self.quantize(lon, lat);
+    pub fn lookup_coarse(&self, pos: Position) -> Option<&str> {
+        let (px, py) = self.quantize(pos);
         match self.cell_value(px, py) {
             v if v == NO_ZONE => None,
             v if v & 0x8000 == 0 => self.tzid(v),
@@ -313,11 +327,11 @@ impl Finder {
     fn qmax(&self) -> f64 {
         ((1u64 << (self.hdr.quant_bits - 1)) - 1) as f64
     }
-    fn quantize(&self, lon: f64, lat: f64) -> (i32, i32) {
+    fn quantize(&self, pos: Position) -> (i32, i32) {
         // round-half-away like the encoder (f64::round is std-only)
         let r = |v: f64| (v + if v >= 0.0 { 0.5 } else { -0.5 }) as i32;
         let q = self.qmax();
-        (r(lon / 180.0 * q), r(lat / 90.0 * q))
+        (r(pos.lon / 180.0 * q), r(pos.lat / 90.0 * q))
     }
 
     fn cell_value(&self, px: i32, py: i32) -> u16 {

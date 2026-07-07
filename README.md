@@ -21,7 +21,8 @@ Tiny, embeddable latitude/longitude → IANA timezone lookup for Rust.
 
 ```rust
 let finder = utz::Finder::new()?;              // or ::from_static(flash_bytes)
-let tz = finder.lookup(-0.1278, 51.5074);      // Some("Europe/London")
+let tz = finder.lookup(utz::Position { lon: -0.1278, lat: 51.5074 });
+// Some("Europe/London")
 ```
 
 ## Preset bundles

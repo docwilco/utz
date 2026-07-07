@@ -8,7 +8,7 @@
 fn new_loads_the_accurate_preset() {
     let f = utz::Finder::new().expect("accurate asset decodes");
     assert_eq!(f.tzbb_release(), "dev");
-    let london = f.lookup(-0.1276, 51.5072);
+    let london = f.lookup(utz::Position { lon: -0.1276, lat: 51.5072 });
     assert!(london.is_some(), "accurate lookup resolves");
-    assert_eq!(f.lookup_coarse(-0.1276, 51.5072), london, "coarse agrees inland");
+    assert_eq!(f.lookup_coarse(utz::Position { lon: -0.1276, lat: 51.5072 }), london, "coarse agrees inland");
 }

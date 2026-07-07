@@ -103,7 +103,7 @@ fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> anyhow::Result<Vec<u8>> {
         let lat = 90.0 - (r as f64 + 0.5) * STEP;
         for c in 0..w {
             let lon = -180.0 + (c as f64 + 0.5) * STEP;
-            let id = finder.lookup(lon, lat).and_then(|t| idx.get(t).copied()).unwrap_or(0xFFFF);
+            let id = finder.lookup(utz::Position { lon, lat }).and_then(|t| idx.get(t).copied()).unwrap_or(0xFFFF);
             o.extend_from_slice(&id.to_le_bytes());
         }
     }

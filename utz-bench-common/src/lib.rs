@@ -42,7 +42,7 @@ pub fn run(finder: &utz::Finder, pts: &[(f64, f64)], now_us: &mut dyn FnMut() ->
     let (mut hits, mut checksum) = (0u32, 0u64);
     let t0 = now_us();
     for &(lon, lat) in pts {
-        if let Some(tz) = finder.lookup(lon, lat) {
+        if let Some(tz) = finder.lookup(utz::Position { lon, lat }) {
             hits += 1;
             checksum = checksum.wrapping_add(tz.len() as u64);
         }
