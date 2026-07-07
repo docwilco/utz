@@ -17,10 +17,16 @@ default = []
 
 # ---- choice 1: data tier ---------------------------------------------------
 # Presets bake one CI-generated asset + the codec to read it (`alloc` comes
-# along for decompression). `custom` is a marker: bring your own asset,
-# generated with utz-build (§11). micro/balanced/accurate land once their
-# recipes are pinned (§14.5).
-nano = ["dep:utz-data-nano", "alloc", "gzip"]
+# along for decompression); recipes are pinned in §14.5. Naming grammar: a
+# bare tier name is the compressed asset (lazy/eager modes), `<tier>-static`
+# is the same decoded container shipped flat — zero-copy via `from_static`,
+# no alloc, no codec, `core`-rung capable. `custom` is a marker: bring your
+# own asset, generated with utz-build (§11).
+tiny = ["dep:utz-data-tiny", "alloc", "gzip"]
+tiny-static = ["dep:utz-data-tiny-static"]
+compact = ["dep:utz-data-compact", "alloc", "xz"]
+balanced = ["dep:utz-data-balanced", "alloc", "brotli"]
+accurate = ["dep:utz-data-accurate", "alloc", "brotli"]
 custom = []
 
 # ---- choice 2: environment ladder (§11): std ⊃ alloc ⊃ core -----------------
@@ -53,7 +59,11 @@ zstd = { version = "0.13", optional = true }
 # shim (decompress.rs), keeping the decoder alloc-clean → preset-eligible
 brotli-decompressor = { version = "5.0", optional = true, default-features = false }
 lzma-rust2 = { version = "0.16", optional = true, default-features = false, features = ["xz"] }
-utz-data-nano = { path = "../utz-data-nano", optional = true }
+utz-data-tiny = { path = "../utz-data-tiny", optional = true }
+utz-data-tiny-static = { path = "../utz-data-tiny-static", optional = true }
+utz-data-compact = { path = "../utz-data-compact", optional = true }
+utz-data-balanced = { path = "../utz-data-balanced", optional = true }
+utz-data-accurate = { path = "../utz-data-accurate", optional = true }
 
 [dev-dependencies]
 geo = { workspace = true }

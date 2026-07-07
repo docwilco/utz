@@ -13,9 +13,16 @@
 // §11: two mandatory, at-least-one-of feature choices. "At least one of"
 // errors can only be *silenced* by feature union, never triggered — safe
 // under cargo's feature unification. The message is the onboarding.
-#[cfg(not(any(feature = "nano", feature = "custom")))]
+#[cfg(not(any(
+    feature = "tiny",
+    feature = "tiny-static",
+    feature = "compact",
+    feature = "balanced",
+    feature = "accurate",
+    feature = "custom"
+)))]
 compile_error!(
-    "utz: pick a data tier: a preset (`nano`; `micro`/`balanced`/`accurate` to come) \
+    "utz: pick a data tier: a preset (`tiny`/`tiny-static`/`compact`/`balanced`/`accurate`) \
      or `custom` (bring your own asset, generated with utz-build)"
 );
 #[cfg(not(any(feature = "core", feature = "alloc", feature = "std")))]
@@ -39,12 +46,37 @@ pub use finder::Finder;
 
 /// Preset assets baked in by the data-tier features (§11). With exactly one
 /// preset enabled, [`Finder::new`] loads it; with several in the tree, pick
-/// explicitly: `Finder::from_slice(utz::data::NANO)`.
-#[cfg(feature = "nano")]
+/// explicitly: `Finder::from_slice(utz::data::TINY)` /
+/// `Finder::from_static(utz::data::TINY_STATIC)`.
+#[cfg(any(
+    feature = "tiny",
+    feature = "tiny-static",
+    feature = "compact",
+    feature = "balanced",
+    feature = "accurate"
+))]
 pub mod data {
-    /// nano preset: dataset `now`, RDP ε=10 000 m (pop-density floor 1e-3),
+    /// tiny preset: dataset `now`, RDP ε=10 000 m (pop-density floor 1e-3),
     /// i16, 2° grid, gzip — ~67 K flash, peak decode RAM 119 K (§14.5).
-    pub use utz_data_nano::NANO;
+    #[cfg(feature = "tiny")]
+    pub use utz_data_tiny::TINY;
+    /// tiny-static preset: tiny's decoded container shipped flat — ~119 K
+    /// flash, zero-copy via [`Finder::from_static`](crate::Finder::from_static),
+    /// ~0 RAM, no decoder, bare-`core` capable (§14.5).
+    #[cfg(feature = "tiny-static")]
+    pub use utz_data_tiny_static::TINY_STATIC;
+    /// compact preset: dataset `now`, RDP ε=1 000 m (pop-density floor 1e-3),
+    /// i24, 4/3° grid, xz (§14.5).
+    #[cfg(feature = "compact")]
+    pub use utz_data_compact::COMPACT;
+    /// balanced preset: dataset `now`, RDP ε=50 m (pop-density floor 2e-2),
+    /// i24, 2/3° grid, brotli (§14.5).
+    #[cfg(feature = "balanced")]
+    pub use utz_data_balanced::BALANCED;
+    /// accurate preset: dataset `now`, RDP ε=10 m (pop-density floor 1e-1),
+    /// i32, 0.5° grid, brotli (§14.5).
+    #[cfg(feature = "accurate")]
+    pub use utz_data_accurate::ACCURATE;
 }
 
 /// Errors surfaced by the reader.

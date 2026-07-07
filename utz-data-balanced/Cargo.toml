@@ -1,0 +1,13 @@
+[package]
+name = "utz-data-balanced"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# Preset data crate (PLAN.md §11): one CI-generated `.utz` asset as a static.
+# The asset is gitignored and regenerated, never committed (§5 "sources are
+# fetched"); publishing is a CI job using `cargo publish --allow-dirty` with
+# generation logs + checksums attached to a GitHub release (§11 provenance).
+
+[dependencies]

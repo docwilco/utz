@@ -87,7 +87,7 @@ impl Config {
     }
 
     /// Population-density-weighted simplification: ε multiplier floor in the
-    /// densest cells (nano uses 1e-4). First use downloads GHS-POP (~460 MB,
+    /// densest cells (tiny uses 1e-3). First use downloads GHS-POP (~460 MB,
     /// cached).
     pub fn density_weight_floor(mut self, w_min: f64) -> Self {
         self.density_weight_floor = Some(w_min);

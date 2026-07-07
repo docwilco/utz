@@ -1937,7 +1937,11 @@ dependencies = [
  "lzma-rust2",
  "miniz_oxide",
  "ruzstd",
- "utz-data-nano",
+ "utz-data-accurate",
+ "utz-data-balanced",
+ "utz-data-compact",
+ "utz-data-tiny",
+ "utz-data-tiny-static",
  "zstd",
 ]
 
@@ -1984,7 +1988,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "utz-data-nano"
+name = "utz-data-accurate"
+version = "0.0.0"
+
+[[package]]
+name = "utz-data-balanced"
+version = "0.0.0"
+
+[[package]]
+name = "utz-data-compact"
+version = "0.0.0"
+
+[[package]]
+name = "utz-data-tiny"
+version = "0.0.0"
+
+[[package]]
+name = "utz-data-tiny-static"
 version = "0.0.0"
 
 [[package]]

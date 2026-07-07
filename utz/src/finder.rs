@@ -72,11 +72,80 @@ pub struct Finder {
 impl Finder {
     /// Load the preset selected by the (single) enabled preset feature.
     /// Cfg'd out when several presets are in the tree — load explicitly with
-    /// `from_slice(utz::data::NANO)` instead.
-    // extend per preset: all(feature = "nano", not(any(feature = "micro", …)))
-    #[cfg(feature = "nano")]
+    /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
+    /// `tiny-static` is the zero-copy one (`from_static`, bare `core`); the
+    /// rest are compressed and load lazy (`from_slice`).
+    #[cfg(all(
+        feature = "tiny",
+        not(any(
+            feature = "tiny-static",
+            feature = "compact",
+            feature = "balanced",
+            feature = "accurate"
+        ))
+    ))]
     pub fn new() -> Result<Finder, Error> {
-        Finder::from_slice(crate::data::NANO)
+        Finder::from_slice(crate::data::TINY)
+    }
+    /// Load the preset selected by the (single) enabled preset feature.
+    /// Cfg'd out when several presets are in the tree — load explicitly with
+    /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
+    #[cfg(all(
+        feature = "tiny-static",
+        not(any(
+            feature = "tiny",
+            feature = "compact",
+            feature = "balanced",
+            feature = "accurate"
+        ))
+    ))]
+    pub fn new() -> Result<Finder, Error> {
+        Finder::from_static(crate::data::TINY_STATIC)
+    }
+    /// Load the preset selected by the (single) enabled preset feature.
+    /// Cfg'd out when several presets are in the tree — load explicitly with
+    /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
+    #[cfg(all(
+        feature = "compact",
+        not(any(
+            feature = "tiny",
+            feature = "tiny-static",
+            feature = "balanced",
+            feature = "accurate"
+        ))
+    ))]
+    pub fn new() -> Result<Finder, Error> {
+        Finder::from_slice(crate::data::COMPACT)
+    }
+    /// Load the preset selected by the (single) enabled preset feature.
+    /// Cfg'd out when several presets are in the tree — load explicitly with
+    /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
+    #[cfg(all(
+        feature = "balanced",
+        not(any(
+            feature = "tiny",
+            feature = "tiny-static",
+            feature = "compact",
+            feature = "accurate"
+        ))
+    ))]
+    pub fn new() -> Result<Finder, Error> {
+        Finder::from_slice(crate::data::BALANCED)
+    }
+    /// Load the preset selected by the (single) enabled preset feature.
+    /// Cfg'd out when several presets are in the tree — load explicitly with
+    /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
+    #[cfg(all(
+        feature = "accurate",
+        not(any(
+            feature = "tiny",
+            feature = "tiny-static",
+            feature = "compact",
+            feature = "balanced"
+        ))
+    ))]
+    pub fn new() -> Result<Finder, Error> {
+        Finder::from_slice(crate::data::ACCURATE)
     }
 
     /// Borrow a container from `&'static` bytes (flash partition,

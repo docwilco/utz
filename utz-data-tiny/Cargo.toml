@@ -1,5 +1,5 @@
 [package]
-name = "utz-data-nano"
+name = "utz-data-tiny"
 version = "0.0.0"
 edition.workspace = true
 license.workspace = true
