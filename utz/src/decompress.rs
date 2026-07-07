@@ -9,7 +9,7 @@
 //! | `ruzstd`   | 2          | ruzstd (pure Rust)   | no (alloc)   |
 //! | `zstd-sys` | 2          | zstd (C libzstd)     | yes          |
 //! | `brotli`   | 3          | brotli-decompressor (no-stdlib) | no (alloc) |
-//! | `xz`       | 4          | lzma-rust2           | yes (for now)|
+//! | `xz`       | 4          | lzma-rust2 (no_std)  | no (alloc)   |
 //!
 //! If both zstd backends are enabled, `zstd-sys` wins (faster).
 
@@ -100,11 +100,23 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>, Err
         }
         #[cfg(feature = "xz")]
         4 => {
-            use std::io::Read as _;
-            let mut out = Vec::with_capacity(raw_len);
-            lzma_rust2::XzReader::new(body, false)
-                .read_to_end(&mut out)
-                .map_err(|_| Error::Decompress)?;
+            // lzma-rust2 in no_std mode. Its `std` feature must stay OFF
+            // tree-wide: with it on, the crate's Read/Write become
+            // pub(crate) re-exports of std::io and this import breaks.
+            use lzma_rust2::Read as _;
+            let mut out = alloc::vec![0u8; raw_len];
+            let mut r = lzma_rust2::XzReader::new(body, false);
+            let mut n = 0;
+            while n < raw_len {
+                match r.read(&mut out[n..]).map_err(|_| Error::Decompress)? {
+                    0 => break,
+                    k => n += k,
+                }
+            }
+            if n == raw_len && r.read(&mut [0u8]).map_err(|_| Error::Decompress)? != 0 {
+                return Err(Error::BadFormat); // stream longer than raw_len declared
+            }
+            out.truncate(n);
             out
         }
         _ => return Err(Error::Decompress),

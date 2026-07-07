@@ -25,5 +25,5 @@ utz-simplify = { path = "../utz-simplify" }
 # codecs (all pure Rust except optional zstd)
 miniz_oxide = "0.8"
 brotli = "8.0"
-lzma-rust2 = { version = "0.16", features = ["xz", "encoder"] }
+lzma-rust2 = { version = "0.16", default-features = false, features = ["xz", "encoder", "optimization"] }
 zstd = { version = "0.13", optional = true }

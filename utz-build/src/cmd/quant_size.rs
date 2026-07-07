@@ -46,6 +46,7 @@ fn xz_dmax(raw: &[u8]) -> usize {
     let bits = (usize::BITS - (raw.len().max(1) - 1).leading_zeros()).clamp(12, 26);
     let mut opts = lzma_rust2::XzOptions::with_preset(9);
     opts.lzma_options.dict_size = 1u32 << bits;
+    use lzma_rust2::Write as _; // no_std lzma-rust2 XzWriter
     let mut w = lzma_rust2::XzWriter::new(Vec::new(), opts).unwrap();
     w.write_all(raw).unwrap();
     w.finish().unwrap().len()

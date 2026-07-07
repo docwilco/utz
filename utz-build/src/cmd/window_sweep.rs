@@ -148,13 +148,17 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             .chain([raw])
             .collect::<Vec<_>>();
         for dict in xz_dicts {
+            use lzma_rust2::Write as _; // no_std lzma-rust2 XzWriter
             let mut opts = lzma_rust2::XzOptions::with_preset(9);
             opts.lzma_options.dict_size = (dict as u32).max(4096);
             opts.lzma_options.nice_len = 273;
             opts.lzma_options.depth_limit = 512;
-            let mut w = lzma_rust2::XzWriter::new(Vec::new(), opts)?;
-            w.write_all(&payload)?;
-            row("xz9", dict, Codec::Xz, w.finish()?)?;
+            // no_std lzma_rust2::Error isn't std::error::Error → stringify
+            let mut w = lzma_rust2::XzWriter::new(Vec::new(), opts)
+                .map_err(|e| anyhow::anyhow!("xz: {e:?}"))?;
+            w.write_all(&payload).map_err(|e| anyhow::anyhow!("xz: {e:?}"))?;
+            let blob = w.finish().map_err(|e| anyhow::anyhow!("xz: {e:?}"))?;
+            row("xz9", dict, Codec::Xz, blob)?;
         }
     }
     println!("\npeak = measured heap growth during decode (output buffer included;");

@@ -25,7 +25,7 @@ geozero = "0.14"
 # codecs for the size measurements
 zstd = "0.13"
 brotli = "8.0"
-lzma-rust2 = { version = "0.16", features = ["xz", "encoder"] }
+lzma-rust2 = { version = "0.16", default-features = false, features = ["xz", "encoder", "optimization"] }
 miniz_oxide = "0.8"
 
 

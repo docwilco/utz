@@ -23,7 +23,6 @@
 //! Grid + bboxes are derived from the QUANTIZED geometry, so what the runtime
 //! PIPs is exactly what the grid indexed.
 
-use std::io::Write as _;
 
 use crate::grid::{self, Order};
 use crate::{clean, topo, Feat};
@@ -269,6 +268,7 @@ pub fn compress(raw: &[u8], codec: Codec) -> Vec<u8> {
             out
         }
         Codec::Xz => {
+            use lzma_rust2::Write as _; // no_std lzma-rust2 (see utz/Cargo.toml)
             let bits = (usize::BITS - (raw.len().max(1) - 1).leading_zeros()).clamp(12, 26);
             let mut opts = lzma_rust2::XzOptions::with_preset(9);
             opts.lzma_options.dict_size = 1u32 << bits;
