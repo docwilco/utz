@@ -91,11 +91,12 @@ impl Finder {
     fn from_reader(r: impl Read) -> Result<Finder>;          // file / network: owned buffer
 
     fn preload(&mut self);                                   // eager mode: decode all rings once (§9)
-    fn lookup(&self, lon: f64, lat: f64) -> Option<&str>;    // accurate: grid → PIP (zero-copy/lazy
+    fn lookup(&self, pos: Position) -> Option<&str>;         // accurate: grid → PIP (zero-copy/lazy
                                                              // test off the payload bytes; eager
                                                              // scans decoded rings)
-    fn lookup_coarse(&self, lon: f64, lat: f64) -> Option<&str>; // grid-only, no geometry, ~cell-size error
+    fn lookup_coarse(&self, pos: Position) -> Option<&str>;  // grid-only, no geometry, ~cell-size error
 }
+// Position { lon: f64, lat: f64 } — named fields only (§14.3)
 ```
 
 - **`from_static`** is the embedded/flash win — borrows the bytes, no RAM copy in
@@ -113,8 +114,10 @@ impl Finder {
   loaded, ~cell-size border error, tiny + instant. Optional mode.
 - **Return `Option<&str>`** (tzid, borrowed from the zone table). DST resolved
   downstream. `None` only if truly uncovered (with-oceans has full coverage).
-- API naming: **Finder / lookup** chosen. `(lon, lat)` order (x, y) — document
-  loudly; consider a `LonLat` newtype to kill the ordering footgun. (Open.)
+- API naming: **Finder / lookup** chosen. The lon/lat ordering footgun is
+  killed by `Position { lon, lat }` (§14.3, decided 2026-07): named fields =
+  keyword arguments, so there is no order to get wrong — and no positional
+  constructor / `From<(f64, f64)>` to reintroduce one.
 
 Kept from old spatialtime: the `new()`/`lookup()` *shape*, the OSM source URLs,
 and the known-point tests as regression fixtures. Nothing else survives.
@@ -125,7 +128,7 @@ and the known-point tests as regression fixtures. Nothing else survives.
 
 ```
 header:      magic, version, dataset(now|1970|all), tzbb_release,
-             rdp_eps, quant_bits, grid_deg, codec
+             eps, quant_bits, simplify_algo (rdp|vw|ii, §14.8), grid_deg, codec
 zone table:  tzid string pool + offsets
 arc store:   per arc: [varint vcount][i{16,24,32} first vertex][zigzag-varint deltas]
 ring index:  feature → polygon → ring = signed arc refs
@@ -458,7 +461,7 @@ deliberate bare-metal intent and satisfies choice 2:
   CI invocations silently miss it and build with default knobs. Rejected for that
   silent-misconfiguration mode; a builder API or committed asset can't be missed.
 - **Costs accepted:** data crates republished per TZBB release (CI-automated;
-  ≤ ~500 KB each, well under crates.io limits); preset+tweak means going custom
+  67 K–3.9 MB each, under crates.io's 10 MB limit); preset+tweak means going custom
   (three lines of build.rs).
 - **Provenance note:** the `.utz` in a data crate is gitignored and published via
   `cargo publish --allow-dirty`, so the artifact isn't byte-reproducible from a
@@ -542,7 +545,15 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
 2. ~~**`geo` vs hand-rolled PIP**~~ — **decided**: hand-rolled i64 (`utz/src/pip.rs`),
    geo dev-oracle only. 0/20k disagreements, speed parity with geo after
    adopting its loop shape (see §15).
-3. **`LonLat` newtype** vs raw `(lon, lat)` to prevent order footgun.
+3. ~~**`LonLat` newtype** vs raw `(lon, lat)`~~ — **decided + built
+   (2026-07): `Position { lon, lat }`**, an order-neutral named-field struct
+   (Rust's keyword-argument equivalent; python-timezonefinder reached the
+   same conclusion with keyword-only args). Dissolves lon-lat vs lat-lon
+   instead of answering it: named fields mean there is no wrong order, only
+   wrong values. No positional constructor, no `From<(f64, f64)>` — either
+   would reintroduce the footgun. Named `Position` (not `LonLat`, whose name
+   re-asserts an order; not `Coord`, which collides with `geo::Coord` in
+   dual-use consumer code).
 4. ~~**Antimeridian**~~ — **verified pre-split** (see §15); no split pass.
 5. ~~**Preset values** (ε/quant/grid/codec/window)~~ — **pinned 2026-07**
    (all dataset `now`, pop-density-weighted; measured sizes from the first
@@ -565,8 +576,10 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
    pure-Rust decoder — why it's the pick for the smallest compressed tier.
    Brotli beats xz at i24 on flash AND decode speed in the §15 sweep and both
    are window-insensitive — hence brotli for balanced/accurate (no-stdlib
-   mode + allocator shim landed 2026-07). Still open: whether non-`now`
-   datasets get preset variants (e.g. `balanced-1970`) or stay custom-only.
+   mode + allocator shim landed 2026-07). Non-`now` datasets: **decided
+   custom-only (2026-07)** — the five data crates are the whole preset
+   surface; `-1970`/`-all` users go through the custom tier (three lines of
+   build.rs or the CLI). Variants can be added later without breakage.
 6. ~~Crate/repo name + public naming of feature groups~~ — confirmed `utz`;
    tiers unified under trade-off adjectives (`tiny`/`compact`/`balanced`/
    `accurate` + the `-static` codec-axis suffix, 2026-07). The metric-prefix
@@ -622,9 +635,14 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
    - Corridor/streaming family (Reumann–Witkam, Opheim, Lang, Zhao–Saalfeld):
      **rejected** — quality-per-vertex worse than RDP; their single-pass
      speed advantage is worthless at build time.
-   Still open: `simplify_algo` header byte + its builder-API/CLI knob (§11) for
-   selecting VW/II per asset; size-vs-RDP sweep for
-   Imai–Iri on real arcs to see if it should become the default.
+   **Knob built (2026-07, decided "knob only")**: `simplify_algo` header
+   byte (0=RDP, 1=VW, 2=II) + `Config::simplify_algo` / `gen --algo rdp|ii`
+   — VW is area-knobbed, so the ε-driven pipeline points it at the topo
+   builder API instead. **RDP stays the default**; presets are RDP. Full-
+   pipeline spot check at ε=2000 i16: II 68.8 K gzip vs RDP 78.7 K
+   (**−12.6% compressed**, +~4 s encode, container validates + 0-wrong
+   lookups) — the per-preset II sweep remains available ammunition if the
+   default is ever revisited.
 9. ~~**Custom-tier encoder/decoder sync check**~~ — **decided: consumer's
    responsibility.** Build scripts cannot select features (resolution precedes
    all build scripts), so the sync cannot be automated away; `utz-build`
