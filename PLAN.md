@@ -300,10 +300,18 @@ decode RAM unchanged (§11, §14.5). Only `zstd-sys` stays std.
   property test), so exactness only rules f64 out at i32 quant (products
   ~2^62, geometry-rs's failure mode). The standing reasons are (a) i32-quant
   support via one more instantiation instead of a different algorithm, and
-  (b) FPU independence: host f64 costs 1.14× i64 (per-edge int→f64 casts);
+  (b) FPU independence: host f64 costs 1.15× i64 (per-edge int→f64 casts);
   on the ESP32-S3 it's **5.63×** (soft-float; i128 3.93× — §15's kernel
-  micro-bench). Width dispatch stays: i64 default, i128 only when the header
-  says i32 quant.
+  micro-bench). Host i128 is startlingly **~0.75×** — *faster* than i64,
+  reproducibly (warmed `pip_bench`): LLVM lowers the sext-from-i32 i128
+  products to the same 64-bit IMULs and happens to emit a better-predicted
+  branch layout, so on 64-bit hosts i32-quant assets pay nothing for the
+  wide width. Width dispatch stays: i64 default, i128 only when the header
+  says i32 quant — it costs where it must (32-bit MCUs), and is free-or-
+  better where it doesn't. An f64-at-i32 shortcut for double-FPU parts was
+  considered and rejected: its rounding fuzz is only a mm-scale border band
+  (way under ε), but it breaks the exact/oracle-verified invariant for a
+  win that only exists on 32-bit + double-FPU hardware.
 - **`geo` as dev-dependency only** — cross-validate the hand-rolled PIP in tests
   (geo-i64 is a proven oracle). Keeps `geo`/std out of the runtime → `no_std` clean.
 - **Antimeridian**: geo handles the shipped data correctly (planar), suggesting
@@ -832,7 +840,9 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   at the 4→8 MiB step. **Kernel micro-bench** (same S3 run, synthetic
   i24-range ring, 1.64 M edges/kernel, identical verdicts): i64 **189
   ns/edge**, i128 **3.93×**, f64 **5.63×** (soft-float) — vs host where f64
-  is only 1.14× (`pip_bench`, 0/20 000 disagreements). Confirms the integer
+  is 1.15× and i128 **0.75×, faster than i64** (warmed `pip_bench`,
+  0/20 000 disagreements each; same IMUL count, better branch layout — §8).
+  Confirms the integer
   design is the floor: an f64 PIP would cost ~5.6× on this class of part,
   and i128 stays quarantined to i32-quant assets (§8). Caveats: one part,
   one flash interface — Cortex-M/RISC-V QSPI parts unmeasured; f32 or

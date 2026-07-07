@@ -65,6 +65,16 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             P { fi, bbox: bb, rings }
         }))
         .collect();
+    // untimed warmup: first touch of `polys`/`pts` — without it the first
+    // timed contender eats every cold miss and the shared-structure rows
+    // (f64/i128) look spuriously fast
+    let warm = pts.iter()
+        .filter(|&&(px, py)| polys.iter()
+            .any(|p| px >= p.bbox.0 && py >= p.bbox.1 && px <= p.bbox.2 && py <= p.bbox.3
+                && utz::pip::contains_i64(&p.rings, px, py)))
+        .count();
+    assert!(warm > 0);
+
     let t = Instant::now();
     let mut ours: Vec<Option<usize>> = Vec::with_capacity(npts);
     for &(px, py) in &pts {
@@ -86,6 +96,18 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             .map(|p| p.fi));
     }
     let t_f64 = t.elapsed();
+
+    // ---- ours-i128: the i32-quant width on i24 data (wider is always
+    // exact) — what an i32-quant asset would pay on this host ----
+    let t = Instant::now();
+    let mut ours_i128: Vec<Option<usize>> = Vec::with_capacity(npts);
+    for &(px, py) in &pts {
+        ours_i128.push(polys.iter()
+            .find(|p| px >= p.bbox.0 && py >= p.bbox.1 && px <= p.bbox.2 && py <= p.bbox.3
+                && utz::pip::contains_i128(&p.rings, px, py))
+            .map(|p| p.fi));
+    }
+    let t_i128 = t.elapsed();
 
     // ---- geo oracle, same scan order, same hoisted bbox precheck ----
     // (geo 0.32 Polygon::contains has NO internal bounding-rect precheck —
@@ -144,10 +166,15 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     println!("disagreements vs geometry-rs: {gm_diff}/{npts} (boundary semantics differ)");
     let f64_diff = ours.iter().zip(&ours_f64).filter(|(a, b)| a != b).count();
     println!("disagreements vs ours-f64: {f64_diff}/{npts} (must be 0: f64 exact at i24)");
+    let i128_diff = ours.iter().zip(&ours_i128).filter(|(a, b)| a != b).count();
+    println!("disagreements vs ours-i128: {i128_diff}/{npts} (must be 0: wider is exact)");
     println!("ours:        {:>8.2?}  ({:.1} µs/lookup)", t_ours, t_ours.as_micros() as f64 / npts as f64);
     println!("ours-f64:    {:>8.2?}  ({:.1} µs/lookup)   ours {:.2}x",
         t_f64, t_f64.as_micros() as f64 / npts as f64,
         t_f64.as_secs_f64() / t_ours.as_secs_f64());
+    println!("ours-i128:   {:>8.2?}  ({:.1} µs/lookup)   ours {:.2}x",
+        t_i128, t_i128.as_micros() as f64 / npts as f64,
+        t_i128.as_secs_f64() / t_ours.as_secs_f64());
     println!("geo:         {:>8.2?}  ({:.1} µs/lookup)   ours {:.2}x",
         t_geo, t_geo.as_micros() as f64 / npts as f64,
         t_geo.as_secs_f64() / t_ours.as_secs_f64());
