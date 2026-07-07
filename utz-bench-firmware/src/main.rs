@@ -45,7 +45,8 @@ static COMPACT_NONE: &[u8] = include_bytes!("../compact-none.utz");
 static BALANCED_BR: &[u8] = include_bytes!("../balanced.utz");
 static BALANCED_NONE: &[u8] = include_bytes!("../balanced-none.utz");
 
-/// modest by host standards; the S3 has 512 KiB SRAM and f64 PIP is soft-float
+/// modest by host standards; lookups run ~250-300x host on this core (see
+/// README) so a round must stay in seconds, not minutes
 const NPTS: usize = 2_000;
 const ROUNDS: usize = 3;
 /// internal-SRAM heap; the PSRAM region is added at runtime if detected.

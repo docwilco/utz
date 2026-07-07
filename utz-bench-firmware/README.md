@@ -57,7 +57,9 @@ Compare against the host at the same point count:
 cargo run --release -p utz-bench-cli -- utz-data-tiny/data/tiny.utz 2000
 ```
 
-Note: f64 point-in-polygon math is soft-float on the S3 (its FPU is
-single-precision), so expect two to three orders of magnitude slower than a
-desktop — that gap, and how little the memory mode matters next to it, is
-what this firmware exists to measure.
+Note: expect two to three orders of magnitude slower than a desktop — not
+floats (PIP is integer i64; f64 only touches the ~20-op quantize/grid
+boundary, soft-float on the S3's f32-only FPU but negligible) but scalar
+integer throughput: a 240 MHz in-order 32-bit core doing 64-bit math and,
+in streaming modes, per-vertex varint decode. That gap, and how little the
+memory mode matters next to it, is what this firmware exists to measure.

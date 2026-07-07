@@ -807,10 +807,14 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   after decode); its price is one-time decode on-device: gzip 26 ms
   (67→119 K), xz 1 251 ms (441→600 K), brotli 1 851 ms (1 257→1 951 K) —
   same ranking as the host sweep (§7). **Eager is the real lever: 2.9–4.2×
-  over streaming** (soft-float f64 PIP dominates everything; eager only
-  removes the per-lookup varint+delta decode, and that's already 3–4×).
-  Overall the S3 runs ~250–300× the host per lookup — soft-float, not the
-  memory system, is the wall (80 MHz default-clock numbers are ≈2.9× these).
+  over streaming** — which pins what dominates: per-vertex varint+delta
+  decode is ~70% of streaming lookup time, the i64 edge kernel most of the
+  rest. All *integer*: f64 only touches the ~20-op quantize/grid boundary
+  (the S3's FPU being f32-only is irrelevant at that count; the integer PIP
+  design is why the gap isn't 10× worse). Overall the S3 runs ~250–300× the
+  host per lookup — scalar integer throughput (240 MHz in-order 32-bit core
+  doing 64-bit math), not the memory system: every leg scales 2.9× from the
+  80 MHz default clock, i.e. clock-proportional, compute-bound.
   Balanced eager (7.83 MiB cache, preload 1 854 ms) fits the 8 MiB PSRAM
   **only** with the v2 exact reservation (§4) — push-doubling growth OOMed
   at the 4→8 MiB step. Caveats: one part, one flash interface —
