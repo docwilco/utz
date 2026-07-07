@@ -250,10 +250,14 @@ history). Rules:
 
 Presets bake codec + window and **document peak decode RAM** (decoded size +
 window + state) as part of their contract — the number an ESP32 user shops by,
-next to flash size and accuracy. Preset codecs must be no_std-clean —
-`gzip`/`ruzstd`/`brotli` qualify (brotli since 2026-07: no-stdlib mode +
-a global-allocator shim in decompress.rs, verified on a bare-metal RISC-V
-target, peak decode RAM unchanged; §11, §14.5).
+next to flash size and accuracy. Preset codecs must be no_std-clean — all
+four pure-Rust codecs qualify (2026-07): `gzip`/`ruzstd` by construction;
+`brotli` via no-stdlib mode + a global-allocator shim in decompress.rs;
+`xz` via lzma-rust2's no_std mode (its `std` feature must stay OFF
+tree-wide — on, the crate's Read/Write re-exports turn pub(crate) and utz's
+decode arm stops compiling; possible upstream fix: export them the way
+ruzstd does). All verified on a bare-metal RISC-V target, sizes and peak
+decode RAM unchanged (§11, §14.5). Only `zstd-sys` stays std.
 
 ---
 
@@ -382,8 +386,8 @@ deliberate bare-metal intent and satisfies choice 2:
 | rung | constructors | lookups | codecs |
 |---|---|---|---|
 | `core` | `from_static` (zero-copy) | `lookup` (streaming PIP, **landed**) + `lookup_coarse` | uncompressed only |
-| `alloc` | + `from_slice`/`from_vec` | + eager mode (`preload`) | + `gzip`/`ruzstd`/`brotli` |
-| `std` | + `from_reader` | — | + `xz`/`zstd-sys` (as gated today) |
+| `alloc` | + `from_slice`/`from_vec` | + eager mode (`preload`) | + `gzip`/`ruzstd`/`brotli`/`xz` |
+| `std` | + `from_reader` | — | + `zstd-sys` |
 
 - **Memory-mode features dissolved** (`eager`/`lazy`/`coarse` are no longer
   features): coarse is what `core` can do, lazy is `lookup` under `alloc`, eager
@@ -405,9 +409,9 @@ deliberate bare-metal intent and satisfies choice 2:
 - **Presets (features → data crates):** `utz-data-nano` … `utz-data-accurate`,
   each containing one CI-generated `.utz` as a static. Each preset enables
   **one or zero decoders**. Compressed preset: `nano = ["dep:utz-data-nano",
-  "alloc", <its codec>]` — the codec must be no_std-clean (`gzip`/`ruzstd`/
-  `brotli`, not `xz`/`zstd-sys`; constraint on §14.5) and `alloc` comes along
-  for decompression. Uncompressed preset: enables neither — works on the
+  "alloc", <its codec>]` — the codec must be no_std-clean (any pure-Rust
+  codec since 2026-07: `gzip`/`ruzstd`/`brotli`/`xz`; only `zstd-sys` is
+  out — §7, §14.5) and `alloc` comes along for decompression. Uncompressed preset: enables neither — works on the
   `core` rung, zero-copy straight from the static, trading flash for zero
   decode RAM. Consumer: `utz = { features = ["std", "balanced"] }` →
   `Finder::new()`. Presets bake dataset `now`; other datasets are custom (or
