@@ -40,6 +40,10 @@ jobs:
           restore-keys: source-data-
       - name: Build webdist (viewer + dataset blobs)
         run: cargo run --release -p utz-build -- visualize webdist
+      # rustdoc compiles the utz-data-* crates, whose assets are gitignored
+      # and regenerated (§5, §11)
+      - name: Generate preset assets
+        run: ./scripts/gen-presets.sh
       - name: Build API docs
         env:
           RUSTDOCFLAGS: -D warnings
