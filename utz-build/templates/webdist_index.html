@@ -1516,6 +1516,13 @@ function drawGridHist(hist, noneCells, uncrossedZone, uncrossedNone) {
     if (c > max) max = c;
     sum += k * c; multi += c;
   });
+  var one = (hist[1] || 0) + uncrossedZone;
+  var none = noneCells + uncrossedNone;
+  var total = multi + one + none;
+  var fmtPct = function (c) {
+    var p = 100 * c / total;
+    return (p >= 10 ? p.toFixed(0) : p >= 1 ? p.toFixed(1) : p.toFixed(2)) + '%';
+  };
   var bw = Math.min(36, (w - 4) / ks.length);
   ctx.font = '9px system-ui, sans-serif';
   ctx.textAlign = 'center';
@@ -1527,15 +1534,13 @@ function drawGridHist(hist, noneCells, uncrossedZone, uncrossedNone) {
     ctx.fillStyle = '#8b98a8';
     ctx.fillText(String(k), x + bw / 2, 44);
     ctx.fillStyle = '#b9c4d0';
-    ctx.fillText(c >= 10000 ? Math.round(c / 1000) + 'k' : String(c), x + bw / 2, 34 - bh - 2);
+    ctx.fillText(fmtPct(c), x + bw / 2, 34 - bh - 2);
   });
-  var one = (hist[1] || 0) + uncrossedZone;
-  var none = noneCells + uncrossedNone;
-  var total = multi + one + none;
   gridHist.title = 'cells with 2+ candidate tzids (need polygon tests)\n' +
+    'bar labels are % of all cells\n' +
     ks.map(function (k) {
       return k + ' zones: ' + hist[k].toLocaleString() +
-        ' cells (' + (100 * hist[k] / multi).toFixed(1) + '%)';
+        ' cells (' + fmtPct(hist[k]) + ' of all cells)';
     }).join('\n') +
     '\nmean ' + (sum / multi).toFixed(2) + ' candidates over ' + multi.toLocaleString() + ' cells' +
     '\n' + (none ? '0 tzids: ' + none.toLocaleString() + ' cells · ' : '') +
