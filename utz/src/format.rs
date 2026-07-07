@@ -10,7 +10,7 @@ use crate::Error;
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
 pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 1;
+pub const VERSION: u8 = 2; // v2: eager_coords/rings/polys header counts
 
 /// Parsed header: every section position needed for O(1) access.
 #[derive(Clone, Copy)]
@@ -34,6 +34,11 @@ pub struct Header {
     // ring index
     pub feat_offsets: usize, // u32[n_features+1]
     pub ring_data: usize,
+    // eager-cache reservation counts (v2): exact Vec sizes for `preload`
+    // (coords is Σ referenced-arc vcounts — may only over-estimate)
+    pub eager_coords: u32,
+    pub eager_rings: u32,
+    pub eager_polys: u32,
     // grid
     pub ncols: u16,
     pub nrows: u16,
@@ -105,13 +110,16 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
     let eps_m = f32::from_le_bytes([p[7], p[8], p[9], p[10]]);
     let rel_len = p[11] as usize;
     let mut pos = 12 + rel_len; // tzbb_release skipped (read via header_release)
-    need(pos + 14)?;
+    need(pos + 26)?;
     let n_features = read_u16(p, pos);
     pos += 2;
     let arcs_off = read_u32(p, pos) as usize;
     let rings_off = read_u32(p, pos + 4) as usize;
     let grid_off = read_u32(p, pos + 8) as usize;
-    pos += 12;
+    let eager_coords = read_u32(p, pos + 12);
+    let eager_rings = read_u32(p, pos + 16);
+    let eager_polys = read_u32(p, pos + 20);
+    pos += 24;
 
     let str_offsets = pos;
     let pool = str_offsets + (n_features as usize + 1) * 2;
@@ -140,6 +148,7 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
         str_offsets, pool,
         n_arcs, arc_offsets, arc_data,
         feat_offsets, ring_data,
+        eager_coords, eager_rings, eager_polys,
         ncols, nrows, primary, uniq, list_offsets, list_ids,
     })
 }

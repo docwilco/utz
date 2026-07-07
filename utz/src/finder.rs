@@ -230,9 +230,23 @@ impl Finder {
         core::str::from_utf8(format::release(&self.payload[..])).unwrap_or("")
     }
 
+    /// Heap bytes [`preload`](Finder::preload) will reserve — the eager-cache
+    /// size, straight from the v2 header counts. O(1); lets a constrained
+    /// caller check fit before committing.
+    #[cfg(feature = "alloc")]
+    pub fn preload_bytes(&self) -> usize {
+        let h = &self.hdr;
+        h.eager_coords as usize * core::mem::size_of::<(i32, i32)>()
+            + h.eager_rings as usize * core::mem::size_of::<u32>()
+            + h.eager_polys as usize * core::mem::size_of::<([i32; 4], u32)>()
+            + (h.n_features as usize) * core::mem::size_of::<u32>()
+    }
+
     /// Decode all polygons into RAM once (eager mode, §9): repeat lookups
-    /// then skip the per-arc varint decode. Costs roughly the uncompressed
-    /// geometry size in heap; a no-op if already preloaded.
+    /// then skip the per-arc varint decode. Costs [`preload_bytes`]
+    /// (≈ uncompressed geometry re-widened to i32) in heap, reserved exactly
+    /// up front from the v2 header counts — peak = final, no growth
+    /// doubling. A no-op if already preloaded.
     #[cfg(feature = "alloc")]
     pub fn preload(&mut self) {
         if self.eager.is_some() {
@@ -241,10 +255,10 @@ impl Finder {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let fb = fixed_bytes(h.quant_bits);
         let mut e = Eager {
-            coords: Vec::new(),
-            ring_ends: Vec::new(),
-            polys: Vec::new(),
-            feat_ends: Vec::new(),
+            coords: Vec::with_capacity(h.eager_coords as usize),
+            ring_ends: Vec::with_capacity(h.eager_rings as usize),
+            polys: Vec::with_capacity(h.eager_polys as usize),
+            feat_ends: Vec::with_capacity(h.n_features as usize),
         };
         for fid in 0..h.n_features {
             let mut pos = h.ring_data + read_u32(b, h.feat_offsets + fid as usize * 4) as usize;

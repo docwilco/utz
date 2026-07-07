@@ -9,6 +9,10 @@
 //!               | grid_deg f32 | eps_m f32
 //!               | tzbb_release (len u8 + bytes)
 //!               | n_features u16 | arcs_off u32 | rings_off u32 | grid_off u32
+//!               | eager_coords u32 | eager_rings u32 | eager_polys u32
+//!               (eager-cache sizes so `preload` reserves exactly — no growth
+//!               doubling; coords is Σ referenced-arc vcounts, a ≤0.1% over-
+//!               estimate of the deduped cache, safe as a reservation)
 //!   zone table: str_offsets u16[n_features+1] | tzid pool bytes   (zone i = feature i)
 //!   arc store:  n_arcs u32 | arc_offsets u32[n_arcs+1] (relative to arc data)
 //!               | per arc: varint vcount | first vertex i{16,24,32}×2
@@ -31,7 +35,7 @@ use crate::{clean, topo, Feat};
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
 pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 1;
+pub const VERSION: u8 = 2; // v2: eager_coords/rings/polys header counts
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u8)]
@@ -199,6 +203,27 @@ pub fn payload_from_topology(
     o.extend_from_slice(&(feats.len() as u16).to_le_bytes());
     let fixup = o.len(); // arcs_off, rings_off, grid_off patched below
     o.extend_from_slice(&[0u8; 12]);
+    // eager-cache reservation counts (v2): what preload will hold, known
+    // exactly here — coords as Σ referenced-arc vcounts (junction dedup at
+    // decode shrinks it a hair; a reservation may only over-estimate)
+    let mut eager_coords: u64 = 0;
+    let (mut eager_rings, mut eager_polys) = (0u32, 0u32);
+    for fi in 0..feats.len() {
+        for poly in &t.structure[fi] {
+            eager_polys += 1;
+            for &ri in poly {
+                eager_rings += 1;
+                eager_coords += t.ring_refs[ri]
+                    .iter()
+                    .map(|&r| arcs_q[(r >> 1) as usize].len() as u64)
+                    .sum::<u64>();
+            }
+        }
+    }
+    anyhow::ensure!(eager_coords <= u32::MAX as u64, "eager_coords overflows u32");
+    o.extend_from_slice(&(eager_coords as u32).to_le_bytes());
+    o.extend_from_slice(&eager_rings.to_le_bytes());
+    o.extend_from_slice(&eager_polys.to_le_bytes());
     stats.header = o.len() as u32;
 
     // ---- zone table (zone i = feature i) ----
