@@ -10,14 +10,16 @@ license = "MIT"
 publish = false
 
 [dependencies]
-# uncompressed container borrowed zero-copy from flash (Finder::from_static),
-# so no codec features and almost no RAM
-utz = { path = "../utz", default-features = false, features = ["alloc", "custom"] }
+# XIP legs borrow uncompressed containers zero-copy from flash
+# (Finder::from_static); the buffered-decode legs need the preset codecs
+# (gzip/xz/brotli — all no_std-clean, PLAN §7)
+utz = { path = "../utz", default-features = false, features = ["alloc", "custom", "gzip", "xz", "brotli"] }
 utz-bench-common = { path = "../utz-bench-common" }
 esp-hal = { version = "1.0.0", features = ["esp32s3", "unstable"] }
 esp-alloc = "0.8"
 esp-println = { version = "0.15", features = ["esp32s3"] }
 esp-backtrace = { version = "0.17", features = ["esp32s3", "panic-handler", "println"] }
+esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32s3"] }
 
 [profile.release]
 opt-level = 3

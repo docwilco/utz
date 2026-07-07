@@ -1,13 +1,21 @@
 # utz-bench-firmware — μTZ lookup bench on ESP32-S3
 
-Runs the shared `utz-bench-common` harness on real hardware. The container is
-embedded **uncompressed** in the flash image and borrowed zero-copy through
-`Finder::from_static`, so lookups execute straight out of memory-mapped flash
-with only the Finder's small scratch state in RAM.
+Runs the shared `utz-bench-common` harness on real hardware, covering the
+PLAN §15 memory-mode matrix for each preset shape (tiny / compact / balanced):
 
-The bench uses the same deterministic points as `utz-bench-cli`; the printed
-`checksum` must match the host run for the same container — a cross-platform
-correctness check as well as a speed number.
+- **xip-flash** — uncompressed container borrowed zero-copy from
+  memory-mapped flash (`Finder::from_static`); payload never in RAM.
+- **ram** — the same container copied to heap (`from_vec`): streaming PIP
+  from RAM. Tiny runs twice, once from internal SRAM and once forced into
+  PSRAM, isolating the PSRAM access penalty.
+- **decode** — the preset's compressed asset decoded from flash into heap
+  (`from_slice`); the decode time doubles as a per-codec embedded speed number.
+- **eager** — `from_static` + `preload()`: payload in flash, geometry cache
+  in RAM.
+
+The bench uses the same deterministic points as `utz-bench-cli`; every leg's
+printed `checksum` must match the host run for the same shape and npts — a
+cross-platform correctness check as well as a speed number.
 
 ## One-time setup
 
@@ -20,15 +28,19 @@ espup install            # installs the `esp` toolchain (rust-toolchain.toml pic
 . ~/export-esp.sh        # or add to your shell profile
 ```
 
-## Build the container
+## Build the containers
+
+The six embedded blobs are the preset assets plus uncompressed twins of the
+compact/balanced shapes (`from_static` accepts only codec *none*; all blobs
+are gitignored — regenerate at will):
 
 ```sh
-cargo run --release -p utz-build -- encode now 500 --codec none -o utz-bench-firmware/container.utz
+scripts/gen-presets.sh   # tiny.utz, tiny-static.utz, compact.utz, balanced.utz
+cp utz-data-tiny/data/tiny.utz utz-data-tiny-static/data/tiny-static.utz \
+   utz-data-compact/data/compact.utz utz-data-balanced/data/balanced.utz utz-bench-firmware/
+cargo run --release -p utz-build -- gen now 1000 --qbits 24 --w-min 0.001 --grid-deg 1.3333333333333333 --codec none -o utz-bench-firmware/compact-none.utz
+cargo run --release -p utz-build -- gen now 50   --qbits 24 --w-min 0.020 --grid-deg 0.6666666666666666  --codec none -o utz-bench-firmware/balanced-none.utz
 ```
-
-(`--codec none` is required: `from_static` is zero-copy and accepts only
-uncompressed containers. `container.utz` is gitignored — regenerate at will.
-Try `--w-min 0.052` to bench a population-weighted build.)
 
 ## Flash + monitor
 
@@ -37,15 +49,15 @@ cd utz-bench-firmware
 cargo run --release     # espflash flash --monitor (see .cargo/config.toml)
 ```
 
-Expected output: one result line per loop iteration, e.g.
+One `RESULT` line per leg (plus `INFO` decode/preload timings and payload
+placement, `SKIP` where a leg doesn't fit the detected memory), then `DONE`.
+Compare against the host at the same point count:
 
-```
-uTZ bench on ESP32-S3 — container 1020 KiB in flash
-tzbb release: "dev"
-2000 lookups · 2000 hits · … us · … us/lookup · checksum 20758
+```sh
+cargo run --release -p utz-bench-cli -- utz-data-tiny/data/tiny.utz 2000
 ```
 
 Note: f64 point-in-polygon math is soft-float on the S3 (its FPU is
 single-precision), so expect two to three orders of magnitude slower than a
-desktop — that gap, and how the grid prefilter shrinks it, is what this
-firmware exists to measure.
+desktop — that gap, and how little the memory mode matters next to it, is
+what this firmware exists to measure.

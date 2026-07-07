@@ -1,48 +1,245 @@
-//! μTZ lookup bench on ESP32-S3: embeds an *uncompressed* container in flash,
-//! borrows it zero-copy via `Finder::from_static` (XIP — the payload is never
-//! copied to RAM), and runs the same harness + points as utz-bench-cli, so
-//! the checksums must match the host run exactly.
+//! μTZ lookup bench on ESP32-S3 — the PLAN §15 flash-latency matrix.
+//!
+//! Embeds each preset shape (tiny / compact / balanced) twice — the preset's
+//! compressed asset and its uncompressed twin — and measures every memory
+//! mode the hardware supports:
+//!
+//! - **xip-flash**: `Finder::from_static` on the uncompressed blob — lookups
+//!   stream straight out of memory-mapped flash, payload never in RAM.
+//! - **ram**: the uncompressed container copied into heap (`from_vec`) —
+//!   streaming PIP from RAM. Small payloads land in internal SRAM; a
+//!   sacrificial SRAM filler forces a second tiny run into PSRAM, isolating
+//!   the PSRAM access penalty.
+//! - **decode**: `from_slice` on the compressed asset — the buffered-decode
+//!   path (decode time printed separately = per-codec embedded decode speed).
+//! - **eager**: `from_static` + `preload` — geometry decoded to RAM once,
+//!   payload stays in flash.
+//!
+//! Uses the same harness + points as utz-bench-cli: every leg's checksum must
+//! equal the host run of the same shape at npts=2000.
 //!
 //! Setup (once): see README.md. Then `cargo run --release` flashes + monitors.
 
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+
+use alloc::vec::Vec;
+
+use esp_alloc::MemoryCapability;
 use esp_backtrace as _;
 use esp_hal::main;
 use esp_hal::time::Instant;
 use esp_println::println;
+use utz::Finder;
 
-// generate + place with:
-//   cargo run --release -p utz-build -- encode now 500 --codec none -o utz-bench-firmware/container.utz
-static CONTAINER: &[u8] = include_bytes!("../container.utz");
+// generate + place with scripts/gen-presets.sh recipes (see README.md)
+// app descriptor required by espflash ≥4 image validation
+esp_bootloader_esp_idf::esp_app_desc!();
+
+static TINY_GZ: &[u8] = include_bytes!("../tiny.utz");
+static TINY_NONE: &[u8] = include_bytes!("../tiny-static.utz");
+static COMPACT_XZ: &[u8] = include_bytes!("../compact.utz");
+static COMPACT_NONE: &[u8] = include_bytes!("../compact-none.utz");
+static BALANCED_BR: &[u8] = include_bytes!("../balanced.utz");
+static BALANCED_NONE: &[u8] = include_bytes!("../balanced-none.utz");
 
 /// modest by host standards; the S3 has 512 KiB SRAM and f64 PIP is soft-float
 const NPTS: usize = 2_000;
 const ROUNDS: usize = 3;
+/// internal-SRAM heap; the PSRAM region is added at runtime if detected.
+/// Not larger: the rest of DRAM is the main stack, and gzip decode keeps its
+/// ~32 K inflate state there (320 K heap tripped the stack guard).
+const SRAM_HEAP: usize = 256 * 1024;
+
+fn now_us() -> u64 {
+    Instant::now().duration_since_epoch().as_micros()
+}
+
+fn free_sram() -> usize {
+    esp_alloc::HEAP.free_caps(MemoryCapability::Internal.into())
+}
+
+fn free_psram() -> usize {
+    esp_alloc::HEAP.free_caps(MemoryCapability::External.into())
+}
+
+/// largest single allocation we can plausibly satisfy (regions don't combine)
+fn fits(bytes: usize) -> bool {
+    free_sram().max(free_psram()) > bytes + 32 * 1024
+}
+
+fn region_of(addr: usize, psram: &core::ops::Range<usize>) -> &'static str {
+    if psram.contains(&addr) {
+        "PSRAM"
+    } else if (0x3FC8_0000..0x3FD0_0000).contains(&addr) {
+        "SRAM"
+    } else {
+        "flash"
+    }
+}
+
+fn bench(label: &str, finder: &Finder, pts: &[(f64, f64)]) {
+    let mut now = now_us;
+    let r = utz_bench_common::run_rounds(finder, pts, ROUNDS, &mut now);
+    println!(
+        "RESULT {}: {} lookups · {} hits · {} us · {} us/lookup · checksum {}",
+        label,
+        r.lookups,
+        r.hits,
+        r.elapsed_us,
+        r.elapsed_us / r.lookups as u64,
+        r.checksum
+    );
+}
+
+/// xip-flash leg: payload borrowed from memory-mapped flash, zero-copy
+fn xip_leg(label: &str, blob: &'static [u8], pts: &[(f64, f64)]) {
+    let f = Finder::from_static(blob).expect("from_static");
+    bench(label, &f, pts);
+}
+
+/// ram leg: uncompressed container copied to heap, PIP streams from RAM
+fn ram_leg(label: &str, blob: &'static [u8], pts: &[(f64, f64)], psram: &core::ops::Range<usize>) {
+    if !fits(blob.len()) {
+        println!("SKIP {}: {} KiB payload does not fit any heap region", label, blob.len() / 1024);
+        return;
+    }
+    let v = blob.to_vec();
+    // from_vec reuses this allocation (copy_within + truncate), so the
+    // pointer taken here is where the payload actually lives during lookups
+    let where_ = region_of(v.as_ptr() as usize, psram);
+    let f = Finder::from_vec(v).expect("from_vec");
+    println!("INFO {}: payload in {}", label, where_);
+    bench(label, &f, pts);
+}
+
+/// decode leg: compressed asset read from flash, payload decoded into heap
+fn decode_leg(
+    label: &str,
+    blob: &'static [u8],
+    decoded_hint: usize,
+    pts: &[(f64, f64)],
+) {
+    if !fits(decoded_hint) {
+        println!("SKIP {}: ~{} KiB decoded payload does not fit any heap region", label, decoded_hint / 1024);
+        return;
+    }
+    let (s0, p0) = (free_sram() as isize, free_psram() as isize);
+    let t0 = now_us();
+    let f = Finder::from_slice(blob).expect("from_slice");
+    let decode_us = now_us() - t0;
+    let (s1, p1) = (free_sram() as isize, free_psram() as isize);
+    println!(
+        "INFO {}: decode {} ms ({} KiB compressed), heap dSRAM {} KiB dPSRAM {} KiB",
+        label,
+        decode_us / 1000,
+        blob.len() / 1024,
+        (s0 - s1) / 1024,
+        (p0 - p1) / 1024
+    );
+    bench(label, &f, pts);
+}
+
+/// eager leg: payload stays in flash, all geometry decoded to heap once
+fn eager_leg(label: &str, blob: &'static [u8], pts: &[(f64, f64)]) {
+    let mut f = Finder::from_static(blob).expect("from_static");
+    // exact requirement from the v2 header counts; preload reserves exactly
+    // (no growth doubling), so fit means fit
+    let need = f.preload_bytes();
+    if !fits(need) {
+        println!("SKIP {}: eager cache needs {} KiB — no heap region fits", label, need / 1024);
+        return;
+    }
+    let (s0, p0) = (free_sram() as isize, free_psram() as isize);
+    let t0 = now_us();
+    f.preload();
+    let preload_us = now_us() - t0;
+    let (s1, p1) = (free_sram() as isize, free_psram() as isize);
+    println!(
+        "INFO {}: preload {} ms, heap dSRAM {} KiB dPSRAM {} KiB",
+        label,
+        preload_us / 1000,
+        (s0 - s1) / 1024,
+        (p0 - p1) / 1024
+    );
+    bench(label, &f, pts);
+}
 
 #[main]
 fn main() -> ! {
-    let _peripherals = esp_hal::init(esp_hal::Config::default());
-    // Finder scratch + the points vec; the container itself stays in flash
-    esp_alloc::heap_allocator!(size: 128 * 1024);
+    // Config::default() would boot at 80 MHz — bench at the chip's 240 MHz
+    let peripherals = esp_hal::init(
+        esp_hal::Config::default().with_cpu_clock(esp_hal::clock::CpuClock::max()),
+    );
+    esp_alloc::heap_allocator!(size: SRAM_HEAP);
 
-    println!("uTZ bench on ESP32-S3 — container {} KiB in flash", CONTAINER.len() / 1024);
-    let finder = utz::Finder::from_static(CONTAINER).expect("container decode");
-    println!("tzbb release: {:?}", finder.tzbb_release());
-
-    let pts = utz_bench_common::gen_pts(NPTS);
-    let mut now_us = || Instant::now().duration_since_epoch().as_micros();
-
-    loop {
-        let r = utz_bench_common::run_rounds(&finder, &pts, ROUNDS, &mut now_us);
-        println!(
-            "{} lookups · {} hits · {} us · {} us/lookup · checksum {}",
-            r.lookups,
-            r.hits,
-            r.elapsed_us,
-            r.elapsed_us / r.lookups as u64,
-            r.checksum
-        );
+    // N16R8 module: 8 MB octal PSRAM. Auto mode probes octal then quad; on a
+    // PSRAM-less module this prints 0 KiB and the big RAM legs SKIP.
+    let psram_dev = esp_hal::psram::Psram::new(
+        peripherals.PSRAM,
+        esp_hal::psram::PsramConfig::default(),
+    );
+    let (ps_ptr, ps_len) = psram_dev.raw_parts();
+    if ps_len > 0 {
+        unsafe {
+            esp_alloc::HEAP.add_region(esp_alloc::HeapRegion::new(
+                ps_ptr,
+                ps_len,
+                MemoryCapability::External.into(),
+            ));
+        }
     }
+    let psram = ps_ptr as usize..ps_ptr as usize + ps_len;
+
+    println!(
+        "uTZ bench on ESP32-S3 @ 240 MHz — SRAM heap {} KiB, PSRAM {} KiB",
+        SRAM_HEAP / 1024,
+        ps_len / 1024
+    );
+    println!(
+        "tzbb release: {:?} — {} pts, {} rounds, fastest round wins",
+        Finder::from_static(TINY_NONE).expect("container decode").tzbb_release(),
+        NPTS,
+        ROUNDS
+    );
+
+    // allocated first so the points sit in SRAM for every leg
+    let pts = utz_bench_common::gen_pts(NPTS);
+
+    // --- streaming from flash (XIP, zero-copy) ---
+    xip_leg("tiny xip-flash", TINY_NONE, &pts);
+    xip_leg("compact xip-flash", COMPACT_NONE, &pts);
+    xip_leg("balanced xip-flash", BALANCED_NONE, &pts);
+
+    // --- streaming from RAM (uncompressed copy) ---
+    ram_leg("tiny ram", TINY_NONE, &pts, &psram); // fits SRAM
+    if ps_len > 0 {
+        // fill SRAM so the same payload is forced into PSRAM: the direct
+        // SRAM-vs-PSRAM lookup comparison
+        let mut filler: Vec<Vec<u8>> = Vec::new();
+        while free_sram() > 24 * 1024 {
+            filler.push(alloc::vec![0u8; 16 * 1024]);
+        }
+        ram_leg("tiny ram-psram", TINY_NONE, &pts, &psram);
+        drop(filler);
+    } else {
+        println!("SKIP tiny ram-psram: no PSRAM");
+    }
+    ram_leg("compact ram", COMPACT_NONE, &pts, &psram);
+    ram_leg("balanced ram", BALANCED_NONE, &pts, &psram);
+
+    // --- buffered decode (compressed asset in flash → payload in RAM) ---
+    decode_leg("tiny decode-gzip", TINY_GZ, TINY_NONE.len(), &pts);
+    decode_leg("compact decode-xz", COMPACT_XZ, COMPACT_NONE.len(), &pts);
+    decode_leg("balanced decode-brotli", BALANCED_BR, BALANCED_NONE.len(), &pts);
+
+    // --- eager (payload in flash, geometry cache in RAM) ---
+    eager_leg("tiny eager", TINY_NONE, &pts);
+    eager_leg("compact eager", COMPACT_NONE, &pts);
+    eager_leg("balanced eager", BALANCED_NONE, &pts);
+
+    println!("DONE");
+    loop {}
 }
