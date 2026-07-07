@@ -17,6 +17,9 @@ pub const VERSION: u8 = 1;
 pub struct Header {
     pub dataset: u8,
     pub quant_bits: u8,
+    /// simplification algorithm the asset was built with (§14.8):
+    /// 0 = RDP, 1 = Visvalingam, 2 = Imai–Iri — provenance, not decode logic
+    pub simplify_algo: u8,
     /// cell size in degrees — fractional (e.g. 0.5) allowed
     pub grid_deg: f32,
     pub eps_m: f32,
@@ -91,16 +94,17 @@ pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize), Error> {
 /// Parse the payload header + section directory.
 pub fn parse(p: &[u8]) -> Result<Header, Error> {
     let need = |n: usize| if p.len() < n { Err(Error::BadFormat) } else { Ok(()) };
-    need(11)?;
+    need(12)?;
     let dataset = p[0];
     let quant_bits = p[1];
-    let grid_deg = f32::from_le_bytes([p[2], p[3], p[4], p[5]]);
+    let simplify_algo = p[2];
+    let grid_deg = f32::from_le_bytes([p[3], p[4], p[5], p[6]]);
     if !matches!(quant_bits, 16 | 24 | 32) || !(grid_deg > 0.0) {
         return Err(Error::BadFormat);
     }
-    let eps_m = f32::from_le_bytes([p[6], p[7], p[8], p[9]]);
-    let rel_len = p[10] as usize;
-    let mut pos = 11 + rel_len; // tzbb_release skipped (read via header_release)
+    let eps_m = f32::from_le_bytes([p[7], p[8], p[9], p[10]]);
+    let rel_len = p[11] as usize;
+    let mut pos = 12 + rel_len; // tzbb_release skipped (read via header_release)
     need(pos + 14)?;
     let n_features = read_u16(p, pos);
     pos += 2;
@@ -132,7 +136,7 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
     need(list_ids)?;
 
     Ok(Header {
-        dataset, quant_bits, grid_deg, eps_m, n_features,
+        dataset, quant_bits, simplify_algo, grid_deg, eps_m, n_features,
         str_offsets, pool,
         n_arcs, arc_offsets, arc_data,
         feat_offsets, ring_data,
@@ -142,6 +146,6 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
 
 /// TZBB release string recorded in the header.
 pub fn release(p: &[u8]) -> &[u8] {
-    let n = p[10] as usize;
-    &p[11..11 + n]
+    let n = p[11] as usize;
+    &p[12..12 + n]
 }

@@ -5,7 +5,8 @@
 //! outer:  magic "uTZ1" | version u8 | codec u8 | raw_len u32 | payload…
 //!         (raw_len = UNCOMPRESSED payload size, so decoders allocate once)
 //! payload (compressed per codec):
-//!   header:     dataset u8 | quant_bits u8 | grid_deg f32 | eps_m f32
+//!   header:     dataset u8 | quant_bits u8 | simplify_algo u8
+//!               | grid_deg f32 | eps_m f32
 //!               | tzbb_release (len u8 + bytes)
 //!               | n_features u16 | arcs_off u32 | rings_off u32 | grid_off u32
 //!   zone table: str_offsets u16[n_features+1] | tzid pool bytes   (zone i = feature i)
@@ -42,6 +43,34 @@ pub enum Codec {
     Xz = 4,
 }
 
+/// Simplification algorithm recorded in the header (§14.8) and applied by
+/// [`build_payload`]. RDP is the default; Imai–Iri gives provably minimum
+/// vertices for the same ε bound (slower encode). Visvalingam has an area
+/// knob, not ε — reachable via `topo::build_topology_algo`, not this byte's
+/// eps-driven pipeline.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[repr(u8)]
+pub enum SimplifyAlgo {
+    #[default]
+    Rdp = 0,
+    Visvalingam = 1,
+    ImaiIri = 2,
+}
+
+impl SimplifyAlgo {
+    /// ε-driven `Simplify` for the topology builder.
+    pub fn to_simplify(self, eps_deg: f64) -> anyhow::Result<utz_simplify::Simplify> {
+        Ok(match self {
+            SimplifyAlgo::Rdp => utz_simplify::Simplify::Rdp { eps: eps_deg },
+            SimplifyAlgo::ImaiIri => utz_simplify::Simplify::ImaiIri { eps: eps_deg },
+            SimplifyAlgo::Visvalingam => anyhow::bail!(
+                "visvalingam's knob is an area, not ε — build the topology with \
+                 topo::build_topology_algo and use payload_from_topology"
+            ),
+        })
+    }
+}
+
 pub struct Params<'a> {
     /// bits 0–1: vintage (0 = now, 1 = 1970, 2 = all/comprehensive);
     /// bit 2 set = land-only (clear = with-oceans). See `utz_build::Dataset::code`.
@@ -54,6 +83,9 @@ pub struct Params<'a> {
     /// grid cell size in degrees, 0.1–45 — fractional (0.5, 4/3, …) allowed
     pub grid_deg: f64,
     pub codec: Codec,
+    /// simplification algorithm (§14.8): applied by [`build_payload`],
+    /// recorded in the header either way
+    pub simplify: SimplifyAlgo,
 }
 
 /// Byte size of each payload section + post-simplification geometry counts —
@@ -84,7 +116,8 @@ pub fn encode(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
 /// Everything but the outer header + compression (so size sweeps can compress
 /// one payload with several codecs).
 pub fn build_payload(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
-    let t = topo::build_topology(feats, p.eps_m / 111_320.0);
+    let algo = p.simplify.to_simplify(p.eps_m / 111_320.0)?;
+    let t = topo::build_topology_algo(feats, algo);
     Ok(payload_from_topology(&t, &t.arc_coords, feats, p)?.0)
 }
 
@@ -130,6 +163,22 @@ pub fn payload_from_topology(
     let g = grid::build(&quantized, p.grid_deg, 8);
     let areas = grid::feat_areas(&quantized);
     let csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
+    // the format's CSR tables are u16 (§4): border-cell tags carry a 15-bit
+    // list index, and list_offsets index into list_ids as u16 — a fine grid
+    // on a dense dataset can overflow both. Fail loudly instead of the `as
+    // u16` wrap silently corrupting the tables.
+    anyhow::ensure!(
+        csr.uniq_lists < 0x7FFF,
+        "grid {}°: {} unique candidate lists exceeds the 15-bit tag space — coarsen the grid",
+        p.grid_deg,
+        csr.uniq_lists
+    );
+    anyhow::ensure!(
+        csr.list_ids.len() <= u16::MAX as usize,
+        "grid {}°: {} interned list ids overflow the u16 offset table — coarsen the grid",
+        p.grid_deg,
+        csr.list_ids.len()
+    );
 
     let mut stats = PayloadStats {
         n_arcs: arcs_q.len() as u32,
@@ -141,6 +190,7 @@ pub fn payload_from_topology(
     // ---- header ----
     o.push(p.dataset);
     o.push(p.quant_bits as u8);
+    o.push(p.simplify as u8);
     o.extend_from_slice(&(p.grid_deg as f32).to_le_bytes());
     o.extend_from_slice(&(p.eps_m as f32).to_le_bytes());
     anyhow::ensure!(p.tzbb_release.len() < 256, "tzbb_release too long");

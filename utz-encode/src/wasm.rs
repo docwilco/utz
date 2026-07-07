@@ -230,6 +230,12 @@ pub extern "C" fn utz_enc_payload(
         quant_bits,
         grid_deg,
         codec: Codec::Uncompressed,
+        // same 0/1/2 byte convention as the viewer's algo knob
+        simplify: match algo {
+            1 => crate::encode::SimplifyAlgo::Visvalingam,
+            2 => crate::encode::SimplifyAlgo::ImaiIri,
+            _ => crate::encode::SimplifyAlgo::Rdp,
+        },
     };
     match encode::payload_from_topology(&st.topo, &arcs, &st.feats, &p) {
         Ok((payload, stats)) => {

@@ -28,6 +28,9 @@ pub struct Args {
     /// grid cell size in integer degrees
     #[arg(long, default_value_t = 2.0)]
     grid_deg: f64,
+    /// simplification algorithm: rdp|ii (visvalingam: builder API only, §14.8)
+    #[arg(long, default_value = "rdp")]
+    algo: String,
     /// enable population weighting with this floor multiplier (e.g. 0.052)
     #[arg(long)]
     w_min: Option<f64>,
@@ -45,6 +48,11 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         "xz" => Codec::Xz,
         c => anyhow::bail!("unknown codec {c:?}: use none|gzip|zstd|brotli|xz"),
     };
+    let simplify = match a.algo.as_str() {
+        "rdp" => encode::SimplifyAlgo::Rdp,
+        "ii" | "imai-iri" => encode::SimplifyAlgo::ImaiIri,
+        c => anyhow::bail!("unknown algo {c:?}: use rdp|ii (visvalingam needs the builder API)"),
+    };
     let feats = utz_build::load(&a.ds)?;
     let p = Params {
         dataset: utz_build::dataset(&a.ds)?.code(),
@@ -53,6 +61,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         quant_bits: a.qbits,
         grid_deg: a.grid_deg,
         codec,
+        simplify,
     };
     let container = match a.w_min {
         Some(w) => {

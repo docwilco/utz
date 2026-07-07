@@ -71,6 +71,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         quant_bits: 24,
         grid_deg: 2.0,
         codec: Codec::Zstd,
+        simplify: Default::default(),
     };
     let container = |t: &topo::Topology| -> anyhow::Result<Vec<u8>> {
         Ok(encode::finish(encode::payload_from_topology(t, &t.arc_coords, &feats, &p)?.0, p.codec))

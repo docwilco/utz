@@ -21,7 +21,7 @@
 
 use std::path::PathBuf;
 
-use crate::encode::{self, Codec, Params};
+use crate::encode::{self, Codec, Params, SimplifyAlgo};
 
 /// Builder for a custom `.utz` asset. Defaults: dataset `now`, RDP ε=500 m,
 /// i24, 2° grid, gzip.
@@ -32,6 +32,7 @@ pub struct Config {
     quant_bits: u32,
     grid_deg: f64,
     codec: Codec,
+    simplify: SimplifyAlgo,
     density_weight_floor: Option<f64>,
     out: Option<PathBuf>,
 }
@@ -44,6 +45,7 @@ impl Default for Config {
             quant_bits: 24,
             grid_deg: 2.0,
             codec: Codec::Gzip,
+            simplify: SimplifyAlgo::Rdp,
             density_weight_floor: None,
             out: None,
         }
@@ -86,6 +88,13 @@ impl Config {
         self
     }
 
+    /// Simplification algorithm (§14.8). Default RDP; `ImaiIri` gives provably
+    /// minimum vertices for the same ε (−4 to −19% measured, slower encode).
+    pub fn simplify_algo(mut self, algo: SimplifyAlgo) -> Self {
+        self.simplify = algo;
+        self
+    }
+
     /// Population-density-weighted simplification: ε multiplier floor in the
     /// densest cells (tiny uses 1e-3). First use downloads GHS-POP (~460 MB,
     /// cached).
@@ -110,6 +119,7 @@ impl Config {
             quant_bits: self.quant_bits,
             grid_deg: self.grid_deg,
             codec: self.codec,
+            simplify: self.simplify,
         };
         let bytes = match self.density_weight_floor {
             Some(w) => {
