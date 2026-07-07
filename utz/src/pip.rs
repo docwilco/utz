@@ -9,6 +9,16 @@
 //! Width follows the quantization grid (overflow bound: product ≤ 4·coord_max²):
 //! - `contains_i64`  — safe for i16/i24 grids (|coord| ≤ 2^23 → products ≤ 2^48)
 //! - `contains_i128` — for i32-fine grids (deg×1e7 overflows i64)
+//! - `contains_f64`  — **test/bench only**, never dispatched by lookup.
+//!   Bit-exact for i16/i24 (products ≤ 2^48 < 2^53 — every product and
+//!   difference representable), silently inexact near boundaries at i32
+//!   (products ~2^62; the same failure mode as geometry-rs's float tests,
+//!   §15). Trade-off in one line: integer buys exact sign decisions at every
+//!   width and zero FPU dependency (soft-float parts, f32-only FPUs) at the
+//!   cost of double-width products; f64 is IEEE-deterministic and
+//!   SIMD-friendly on hosts but needs this exactness bound *proven* per
+//!   quant width — and on FPU-less cores it is the slow path (measured on
+//!   ESP32-S3, §15).
 //!
 //! Points exactly ON any edge (exterior or hole) report `true`: border points
 //! are ambiguous between adjacent zones, and claiming them keeps lookup
@@ -78,22 +88,22 @@ macro_rules! pip_impl {
                 if y1 >= py {
                     let cross = ((x1 as $wide) - (x0 as $wide)) * ((py as $wide) - (y0 as $wide))
                         - ((y1 as $wide) - (y0 as $wide)) * ((px as $wide) - (x0 as $wide));
-                    if cross == 0 {
+                    if cross == (0 as $wide) {
                         if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
                             return EdgeHit::Boundary;
                         }
-                    } else if cross > 0 && y1 != py {
+                    } else if cross > (0 as $wide) && y1 != py {
                         return EdgeHit::Cross; // point strictly left of an upward edge
                     }
                 }
             } else if y1 <= py {
                 let cross = ((x1 as $wide) - (x0 as $wide)) * ((py as $wide) - (y0 as $wide))
                     - ((y1 as $wide) - (y0 as $wide)) * ((px as $wide) - (x0 as $wide));
-                if cross == 0 {
+                if cross == (0 as $wide) {
                     if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
                         return EdgeHit::Boundary;
                     }
-                } else if cross < 0 {
+                } else if cross < (0 as $wide) {
                     return EdgeHit::Cross; // point strictly right of a downward edge
                 }
             }
@@ -118,6 +128,9 @@ pub enum EdgeHit {
 
 pip_impl!(contains_i64, ring_hit_i64, edge_i64, i64);
 pip_impl!(contains_i128, ring_hit_i128, edge_i128, i128);
+// test/bench-only instantiation (see module docs); same &[(i32,i32)] slices,
+// per-edge i32->f64 casts included in its cost, as any real f64 path would pay
+pip_impl!(contains_f64, ring_hit_f64, edge_f64, f64);
 
 #[cfg(test)]
 mod tests {
@@ -155,6 +168,59 @@ mod tests {
         for x in -2..13 {
             for y in -2..13 {
                 assert_eq!(contains_i64(poly, x, y), contains_i128(poly, x, y), "at ({x},{y})");
+            }
+        }
+    }
+
+    #[test]
+    fn f64_matches_i64_in_range() {
+        let poly: &[&[(i32, i32)]] = &[SQUARE, HOLE];
+        for x in -2..13 {
+            for y in -2..13 {
+                assert_eq!(contains_i64(poly, x, y), contains_f64(poly, x, y), "at ({x},{y})");
+            }
+        }
+    }
+
+    /// f64 is bit-exact at i24 range (products ≤ 2^48 < 2^53 — module docs),
+    /// so agreement with i64 over full-range random polygons is a hard
+    /// assertion, boundaries included.
+    #[test]
+    fn f64_matches_i64_at_i24_range() {
+        const M: i64 = 1 << 23; // i24 coordinate range
+        let mut lcg = 0x0dd_ba11u64;
+        let mut next = |m: i64| -> i32 {
+            lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (((lcg >> 33) as i64 % m) - m / 2) as i32
+        };
+        for _ in 0..200 {
+            let (cx, cy) = (next(M), next(M));
+            let n = 5 + (next(12).unsigned_abs() as usize);
+            let mut pts: Vec<(i32, i32)> = (0..n)
+                .map(|k| {
+                    let ang = k as f64 / n as f64 * core::f64::consts::TAU;
+                    let r = (1 << 12) + next(1 << 20).unsigned_abs() as i64;
+                    (
+                        (cx as i64 + (ang.cos() * r as f64) as i64).clamp(-M, M - 1) as i32,
+                        (cy as i64 + (ang.sin() * r as f64) as i64).clamp(-M, M - 1) as i32,
+                    )
+                })
+                .collect();
+            pts.dedup();
+            if pts.first() == pts.last() {
+                pts.pop();
+            }
+            if pts.len() < 3 {
+                continue;
+            }
+            let rings: &[&[(i32, i32)]] = &[&pts];
+            for _ in 0..200 {
+                let (px, py) = (cx.saturating_add(next(1 << 21)), cy.saturating_add(next(1 << 21)));
+                assert_eq!(
+                    contains_i64(rings, px, py),
+                    contains_f64(rings, px, py),
+                    "f64/i64 disagree at ({px},{py})"
+                );
             }
         }
     }

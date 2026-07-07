@@ -241,6 +241,60 @@ fn main() -> ! {
     eager_leg("compact eager", COMPACT_NONE, &pts);
     eager_leg("balanced eager", BALANCED_NONE, &pts);
 
+    kernel_bench();
+
     println!("DONE");
     loop {}
+}
+
+/// PIP kernel comparison, no container involved: one synthetic i24-range
+/// ring folded through each arithmetic width on the identical slice.
+/// Random vertices are fine — even-odd parity is well-defined on any closed
+/// polyline and all three kernels implement the same rule, so verdicts must
+/// agree exactly (f64 is bit-exact at i24 — pip.rs module docs). Branch mix
+/// differs from real geometry (~50% y-span hits), so read it as a kernel
+/// ratio, not an absolute lookup cost.
+fn kernel_bench() {
+    use utz::pip::{ring_hit_f64, ring_hit_i64, ring_hit_i128, RingHit};
+    const N: usize = 8192;
+    const PROBES: usize = 200;
+    const M: i64 = 1 << 23;
+    let mut lcg = 0x0dd_ba11u64;
+    let mut next = || {
+        lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        (((lcg >> 33) as i64 % M) - M / 2) as i32
+    };
+    let ring: Vec<(i32, i32)> = (0..N).map(|_| (next(), next())).collect();
+    let pts: Vec<(i32, i32)> = (0..PROBES).map(|_| (next(), next())).collect();
+
+    let code = |h: RingHit| -> u64 {
+        match h {
+            RingHit::Outside => 0,
+            RingHit::Inside => 1,
+            RingHit::Boundary => 2,
+        }
+    };
+    let mut run = |f: fn(&[(i32, i32)], i32, i32) -> RingHit| -> (u64, u64) {
+        let t0 = now_us();
+        let mut acc = 0u64; // verdict fingerprint; also defeats elision
+        for &(px, py) in &pts {
+            acc = acc.wrapping_mul(3).wrapping_add(code(f(&ring, px, py)));
+        }
+        (now_us() - t0, acc)
+    };
+    let (t64, a64) = run(ring_hit_i64);
+    let (t128, a128) = run(ring_hit_i128);
+    let (tf64, af64) = run(ring_hit_f64);
+    assert!(a64 == a128 && a64 == af64, "kernel verdicts disagree");
+    let edges = (N * PROBES) as u64;
+    println!(
+        "KERNEL {} edges: i64 {} us ({} ns/edge) · i128 {} us ({:.2}x) · f64 {} us ({:.2}x) · verdicts agree",
+        edges,
+        t64,
+        t64 * 1000 / edges,
+        t128,
+        t128 as f64 / t64 as f64,
+        tf64,
+        tf64 as f64 / t64 as f64
+    );
 }

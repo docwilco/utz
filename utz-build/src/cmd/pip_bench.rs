@@ -75,6 +75,18 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     }
     let t_ours = t.elapsed();
 
+    // ---- ours-f64: same kernel shape, f64 arithmetic (test/bench-only
+    // instantiation, bit-exact at this i24 quant — pip.rs module docs) ----
+    let t = Instant::now();
+    let mut ours_f64: Vec<Option<usize>> = Vec::with_capacity(npts);
+    for &(px, py) in &pts {
+        ours_f64.push(polys.iter()
+            .find(|p| px >= p.bbox.0 && py >= p.bbox.1 && px <= p.bbox.2 && py <= p.bbox.3
+                && utz::pip::contains_f64(&p.rings, px, py))
+            .map(|p| p.fi));
+    }
+    let t_f64 = t.elapsed();
+
     // ---- geo oracle, same scan order, same hoisted bbox precheck ----
     // (geo 0.32 Polygon::contains has NO internal bounding-rect precheck —
     // coordinate_position walks the exterior ring directly — so hoist the same
@@ -130,7 +142,12 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     // edge = inside), so only count — off-boundary answers must still agree
     let gm_diff = ours.iter().zip(&gm).filter(|(a, b)| a != b).count();
     println!("disagreements vs geometry-rs: {gm_diff}/{npts} (boundary semantics differ)");
+    let f64_diff = ours.iter().zip(&ours_f64).filter(|(a, b)| a != b).count();
+    println!("disagreements vs ours-f64: {f64_diff}/{npts} (must be 0: f64 exact at i24)");
     println!("ours:        {:>8.2?}  ({:.1} µs/lookup)", t_ours, t_ours.as_micros() as f64 / npts as f64);
+    println!("ours-f64:    {:>8.2?}  ({:.1} µs/lookup)   ours {:.2}x",
+        t_f64, t_f64.as_micros() as f64 / npts as f64,
+        t_f64.as_secs_f64() / t_ours.as_secs_f64());
     println!("geo:         {:>8.2?}  ({:.1} µs/lookup)   ours {:.2}x",
         t_geo, t_geo.as_micros() as f64 / npts as f64,
         t_geo.as_secs_f64() / t_ours.as_secs_f64());
