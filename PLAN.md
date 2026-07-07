@@ -53,8 +53,9 @@ utz/                 workspace root
       lib.rs         the tuning HTML (§14.8); wasm.rs = raw extern "C" surface
       wasm.rs
 
-  utz-data-*/        preset data crates (§11): nano/micro/balanced/accurate —
-                     generated + published by CI per TZBB release, not committed
+  utz-data-*/        preset data crates (§11): tiny/tiny-static/compact/
+                     balanced/accurate — generated + published by CI per TZBB
+                     release, not committed (scripts/gen-presets.sh)
 
   utz-build/         consumer build-dependency (builder API) + CLI (`gen`)
     src/             + dev/exploration + viz tool
@@ -362,15 +363,19 @@ Two **mandatory, at-least-one-of feature choices**. (Unification-safe by
 construction: an "at least one of N" error can only be *silenced* by feature
 union, never triggered — unlike "exactly one of N", which union breaks.)
 
-1. **Data tier:** `nano` / `micro` / `balanced` / `accurate` (prebuilt data
-   crates) or `custom` (consumer generates the asset).
+1. **Data tier:** `tiny` / `tiny-static` / `compact` / `balanced` /
+   `accurate` (prebuilt data crates) or `custom` (consumer generates the
+   asset). Naming grammar: a bare tier name is the compressed asset;
+   `<tier>-static` is the same decoded container shipped flat (zero-copy via
+   `from_static`, `core`-rung capable). `-static` is the *codec* axis —
+   orthogonal to possible future *dataset* variants like `balanced-1970`.
 2. **Environment:** `std` / `alloc` / `core` (ladder, see below).
 
 `default = []` — forgetting to choose fails loudly, with the error message as
 onboarding (embedded-friendlier than the ecosystem's silent `default = ["std"]`,
 where a forgotten `default-features = false` drags `std` into firmware):
 ```rust
-compile_error!("utz: pick a data tier: a preset (`nano`/`micro`/`balanced`/`accurate`) \
+compile_error!("utz: pick a data tier: a preset (`tiny`/`tiny-static`/`compact`/`balanced`/`accurate`) \
                 or `custom` (bring your own asset, generated with utz-build)");
 compile_error!("utz: choose an environment: `std`, `alloc` (no_std + allocator), \
                 or `core` (bare metal: uncompressed assets only, ~zero heap)");
@@ -406,16 +411,17 @@ deliberate bare-metal intent and satisfies choice 2:
 
 **The tiers:**
 
-- **Presets (features → data crates):** `utz-data-nano` … `utz-data-accurate`,
+- **Presets (features → data crates):** `utz-data-tiny` … `utz-data-accurate`,
   each containing one CI-generated `.utz` as a static. Each preset enables
-  **one or zero decoders**. Compressed preset: `nano = ["dep:utz-data-nano",
+  **one or zero decoders**. Compressed preset: `tiny = ["dep:utz-data-tiny",
   "alloc", <its codec>]` — the codec must be no_std-clean (any pure-Rust
   codec since 2026-07: `gzip`/`ruzstd`/`brotli`/`xz`; only `zstd-sys` is
-  out — §7, §14.5) and `alloc` comes along for decompression. Uncompressed preset: enables neither — works on the
-  `core` rung, zero-copy straight from the static, trading flash for zero
-  decode RAM. Consumer: `utz = { features = ["std", "balanced"] }` →
-  `Finder::new()`. Presets bake dataset `now`; other datasets are custom (or
-  later preset variants — §14.5).
+  out — §7, §14.5) and `alloc` comes along for decompression. Uncompressed
+  preset (`tiny-static`): enables neither — works on the `core` rung,
+  zero-copy straight from the static, trading flash for zero decode RAM.
+  Consumer: `utz = { features = ["std", "balanced"] }` → `Finder::new()`.
+  Presets bake dataset `now`; other datasets are custom (or later preset
+  variants — §14.5).
 - **Custom (the fifth tier):** a marker feature — gates nothing
   (`from_static`/`from_reader` stay available to everyone; preset users want
   them for OTA), it states intent and satisfies choice 1. Generate the bytes with:
@@ -438,7 +444,7 @@ deliberate bare-metal intent and satisfies choice 2:
   tree enabling different presets both link, the unreferenced one is dead-stripped.
   No one-of-N `compile_error!` boilerplate anywhere. `Finder::new()` exists only
   when *exactly one* preset feature is on (cfg'd out otherwise — use
-  `from_static(utz::data::NANO)` explicitly); an asset whose codec byte has no
+  `from_static(utz::data::TINY_STATIC)` explicitly); an asset whose codec byte has no
   compiled decoder is a runtime `Err`, not a compile error (self-describing header).
 - **Hermetic where it matters.** The old plan had `utz/build.rs` downloading TZBB
   in *every consumer's* build — broken on docs.rs, Nix, Bazel, Debian, offline CI.
@@ -460,19 +466,21 @@ deliberate bare-metal intent and satisfies choice 2:
   (TZBB release + all knobs → regenerate and diff); the CI publish job should
   also attach generation logs + checksums to a GitHub release.
 
-**Status (2026-07): skeleton implemented.** `utz` enforces the two mandatory
-choices (tier: `nano`/`custom` so far; env ladder `core` ⊂ `alloc` ⊂ `std`)
-with the compile_error onboarding, and API availability follows the rung:
+**Status (2026-07): implemented — all five presets ship.** `utz` enforces the
+two mandatory choices (tier: `tiny`/`tiny-static`/`compact`/`balanced`/
+`accurate`/`custom`; env ladder `core` ⊂ `alloc` ⊂ `std`) with the
+compile_error onboarding, and API availability follows the rung:
 `from_static` (zero-copy) + `lookup` + `lookup_coarse` on `core`;
 `from_slice`/`from_vec` + `preload` (eager) on `alloc`; `from_reader` on
-`std`. `utz-data-nano` bakes the §14.5 nano
-recipe (asset gitignored, regenerated via `utz-build gen`); `nano =
-["dep:utz-data-nano", "alloc", "gzip"]` wires `Finder::new()` +
-`utz::data::NANO` (integration-tested). The custom tier has the
-`utz_build::Config` builder (build.rs pattern) and the `gen` CLI (alias
-`encode`). Remaining: micro/balanced/accurate data crates when their recipes
-pin (§14.5), the CI publish job, and a real user-cache dir + pre-fetched-
-source knob so hermetic build.rs consumers work (TODO in `Config::generate`).
+`std`. Each `utz-data-*` crate bakes its §14.5 recipe (assets gitignored,
+regenerated via `scripts/gen-presets.sh`); `Finder::new()` is wired per
+preset (integration-tested, including the multi-preset new()-absent build
+and the tiny vs tiny-static agreement check). `tiny-static` is the `core`
+rung's bundled asset — CI proves it on riscv32imac with
+`--features core,tiny-static`. The custom tier has the `utz_build::Config`
+builder (build.rs pattern) and the `gen` CLI (alias `encode`). Remaining:
+the CI publish job, and a real user-cache dir + pre-fetched-source knob so
+hermetic build.rs consumers work (TODO in `Config::generate`).
 
 **Prior art:** `prost-build`/`slint-build`/`tonic-build` (consumer build.rs,
 builder-API-as-config), `icu_datagen`/databake + `chrono-tz` (pregenerated /
@@ -526,39 +534,43 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
 ## 14. Open decisions (continue later)
 
 1. ~~**Build-knob mechanism**~~ — **decided** (§11): preset data crates
-   (`nano`/`micro`/`balanced`/`accurate` features) + consumer-side custom
-   generation via the `utz-build` builder API / CLI. Supersedes the earlier
-   `utz.toml`/`UTZ_CONFIG` `[env]` design (rejected: silent cwd-discovery
-   failure, non-hermetic build.rs downloads in every consumer).
+   (`tiny`/`tiny-static`/`compact`/`balanced`/`accurate` features) +
+   consumer-side custom generation via the `utz-build` builder API / CLI.
+   Supersedes the earlier `utz.toml`/`UTZ_CONFIG` `[env]` design (rejected:
+   silent cwd-discovery failure, non-hermetic build.rs downloads in every
+   consumer).
 2. ~~**`geo` vs hand-rolled PIP**~~ — **decided**: hand-rolled i64 (`utz/src/pip.rs`),
    geo dev-oracle only. 0/20k disagreements, speed parity with geo after
    adopting its loop shape (see §15).
 3. **`LonLat` newtype** vs raw `(lon, lat)` to prevent order footgun.
 4. ~~**Antimeridian**~~ — **verified pre-split** (see §15); no split pass.
-5. **Preset values** (ε/quant/grid/codec/window) for
-   `nano`/`micro`/`balanced`/`accurate` (§11, §7 — incl. each preset's
-   documented peak-decode-RAM number). Codec may be *none* (uncompressed:
-   `core`-rung-compatible, zero decode RAM, more flash). Quant: **i24 looking
-   like the sweet spot**; i16 a low-accuracy super-low-storage last resort;
-   i32 likely unneeded. Tier anchors (2026-07): **nano = i16, RDP
-   ε=10 000 m, pop-density weight floor 1e-3, gzip — 66.7 K** (target was
-   ~70 K; floor tuned 1e-4 → 1e-3 in the viz live preview, −15 K): raw
-   118.9 K → gzip 66.7 K / zstd 63.5 K, brotli 57.8 K / xz 57.3 K; gzip
-   decode RAM = 119 K flat. (Brotli is preset-eligible too since 2026-07 —
-   its 57.8 K would trade ~9 K flash for ~+110 K decode RAM vs gzip.)
-   **balanced =
-   i24 at roughly a megabyte** — at that size brotli/xz-class compression is
-   worth it, and the §15 sweep already settles its settings (brotli beats xz
-   at i24 on flash AND decode speed, and both are window-insensitive, so
-   brotli q11 with a modest lgwin is the pick whenever balanced lands —
-   prerequisite ~~take the brotli decoder off `std`~~ **done 2026-07**:
-   no-stdlib mode + allocator shim, brotli is preset-eligible); **micro
-   quant still open** (i16 vs i24). Also: whether non-`now` datasets get
-   preset variants (e.g. `balanced-1970`) or stay custom-only. Window/codec
-   input measured (§15): preset windows go small (ruzstd 8 K; gzip has none);
-   gzip's peak-RAM floor (= decoded size exactly) plus smallest pure-Rust
-   decoder make it the default for the small no_std tiers.
-6. Crate/repo name confirmed `utz`; public naming of feature groups.
+5. ~~**Preset values** (ε/quant/grid/codec/window)~~ — **pinned 2026-07**
+   (all dataset `now`, pop-density-weighted; measured sizes from the first
+   full gen):
+
+   | tier | ε (RDP) | quant | pop floor | grid | codec | size |
+   |---|---|---|---|---|---|---|
+   | `tiny` | 10 000 m | i16 | 1e-3 | 2° | gzip | 66.7 K (decode RAM 119 K) |
+   | `tiny-static` | 10 000 m | i16 | 1e-3 | 2° | none | 118.9 K flash, ~0 RAM |
+   | `compact` | 1 000 m | i24 | 1e-3 | 4/3° | xz | 441.4 K |
+   | `balanced` | 50 m | i24 | 2e-2 | 2/3° | brotli | 1 259 K |
+   | `accurate` | 10 m | i32 | 1e-1 | 0.5° | brotli | 3 919.7 K |
+
+   `tiny-static` is `tiny`'s decoded container with codec *none* —
+   `core`-rung-compatible, zero decode RAM, more flash (`-static` = the codec
+   axis, §11). Recipes live in `scripts/gen-presets.sh`. Earlier anchor
+   notes, still valid: tiny's floor tuned 1e-4 → 1e-3 in the viz live
+   preview (−15 K); raw 118.9 K → gzip 66.7 K / zstd 63.5 K, brotli 57.8 K /
+   xz 57.3 K, gzip decode RAM = decoded size exactly and the smallest
+   pure-Rust decoder — why it's the pick for the smallest compressed tier.
+   Brotli beats xz at i24 on flash AND decode speed in the §15 sweep and both
+   are window-insensitive — hence brotli for balanced/accurate (no-stdlib
+   mode + allocator shim landed 2026-07). Still open: whether non-`now`
+   datasets get preset variants (e.g. `balanced-1970`) or stay custom-only.
+6. ~~Crate/repo name + public naming of feature groups~~ — confirmed `utz`;
+   tiers unified under trade-off adjectives (`tiny`/`compact`/`balanced`/
+   `accurate` + the `-static` codec-axis suffix, 2026-07). The metric-prefix
+   names (`nano`/`micro`) are gone.
 7. ~~**Alloc-free *accurate* lookup**~~ — **decided + implemented (2026-07):
    streaming PIP** (host-only numbers in the §15 entry; the embedded
    flash-latency bench remains), which made the fixed-scratch-buffer idea
@@ -699,7 +711,7 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   nearly every cell (xz9 edges it once, by 1%); zstd22 trails brotli 3–8%; gzip
   trails 5–15% but stays respectable for the smallest pure-Rust decoder
   (miniz_oxide). (An earlier "balanced = ε=500 i16 brotli → 133 K" candidate
-  here is superseded: balanced is i24 at ~1 MB, ε=500 i16 is nano/micro
+  here is superseded: balanced is i24 at ~1.3 MB, ε=500 i16 is tiny/compact
   territory — §14.5.)
 - [x] **Antimeridian** — scanned (`amscan`): TZBB with-oceans is pre-split (414/422
   verts exactly on ±180, 0 out-of-range coords). Single flagged >180° edge is

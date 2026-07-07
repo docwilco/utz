@@ -24,6 +24,19 @@ let finder = utz::Finder::new()?;              // or ::from_static(flash_bytes)
 let tz = finder.lookup(-0.1278, 51.5074);      // Some("Europe/London")
 ```
 
+## Preset bundles
+
+One Cargo feature picks a ready-made size/accuracy point (recipes in
+PLAN.md §14.5); `custom` instead generates your own asset with `utz-build`:
+
+| feature | simplification | size | notes |
+|---|---|---|---|
+| `tiny` | ε 10 km, i16 | ~67 KB | gzip — ~119 KB RAM to decode |
+| `tiny-static` | ε 10 km, i16 | ~119 KB | `tiny` uncompressed: zero-copy from flash, ~0 RAM, runs on bare-metal `core` |
+| `compact` | ε 1 km, i24 | ~441 KB | xz |
+| `balanced` | ε 50 m, i24 | ~1.3 MB | brotli |
+| `accurate` | ε 10 m, i32 | ~3.9 MB | brotli |
+
 ## Inspirations & credits
 
 μTZ stands on the shoulders of three excellent projects — it reuses their ideas
