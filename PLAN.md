@@ -292,6 +292,18 @@ decode RAM unchanged (§11, §14.5). Only `zstd-sys` stays std.
 - **Why i64 over f64:** exact on gridded data (no rounding to be robust against),
   **deterministic** across platforms/compilers (integer math), faster (SimpleKernel-
   style predicate), fewer deps. f64 only re-introduces rounding we quantized away.
+- **f64 kernel exists, test/bench-only (2026-07).** The `pip_impl!` macro is
+  width-generic, so `contains_f64`/`ring_hit_f64`/`edge_f64` are one
+  instantiation — never dispatched by `lookup`. Sharpens the "why integer"
+  answer: at i16/i24, f64 is **bit-exact** (products ≤ 2^48 < 2^53 — verified
+  0/20 000 vs i64 on real geometry in `pip_bench`, plus a 40 000-probe
+  property test), so exactness only rules f64 out at i32 quant (products
+  ~2^62, geometry-rs's failure mode). The standing reasons are (a) i32-quant
+  support via one more instantiation instead of a different algorithm, and
+  (b) FPU independence: host f64 costs 1.14× i64 (per-edge int→f64 casts);
+  on the ESP32-S3 it's **5.63×** (soft-float; i128 3.93× — §15's kernel
+  micro-bench). Width dispatch stays: i64 default, i128 only when the header
+  says i32 quant.
 - **`geo` as dev-dependency only** — cross-validate the hand-rolled PIP in tests
   (geo-i64 is a proven oracle). Keeps `geo`/std out of the runtime → `no_std` clean.
 - **Antimeridian**: geo handles the shipped data correctly (planar), suggesting
@@ -817,9 +829,15 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   80 MHz default clock, i.e. clock-proportional, compute-bound.
   Balanced eager (7.83 MiB cache, preload 1 854 ms) fits the 8 MiB PSRAM
   **only** with the v2 exact reservation (§4) — push-doubling growth OOMed
-  at the 4→8 MiB step. Caveats: one part, one flash interface —
-  Cortex-M/RISC-V QSPI parts unmeasured; f32 or fixed-point lookup input is
-  the obvious next lever if embedded speed ever matters (§13).
+  at the 4→8 MiB step. **Kernel micro-bench** (same S3 run, synthetic
+  i24-range ring, 1.64 M edges/kernel, identical verdicts): i64 **189
+  ns/edge**, i128 **3.93×**, f64 **5.63×** (soft-float) — vs host where f64
+  is only 1.14× (`pip_bench`, 0/20 000 disagreements). Confirms the integer
+  design is the floor: an f64 PIP would cost ~5.6× on this class of part,
+  and i128 stays quarantined to i32-quant assets (§8). Caveats: one part,
+  one flash interface — Cortex-M/RISC-V QSPI parts unmeasured; f32 or
+  fixed-point lookup input is the obvious next lever if embedded speed ever
+  matters (§13).
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
   reads vs streaming's sequential prefetch); `geometry-rs` comparison.
