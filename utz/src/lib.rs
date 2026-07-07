@@ -42,8 +42,8 @@ pub use finder::Finder;
 /// explicitly: `Finder::from_slice(utz::data::NANO)`.
 #[cfg(feature = "nano")]
 pub mod data {
-    /// nano preset: dataset `now`, RDP ε=10 000 m (pop-density floor 1e-4),
-    /// i16, 2° grid, gzip — ~72 K flash, peak decode RAM 134 K (§14.5).
+    /// nano preset: dataset `now`, RDP ε=10 000 m (pop-density floor 1e-3),
+    /// i16, 2° grid, gzip — ~67 K flash, peak decode RAM 119 K (§14.5).
     pub use utz_data_nano::NANO;
 }
 
