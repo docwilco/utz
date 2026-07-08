@@ -23,12 +23,19 @@ fn main() {
         .out_path(format!("{out}/balanced-none.utz"))
         .generate()
         .expect("generate balanced-none.utz");
-    // tiny-static with fixed-width arcs: the XIP speed tier (§13/§15 —
-    // streaming lookups skip varint decode; costs flash, zero RAM)
+    // fixed-width-arc twins: the XIP speed tier (§13/§15 — streaming
+    // lookups skip varint decode; costs flash, zero RAM). tiny = i16,
+    // compact = i24 (heavier read_fixed byte assembly)
     Config::tiny()
         .codec(Codec::Uncompressed)
         .geom(GeomEncoding::Fixed)
         .out_path(format!("{out}/tiny-fixed-static.utz"))
         .generate()
         .expect("generate tiny-fixed-static.utz");
+    Config::compact()
+        .codec(Codec::Uncompressed)
+        .geom(GeomEncoding::Fixed)
+        .out_path(format!("{out}/compact-fixed-none.utz"))
+        .generate()
+        .expect("generate compact-fixed-none.utz");
 }

@@ -48,6 +48,7 @@ use utz::data::{
 static COMPACT_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-none.utz"));
 static BALANCED_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/balanced-none.utz"));
 static TINY_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz"));
+static COMPACT_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz"));
 
 /// modest by host standards; lookups run ~250-300x host on this core (see
 /// README) so a round must stay in seconds, not minutes
@@ -241,9 +242,11 @@ fn main() -> ! {
 
     // --- streaming from flash (XIP, zero-copy) ---
     xip_leg("tiny xip-flash", TINY_NONE, &pts);
-    // fixed-width arcs: same geometry, no per-vertex varint decode (§13)
+    // fixed-width arcs: same geometry, no per-vertex varint decode (§13);
+    // tiny = i16, compact = i24 (heavier read_fixed byte assembly)
     xip_leg("tiny-fixed xip-flash", TINY_FIXED, &pts);
     xip_leg("compact xip-flash", COMPACT_NONE, &pts);
+    xip_leg("compact-fixed xip-flash", COMPACT_FIXED, &pts);
     xip_leg("balanced xip-flash", BALANCED_NONE, &pts);
 
     // --- streaming from RAM (uncompressed copy) ---

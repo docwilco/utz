@@ -880,7 +880,9 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   rest of eager's win is the access pattern (contiguous coord slices in a
   bounds-elided kernel loop vs per-arc offset indirection and byte-wise
   flash reads). Verdict: fixed arcs are a modest streaming tier — +40%
-  flash for 1.3× on i16; i24 unmeasured. `eager_from_slice`
+  flash for 1.32× on i16; i24 measured 2026-07-08 (`compact-fixed-none`):
+  XIP 1470 → 989 µs/lookup, **1.49×** for +72% flash (the wider varints
+  cost more, so removing them saves more; eager 420 still 2.4× ahead). `eager_from_slice`
   (decode→eager, geometry dropped — the §14.10 harvest) also measured:
   load 132 ms ≈ decode+preload, lookups = eager (107), steady heap 491 K
   vs 573 K (−14%, exactly the dropped arc store + ring index). Found

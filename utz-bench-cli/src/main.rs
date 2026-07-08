@@ -20,6 +20,7 @@ use clap::Parser;
 static COMPACT_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-none.utz"));
 static BALANCED_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/balanced-none.utz"));
 static TINY_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz"));
+static COMPACT_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz"));
 
 /// The embedded container for a shape name, if the argument is one.
 fn embedded(name: &str) -> Option<&'static [u8]> {
@@ -29,6 +30,7 @@ fn embedded(name: &str) -> Option<&'static [u8]> {
         "tiny-fixed-static" => TINY_FIXED,
         "compact" => utz::data::COMPACT,
         "compact-none" => COMPACT_NONE,
+        "compact-fixed-none" => COMPACT_FIXED,
         "balanced" => utz::data::BALANCED,
         "balanced-none" => BALANCED_NONE,
         "accurate" => utz::data::ACCURATE,
@@ -40,7 +42,8 @@ fn embedded(name: &str) -> Option<&'static [u8]> {
 #[command(name = "utz-bench-cli", about = "μTZ lookup benchmark over a preset shape or .utz container")]
 struct Args {
     /// shape name (tiny, tiny-static, tiny-fixed-static, compact,
-    /// compact-none, balanced, balanced-none, accurate) or a container path
+    /// compact-none, compact-fixed-none, balanced, balanced-none, accurate)
+    /// or a container path
     container: String,
     /// number of uniform lon/lat sample points
     #[arg(default_value_t = 100_000)]
