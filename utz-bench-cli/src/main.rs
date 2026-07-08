@@ -6,23 +6,27 @@
 //!
 //! A shape name picks an embedded container: the presets (`tiny`,
 //! `tiny-static`, `compact`, `balanced`, `accurate` — the utz-data-* crates,
-//! via the `utz` preset features) or a codec-none twin (`compact-none`,
-//! `balanced-none` — generated in build.rs via the utz-build builder API).
-//! Anything else is read as a `.utz` file path.
+//! via the `utz` preset features) or a build.rs-generated custom shape
+//! (`compact-none`, `balanced-none`, and `tiny-fixed-static` — tiny-static
+//! with fixed-width arcs, the XIP speed tier). Anything else is read as a
+//! `.utz` file path.
 
 use std::time::Instant;
 
 use clap::Parser;
 
-// uncompressed twins of the compact/balanced presets (see build.rs)
+// uncompressed twins of the compact/balanced presets, and tiny-static with
+// fixed-width arcs — the XIP speed tier (see build.rs)
 static COMPACT_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-none.utz"));
 static BALANCED_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/balanced-none.utz"));
+static TINY_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz"));
 
 /// The embedded container for a shape name, if the argument is one.
 fn embedded(name: &str) -> Option<&'static [u8]> {
     Some(match name {
         "tiny" => utz::data::TINY,
         "tiny-static" => utz::data::TINY_STATIC,
+        "tiny-fixed-static" => TINY_FIXED,
         "compact" => utz::data::COMPACT,
         "compact-none" => COMPACT_NONE,
         "balanced" => utz::data::BALANCED,
@@ -35,8 +39,8 @@ fn embedded(name: &str) -> Option<&'static [u8]> {
 #[derive(Parser)]
 #[command(name = "utz-bench-cli", about = "μTZ lookup benchmark over a preset shape or .utz container")]
 struct Args {
-    /// shape name (tiny, tiny-static, compact, compact-none, balanced,
-    /// balanced-none, accurate) or a container file path
+    /// shape name (tiny, tiny-static, tiny-fixed-static, compact,
+    /// compact-none, balanced, balanced-none, accurate) or a container path
     container: String,
     /// number of uniform lon/lat sample points
     #[arg(default_value_t = 100_000)]

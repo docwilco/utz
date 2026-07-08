@@ -42,10 +42,12 @@ esp_bootloader_esp_idf::esp_app_desc!();
 use utz::data::{
     BALANCED as BALANCED_BR, COMPACT as COMPACT_XZ, TINY as TINY_GZ, TINY_STATIC as TINY_NONE,
 };
-// …and their uncompressed twins, generated in build.rs via the utz-build
-// consumer builder API (from_static accepts only codec none)
+// …and the build.rs-generated custom shapes (utz-build consumer builder
+// API): uncompressed twins (from_static accepts only codec none) and
+// tiny-static with fixed-width arcs — the XIP speed tier
 static COMPACT_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-none.utz"));
 static BALANCED_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/balanced-none.utz"));
+static TINY_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz"));
 
 /// modest by host standards; lookups run ~250-300x host on this core (see
 /// README) so a round must stay in seconds, not minutes
@@ -170,6 +172,32 @@ fn eager_leg(label: &str, blob: &'static [u8], pts: &[(f64, f64)]) {
     bench(label, &f, pts);
 }
 
+/// eager_from_slice leg: compressed asset decoded straight to eager, the
+/// geometry sections dropped — steady-state heap is the eager cache plus
+/// header/tzid/grid only (compare against decode + preload's payload+cache)
+fn eager_slice_leg(label: &str, blob: &'static [u8], pts: &[(f64, f64)]) {
+    let (s0, p0) = (free_sram() as isize, free_psram() as isize);
+    let t0 = now_us();
+    let f = match Finder::eager_from_slice(blob) {
+        Ok(f) => f,
+        Err(_) => {
+            println!("SKIP {}: eager_from_slice failed (no heap fit?)", label);
+            return;
+        }
+    };
+    let load_us = now_us() - t0;
+    let (s1, p1) = (free_sram() as isize, free_psram() as isize);
+    println!(
+        "INFO {}: load {} ms ({} KiB compressed), steady heap dSRAM {} KiB dPSRAM {} KiB",
+        label,
+        load_us / 1000,
+        blob.len() / 1024,
+        (s0 - s1) / 1024,
+        (p0 - p1) / 1024
+    );
+    bench(label, &f, pts);
+}
+
 #[main]
 fn main() -> ! {
     // Config::default() would boot at 80 MHz — bench at the chip's 240 MHz
@@ -213,6 +241,8 @@ fn main() -> ! {
 
     // --- streaming from flash (XIP, zero-copy) ---
     xip_leg("tiny xip-flash", TINY_NONE, &pts);
+    // fixed-width arcs: same geometry, no per-vertex varint decode (§13)
+    xip_leg("tiny-fixed xip-flash", TINY_FIXED, &pts);
     xip_leg("compact xip-flash", COMPACT_NONE, &pts);
     xip_leg("balanced xip-flash", BALANCED_NONE, &pts);
 
@@ -242,6 +272,9 @@ fn main() -> ! {
     eager_leg("tiny eager", TINY_NONE, &pts);
     eager_leg("compact eager", COMPACT_NONE, &pts);
     eager_leg("balanced eager", BALANCED_NONE, &pts);
+
+    // --- eager_from_slice (compressed asset → eager, geometry dropped) ---
+    eager_slice_leg("tiny eager-slice", TINY_GZ, &pts);
 
     kernel_bench();
 

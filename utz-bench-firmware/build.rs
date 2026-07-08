@@ -5,7 +5,7 @@
 //! ships, are built here. Same recipes as utz-bench-cli/build.rs so host and
 //! target checksums stay comparable.
 
-use utz_build::encode::Codec;
+use utz_build::encode::{Codec, GeomEncoding};
 use utz_build::Config;
 
 fn main() {
@@ -23,4 +23,12 @@ fn main() {
         .out_path(format!("{out}/balanced-none.utz"))
         .generate()
         .expect("generate balanced-none.utz");
+    // tiny-static with fixed-width arcs: the XIP speed tier (§13/§15 —
+    // streaming lookups skip varint decode; costs flash, zero RAM)
+    Config::tiny()
+        .codec(Codec::Uncompressed)
+        .geom(GeomEncoding::Fixed)
+        .out_path(format!("{out}/tiny-fixed-static.utz"))
+        .generate()
+        .expect("generate tiny-fixed-static.utz");
 }
