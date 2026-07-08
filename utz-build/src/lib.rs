@@ -71,13 +71,21 @@ pub fn dataset(ds: &str) -> anyhow::Result<Dataset> {
 /// `.fgb` when it exists (no network, with-oceans now/1970 only) and falls
 /// back to downloading.
 pub fn load(ds: &str) -> anyhow::Result<Vec<Feat>> {
+    Ok(load_with_release(ds)?.0)
+}
+
+/// [`load`] plus the TZBB release tag the features came from — for stamping
+/// container headers (provenance, §11). `"dev"` when the source isn't a
+/// pinned release (legacy `.fgb`, offline fallback).
+pub fn load_with_release(ds: &str) -> anyhow::Result<(Vec<Feat>, String)> {
     let d = dataset(ds)?;
     let fgb = fgb_path(&d);
+    let legacy = |p: &str| Ok((load_fgb(p)?, "dev".to_string()));
     match std::env::var("UTZ_SOURCE").as_deref() {
-        Ok("fgb") => load_fgb(&fgb.ok_or_else(|| anyhow::anyhow!("no legacy .fgb for dataset {}", d.name()))?),
+        Ok("fgb") => legacy(&fgb.ok_or_else(|| anyhow::anyhow!("no legacy .fgb for dataset {}", d.name()))?),
         Ok("tzbb") => loader::load_tzbb(d, &cache_dir()),
         _ => match fgb {
-            Some(p) if std::path::Path::new(&p).exists() => load_fgb(&p),
+            Some(p) if std::path::Path::new(&p).exists() => legacy(&p),
             _ => loader::load_tzbb(d, &cache_dir()),
         },
     }

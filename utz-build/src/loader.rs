@@ -13,23 +13,68 @@ use serde::Deserialize;
 
 use crate::{download, Dataset, Feat, Poly, Ring};
 
-/// TZBB release asset for a dataset (`releases/latest`). TZBB naming: the
-/// unsuffixed release is the "Comprehensive" set (μTZ `all`); `-1970` = "Same
-/// since 1970"; `-now` = "Same since now"; `with-oceans` selects ocean cover.
-pub fn dataset_url(d: Dataset) -> String {
-    let base = "https://github.com/evansiroky/timezone-boundary-builder/releases/latest/download";
+const REPO: &str = "https://github.com/evansiroky/timezone-boundary-builder";
+
+/// Resolve the tag `releases/latest` points at by reading its redirect
+/// (`…/releases/tag/<tag>`) — no API, no auth. The tag is cached in
+/// `<cache_dir>/tzbb-release.tag` so offline regeneration keeps it;
+/// `UTZ_TZBB_RELEASE` pins a tag explicitly (skips the probe). With no
+/// network and no cached tag, falls back to `"dev"` with a warning — the
+/// zip cache may still serve the data.
+pub fn resolve_release(cache_dir: &Path) -> anyhow::Result<String> {
+    if let Ok(tag) = std::env::var("UTZ_TZBB_RELEASE") {
+        if !tag.is_empty() {
+            return Ok(tag);
+        }
+    }
+    let tag_file = cache_dir.join("tzbb-release.tag");
+    let probed: anyhow::Result<String> = (|| {
+        let resp = ureq::AgentBuilder::new().redirects(0).build()
+            .get(&format!("{REPO}/releases/latest")).call()?;
+        resp.header("location")
+            .and_then(|l| l.split_once("/releases/tag/"))
+            .map(|(_, t)| t.trim_matches('/').to_string())
+            .filter(|t| !t.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("no /releases/tag/ redirect (status {})", resp.status()))
+    })();
+    match probed {
+        Ok(tag) => {
+            std::fs::create_dir_all(cache_dir)?;
+            std::fs::write(&tag_file, &tag)?;
+            Ok(tag)
+        }
+        Err(e) => {
+            if let Some(tag) = std::fs::read_to_string(&tag_file)
+                .ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+            {
+                eprintln!("warning: resolving latest TZBB release failed ({e}); using cached tag {tag}");
+                return Ok(tag);
+            }
+            eprintln!("warning: resolving latest TZBB release failed ({e}); tagging container \"dev\"");
+            Ok("dev".into())
+        }
+    }
+}
+
+/// TZBB release asset for a dataset, pinned to `release` (so the bytes and
+/// the header tag can't skew). TZBB naming: the unsuffixed release is the
+/// "Comprehensive" set (μTZ `all`); `-1970` = "Same since 1970"; `-now` =
+/// "Same since now"; `with-oceans` selects ocean cover.
+pub fn dataset_url(d: Dataset, release: &str) -> String {
     let oceans = if d.oceans { "-with-oceans" } else { "" };
     let vintage = match d.vintage {
         "all" => "",
         v => &format!("-{v}"),
     };
-    format!("{base}/timezones{oceans}{vintage}.geojson.zip")
+    format!("{REPO}/releases/download/{release}/timezones{oceans}{vintage}.geojson.zip")
 }
 
-/// Download (revalidating) + parse a dataset into `Feat`s.
-pub fn load_tzbb(d: Dataset, cache_dir: &Path) -> anyhow::Result<Vec<Feat>> {
-    let zip_path = download::fetch(&dataset_url(d), cache_dir)?;
-    load_geojson_zip(&zip_path)
+/// Download (revalidating) + parse a dataset into `Feat`s. Returns the
+/// features plus the TZBB release tag they came from.
+pub fn load_tzbb(d: Dataset, cache_dir: &Path) -> anyhow::Result<(Vec<Feat>, String)> {
+    let release = resolve_release(cache_dir)?;
+    let zip_path = download::fetch(&dataset_url(d, &release), cache_dir)?;
+    Ok((load_geojson_zip(&zip_path)?, release))
 }
 
 /// Parse the first `.json`/`.geojson` entry of a TZBB release zip.

@@ -9,7 +9,7 @@
 #[test]
 fn new_borrows_the_tiny_static_preset() {
     let f = utz::Finder::new().expect("tiny-static asset parses");
-    assert_eq!(f.tzbb_release(), "dev");
+    assert!(!f.tzbb_release().is_empty(), "header carries a TZBB release tag");
     let london = f.lookup(utz::Position { lon: -0.1276, lat: 51.5072 });
     assert!(london.is_some(), "accurate lookup resolves");
     assert_eq!(f.lookup_coarse(utz::Position { lon: -0.1276, lat: 51.5072 }), london, "coarse agrees inland");

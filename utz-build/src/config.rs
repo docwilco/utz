@@ -111,10 +111,10 @@ impl Config {
 
     /// Fetch sources (cached), build the container, write it, return the path.
     pub fn generate(self) -> anyhow::Result<PathBuf> {
-        let feats = crate::load(&self.dataset)?;
+        let (feats, release) = crate::load_with_release(&self.dataset)?;
         let p = Params {
             dataset: crate::dataset(&self.dataset)?.code(),
-            tzbb_release: "dev", // TODO: thread the real release tag through loader
+            tzbb_release: &release,
             eps_m: self.eps_m,
             quant_bits: self.quant_bits,
             grid_deg: self.grid_deg,

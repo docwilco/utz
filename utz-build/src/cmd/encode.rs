@@ -53,10 +53,10 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         "ii" | "imai-iri" => encode::SimplifyAlgo::ImaiIri,
         c => anyhow::bail!("unknown algo {c:?}: use rdp|ii (visvalingam needs the builder API)"),
     };
-    let feats = utz_build::load(&a.ds)?;
+    let (feats, release) = utz_build::load_with_release(&a.ds)?;
     let p = Params {
         dataset: utz_build::dataset(&a.ds)?.code(),
-        tzbb_release: "dev", // TODO: thread the real release tag through loader
+        tzbb_release: &release,
         eps_m: a.eps_m,
         quant_bits: a.qbits,
         grid_deg: a.grid_deg,
@@ -80,6 +80,6 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         PathBuf::from(format!("{}-{}m{}-{}.utz", a.ds, a.eps_m, w, a.codec))
     });
     std::fs::write(&out, &container)?;
-    println!("wrote {} ({:.1} KiB, {codec:?})", out.display(), container.len() as f64 / 1024.0);
+    println!("wrote {} ({:.1} KiB, {codec:?}, TZBB {release})", out.display(), container.len() as f64 / 1024.0);
     Ok(())
 }
