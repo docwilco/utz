@@ -10,7 +10,8 @@ use crate::Error;
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
 pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 3; // v3: geom byte (arc-store encoding) in the header
+pub const VERSION: u8 = 4; // v4: poly-granular grid (parent table, per-poly
+                           // ring records, no bboxes); v3 added the geom byte
 
 /// Parsed header: every section position needed for O(1) access.
 #[derive(Clone, Copy)]
@@ -33,8 +34,10 @@ pub struct Header {
     pub n_arcs: u32,
     pub arc_offsets: usize, // u32[n_arcs+1]
     pub arc_data: usize,
-    // ring index
-    pub feat_offsets: usize, // u32[n_features+1]
+    // ring index (v4: per-poly records; grid candidates are polys)
+    /// poly id → feature id, u16[eager_polys]
+    pub parent: usize,
+    pub poly_offsets: usize, // u32[eager_polys+1]
     pub ring_data: usize,
     // eager-cache reservation counts (v2): exact Vec sizes for `preload`
     // (coords is Σ referenced-arc vcounts — may only over-estimate)
@@ -132,8 +135,10 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
     let arc_offsets = arcs_off + 4;
     let arc_data = arc_offsets + (n_arcs as usize + 1) * 4;
 
-    let feat_offsets = rings_off;
-    let ring_data = feat_offsets + (n_features as usize + 1) * 4;
+    let n_polys = eager_polys as usize;
+    let parent = rings_off;
+    let poly_offsets = parent + n_polys * 2;
+    let ring_data = poly_offsets + (n_polys + 1) * 4;
 
     need(grid_off + 4)?;
     let ncols = read_u16(p, grid_off);
@@ -150,7 +155,7 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
         dataset, quant_bits, geom, simplify_algo, grid_deg, eps_m, n_features,
         str_offsets, pool,
         n_arcs, arc_offsets, arc_data,
-        feat_offsets, ring_data,
+        parent, poly_offsets, ring_data,
         eager_coords, eager_rings, eager_polys,
         ncols, nrows, primary, uniq, list_offsets, list_ids,
     })

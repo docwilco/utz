@@ -92,68 +92,61 @@ fn main() {
             pa.extend_from_slice(&o.to_le_bytes());
         }
         pa.extend_from_slice(&a_data);
-        pa.extend_from_slice(&p[h.feat_offsets..]);
+        pa.extend_from_slice(&p[h.parent..]);
 
         // --- B: per-ring flattened i32 pairs (the preload() cache image) ---
+        let n_polys = h.eager_polys as usize;
         let mut coords: Vec<u8> = Vec::new(); // (i32, i32) pairs
         let mut ring_ends: Vec<u8> = Vec::new(); // u32
         let mut polys: Vec<u8> = Vec::new(); // [i32; 4] bbox + u32 ring_end
-        let mut feat_ends: Vec<u8> = Vec::new(); // u32
-        let (mut ncoords, mut nrings, mut npolys_total) = (0u32, 0u32, 0u32);
-        for fid in 0..h.n_features {
-            let mut pos = h.ring_data + read_u32(p, h.feat_offsets + fid as usize * 4) as usize;
-            let npolys = read_u16(p, pos);
+        let (mut ncoords, mut nrings) = (0u32, 0u32);
+        for pid in 0..n_polys {
+            let mut pos = h.ring_data + read_u32(p, h.poly_offsets + pid * 4) as usize;
+            let nr = read_u16(p, pos);
             pos += 2;
-            for _ in 0..npolys {
-                for i in 0..4 {
-                    let v = read_fixed(p, pos + i * fb, h.quant_bits);
-                    polys.extend_from_slice(&v.to_le_bytes());
+            let mut bb = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
+            for _ in 0..nr {
+                let (nrefs, mut p2) = read_varint(p, pos);
+                let start_n = ncoords;
+                let mut ring: Vec<(i32, i32)> = Vec::new();
+                for _ in 0..nrefs {
+                    let (r, p3) = read_varint(p, p2);
+                    p2 = p3;
+                    let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
+                    let mut c = arc_coords(p, &h, id);
+                    if rev {
+                        c.reverse();
+                    }
+                    ring.extend_from_slice(&c);
                 }
-                pos += 4 * fb;
-                let nr = read_u16(p, pos);
-                pos += 2;
-                for _ in 0..nr {
-                    let (nrefs, mut p2) = read_varint(p, pos);
-                    let start_n = ncoords;
-                    let mut ring: Vec<(i32, i32)> = Vec::new();
-                    for _ in 0..nrefs {
-                        let (r, p3) = read_varint(p, p2);
-                        p2 = p3;
-                        let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
-                        let mut c = arc_coords(p, &h, id);
-                        if rev {
-                            c.reverse();
-                        }
-                        ring.extend_from_slice(&c);
-                    }
-                    pos = p2;
-                    if ring.len() > 1 && ring.first() == ring.last() {
-                        ring.pop();
-                    }
-                    for (x, y) in &ring {
-                        coords.extend_from_slice(&x.to_le_bytes());
-                        coords.extend_from_slice(&y.to_le_bytes());
-                    }
-                    ncoords = start_n + ring.len() as u32;
-                    nrings += 1;
-                    ring_ends.extend_from_slice(&ncoords.to_le_bytes());
+                pos = p2;
+                if ring.len() > 1 && ring.first() == ring.last() {
+                    ring.pop();
                 }
-                npolys_total += 1;
-                polys.extend_from_slice(&nrings.to_le_bytes());
+                for &(x, y) in &ring {
+                    bb = [bb[0].min(x), bb[1].min(y), bb[2].max(x), bb[3].max(y)];
+                    coords.extend_from_slice(&x.to_le_bytes());
+                    coords.extend_from_slice(&y.to_le_bytes());
+                }
+                ncoords = start_n + ring.len() as u32;
+                nrings += 1;
+                ring_ends.extend_from_slice(&ncoords.to_le_bytes());
             }
-            feat_ends.extend_from_slice(&npolys_total.to_le_bytes());
+            for v in bb {
+                polys.extend_from_slice(&v.to_le_bytes());
+            }
+            polys.extend_from_slice(&nrings.to_le_bytes());
         }
         // header eager_coords counts the ring-closure vertex preload() pops
         // (one per closed ring), so it may exceed the flattened image
         assert!(ncoords <= h.eager_coords, "{path}: coord count mismatch");
         assert!(ncoords + nrings >= h.eager_coords, "{path}: coord count mismatch");
         assert_eq!(nrings, h.eager_rings);
-        assert_eq!(npolys_total, h.eager_polys);
         let mut pb = p[..arcs_off].to_vec(); // header + zone strings
+        pb.extend_from_slice(&p[h.parent..h.parent + n_polys * 2]); // parent table
         pb.extend_from_slice(&coords);
         pb.extend_from_slice(&ring_ends);
         pb.extend_from_slice(&polys);
-        pb.extend_from_slice(&feat_ends);
         pb.extend_from_slice(&p[grid_block..]); // grid unchanged
 
         let name = std::path::Path::new(&path)

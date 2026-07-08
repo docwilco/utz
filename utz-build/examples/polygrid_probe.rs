@@ -55,42 +55,37 @@ fn load_feats(bytes: &[u8]) -> (format::Header, Vec<Feat>) {
     assert_eq!(codec, 0, "need a codec-none container");
     let p = &bytes[start..];
     let h = format::parse(p).unwrap();
-    let fb = fixed_bytes(h.quant_bits);
     let qmax = ((1u64 << (h.quant_bits - 1)) - 1) as f64;
     let dq = |v: i32, half: f64| v as f64 / qmax * half;
-    let mut feats = Vec::with_capacity(h.n_features as usize);
-    for fid in 0..h.n_features {
-        let mut pos = h.ring_data + read_u32(p, h.feat_offsets + fid as usize * 4) as usize;
-        let npolys = read_u16(p, pos);
+    let mut feats: Vec<Feat> = (0..h.n_features)
+        .map(|_| Feat { offset: 0.0, tzid: None, polys: Vec::new() })
+        .collect();
+    for pid in 0..h.eager_polys as usize {
+        let fi = read_u16(p, h.parent + pid * 2) as usize;
+        let mut pos = h.ring_data + read_u32(p, h.poly_offsets + pid * 4) as usize;
+        let nrings = read_u16(p, pos);
         pos += 2;
-        let mut polys = Vec::with_capacity(npolys as usize);
-        for _ in 0..npolys {
-            pos += 4 * fb; // bbox
-            let nrings = read_u16(p, pos);
-            pos += 2;
-            let mut rings = Vec::with_capacity(nrings as usize);
-            for _ in 0..nrings {
-                let (nrefs, mut p2) = read_varint(p, pos);
-                let mut ring: Vec<(f64, f64)> = Vec::new();
-                for _ in 0..nrefs {
-                    let (r, p3) = read_varint(p, p2);
-                    p2 = p3;
-                    let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
-                    let mut c = arc_coords(p, &h, id);
-                    if rev {
-                        c.reverse();
-                    }
-                    ring.extend(c.iter().map(|&(x, y)| (dq(x, 180.0), dq(y, 90.0))));
+        let mut rings = Vec::with_capacity(nrings as usize);
+        for _ in 0..nrings {
+            let (nrefs, mut p2) = read_varint(p, pos);
+            let mut ring: Vec<(f64, f64)> = Vec::new();
+            for _ in 0..nrefs {
+                let (r, p3) = read_varint(p, p2);
+                p2 = p3;
+                let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
+                let mut c = arc_coords(p, &h, id);
+                if rev {
+                    c.reverse();
                 }
-                pos = p2;
-                if ring.len() > 1 && ring.first() == ring.last() {
-                    ring.pop();
-                }
-                rings.push(ring);
+                ring.extend(c.iter().map(|&(x, y)| (dq(x, 180.0), dq(y, 90.0))));
             }
-            polys.push(rings);
+            pos = p2;
+            if ring.len() > 1 && ring.first() == ring.last() {
+                ring.pop();
+            }
+            rings.push(ring);
         }
-        feats.push(Feat { offset: 0.0, tzid: None, polys });
+        feats[fi].polys.push(rings);
     }
     (h, feats)
 }

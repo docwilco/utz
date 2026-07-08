@@ -62,10 +62,11 @@ struct Eager {
     coords: Vec<(i32, i32)>,
     /// exclusive end into `coords` per ring
     ring_ends: Vec<u32>,
-    /// per polygon: bbox + exclusive end into `ring_ends`
+    /// per polygon (indexed by poly id): bbox + exclusive end into
+    /// `ring_ends`. The bbox is computed while flattening (v4 dropped it
+    /// from the payload) — it still skips whole-ring folds for candidates
+    /// that touch the cell but not the point.
     polys: Vec<([i32; 4], u32)>,
-    /// per feature: exclusive end into `polys`
-    feat_ends: Vec<u32>,
 }
 
 /// A loaded timezone index. Build once, query many.
@@ -231,16 +232,20 @@ impl Finder {
     pub fn eager_from_slice(bytes: &[u8]) -> Result<Finder, Error> {
         let mut f = Finder::from_slice(bytes)?;
         f.preload();
-        // keep [header + zone strings] and [grid] — everything lookups still
-        // read after preload; the arc store and ring index between them are
-        // shadowed by the eager cache
+        // keep [header + zone strings], [parent table] and [grid] —
+        // everything lookups still read after preload; the arc store and
+        // per-poly ring records between them are shadowed by the eager cache
         let (h, b) = (&f.hdr, &f.payload[..]);
         let arcs_off = h.arc_offsets - 4; // n_arcs u32 heads the arc block
+        let parent_len = h.eager_polys as usize * 2;
         let grid_off = h.primary - 4; // ncols/nrows u16s head the grid block
-        let mut p = Vec::with_capacity(arcs_off + (b.len() - grid_off));
+        let mut p = Vec::with_capacity(arcs_off + parent_len + (b.len() - grid_off));
         p.extend_from_slice(&b[..arcs_off]);
+        p.extend_from_slice(&b[h.parent..h.parent + parent_len]);
         p.extend_from_slice(&b[grid_off..]);
-        let shift = grid_off - arcs_off;
+        let parent = arcs_off;
+        let shift = grid_off - (arcs_off + parent_len);
+        f.hdr.parent = parent;
         f.hdr.primary -= shift;
         f.hdr.list_offsets -= shift;
         f.hdr.list_ids -= shift;
@@ -248,7 +253,7 @@ impl Finder {
         // out-of-bounds instead of reading grid bytes as geometry
         f.hdr.arc_offsets = usize::MAX;
         f.hdr.arc_data = usize::MAX;
-        f.hdr.feat_offsets = usize::MAX;
+        f.hdr.poly_offsets = usize::MAX;
         f.hdr.ring_data = usize::MAX;
         f.payload = p.into();
         Ok(f)
@@ -276,7 +281,6 @@ impl Finder {
         h.eager_coords as usize * core::mem::size_of::<(i32, i32)>()
             + h.eager_rings as usize * core::mem::size_of::<u32>()
             + h.eager_polys as usize * core::mem::size_of::<([i32; 4], u32)>()
-            + (h.n_features as usize) * core::mem::size_of::<u32>()
     }
 
     /// Decode all polygons into RAM once (eager mode, §9): repeat lookups
@@ -290,45 +294,37 @@ impl Finder {
             return;
         }
         let (h, b) = (&self.hdr, &self.payload[..]);
-        let fb = fixed_bytes(h.quant_bits);
         let mut e = Eager {
             coords: Vec::with_capacity(h.eager_coords as usize),
             ring_ends: Vec::with_capacity(h.eager_rings as usize),
             polys: Vec::with_capacity(h.eager_polys as usize),
-            feat_ends: Vec::with_capacity(h.n_features as usize),
         };
-        for fid in 0..h.n_features {
-            let mut pos = h.ring_data + read_u32(b, h.feat_offsets + fid as usize * 4) as usize;
-            let npolys = read_u16(b, pos);
+        for pid in 0..h.eager_polys {
+            let mut pos = h.ring_data + read_u32(b, h.poly_offsets + pid as usize * 4) as usize;
+            let nrings = read_u16(b, pos);
             pos += 2;
-            for _ in 0..npolys {
-                let bb = [
-                    read_fixed(b, pos, h.quant_bits),
-                    read_fixed(b, pos + fb, h.quant_bits),
-                    read_fixed(b, pos + 2 * fb, h.quant_bits),
-                    read_fixed(b, pos + 3 * fb, h.quant_bits),
-                ];
-                pos += 4 * fb;
-                let nrings = read_u16(b, pos);
-                pos += 2;
-                for _ in 0..nrings {
-                    let (nrefs, mut p2) = read_varint(b, pos);
-                    let start = e.coords.len();
-                    for _ in 0..nrefs {
-                        let (r, p3) = read_varint(b, p2);
-                        p2 = p3;
-                        self.append_arc(r as u32, &mut e.coords);
-                    }
-                    pos = p2;
-                    // drop the duplicated ring-closure vertex (ring_hit wraps)
-                    if e.coords.len() > start + 1 && e.coords.last() == e.coords.get(start) {
-                        e.coords.pop();
-                    }
-                    e.ring_ends.push(e.coords.len() as u32);
+            let poly_start = e.coords.len();
+            for _ in 0..nrings {
+                let (nrefs, mut p2) = read_varint(b, pos);
+                let start = e.coords.len();
+                for _ in 0..nrefs {
+                    let (r, p3) = read_varint(b, p2);
+                    p2 = p3;
+                    self.append_arc(r as u32, &mut e.coords);
                 }
-                e.polys.push((bb, e.ring_ends.len() as u32));
+                pos = p2;
+                // drop the duplicated ring-closure vertex (ring_hit wraps)
+                if e.coords.len() > start + 1 && e.coords.last() == e.coords.get(start) {
+                    e.coords.pop();
+                }
+                e.ring_ends.push(e.coords.len() as u32);
             }
-            e.feat_ends.push(e.polys.len() as u32);
+            // bbox over the flattened poly (v4: not in the payload)
+            let mut bb = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
+            for &(x, y) in &e.coords[poly_start..] {
+                bb = [bb[0].min(x), bb[1].min(y), bb[2].max(x), bb[3].max(y)];
+            }
+            e.polys.push((bb, e.ring_ends.len() as u32));
         }
         self.eager = Some(e);
     }
@@ -344,19 +340,21 @@ impl Finder {
             v if v == NO_ZONE => None,
             v if v & 0x8000 == 0 => self.tzid(v),
             v => {
+                // border cell: candidates are the POLYS whose rings touch it
+                // (v4) — resolve the winner's feature via the parent table
                 let (s, e) = self.list_bounds(v & 0x7FFF);
                 let b = &self.payload[..];
                 let mut first = None;
                 for pos in (s..e).step_by(2) {
-                    let fid = read_u16(b, pos);
-                    first.get_or_insert(fid);
-                    if self.feature_contains(fid, px, py) {
-                        return self.tzid(fid);
+                    let pid = read_u16(b, pos);
+                    first.get_or_insert(pid);
+                    if self.poly_contains(pid, px, py) {
+                        return self.tzid(self.parent_of(pid));
                     }
                 }
                 // quantization edge: no candidate claims the point — the
                 // dominant-first head is the best answer (measured ~0/100k)
-                first.and_then(|fid| self.tzid(fid))
+                first.and_then(|pid| self.tzid(self.parent_of(pid)))
             }
         }
     }
@@ -370,7 +368,8 @@ impl Finder {
             v if v & 0x8000 == 0 => self.tzid(v),
             v => {
                 let (s, _) = self.list_bounds(v & 0x7FFF);
-                self.tzid(read_u16(&self.payload[..], s)) // dominant-first head
+                // dominant-first head (a poly id in v4)
+                self.tzid(self.parent_of(read_u16(&self.payload[..], s)))
             }
         }
     }
@@ -409,59 +408,47 @@ impl Finder {
         core::str::from_utf8(&b[h.pool + s..h.pool + e]).ok().filter(|t| !t.is_empty())
     }
 
-    /// Per-polygon test: bbox skip, then even-odd PIP at the width the header
-    /// demands. Lazy path streams the arcs straight off the container bytes
+    /// poly id → feature id (v4 parent table).
+    fn parent_of(&self, pid: u16) -> u16 {
+        read_u16(&self.payload[..], self.hdr.parent + pid as usize * 2)
+    }
+
+    /// Per-polygon even-odd PIP at the width the header demands. Grid
+    /// candidates are polys (v4), already localized to the cell — no bbox
+    /// pre-test. Lazy path streams the arcs straight off the container bytes
     /// through the per-edge kernel (§14.7): junction vertices are shared by
     /// consecutive arcs and the ring closure is a shared junction too, so the
     /// ring's segment set is exactly the union of each arc's internal
     /// segments — every arc is walked FORWARD (orientation bit ignored) with
     /// O(1) state, and parity XORs across arcs order-independently.
-    fn feature_contains(&self, fid: u16, px: i32, py: i32) -> bool {
+    fn poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
         #[cfg(feature = "alloc")]
         if let Some(e) = &self.eager {
-            return self.eager_contains(e, fid, px, py);
+            return self.eager_poly_contains(e, pid, px, py);
         }
         let (h, b) = (&self.hdr, &self.payload[..]);
-        let fb = fixed_bytes(h.quant_bits);
-        let mut pos = h.ring_data + read_u32(b, h.feat_offsets + fid as usize * 4) as usize;
-        let npolys = read_u16(b, pos);
+        let mut pos = h.ring_data + read_u32(b, h.poly_offsets + pid as usize * 4) as usize;
+        let nrings = read_u16(b, pos);
         pos += 2;
-        for _ in 0..npolys {
-            let bb = [
-                read_fixed(b, pos, h.quant_bits),
-                read_fixed(b, pos + fb, h.quant_bits),
-                read_fixed(b, pos + 2 * fb, h.quant_bits),
-                read_fixed(b, pos + 3 * fb, h.quant_bits),
-            ];
-            pos += 4 * fb;
-            let nrings = read_u16(b, pos);
-            pos += 2;
-            let inside_bb = px >= bb[0] && py >= bb[1] && px <= bb[2] && py <= bb[3];
-            let mut poly_inside = false;
-            for _ in 0..nrings {
-                let (nrefs, mut p2) = read_varint(b, pos);
-                let mut ring_inside = false;
-                for _ in 0..nrefs {
-                    let (r, p3) = read_varint(b, p2);
-                    p2 = p3;
-                    if inside_bb {
-                        match self.scan_arc((r >> 1) as usize, px, py) {
-                            pip::RingHit::Boundary => return true, // border points claimed
-                            pip::RingHit::Inside => ring_inside = !ring_inside,
-                            pip::RingHit::Outside => {}
-                        }
-                    }
-                }
-                pos = p2;
-                if ring_inside {
-                    poly_inside = !poly_inside;
+        let mut poly_inside = false;
+        for _ in 0..nrings {
+            let (nrefs, mut p2) = read_varint(b, pos);
+            let mut ring_inside = false;
+            for _ in 0..nrefs {
+                let (r, p3) = read_varint(b, p2);
+                p2 = p3;
+                match self.scan_arc((r >> 1) as usize, px, py) {
+                    pip::RingHit::Boundary => return true, // border points claimed
+                    pip::RingHit::Inside => ring_inside = !ring_inside,
+                    pip::RingHit::Outside => {}
                 }
             }
-            if poly_inside {
-                return true;
+            pos = p2;
+            if ring_inside {
+                poly_inside = !poly_inside;
             }
         }
-        false
+        poly_inside
     }
 
     /// Fold one arc's internal segments through the edge kernel. `Inside` =
@@ -512,40 +499,36 @@ impl Finder {
         }
     }
 
-    /// Eager path: same even-odd fold over pre-decoded rings.
+    /// Eager path: same even-odd fold over the pre-decoded poly (indexed
+    /// directly by poly id). The preload-computed bbox still skips whole
+    /// folds for candidates that touch the cell but not the point.
     #[cfg(feature = "alloc")]
-    fn eager_contains(&self, e: &Eager, fid: u16, px: i32, py: i32) -> bool {
+    fn eager_poly_contains(&self, e: &Eager, pid: u16, px: i32, py: i32) -> bool {
         let wide = self.hdr.quant_bits == 32;
-        let pstart = if fid == 0 { 0 } else { e.feat_ends[fid as usize - 1] as usize };
-        let pend = e.feat_ends[fid as usize] as usize;
-        for pi in pstart..pend {
-            let (bb, rend) = e.polys[pi];
-            let rstart = if pi == 0 { 0 } else { e.polys[pi - 1].1 as usize };
-            if !(px >= bb[0] && py >= bb[1] && px <= bb[2] && py <= bb[3]) {
-                continue;
-            }
-            let mut inside = false;
-            let mut cstart = if rstart == 0 { 0 } else { e.ring_ends[rstart - 1] as usize };
-            for ri in rstart..rend as usize {
-                let cend = e.ring_ends[ri] as usize;
-                let ring = &e.coords[cstart..cend];
-                cstart = cend;
-                let hit = if wide {
-                    pip::ring_hit_i128(ring, px, py)
-                } else {
-                    pip::ring_hit_i64(ring, px, py)
-                };
-                match hit {
-                    pip::RingHit::Boundary => return true,
-                    pip::RingHit::Inside => inside = !inside,
-                    pip::RingHit::Outside => {}
-                }
-            }
-            if inside {
-                return true;
+        let pi = pid as usize;
+        let (bb, rend) = e.polys[pi];
+        if !(px >= bb[0] && py >= bb[1] && px <= bb[2] && py <= bb[3]) {
+            return false;
+        }
+        let rstart = if pi == 0 { 0 } else { e.polys[pi - 1].1 as usize };
+        let mut inside = false;
+        let mut cstart = if rstart == 0 { 0 } else { e.ring_ends[rstart - 1] as usize };
+        for ri in rstart..rend as usize {
+            let cend = e.ring_ends[ri] as usize;
+            let ring = &e.coords[cstart..cend];
+            cstart = cend;
+            let hit = if wide {
+                pip::ring_hit_i128(ring, px, py)
+            } else {
+                pip::ring_hit_i64(ring, px, py)
+            };
+            match hit {
+                pip::RingHit::Boundary => return true,
+                pip::RingHit::Inside => inside = !inside,
+                pip::RingHit::Outside => {}
             }
         }
-        false
+        inside
     }
 
     /// Decode one signed arc ref onto the end of `coords` (join-deduplicated).

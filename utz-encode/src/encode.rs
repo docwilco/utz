@@ -17,7 +17,8 @@
 //!   arc store:  n_arcs u32 | arc_offsets u32[n_arcs+1] (relative to arc data)
 //!               | per arc: varint vcount | first vertex i{16,24,32}×2
 //!               | zigzag-varint deltas
-//!   ring index: feat_offsets u32[n_features+1] (relative to ring data)
+//!   ring index (v4): parent u16[n_polys] + poly_offsets u32[n_polys+1]
+//!   (relative to ring data) — grid candidates are polys
 //!               | per feature: npolys u16; per poly: bbox i{16,24,32}×4
 //!               | nrings u16; per ring: varint nrefs | varint signed arc refs
 //!               (id<<1|rev)
@@ -35,7 +36,8 @@ use crate::{clean, topo, Feat};
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
 pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 3; // v3: geom byte (arc-store encoding) in the header
+pub const VERSION: u8 = 4; // v4: poly-granular grid (parent table, per-poly
+                           // ring records, no bboxes); v3 added the geom byte
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u8)]
@@ -175,14 +177,35 @@ pub fn payload_from_topology(
         clean::drop_degenerate_rings(&t.ring_refs, &t.structure, arcs_q, &mut cst);
     let t = topo::Topology { arc_coords: Vec::new(), ring_refs, structure };
 
-    // grid over the dequantized geometry = exactly what the runtime sees
+    // grid over the dequantized geometry = exactly what the runtime sees.
+    // v4: rasterized per POLYGON, not per feature — border-cell candidate
+    // lists carry poly ids, so lookups jump straight to the ~2 polys whose
+    // rings touch the cell instead of bbox-scanning every poly of every
+    // candidate feature (§10/§15 polygrid_probe: 20-24 polys parsed → 2.1,
+    // per-poly bboxes redundant, CSR growth ≈ dropped bbox bytes).
     let arcs_dq: Vec<Vec<(f64, f64)>> = arcs_q.iter()
         .map(|a| a.iter().map(|&(x, y)| (dq(x, 180.0), dq(y, 90.0))).collect())
         .collect();
     let quantized = t.reconstruct(feats, &arcs_dq);
-    let g = grid::build(&quantized, p.grid_deg, 8);
-    let areas = grid::feat_areas(&quantized);
-    let csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
+    let mut poly_feats: Vec<Feat> = Vec::new();
+    let mut parent: Vec<u16> = Vec::new(); // poly id -> feature id
+    for (fi, qf) in quantized.iter().enumerate() {
+        for poly in &qf.polys {
+            poly_feats.push(Feat { offset: 0.0, tzid: None, polys: vec![poly.clone()] });
+            parent.push(fi as u16);
+        }
+    }
+    anyhow::ensure!(poly_feats.len() < 0x7FFF, "polygon count exceeds 15-bit ids");
+    let g = grid::build(&poly_feats, p.grid_deg, 8);
+    let areas = grid::feat_areas(&poly_feats);
+    let mut csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
+    // interior/single cells answer without PIP — store the FEATURE id
+    // (coarse answers need no parent hop); border lists keep poly ids
+    for v in csr.primary.iter_mut() {
+        if *v & 0x8000 == 0 && *v != 0x7FFF {
+            *v = parent[*v as usize];
+        }
+    }
     // the format's CSR tables are u16 (§4): border-cell tags carry a 15-bit
     // list index, and list_offsets index into list_ids as u16 — a fine grid
     // on a dense dataset can overflow both. Fail loudly instead of the `as
@@ -238,6 +261,7 @@ pub fn payload_from_topology(
         }
     }
     anyhow::ensure!(eager_coords <= u32::MAX as u64, "eager_coords overflows u32");
+    anyhow::ensure!(eager_polys as usize == parent.len(), "poly count mismatch");
     o.extend_from_slice(&(eager_coords as u32).to_le_bytes());
     o.extend_from_slice(&eager_rings.to_le_bytes());
     o.extend_from_slice(&eager_polys.to_le_bytes());
@@ -293,24 +317,16 @@ pub fn payload_from_topology(
     for v in &arc_offsets { o.extend_from_slice(&v.to_le_bytes()); }
     o.extend_from_slice(&arc_data);
 
-    // ---- ring index (per-poly bbox from quantized arcs, for lazy-mode skip) ----
+    // ---- ring index (v4: per-poly records — grid candidates are polys;
+    // parent table maps them to features; no bboxes, the grid localizes) ----
     let rings_off = o.len() as u32;
     stats.arcs = rings_off - arcs_off;
+    for &pf in &parent { o.extend_from_slice(&pf.to_le_bytes()); }
     let mut ring_data = Vec::new();
-    let mut feat_offsets: Vec<u32> = Vec::with_capacity(feats.len() + 1);
+    let mut poly_offsets: Vec<u32> = Vec::with_capacity(parent.len() + 1);
     for fi in 0..feats.len() {
-        feat_offsets.push(ring_data.len() as u32);
-        ring_data.extend_from_slice(&(t.structure[fi].len() as u16).to_le_bytes());
         for poly in &t.structure[fi] {
-            let mut bb = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
-            for &ri in poly {
-                for &r in &t.ring_refs[ri] {
-                    for &(x, y) in &arcs_q[(r >> 1) as usize] {
-                        bb = (bb.0.min(x), bb.1.min(y), bb.2.max(x), bb.3.max(y));
-                    }
-                }
-            }
-            for v in [bb.0, bb.1, bb.2, bb.3] { push_fixed(&mut ring_data, v); }
+            poly_offsets.push(ring_data.len() as u32);
             ring_data.extend_from_slice(&(poly.len() as u16).to_le_bytes());
             for &ri in poly {
                 put_varint(&mut ring_data, t.ring_refs[ri].len() as u64);
@@ -318,8 +334,8 @@ pub fn payload_from_topology(
             }
         }
     }
-    feat_offsets.push(ring_data.len() as u32);
-    for v in &feat_offsets { o.extend_from_slice(&v.to_le_bytes()); }
+    poly_offsets.push(ring_data.len() as u32);
+    for v in &poly_offsets { o.extend_from_slice(&v.to_le_bytes()); }
     o.extend_from_slice(&ring_data);
 
     // ---- grid ----
