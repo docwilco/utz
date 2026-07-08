@@ -36,8 +36,9 @@ use crate::{clean, topo, Feat};
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
 pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 4; // v4: poly-granular grid (parent table, per-poly
-                           // ring records, no bboxes); v3 added the geom byte
+pub const VERSION: u8 = 5; // v5: per-poly bbox back in the ring record (point-
+                           // granular gate the cell-granular grid can't give);
+                           // v4 poly-granular grid; v3 geom byte
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u8)]
@@ -327,6 +328,19 @@ pub fn payload_from_topology(
     for fi in 0..feats.len() {
         for poly in &t.structure[fi] {
             poly_offsets.push(ring_data.len() as u32);
+            // per-poly bbox (v5): the point-granular gate — a streaming miss
+            // returns before touching any arc, preload reads instead of
+            // recomputing. Rejects ~5% of poly-grid candidates for 4 compares
+            // (§15) — ~20x above the check's break-even.
+            let mut bb = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+            for &ri in poly {
+                for &r in &t.ring_refs[ri] {
+                    for &(x, y) in &arcs_q[(r >> 1) as usize] {
+                        bb = (bb.0.min(x), bb.1.min(y), bb.2.max(x), bb.3.max(y));
+                    }
+                }
+            }
+            for v in [bb.0, bb.1, bb.2, bb.3] { push_fixed(&mut ring_data, v); }
             ring_data.extend_from_slice(&(poly.len() as u16).to_le_bytes());
             for &ri in poly {
                 put_varint(&mut ring_data, t.ring_refs[ri].len() as u64);

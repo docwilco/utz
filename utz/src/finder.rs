@@ -62,10 +62,9 @@ struct Eager {
     coords: Vec<(i32, i32)>,
     /// exclusive end into `coords` per ring
     ring_ends: Vec<u32>,
-    /// per polygon (indexed by poly id): bbox + exclusive end into
-    /// `ring_ends`. The bbox is computed while flattening (v4 dropped it
-    /// from the payload) — it still skips whole-ring folds for candidates
-    /// that touch the cell but not the point.
+    /// per polygon (indexed by poly id): bbox (read from the v5 record) +
+    /// exclusive end into `ring_ends`. The bbox skips whole-ring folds for
+    /// candidates that touch the cell but not the point.
     polys: Vec<([i32; 4], u32)>,
 }
 
@@ -299,11 +298,18 @@ impl Finder {
             ring_ends: Vec::with_capacity(h.eager_rings as usize),
             polys: Vec::with_capacity(h.eager_polys as usize),
         };
+        let fb = fixed_bytes(h.quant_bits);
         for pid in 0..h.eager_polys {
             let mut pos = h.ring_data + read_u32(b, h.poly_offsets + pid as usize * 4) as usize;
+            let bb = [
+                read_fixed(b, pos, h.quant_bits),
+                read_fixed(b, pos + fb, h.quant_bits),
+                read_fixed(b, pos + 2 * fb, h.quant_bits),
+                read_fixed(b, pos + 3 * fb, h.quant_bits),
+            ];
+            pos += 4 * fb;
             let nrings = read_u16(b, pos);
             pos += 2;
-            let poly_start = e.coords.len();
             for _ in 0..nrings {
                 let (nrefs, mut p2) = read_varint(b, pos);
                 let start = e.coords.len();
@@ -318,11 +324,6 @@ impl Finder {
                     e.coords.pop();
                 }
                 e.ring_ends.push(e.coords.len() as u32);
-            }
-            // bbox over the flattened poly (v4: not in the payload)
-            let mut bb = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
-            for &(x, y) in &e.coords[poly_start..] {
-                bb = [bb[0].min(x), bb[1].min(y), bb[2].max(x), bb[3].max(y)];
             }
             e.polys.push((bb, e.ring_ends.len() as u32));
         }
@@ -413,21 +414,34 @@ impl Finder {
         read_u16(&self.payload[..], self.hdr.parent + pid as usize * 2)
     }
 
-    /// Per-polygon even-odd PIP at the width the header demands. Grid
-    /// candidates are polys (v4), already localized to the cell — no bbox
-    /// pre-test. Lazy path streams the arcs straight off the container bytes
-    /// through the per-edge kernel (§14.7): junction vertices are shared by
-    /// consecutive arcs and the ring closure is a shared junction too, so the
-    /// ring's segment set is exactly the union of each arc's internal
-    /// segments — every arc is walked FORWARD (orientation bit ignored) with
-    /// O(1) state, and parity XORs across arcs order-independently.
+    /// Per-polygon test: bbox gate, then even-odd PIP at the width the
+    /// header demands. Grid candidates are polys (v4) localized to the
+    /// CELL; the record's bbox (v5) is the point-granular refinement — a
+    /// miss returns before touching any arc. Lazy path streams the arcs
+    /// straight off the container bytes through the per-edge kernel (§14.7):
+    /// junction vertices are shared by consecutive arcs and the ring closure
+    /// is a shared junction too, so the ring's segment set is exactly the
+    /// union of each arc's internal segments — every arc is walked FORWARD
+    /// (orientation bit ignored) with O(1) state, and parity XORs across
+    /// arcs order-independently.
     fn poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
         #[cfg(feature = "alloc")]
         if let Some(e) = &self.eager {
             return self.eager_poly_contains(e, pid, px, py);
         }
         let (h, b) = (&self.hdr, &self.payload[..]);
+        let fb = fixed_bytes(h.quant_bits);
         let mut pos = h.ring_data + read_u32(b, h.poly_offsets + pid as usize * 4) as usize;
+        let bb = [
+            read_fixed(b, pos, h.quant_bits),
+            read_fixed(b, pos + fb, h.quant_bits),
+            read_fixed(b, pos + 2 * fb, h.quant_bits),
+            read_fixed(b, pos + 3 * fb, h.quant_bits),
+        ];
+        if !(px >= bb[0] && py >= bb[1] && px <= bb[2] && py <= bb[3]) {
+            return false;
+        }
+        pos += 4 * fb;
         let nrings = read_u16(b, pos);
         pos += 2;
         let mut poly_inside = false;

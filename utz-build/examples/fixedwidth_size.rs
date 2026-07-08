@@ -102,9 +102,11 @@ fn main() {
         let (mut ncoords, mut nrings) = (0u32, 0u32);
         for pid in 0..n_polys {
             let mut pos = h.ring_data + read_u32(p, h.poly_offsets + pid * 4) as usize;
+            let bb: Vec<i32> =
+                (0..4).map(|i| read_fixed(p, pos + i * fb, h.quant_bits)).collect();
+            pos += 4 * fb;
             let nr = read_u16(p, pos);
             pos += 2;
-            let mut bb = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
             for _ in 0..nr {
                 let (nrefs, mut p2) = read_varint(p, pos);
                 let start_n = ncoords;
@@ -124,7 +126,6 @@ fn main() {
                     ring.pop();
                 }
                 for &(x, y) in &ring {
-                    bb = [bb[0].min(x), bb[1].min(y), bb[2].max(x), bb[3].max(y)];
                     coords.extend_from_slice(&x.to_le_bytes());
                     coords.extend_from_slice(&y.to_le_bytes());
                 }

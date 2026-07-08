@@ -60,9 +60,11 @@ fn load_feats(bytes: &[u8]) -> (format::Header, Vec<Feat>) {
     let mut feats: Vec<Feat> = (0..h.n_features)
         .map(|_| Feat { offset: 0.0, tzid: None, polys: Vec::new() })
         .collect();
+    let fb = fixed_bytes(h.quant_bits);
     for pid in 0..h.eager_polys as usize {
         let fi = read_u16(p, h.parent + pid * 2) as usize;
         let mut pos = h.ring_data + read_u32(p, h.poly_offsets + pid * 4) as usize;
+        pos += 4 * fb; // per-poly bbox (v5)
         let nrings = read_u16(p, pos);
         pos += 2;
         let mut rings = Vec::with_capacity(nrings as usize);
