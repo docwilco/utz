@@ -128,12 +128,17 @@ and the known-point tests as regression fixtures. Nothing else survives.
 
 ```
 header:      magic, version, dataset(now|1970|all), tzbb_release,
-             eps, quant_bits, simplify_algo (rdp|vw|ii, §14.8), grid_deg, codec,
+             eps, quant_bits, simplify_algo (rdp|vw|ii, §14.8),
+             geom (v3: delta+varint | fixed-width), grid_deg, codec,
              eager_coords/eager_rings/eager_polys u32 (v2)
 zone table:  tzid string pool + offsets
-arc store:   per arc: [varint vcount][i{16,24,32} first vertex][zigzag-varint deltas]
-ring index:  feature → polygon → ring = signed arc refs
-grid:        Array2<u16> primary (tagged) + interned-CSR (list_offsets u16, list_ids u16)
+arc store:   per arc: [varint vcount][i{16,24,32} first vertex][zigzag-varint
+             deltas]  — or all vertices absolute fixed-width (geom=fixed, v3)
+ring index:  v4: parent u16[n_polys] (poly → feature) + poly_offsets
+             u32[n_polys+1] + per-poly ring records (signed arc refs; no
+             bboxes — the poly-granular grid localizes, preload recomputes)
+grid:        Array2<u16> primary (feature id | 15-bit list tag) + interned-CSR
+             of POLY ids (v4; list_offsets u16, list_ids u16)
 ```
 
 **v2 (2026-07): eager-cache counts in the header.** The encoder knows exactly
