@@ -889,6 +889,22 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   while validating: header `eager_coords` counts the ring-closure vertex
   preload() pops, so `preload_bytes()` over-reserves 8 B/ring (benign,
   conservative, documented in the encoder).
+- [x] **Poly-granular grid probe** (2026-07-08, `polygrid_probe` example —
+  "could the grid replace the per-poly bboxes?"): rebuilt the grid with the
+  real builder, one pseudo-feature per polygon. Fits the format with head-
+  room (uniq lists 1025–1412 of 32 767; list_ids 2656–3444 of 65 535; avg
+  list 2.1 → 2.2); net size a wash (−0.1 K…+1.4 K: CSR +4–6 K − bboxes
+  3.5–6 K + u16 poly→feature parents ~1 K). The win beyond replacing the
+  bbox: border-cell lookups today drag **20–24 polys** per lookup through
+  bbox checks + ring-ref varint parsing (all polys of every candidate
+  feature); poly lists visit **2.1** — 9.5–11.8× less pruning work, PIP
+  set unchanged. Grid-only *exact* answers stay dead: halving the cell
+  quadruples CSR bytes while border cells only multiply (tiny 2°→0.5°:
+  3 923→17 498 border cells, 34→509 KiB) — the grid routes, geometry
+  answers. Candidate format change (v4, if pursued): primary/lists carry
+  poly ids + parent table, ring records addressed per poly, bboxes
+  dropped; expect a modest streaming border-lookup gain (parse overhead,
+  not PIP) — bench before committing.
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
   reads vs streaming's sequential prefetch); `geometry-rs` comparison.
