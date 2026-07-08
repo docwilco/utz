@@ -85,6 +85,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             grid_deg: a.grid_deg,
             codec: Codec::Uncompressed,
             simplify: Default::default(),
+            geom: Default::default(),
         };
         let payload = encode::build_payload(&feats, &p)?;
         let raw = payload.len();

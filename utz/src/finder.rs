@@ -217,6 +217,43 @@ impl Finder {
         Ok(Finder { payload: payload.into(), hdr, eager: None })
     }
 
+    /// Decode straight to eager mode, then drop the geometry sections
+    /// (PLAN §14.10): steady-state RAM is the eager cache plus only the
+    /// header/tzid/grid tables — less than `from_slice` + [`preload`]
+    /// keeping the full decoded payload (−17% on the compact preset), with
+    /// no separate preload pass. Peak RAM during construction is unchanged
+    /// (decoded payload and cache briefly coexist; the arc store must be
+    /// resident to flatten rings). For a compressed asset in flash this is
+    /// the eager entry point; for uncompressed assets prefer
+    /// [`from_static`](Finder::from_static) + [`preload`](Finder::preload),
+    /// which keeps the payload in flash entirely.
+    #[cfg(feature = "alloc")]
+    pub fn eager_from_slice(bytes: &[u8]) -> Result<Finder, Error> {
+        let mut f = Finder::from_slice(bytes)?;
+        f.preload();
+        // keep [header + zone strings] and [grid] — everything lookups still
+        // read after preload; the arc store and ring index between them are
+        // shadowed by the eager cache
+        let (h, b) = (&f.hdr, &f.payload[..]);
+        let arcs_off = h.arc_offsets - 4; // n_arcs u32 heads the arc block
+        let grid_off = h.primary - 4; // ncols/nrows u16s head the grid block
+        let mut p = Vec::with_capacity(arcs_off + (b.len() - grid_off));
+        p.extend_from_slice(&b[..arcs_off]);
+        p.extend_from_slice(&b[grid_off..]);
+        let shift = grid_off - arcs_off;
+        f.hdr.primary -= shift;
+        f.hdr.list_offsets -= shift;
+        f.hdr.list_ids -= shift;
+        // poison the dropped sections' offsets: any residual use panics
+        // out-of-bounds instead of reading grid bytes as geometry
+        f.hdr.arc_offsets = usize::MAX;
+        f.hdr.arc_data = usize::MAX;
+        f.hdr.feat_offsets = usize::MAX;
+        f.hdr.ring_data = usize::MAX;
+        f.payload = p.into();
+        Ok(f)
+    }
+
     /// Read a container from any `Read` source into an owned buffer.
     #[cfg(feature = "std")]
     pub fn from_reader(mut r: impl std::io::Read) -> Result<Finder, Error> {
@@ -432,6 +469,7 @@ impl Finder {
     fn scan_arc(&self, id: usize, px: i32, py: i32) -> pip::RingHit {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let wide = h.quant_bits == 32;
+        let fixed = h.geom == 1;
         let mut pos = h.arc_data + read_u32(b, h.arc_offsets + id * 4) as usize;
         let (vcount, p2) = read_varint(b, pos);
         pos = p2;
@@ -442,12 +480,19 @@ impl Finder {
         let mut inside = false;
         let (mut x0, mut y0) = (x as i32, y as i32);
         for _ in 1..vcount {
-            let (dx, p3) = read_varint(b, pos);
-            let (dy, p4) = read_varint(b, p3);
-            pos = p4;
-            x += unzigzag(dx);
-            y += unzigzag(dy);
-            let (x1, y1) = (x as i32, y as i32);
+            let (x1, y1) = if fixed {
+                let x1 = read_fixed(b, pos, h.quant_bits);
+                let y1 = read_fixed(b, pos + fb, h.quant_bits);
+                pos += 2 * fb;
+                (x1, y1)
+            } else {
+                let (dx, p3) = read_varint(b, pos);
+                let (dy, p4) = read_varint(b, p3);
+                pos = p4;
+                x += unzigzag(dx);
+                y += unzigzag(dy);
+                (x as i32, y as i32)
+            };
             let hit = if wide {
                 pip::edge_i128((x0, y0), (x1, y1), px, py)
             } else {
@@ -519,12 +564,17 @@ impl Finder {
         let start = coords.len();
         coords.push((x as i32, y as i32));
         for _ in 1..vcount {
-            let (dx, p3) = read_varint(b, pos);
-            let (dy, p4) = read_varint(b, p3);
-            pos = p4;
-            x += unzigzag(dx);
-            y += unzigzag(dy);
-            coords.push((x as i32, y as i32));
+            if h.geom == 1 {
+                coords.push((read_fixed(b, pos, h.quant_bits), read_fixed(b, pos + fb, h.quant_bits)));
+                pos += 2 * fb;
+            } else {
+                let (dx, p3) = read_varint(b, pos);
+                let (dy, p4) = read_varint(b, p3);
+                pos = p4;
+                x += unzigzag(dx);
+                y += unzigzag(dy);
+                coords.push((x as i32, y as i32));
+            }
         }
         if rev {
             coords[start..].reverse();

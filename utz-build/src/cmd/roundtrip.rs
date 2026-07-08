@@ -35,6 +35,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         grid_deg: 2.0,
         codec: Codec::Uncompressed,
         simplify: Default::default(),
+        geom: Default::default(),
     };
     let container = encode::encode(&feats, &p)?;
     println!("{} container: {:.1} KB uncompressed", ds.to_uppercase(), container.len() as f64 / 1024.0);

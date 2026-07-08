@@ -33,6 +33,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
                 grid_deg,
                 codec: Codec::Uncompressed,
                 simplify: Default::default(),
+                geom: Default::default(),
             };
             let payload = encode::build_payload(&feats, &p)?;
             let kb = |c: Codec| format!("{:.1}", encode::compress(&payload, c).len() as f64 / 1024.0);

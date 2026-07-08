@@ -10,13 +10,15 @@ use crate::Error;
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
 pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 2; // v2: eager_coords/rings/polys header counts
+pub const VERSION: u8 = 3; // v3: geom byte (arc-store encoding) in the header
 
 /// Parsed header: every section position needed for O(1) access.
 #[derive(Clone, Copy)]
 pub struct Header {
     pub dataset: u8,
     pub quant_bits: u8,
+    /// arc-store encoding: 0 = delta+varint, 1 = absolute fixed-width
+    pub geom: u8,
     /// simplification algorithm the asset was built with (§14.8):
     /// 0 = RDP, 1 = Visvalingam, 2 = Imai–Iri — provenance, not decode logic
     pub simplify_algo: u8,
@@ -99,17 +101,18 @@ pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize), Error> {
 /// Parse the payload header + section directory.
 pub fn parse(p: &[u8]) -> Result<Header, Error> {
     let need = |n: usize| if p.len() < n { Err(Error::BadFormat) } else { Ok(()) };
-    need(12)?;
+    need(13)?;
     let dataset = p[0];
     let quant_bits = p[1];
     let simplify_algo = p[2];
-    let grid_deg = f32::from_le_bytes([p[3], p[4], p[5], p[6]]);
-    if !matches!(quant_bits, 16 | 24 | 32) || !(grid_deg > 0.0) {
+    let geom = p[3];
+    let grid_deg = f32::from_le_bytes([p[4], p[5], p[6], p[7]]);
+    if !matches!(quant_bits, 16 | 24 | 32) || geom > 1 || !(grid_deg > 0.0) {
         return Err(Error::BadFormat);
     }
-    let eps_m = f32::from_le_bytes([p[7], p[8], p[9], p[10]]);
-    let rel_len = p[11] as usize;
-    let mut pos = 12 + rel_len; // tzbb_release skipped (read via header_release)
+    let eps_m = f32::from_le_bytes([p[8], p[9], p[10], p[11]]);
+    let rel_len = p[12] as usize;
+    let mut pos = 13 + rel_len; // tzbb_release skipped (read via header_release)
     need(pos + 26)?;
     let n_features = read_u16(p, pos);
     pos += 2;
@@ -144,7 +147,7 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
     need(list_ids)?;
 
     Ok(Header {
-        dataset, quant_bits, simplify_algo, grid_deg, eps_m, n_features,
+        dataset, quant_bits, geom, simplify_algo, grid_deg, eps_m, n_features,
         str_offsets, pool,
         n_arcs, arc_offsets, arc_data,
         feat_offsets, ring_data,
@@ -155,6 +158,6 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
 
 /// TZBB release string recorded in the header.
 pub fn release(p: &[u8]) -> &[u8] {
-    let n = p[11] as usize;
-    &p[12..12 + n]
+    let n = p[12] as usize;
+    &p[13..13 + n]
 }

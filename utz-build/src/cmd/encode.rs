@@ -31,6 +31,10 @@ pub struct Args {
     /// simplification algorithm: rdp|ii (visvalingam: builder API only, §14.8)
     #[arg(long, default_value = "rdp")]
     algo: String,
+    /// arc-store encoding: varint|fixed (fixed: +flash, streaming lookups
+    /// skip varint decode — the XIP -static speed tier, §13)
+    #[arg(long, default_value = "varint")]
+    geom: String,
     /// enable population weighting with this floor multiplier (e.g. 0.052)
     #[arg(long)]
     w_min: Option<f64>,
@@ -53,6 +57,11 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         "ii" | "imai-iri" => encode::SimplifyAlgo::ImaiIri,
         c => anyhow::bail!("unknown algo {c:?}: use rdp|ii (visvalingam needs the builder API)"),
     };
+    let geom = match a.geom.as_str() {
+        "varint" | "delta" => encode::GeomEncoding::DeltaVarint,
+        "fixed" => encode::GeomEncoding::Fixed,
+        c => anyhow::bail!("unknown geom {c:?}: use varint|fixed"),
+    };
     let (feats, release) = utz_build::load_with_release(&a.ds)?;
     let p = Params {
         dataset: utz_build::dataset(&a.ds)?.code(),
@@ -62,6 +71,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         grid_deg: a.grid_deg,
         codec,
         simplify,
+        geom,
     };
     let container = match a.w_min {
         Some(w) => {

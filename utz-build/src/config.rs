@@ -25,7 +25,7 @@
 
 use std::path::PathBuf;
 
-use crate::encode::{self, Codec, Params, SimplifyAlgo};
+use crate::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgo};
 
 /// Builder for a custom `.utz` asset. Defaults: dataset `now`, RDP ε=500 m,
 /// i24, 2° grid, gzip.
@@ -37,6 +37,7 @@ pub struct Config {
     grid_deg: f64,
     codec: Codec,
     simplify: SimplifyAlgo,
+    geom: GeomEncoding,
     density_weight_floor: Option<f64>,
     out: Option<PathBuf>,
 }
@@ -50,6 +51,7 @@ impl Default for Config {
             grid_deg: 2.0,
             codec: Codec::Gzip,
             simplify: SimplifyAlgo::Rdp,
+            geom: GeomEncoding::DeltaVarint,
             density_weight_floor: None,
             out: None,
         }
@@ -145,6 +147,16 @@ impl Config {
         self
     }
 
+    /// Arc-store encoding (§13/§15). Default delta+varint (smallest flash).
+    /// `GeomEncoding::Fixed` stores absolute fixed-width coords: +40–72% raw
+    /// / +24–32% best-compressed flash, and streaming lookups skip the
+    /// per-vertex varint decode — near-eager speed with zero RAM cache, the
+    /// XIP `-static` embedded tier.
+    pub fn geom(mut self, geom: GeomEncoding) -> Self {
+        self.geom = geom;
+        self
+    }
+
     /// Population-density-weighted simplification: ε multiplier floor in the
     /// densest cells (tiny uses 1e-3). First use downloads GHS-POP (~460 MB,
     /// cached).
@@ -170,6 +182,7 @@ impl Config {
             grid_deg: self.grid_deg,
             codec: self.codec,
             simplify: self.simplify,
+            geom: self.geom,
         };
         let bytes = match self.density_weight_floor {
             Some(w) => {

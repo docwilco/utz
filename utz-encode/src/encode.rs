@@ -35,7 +35,7 @@ use crate::{clean, topo, Feat};
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
 pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 2; // v2: eager_coords/rings/polys header counts
+pub const VERSION: u8 = 3; // v3: geom byte (arc-store encoding) in the header
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u8)]
@@ -59,6 +59,20 @@ pub enum SimplifyAlgo {
     Rdp = 0,
     Visvalingam = 1,
     ImaiIri = 2,
+}
+
+/// Arc-store encoding, recorded in the header (PLAN §13/§15 fixed-width
+/// measurements). `DeltaVarint` is the flash-size default. `Fixed` stores
+/// absolute fixed-width coords: raw arcs +40–72%, best-compressed +24–32%
+/// (xz overtakes brotli) — bought: streaming lookups skip the per-vertex
+/// varint decode, the dominant cost on embedded (near-eager speed, zero
+/// RAM), so it suits XIP `-static` assets.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[repr(u8)]
+pub enum GeomEncoding {
+    #[default]
+    DeltaVarint = 0,
+    Fixed = 1,
 }
 
 impl SimplifyAlgo {
@@ -90,6 +104,8 @@ pub struct Params<'a> {
     /// simplification algorithm (§14.8): applied by [`build_payload`],
     /// recorded in the header either way
     pub simplify: SimplifyAlgo,
+    /// arc-store encoding: delta+varint (default) or fixed-width
+    pub geom: GeomEncoding,
 }
 
 /// Byte size of each payload section + post-simplification geometry counts —
@@ -195,6 +211,7 @@ pub fn payload_from_topology(
     o.push(p.dataset);
     o.push(p.quant_bits as u8);
     o.push(p.simplify as u8);
+    o.push(p.geom as u8);
     o.extend_from_slice(&(p.grid_deg as f32).to_le_bytes());
     o.extend_from_slice(&(p.eps_m as f32).to_le_bytes());
     anyhow::ensure!(p.tzbb_release.len() < 256, "tzbb_release too long");
@@ -250,16 +267,26 @@ pub fn payload_from_topology(
     for a in &arcs_q {
         arc_offsets.push(arc_data.len() as u32);
         put_varint(&mut arc_data, a.len() as u64);
-        let (mut px, mut py) = (0i64, 0i64);
-        for (i, &(x, y)) in a.iter().enumerate() {
-            if i == 0 {
-                push_fixed(&mut arc_data, x);
-                push_fixed(&mut arc_data, y);
-            } else {
-                put_varint(&mut arc_data, zigzag(x as i64 - px));
-                put_varint(&mut arc_data, zigzag(y as i64 - py));
+        match p.geom {
+            GeomEncoding::DeltaVarint => {
+                let (mut px, mut py) = (0i64, 0i64);
+                for (i, &(x, y)) in a.iter().enumerate() {
+                    if i == 0 {
+                        push_fixed(&mut arc_data, x);
+                        push_fixed(&mut arc_data, y);
+                    } else {
+                        put_varint(&mut arc_data, zigzag(x as i64 - px));
+                        put_varint(&mut arc_data, zigzag(y as i64 - py));
+                    }
+                    (px, py) = (x as i64, y as i64);
+                }
             }
-            (px, py) = (x as i64, y as i64);
+            GeomEncoding::Fixed => {
+                for &(x, y) in a {
+                    push_fixed(&mut arc_data, x);
+                    push_fixed(&mut arc_data, y);
+                }
+            }
         }
     }
     arc_offsets.push(arc_data.len() as u32);
