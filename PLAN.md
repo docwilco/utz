@@ -858,6 +858,25 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   legs, ~35–42% on eager, ~68% on the bare kernel. Every conclusion above
   survives: flash still ~free over RAM (+4%), PSRAM ≈ SRAM, and eager is
   still the lever (2.7–3.3×).
+- [x] **Fixed-width geometry, size cost** (2026-07-08, `fixedwidth_size`
+  example; feeds §13 fixed-width arcs / §14.10): re-emitting the payload
+  without delta+varint, compressed at preset settings. **A** = interned arc
+  store as absolute fixed-width coords (XIP lookups would skip varint decode
+  — near-eager speed, zero RAM): raw +40/72/70% (tiny/compact/balanced),
+  but best-compressed only **+24/24/32%** (quantized coords LZ well).
+  **B** = per-ring flattened i32 pairs, the exact preload() image
+  (decompress ⇒ buffer IS the eager cache): raw 4.1–4.3×, compressed
+  +61/72/94%. Codec ranking flips on fixed-width: **xz beats brotli** at
+  every shape (balanced A: 1692 K xz vs 2002 K brotli) — a fixed-width tier
+  needs its own codec sweep. B is also a RAM win for compressed+eager
+  consumers (compact: 2545 K image vs 600 K payload + 2476 K cache = −17%,
+  and no preload pass) but decode time scales with decoded bytes (~4×:
+  compact-xz ~1.3 s → ~5.5 s on the S3), so B only suits gzip-tier shapes.
+  A on uncompressed `-static` assets is the interesting embedded tier:
+  +40–72% flash, zero RAM, no boot cost, ~3× streaming speedup expected —
+  bench next. Found while validating: header `eager_coords` counts the
+  ring-closure vertex preload() pops, so `preload_bytes()` over-reserves
+  8 B/ring (benign, conservative).
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
   reads vs streaming's sequential prefetch); `geometry-rs` comparison.
