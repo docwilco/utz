@@ -34,16 +34,18 @@ use esp_hal::time::Instant;
 use esp_println::println;
 use utz::Finder;
 
-// generate + place with scripts/gen-presets.sh recipes (see README.md)
 // app descriptor required by espflash ≥4 image validation
 esp_bootloader_esp_idf::esp_app_desc!();
 
-static TINY_GZ: &[u8] = include_bytes!("../tiny.utz");
-static TINY_NONE: &[u8] = include_bytes!("../tiny-static.utz");
-static COMPACT_XZ: &[u8] = include_bytes!("../compact.utz");
-static COMPACT_NONE: &[u8] = include_bytes!("../compact-none.utz");
-static BALANCED_BR: &[u8] = include_bytes!("../balanced.utz");
-static BALANCED_NONE: &[u8] = include_bytes!("../balanced-none.utz");
+// preset assets from the utz-data-* crates (utz preset features; regenerate
+// with scripts/gen-presets.sh)…
+use utz::data::{
+    BALANCED as BALANCED_BR, COMPACT as COMPACT_XZ, TINY as TINY_GZ, TINY_STATIC as TINY_NONE,
+};
+// …and their uncompressed twins, generated in build.rs via the utz-build
+// consumer builder API (from_static accepts only codec none)
+static COMPACT_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-none.utz"));
+static BALANCED_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/balanced-none.utz"));
 
 /// modest by host standards; lookups run ~250-300x host on this core (see
 /// README) so a round must stay in seconds, not minutes

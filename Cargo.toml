@@ -25,3 +25,11 @@ repository = "" # TBD
 geo = "0.32"
 geo-types = "0.7"
 anyhow = "1"
+
+# utz-bench-cli's build.rs runs the encoder (codec-none twins via the
+# utz-build builder API) — at the default build-override opt-level 0 the
+# weighted RDP pass takes minutes, so optimize build scripts and their deps
+[profile.dev.build-override]
+opt-level = 3
+[profile.release.build-override]
+opt-level = 3

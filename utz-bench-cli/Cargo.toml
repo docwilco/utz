@@ -5,10 +5,20 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
-# Host-side lookup bench over a .utz container file.
-# Produce one with: cargo run --release -p utz-build -- encode now 500
+# Host-side lookup bench: the preset shapes by name (baked in via the utz
+# preset features), their codec-none twins (generated in build.rs through the
+# consumer builder API), or any .utz container file.
 [dependencies]
 anyhow = { workspace = true }
 clap = { version = "4", features = ["derive"] }
-utz = { path = "../utz", features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz"] }
+utz = { path = "../utz", features = [
+    "std", "gzip", "ruzstd", "brotli", "xz",
+    # presets, for benching by shape name
+    "tiny", "tiny-static", "compact", "balanced", "accurate",
+    # the build.rs-generated codec-none twins
+    "custom",
+] }
 utz-bench-common = { path = "../utz-bench-common" }
+
+[build-dependencies]
+utz-build = { path = "../utz-build" }

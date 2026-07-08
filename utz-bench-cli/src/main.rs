@@ -2,18 +2,42 @@
 //! deterministic points as the ESP32-S3 firmware, so host and target numbers
 //! (and answer checksums) are directly comparable.
 //!
-//!     cargo run --release -p utz-bench-cli -- <container.utz> [npts] [rounds]
+//!     cargo run --release -p utz-bench-cli -- <shape|container.utz> [npts] [rounds]
+//!
+//! A shape name picks an embedded container: the presets (`tiny`,
+//! `tiny-static`, `compact`, `balanced`, `accurate` — the utz-data-* crates,
+//! via the `utz` preset features) or a codec-none twin (`compact-none`,
+//! `balanced-none` — generated in build.rs via the utz-build builder API).
+//! Anything else is read as a `.utz` file path.
 
-use std::path::PathBuf;
 use std::time::Instant;
 
 use clap::Parser;
 
+// uncompressed twins of the compact/balanced presets (see build.rs)
+static COMPACT_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-none.utz"));
+static BALANCED_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/balanced-none.utz"));
+
+/// The embedded container for a shape name, if the argument is one.
+fn embedded(name: &str) -> Option<&'static [u8]> {
+    Some(match name {
+        "tiny" => utz::data::TINY,
+        "tiny-static" => utz::data::TINY_STATIC,
+        "compact" => utz::data::COMPACT,
+        "compact-none" => COMPACT_NONE,
+        "balanced" => utz::data::BALANCED,
+        "balanced-none" => BALANCED_NONE,
+        "accurate" => utz::data::ACCURATE,
+        _ => return None,
+    })
+}
+
 #[derive(Parser)]
-#[command(name = "utz-bench-cli", about = "μTZ lookup benchmark over a .utz container")]
+#[command(name = "utz-bench-cli", about = "μTZ lookup benchmark over a preset shape or .utz container")]
 struct Args {
-    /// container file (make one: cargo run --release -p utz-build -- encode now 500)
-    container: PathBuf,
+    /// shape name (tiny, tiny-static, compact, compact-none, balanced,
+    /// balanced-none, accurate) or a container file path
+    container: String,
     /// number of uniform lon/lat sample points
     #[arg(default_value_t = 100_000)]
     npts: usize,
@@ -24,12 +48,15 @@ struct Args {
 
 fn main() -> anyhow::Result<()> {
     let a = Args::parse();
-    let bytes = std::fs::read(&a.container)?;
+    let bytes = match embedded(&a.container) {
+        Some(b) => b.to_vec(),
+        None => std::fs::read(&a.container)?,
+    };
     let size = bytes.len();
     let finder = utz::Finder::from_vec(bytes).map_err(|e| anyhow::anyhow!("decode: {e}"))?;
     println!(
-        "{}: {:.1} KiB on disk, tzbb release {:?}",
-        a.container.display(),
+        "{}: {:.1} KiB container, tzbb release {:?}",
+        a.container,
         size as f64 / 1024.0,
         finder.tzbb_release()
     );

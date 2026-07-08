@@ -28,19 +28,21 @@ espup install            # installs the `esp` toolchain (rust-toolchain.toml pic
 . ~/export-esp.sh        # or add to your shell profile
 ```
 
-## Build the containers
+## The containers
 
 The six embedded blobs are the preset assets plus uncompressed twins of the
-compact/balanced shapes (`from_static` accepts only codec *none*; all blobs
-are gitignored — regenerate at will):
+compact/balanced shapes (`from_static` accepts only codec *none*). The
+presets come from the `utz-data-*` crates via `utz` preset features — their
+gitignored assets must exist first:
 
 ```sh
-scripts/gen-presets.sh   # tiny.utz, tiny-static.utz, compact.utz, balanced.utz
-cp utz-data-tiny/data/tiny.utz utz-data-tiny-static/data/tiny-static.utz \
-   utz-data-compact/data/compact.utz utz-data-balanced/data/balanced.utz utz-bench-firmware/
-cargo run --release -p utz-build -- gen now 1000 --qbits 24 --w-min 0.001 --grid-deg 1.3333333333333333 --codec none -o utz-bench-firmware/compact-none.utz
-cargo run --release -p utz-build -- gen now 50   --qbits 24 --w-min 0.020 --grid-deg 0.6666666666666666  --codec none -o utz-bench-firmware/balanced-none.utz
+scripts/gen-presets.sh   # writes the utz-data-*/data/*.utz assets
 ```
+
+The twins are generated automatically by `build.rs` through the `utz-build`
+consumer builder API (the PLAN §11 custom-tier path, dogfooded) — same
+recipes as `utz-bench-cli/build.rs`. First build fetches TZBB + GHS-POP into
+the workspace `cache/` if not already there.
 
 ## Flash + monitor
 
@@ -54,7 +56,7 @@ placement, `SKIP` where a leg doesn't fit the detected memory), then `DONE`.
 Compare against the host at the same point count:
 
 ```sh
-cargo run --release -p utz-bench-cli -- utz-data-tiny/data/tiny.utz 2000
+cargo run --release -p utz-bench-cli -- tiny 2000   # or compact-none, balanced, …
 ```
 
 Note: expect two to three orders of magnitude slower than a desktop — not
