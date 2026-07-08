@@ -38,7 +38,10 @@ utz-build = { path = "../utz-build" }
 opt-level = 3
 
 [profile.release]
-opt-level = 3
+# size-optimized like a shipping firmware, so the bench measures what an
+# embedded consumer build would actually see (build-std recompiles
+# core/alloc at "z" too)
+opt-level = "z"
 lto = "fat"
 codegen-units = 1
 debug = true # symbols for espflash stack traces; not flashed
