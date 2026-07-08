@@ -915,6 +915,16 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   −1.5…−6.5% (balanced, finest grid, gains most: XIP 2648→2476), eager
   −3…−4.6% (direct poly indexing); preload +10–13% (the bbox pass moved
   there).
+  **v5 (2026-07-08): the bbox returns — in the per-poly record.** v4
+  bundled two separable changes; dropping the bbox was the wrong half
+  (measured: ~5% rejects at 4 compares ≈ 20× above break-even, and the
+  min/max moved into preload). v5 keeps poly-granular lists and restores
+  a per-record bbox: streaming misses return before touching any arc
+  (records are offset-addressed — no skip-parse), preload reads instead
+  of recomputing. Costs +12 B/poly (~6 K raw and compressed). S3: best
+  of all three versions on every leg — XIP 299/1395/2457, fixed
+  227/946, eager 107/411/711, preload 97/610/2048 ms (regression
+  recovered); answers bit-identical throughout.
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
   reads vs streaming's sequential prefetch); `geometry-rs` comparison.
