@@ -901,10 +901,15 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   set unchanged. Grid-only *exact* answers stay dead: halving the cell
   quadruples CSR bytes while border cells only multiply (tiny 2°→0.5°:
   3 923→17 498 border cells, 34→509 KiB) — the grid routes, geometry
-  answers. Candidate format change (v4, if pursued): primary/lists carry
-  poly ids + parent table, ring records addressed per poly, bboxes
-  dropped; expect a modest streaming border-lookup gain (parse overhead,
-  not PIP) — bench before committing.
+  answers. **Implemented as format v4** (2026-07-08):
+  primary/lists carry poly ids + parent table, ring records addressed per
+  poly, payload bboxes dropped (preload computes them while flattening —
+  eager keeps its pre-PIP skip). Answers bit-identical (all shapes
+  checksum-stable, roundtrip oracle agrees over 100k); compressed presets
+  got slightly SMALLER (bboxes LZ'd poorly). S3 measured: streaming
+  −1.5…−6.5% (balanced, finest grid, gains most: XIP 2648→2476), eager
+  −3…−4.6% (direct poly indexing); preload +10–13% (the bbox pass moved
+  there).
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
   reads vs streaming's sequential prefetch); `geometry-rs` comparison.
