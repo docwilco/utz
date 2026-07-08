@@ -848,6 +848,16 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   one flash interface — Cortex-M/RISC-V QSPI parts unmeasured; f32 or
   fixed-point lookup input is the obvious next lever if embedded speed ever
   matters (§13).
+  **Re-measured 2026-07-08 at opt-level "z"** — the firmware now builds
+  size-opt like a shipping embedded image (~10% smaller code; the table
+  above was opt 3). µs/lookup: XIP 303/1381/2484, RAM-copy 290/1367/2463
+  (tiny PSRAM 299), decode legs equal RAM-copy, eager 111/420/745; decode
+  gzip 40 ms / xz 1 315 ms / brotli 1 849 ms; preload 94/589/1 980 ms;
+  kernel i64 317 ns/edge, i128 2.42×, f64 3.48× (width ratios compress
+  because the i64 baseline slows most). Size-opt costs ~15% on streaming
+  legs, ~35–42% on eager, ~68% on the bare kernel. Every conclusion above
+  survives: flash still ~free over RAM (+4%), PSRAM ≈ SRAM, and eager is
+  still the lever (2.7–3.3×).
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
   reads vs streaming's sequential prefetch); `geometry-rs` comparison.
