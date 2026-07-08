@@ -872,11 +872,21 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   consumers (compact: 2545 K image vs 600 K payload + 2476 K cache = −17%,
   and no preload pass) but decode time scales with decoded bytes (~4×:
   compact-xz ~1.3 s → ~5.5 s on the S3), so B only suits gzip-tier shapes.
-  A on uncompressed `-static` assets is the interesting embedded tier:
-  +40–72% flash, zero RAM, no boot cost, ~3× streaming speedup expected —
-  bench next. Found while validating: header `eager_coords` counts the
-  ring-closure vertex preload() pops, so `preload_bytes()` over-reserves
-  8 B/ring (benign, conservative).
+  Landed as format v3 (header geom byte; `Config::geom` /
+  `gen --geom fixed`) and **measured on the S3 (2026-07-08, opt-z,
+  `tiny-fixed-static`): XIP 323 → 244 µs/lookup — 1.32×, NOT near-eager**
+  (eager 111 stays 2.2× ahead). This corrects the ~70%-varint attribution
+  above: varint+delta decode alone is ~24% of streaming lookup time; the
+  rest of eager's win is the access pattern (contiguous coord slices in a
+  bounds-elided kernel loop vs per-arc offset indirection and byte-wise
+  flash reads). Verdict: fixed arcs are a modest streaming tier — +40%
+  flash for 1.3× on i16; i24 unmeasured. `eager_from_slice`
+  (decode→eager, geometry dropped — the §14.10 harvest) also measured:
+  load 132 ms ≈ decode+preload, lookups = eager (107), steady heap 491 K
+  vs 573 K (−14%, exactly the dropped arc store + ring index). Found
+  while validating: header `eager_coords` counts the ring-closure vertex
+  preload() pops, so `preload_bytes()` over-reserves 8 B/ring (benign,
+  conservative, documented in the encoder).
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
   reads vs streaming's sequential prefetch); `geometry-rs` comparison.
