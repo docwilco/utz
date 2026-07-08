@@ -18,6 +18,10 @@
 //! Source data (TZBB, optionally GHS-POP for density weighting) is fetched
 //! into the cache, never committed (§5); downloads are cond-GET-cached so
 //! regeneration is cheap.
+//!
+//! The preset recipes (§14.5) double as constructors — start from one and
+//! override a single knob instead of spelling the whole recipe:
+//! `Config::compact().codec(Codec::Uncompressed)`.
 
 use std::path::PathBuf;
 
@@ -55,6 +59,52 @@ impl Default for Config {
 impl Config {
     pub fn new() -> Self {
         Config::default()
+    }
+
+    /// The `tiny` preset recipe (§14.5): RDP ε=10 000 m with pop-density
+    /// floor 1e-3, i16, 2° grid, gzip. A preset constructor is a starting
+    /// point for one-knob variants — `tiny-static` is
+    /// `Config::tiny().codec(Codec::Uncompressed)`.
+    pub fn tiny() -> Self {
+        Config::new()
+            .rdp_meters(10_000.0)
+            .density_weight_floor(0.001)
+            .quant_bits(16)
+            .grid_deg(2.0)
+            .codec(Codec::Gzip)
+    }
+
+    /// The `compact` preset recipe (§14.5): RDP ε=1 000 m with pop-density
+    /// floor 1e-3, i24, 4/3° grid, xz.
+    pub fn compact() -> Self {
+        Config::new()
+            .rdp_meters(1_000.0)
+            .density_weight_floor(0.001)
+            .quant_bits(24)
+            .grid_deg(4.0 / 3.0)
+            .codec(Codec::Xz)
+    }
+
+    /// The `balanced` preset recipe (§14.5): RDP ε=50 m with pop-density
+    /// floor 2e-2, i24, 2/3° grid, brotli.
+    pub fn balanced() -> Self {
+        Config::new()
+            .rdp_meters(50.0)
+            .density_weight_floor(0.020)
+            .quant_bits(24)
+            .grid_deg(2.0 / 3.0)
+            .codec(Codec::Brotli)
+    }
+
+    /// The `accurate` preset recipe (§14.5): RDP ε=10 m with pop-density
+    /// floor 1e-1, i32, 0.5° grid, brotli.
+    pub fn accurate() -> Self {
+        Config::new()
+            .rdp_meters(10.0)
+            .density_weight_floor(0.10)
+            .quant_bits(32)
+            .grid_deg(0.5)
+            .codec(Codec::Brotli)
     }
 
     /// Dataset: `[land-]now|1970|all` (§6).
