@@ -128,21 +128,24 @@ pub enum EdgeHit {
 
 pip_impl!(contains_i64, ring_hit_i64, edge_i64, i64);
 pip_impl!(contains_i128, ring_hit_i128, edge_i128, i128);
+// test/bench-only instantiation (see module docs); same &[(i32,i32)] slices,
+// per-edge i32->f64 casts included in its cost, as any real f64 path would pay
+pip_impl!(contains_f64, ring_hit_f64, edge_f64, f64);
 
 /// Coordinate-pair storage the EagerImage kernels widen from (v7: image
 /// coords are stored at quant width — i16/i32 as typed slices, i24 packed).
 pub trait CoordPair: Copy {
-    fn xy(self) -> (i32, i32);
+    fn xy(&self) -> (i32, i32);
 }
 impl CoordPair for (i32, i32) {
     #[inline(always)]
-    fn xy(self) -> (i32, i32) {
-        self
+    fn xy(&self) -> (i32, i32) {
+        *self
     }
 }
 impl CoordPair for (i16, i16) {
     #[inline(always)]
-    fn xy(self) -> (i32, i32) {
+    fn xy(&self) -> (i32, i32) {
         (self.0 as i32, self.1 as i32)
     }
 }
@@ -172,89 +175,46 @@ pub fn ring_hit_pairs<P: CoordPair>(ring: &[P], px: i32, py: i32) -> RingHit {
     }
 }
 
-#[inline(always)]
-fn sext24(v: u32) -> i32 {
-    ((v << 8) as i32) >> 8
-}
+/// Packed little-endian i24 pair (6 bytes, align 1): `&[Pack24]` is a valid
+/// slice over the image bytes at ANY address — i24 images have no alignment
+/// requirement. The unpack compiles to whatever the target does best
+/// (single unaligned-style loads on x86/ARMv7-M+, byte assembly on strict
+/// cores — measured a tie with hand-blocked aligned loads on Xtensa, §15).
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct Pack24(pub [u8; 6]);
 
-/// Even-odd scan of one OPEN ring stored as packed little-endian i24 pairs
-/// (6 B/vertex) at byte offset `base` in `b` — **aligned-block variant**:
-/// two vertices per three aligned u32 loads. Requires `base` 4-aligned and
-/// even-index ring starts (the v7 ring-alignment flag) — aligned loads only,
-/// so it is fast on every target including strict-alignment cores (Xtensa).
-pub fn ring_hit_i24_blocks(b: &[u8], base: usize, n: usize, px: i32, py: i32) -> RingHit {
-    if n < 3 {
-        return RingHit::Outside;
-    }
-    debug_assert!(base % 4 == 0);
-    // whole padded pair span must be in bounds (encoder pads to even counts)
-    assert!(base + n.div_ceil(2) * 12 <= b.len());
-    let p = b[base..].as_ptr() as *const u32;
-    // SAFETY: base is 4-aligned, the span is bounds-asserted, u32 is POD
-    let pair = |i: usize| -> ((i32, i32), (i32, i32)) {
-        let k = i / 2 * 3;
-        unsafe {
-            let w0 = p.add(k).read();
-            let w1 = p.add(k + 1).read();
-            let w2 = p.add(k + 2).read();
+impl CoordPair for Pack24 {
+    #[inline(always)]
+    fn xy(&self) -> (i32, i32) {
+        // two overlapping in-struct word reads (x = low 3 bytes of the first,
+        // y = high 3 of the second); read_unaligned is a single load where
+        // hardware allows, byte assembly on strict-alignment cores (measured
+        // a tie with hand-blocked aligned loads on Xtensa — §15). Arithmetic
+        // shifts sign-extend.
+        let p = self.0.as_ptr();
+        // SAFETY: both 4-byte reads lie within this 6-byte struct
+        let (xw, yw) = unsafe {
             (
-                (sext24(w0 & 0x00FF_FFFF), sext24((w0 >> 24) | ((w1 & 0xFFFF) << 8))),
-                (sext24((w1 >> 16) | ((w2 & 0xFF) << 16)), sext24(w2 >> 8)),
+                u32::from_le((p as *const u32).read_unaligned()),
+                u32::from_le((p.add(2) as *const u32).read_unaligned()),
             )
-        }
-    };
-    let mut inside = false;
-    let last = pair((n - 1) & !1);
-    let (mut x0, mut y0) = if (n - 1) & 1 == 0 { last.0 } else { last.1 };
-    let mut i = 0;
-    while i < n {
-        let (v0, v1) = pair(i);
-        match edge_i64((x0, y0), v0, px, py) {
-            EdgeHit::Boundary => return RingHit::Boundary,
-            EdgeHit::Cross => inside = !inside,
-            EdgeHit::Miss => {}
-        }
-        (x0, y0) = v0;
-        if i + 1 < n {
-            match edge_i64((x0, y0), v1, px, py) {
-                EdgeHit::Boundary => return RingHit::Boundary,
-                EdgeHit::Cross => inside = !inside,
-                EdgeHit::Miss => {}
-            }
-            (x0, y0) = v1;
-        }
-        i += 2;
-    }
-    if inside {
-        RingHit::Inside
-    } else {
-        RingHit::Outside
+        };
+        (((xw << 8) as i32) >> 8, (yw as i32) >> 8)
     }
 }
 
-/// Packed-i24 scan, **unaligned variant** (image built without ring
-/// alignment): `read_unaligned` per coordinate — LLVM lowers it to single
-/// unaligned loads on permissive targets (x86, ARMv7-M+) and byte assembly
-/// on strict ones (where the aligned-block asset is the right choice).
-pub fn ring_hit_i24_unaligned(b: &[u8], base: usize, n: usize, px: i32, py: i32) -> RingHit {
+/// [`ring_hit_pairs`] at i128 edge width — the i32-quant image path.
+pub fn ring_hit_pairs_wide<P: CoordPair>(ring: &[P], px: i32, py: i32) -> RingHit {
+    let n = ring.len();
     if n < 3 {
         return RingHit::Outside;
     }
-    assert!(base + n * 6 <= b.len());
-    // SAFETY: reads span [o, o+6) per vertex, bounds-asserted above
-    let at = |i: usize| -> (i32, i32) {
-        let o = base + i * 6;
-        unsafe {
-            let x = (b.as_ptr().add(o) as *const u32).read_unaligned();
-            let y = (b.as_ptr().add(o + 2) as *const u32).read_unaligned();
-            (sext24(x & 0x00FF_FFFF), sext24(y >> 8))
-        }
-    };
     let mut inside = false;
-    let (mut x0, mut y0) = at(n - 1);
-    for i in 0..n {
-        let (x1, y1) = at(i);
-        match edge_i64((x0, y0), (x1, y1), px, py) {
+    let (mut x0, mut y0) = ring[n - 1].xy();
+    for p in ring {
+        let (x1, y1) = p.xy();
+        match edge_i128((x0, y0), (x1, y1), px, py) {
             EdgeHit::Boundary => return RingHit::Boundary,
             EdgeHit::Cross => inside = !inside,
             EdgeHit::Miss => {}
@@ -267,9 +227,6 @@ pub fn ring_hit_i24_unaligned(b: &[u8], base: usize, n: usize, px: i32, py: i32)
         RingHit::Outside
     }
 }
-// test/bench-only instantiation (see module docs); same &[(i32,i32)] slices,
-// per-edge i32->f64 casts included in its cost, as any real f64 path would pay
-pip_impl!(contains_f64, ring_hit_f64, edge_f64, f64);
 
 #[cfg(test)]
 mod tests {

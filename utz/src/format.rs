@@ -25,8 +25,7 @@ pub struct Header {
     /// geometry encoding: 0 = delta+varint arcs, 1 = fixed-width arcs,
     /// 2 = EagerImage (flattened per-ring coords at quant width, no arc store)
     pub geom: u8,
-    /// bit0: i24 image rings start at even vertex indices (aligned-block
-    /// kernel usable); other bits reserved
+    /// reserved, must be zero (room for future format flags)
     pub flags: u8,
     /// simplification algorithm the asset was built with (§14.8):
     /// 0 = RDP, 1 = Visvalingam, 2 = Imai–Iri — provenance, not decode logic
@@ -124,7 +123,7 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
     let geom = p[3];
     let flags = p[4];
     let grid_deg = f32::from_le_bytes([p[5], p[6], p[7], p[8]]);
-    if !matches!(quant_bits, 16 | 24 | 32) || geom > 2 || !(grid_deg > 0.0) {
+    if !matches!(quant_bits, 16 | 24 | 32) || geom > 2 || flags != 0 || !(grid_deg > 0.0) {
         return Err(Error::BadFormat);
     }
     let eps_m = f32::from_le_bytes([p[9], p[10], p[11], p[12]]);
@@ -161,13 +160,11 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
         img_ring_ends = img_coords + eager_coords as usize * vb;
         img_polys = img_ring_ends + eager_rings as usize * 4;
         need(img_polys + n_polys * 20)?;
-        // self-delimiting check: the last ring end must land on the coord
-        // count (one trailing pad slot allowed for aligned i24 images)
-        if eager_rings > 0 {
-            let last = read_u32(p, img_ring_ends + (eager_rings as usize - 1) * 4);
-            if last > eager_coords || eager_coords - last > 1 {
-                return Err(Error::BadFormat);
-            }
+        // the flattened image is self-delimiting — the counts must agree
+        if eager_rings > 0
+            && read_u32(p, img_ring_ends + (eager_rings as usize - 1) * 4) != eager_coords
+        {
+            return Err(Error::BadFormat);
         }
         (n_arcs, arc_offsets, arc_data) = (0, usize::MAX, usize::MAX);
         (poly_offsets, ring_data) = (usize::MAX, usize::MAX);

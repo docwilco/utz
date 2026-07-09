@@ -35,10 +35,6 @@ pub struct Args {
     /// skip varint decode — the XIP -static speed tier, §13)
     #[arg(long, default_value = "varint")]
     geom: String,
-    /// EagerImage+i24: skip the ring-alignment padding (smaller; needs
-    /// unaligned-load-friendly cores — see Config::align_image_rings)
-    #[arg(long)]
-    no_image_align: bool,
     /// enable population weighting with this floor multiplier (e.g. 0.052)
     #[arg(long)]
     w_min: Option<f64>,
@@ -77,7 +73,6 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         codec,
         simplify,
         geom,
-        align_image_rings: !a.no_image_align,
     };
     let container = match a.w_min {
         Some(w) => {

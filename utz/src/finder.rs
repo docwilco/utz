@@ -61,6 +61,10 @@ const _: () = assert!(
 const _: () = assert!(
     core::mem::size_of::<(i16, i16)>() == 4 && core::mem::align_of::<(i16, i16)>() == 2
 );
+const _: () = assert!(
+    core::mem::size_of::<crate::pip::Pack24>() == 6
+        && core::mem::align_of::<crate::pip::Pack24>() == 1
+);
 
 /// EagerImage coords are read via 4-byte slice casts — verify the payload
 /// lands them aligned (static assets: [`crate::include_container!`]).
@@ -543,11 +547,10 @@ impl Finder {
     }
 
     /// EagerImage path (geom=2): the payload geometry IS the eager cache —
-    /// slice/packed kernels fold straight off the payload bytes (flash in
-    /// zero-copy mode). Coord width follows the quant width (v7): i16/i32 as
-    /// typed slices, i24 packed 6 B/vertex (aligned-block kernel when the
-    /// asset was built ring-aligned, `read_unaligned` otherwise). Works on
-    /// the bare `core` rung.
+    /// one generic slice kernel folds straight off the payload bytes (flash
+    /// in zero-copy mode). Coord width follows the quant width (v7): i16 /
+    /// i32 as typed pairs, i24 as [`pip::Pack24`] (align 1 — no alignment
+    /// requirement). Works on the bare `core` rung.
     fn image_poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let pe = h.img_polys + pid as usize * 20;
@@ -562,50 +565,40 @@ impl Finder {
         }
         let rend = read_u32(b, pe + 16) as usize;
         let rstart = if pid == 0 { 0 } else { read_u32(b, pe - 4) as usize };
-        // aligned i24 images pad ring starts to even vertex indices
-        let aligned24 = h.quant_bits == 24 && h.flags & 1 != 0;
-        let ring_start = |prev_end: usize| if aligned24 { (prev_end + 1) & !1 } else { prev_end };
+        // SAFETY (slice casts): pair layouts are asserted at the top of this
+        // file (Pack24 is align 1; i16/i32 pairs land aligned because
+        // img_coords is 4-aligned — checked at load — and their strides are
+        // multiples of the element alignment); parse bounds the image
+        // sections against the header counts.
+        let ring = |cs: usize, vb: usize| -> *const u8 {
+            b[h.img_coords + cs * vb..].as_ptr()
+        };
         let mut inside = false;
-        let mut cstart = ring_start(if rstart == 0 {
-            0
-        } else {
-            read_u32(b, h.img_ring_ends + (rstart - 1) * 4) as usize
-        });
+        let mut cstart =
+            if rstart == 0 { 0 } else { read_u32(b, h.img_ring_ends + (rstart - 1) * 4) as usize };
         for ri in rstart..rend {
             let cend = read_u32(b, h.img_ring_ends + ri * 4) as usize;
             let n = cend - cstart;
-            // SAFETY (slice casts): img_coords is 4-aligned (checked at
-            // load), pair layouts are asserted at the top of this file, and
-            // parse bounds the image sections against the header counts.
-            let hit = match h.quant_bits {
-                16 => {
-                    let ring: &[(i16, i16)] = unsafe {
-                        core::slice::from_raw_parts(
-                            b.as_ptr().add(h.img_coords + cstart * 4) as *const (i16, i16),
-                            n,
-                        )
-                    };
-                    pip::ring_hit_pairs(ring, px, py)
-                }
-                24 => {
-                    let base = h.img_coords + cstart * 6;
-                    if aligned24 {
-                        pip::ring_hit_i24_blocks(b, base, n, px, py)
-                    } else {
-                        pip::ring_hit_i24_unaligned(b, base, n, px, py)
-                    }
-                }
-                _ => {
-                    let ring: &[(i32, i32)] = unsafe {
-                        core::slice::from_raw_parts(
-                            b.as_ptr().add(h.img_coords + cstart * 8) as *const (i32, i32),
-                            n,
-                        )
-                    };
-                    pip::ring_hit_i128(ring, px, py) // i32 quant needs wide
+            let hit = unsafe {
+                match h.quant_bits {
+                    16 => pip::ring_hit_pairs(
+                        core::slice::from_raw_parts(ring(cstart, 4) as *const (i16, i16), n),
+                        px,
+                        py,
+                    ),
+                    24 => pip::ring_hit_pairs(
+                        core::slice::from_raw_parts(ring(cstart, 6) as *const pip::Pack24, n),
+                        px,
+                        py,
+                    ),
+                    _ => pip::ring_hit_pairs_wide(
+                        core::slice::from_raw_parts(ring(cstart, 8) as *const (i32, i32), n),
+                        px,
+                        py,
+                    ),
                 }
             };
-            cstart = ring_start(cend);
+            cstart = cend;
             match hit {
                 pip::RingHit::Boundary => return true,
                 pip::RingHit::Inside => inside = !inside,

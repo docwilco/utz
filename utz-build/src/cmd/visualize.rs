@@ -81,7 +81,6 @@ fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> anyhow::Result<Vec<u8>> {
         codec: Codec::Zstd,
         simplify: Default::default(),
         geom: Default::default(),
-        align_image_rings: true,
     };
     let finder = utz::Finder::from_vec(encode::encode(feats, &p)?)
         .map_err(|e| anyhow::anyhow!("finder: {e}"))?;

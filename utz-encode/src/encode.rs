@@ -119,11 +119,6 @@ pub struct Params<'a> {
     pub simplify: SimplifyAlgo,
     /// arc-store encoding: delta+varint (default) or fixed-width
     pub geom: GeomEncoding,
-    /// EagerImage + i24 quant only: pad ring starts to even vertex index so
-    /// the packed 6 B/vertex coords are readable with aligned word loads
-    /// (fast on strict-alignment cores — Xtensa; ~6 B/ring of pad). Off =
-    /// smaller + `read_unaligned` kernel (fast on x86 / ARMv7-M+).
-    pub align_image_rings: bool,
 }
 
 /// Byte size of each payload section + post-simplification geometry counts —
@@ -242,10 +237,6 @@ pub fn payload_from_topology(
     // EagerImage (geom=2): flatten the geometry into the exact preload-cache
     // shape now, so the header's eager counts are exact and the sections
     // below just serialize it. Junction dedup stays within a ring.
-    // i24 packed coords + ring alignment: pad ring starts (and the section
-    // end) to even vertex indices so pairs span three aligned words (v7)
-    let pad_rings =
-        p.geom == GeomEncoding::EagerImage && p.quant_bits == 24 && p.align_image_rings;
     let image = if p.geom == GeomEncoding::EagerImage {
         let mut coords: Vec<(i32, i32)> = Vec::new();
         let mut ring_ends: Vec<u32> = Vec::new();
@@ -254,9 +245,6 @@ pub fn payload_from_topology(
             for poly in &t.structure[fi] {
                 let mut bb = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
                 for &ri in poly {
-                    if pad_rings && coords.len() % 2 == 1 {
-                        coords.push((0, 0)); // pad slot, outside every ring
-                    }
                     let rstart = coords.len();
                     for &r in &t.ring_refs[ri] {
                         let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
@@ -284,9 +272,6 @@ pub fn payload_from_topology(
                 ipolys.push((bb, ring_ends.len() as u32));
             }
         }
-        if pad_rings && coords.len() % 2 == 1 {
-            coords.push((0, 0)); // even total: block reads never overrun
-        }
         Some((coords, ring_ends, ipolys))
     } else {
         None
@@ -304,7 +289,7 @@ pub fn payload_from_topology(
     o.push(p.quant_bits as u8);
     o.push(p.simplify as u8);
     o.push(p.geom as u8);
-    o.push(u8::from(pad_rings)); // flags: bit0 = i24 image rings pair-aligned
+    o.push(0); // flags: reserved, zero
     o.extend_from_slice(&(p.grid_deg as f32).to_le_bytes());
     o.extend_from_slice(&(p.eps_m as f32).to_le_bytes());
     anyhow::ensure!(p.tzbb_release.len() < 256, "tzbb_release too long");
