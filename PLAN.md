@@ -956,8 +956,18 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   Xtensa; byte assembly didn't lose, flash fetch dominates) vs 638 for
   the v6 i32 image.** Host: i16 0.221 µs (fastest mode measured);
   unaligned 0.75 beats blocks 1.23 on x86. Checksums exact on all 12
-  shapes × all kernels, host + target. Data verdict: the unaligned asset
-  is never worse — consider flipping align_image_rings default off.
+  shapes × all kernels, host + target. **Post-measurement simplification
+  (2026-07-09): the aligned-block kernel, ring padding, flags bit and
+  `align_image_rings` knob were deleted** — the block path's niche
+  (strict-alignment core + i24-sized image in fast memory) dissolves on
+  inspection, and one generic `ring_hit_pairs<P: CoordPair>` now covers
+  i16/i24/i32 (i64 + i128 widths). i24 joins via `Pack24`, a 6-byte
+  align-1 element (no alignment requirement at all): its `xy()` does two
+  overlapping in-struct `read_unaligned` word reads — LLVM specializes
+  per target; NOTE the by-value/`from_le_bytes` phrasings did NOT fuse
+  on x86 (1.26 µs); `&self` + `read_unaligned` does (0.699 vs the old
+  kernel's 0.748). S3 re-confirmed: tiny-eager 89, compact-eager 485
+  (best yet); flags byte stays reserved-zero.
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
   reads vs streaming's sequential prefetch); `geometry-rs` comparison.
