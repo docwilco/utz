@@ -126,6 +126,15 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
     if !matches!(quant_bits, 16 | 24 | 32) || geom > 2 || flags != 0 || !(grid_deg > 0.0) {
         return Err(Error::BadFormat);
     }
+    // a valid geom byte whose decoder isn't compiled in is refused loudly
+    let compiled = match geom {
+        0 => cfg!(feature = "geom-varint"),
+        1 => cfg!(feature = "geom-fixed"),
+        _ => cfg!(feature = "geom-image"),
+    };
+    if !compiled {
+        return Err(Error::Geometry);
+    }
     let eps_m = f32::from_le_bytes([p[9], p[10], p[11], p[12]]);
     let rel_len = p[13] as usize;
     let mut pos = 14 + rel_len; // tzbb_release skipped (read via header_release)

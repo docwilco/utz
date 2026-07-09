@@ -61,29 +61,23 @@ const _: () = assert!(
 const _: () = assert!(
     core::mem::size_of::<(i16, i16)>() == 4 && core::mem::align_of::<(i16, i16)>() == 2
 );
+#[cfg(feature = "geom-image")]
 const _: () = assert!(
     core::mem::size_of::<crate::pip::Pack24>() == 6
         && core::mem::align_of::<crate::pip::Pack24>() == 1
 );
 
-/// EagerImage load-time checks: the coords are read via typed slice casts,
+/// EagerImage load-time check: the coords are read via typed slice casts,
 /// so the payload must land them 4-aligned (static assets:
-/// [`crate::include_container!`]) and the host must be little-endian — the
-/// (i16,i16)/(i32,i32) casts reinterpret LE bytes as native ints (Pack24
-/// converts, tuples cannot). Refuse loudly instead of returning silently
-/// byte-swapped answers.
+/// [`crate::include_container!`]). Endianness is a compile-time refusal —
+/// see the `geom-image` compile_error in lib.rs.
 fn check_image(payload: &[u8], hdr: &Header) -> Result<(), Error> {
-    if hdr.geom == 2 {
-        #[cfg(target_endian = "big")]
-        {
-            let _ = payload;
-            return Err(Error::Endianness);
-        }
-        #[cfg(target_endian = "little")]
-        if (payload.as_ptr() as usize + hdr.img_coords) % 4 != 0 {
-            return Err(Error::Misaligned);
-        }
+    #[cfg(feature = "geom-image")]
+    if hdr.geom == 2 && (payload.as_ptr() as usize + hdr.img_coords) % 4 != 0 {
+        return Err(Error::Misaligned);
     }
+    #[cfg(not(feature = "geom-image"))]
+    let _ = (payload, hdr);
     Ok(())
 }
 
@@ -467,6 +461,7 @@ impl Finder {
     /// (orientation bit ignored) with O(1) state, and parity XORs across
     /// arcs order-independently.
     fn poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
+        #[cfg(feature = "geom-image")]
         if self.hdr.geom == 2 {
             return self.image_poly_contains(pid, px, py);
         }
@@ -515,7 +510,7 @@ impl Finder {
     fn scan_arc(&self, id: usize, px: i32, py: i32) -> pip::RingHit {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let wide = h.quant_bits == 32;
-        let fixed = h.geom == 1;
+        let fixed = cfg!(feature = "geom-fixed") && h.geom == 1;
         let mut pos = h.arc_data + read_u32(b, h.arc_offsets + id * 4) as usize;
         let (vcount, p2) = read_varint(b, pos);
         pos = p2;
@@ -563,6 +558,7 @@ impl Finder {
     /// in zero-copy mode). Coord width follows the quant width (v7): i16 /
     /// i32 as typed pairs, i24 as [`pip::Pack24`] (align 1 — no alignment
     /// requirement). Works on the bare `core` rung.
+    #[cfg(feature = "geom-image")]
     fn image_poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let pe = h.img_polys + pid as usize * 20;
@@ -668,7 +664,7 @@ impl Finder {
         let start = coords.len();
         coords.push((x as i32, y as i32));
         for _ in 1..vcount {
-            if h.geom == 1 {
+            if cfg!(feature = "geom-fixed") && h.geom == 1 {
                 coords.push((read_fixed(b, pos, h.quant_bits), read_fixed(b, pos + fb, h.quant_bits)));
                 pos += 2 * fb;
             } else {

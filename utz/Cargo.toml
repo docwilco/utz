@@ -11,7 +11,7 @@ license.workspace = true
 # tree-wide — with it on, the crate's Read/Write re-exports turn pub(crate)
 # and utz's xz decode arm stops compiling (decompress.rs).
 [features]
-# Two mandatory, at-least-one-of choices (§11) — forgetting one is a
+# Three mandatory, at-least-one-of choices (§11) — forgetting one is a
 # compile_error! whose message is the onboarding. default = [] on purpose.
 default = []
 
@@ -22,11 +22,13 @@ default = []
 # is the same decoded container shipped flat — zero-copy via `from_static`,
 # no alloc, no codec, `core`-rung capable. `custom` is a marker: bring your
 # own asset, generated with utz-build (§11).
-tiny = ["dep:utz-data-tiny", "alloc", "gzip"]
-tiny-static = ["dep:utz-data-tiny-static"]
-compact = ["dep:utz-data-compact", "alloc", "xz"]
-balanced = ["dep:utz-data-balanced", "alloc", "brotli"]
-accurate = ["dep:utz-data-accurate", "alloc", "brotli"]
+# Each preset also enables the geometry decoder its recipe uses (all preset
+# recipes are delta+varint today), so `tiny` alone is a complete build.
+tiny = ["dep:utz-data-tiny", "alloc", "gzip", "geom-varint"]
+tiny-static = ["dep:utz-data-tiny-static", "geom-varint"]
+compact = ["dep:utz-data-compact", "alloc", "xz", "geom-varint"]
+balanced = ["dep:utz-data-balanced", "alloc", "brotli", "geom-varint"]
+accurate = ["dep:utz-data-accurate", "alloc", "brotli", "geom-varint"]
 custom = []
 
 # ---- choice 2: environment ladder (§11): std ⊃ alloc ⊃ core -----------------
@@ -36,6 +38,16 @@ custom = []
 core = []
 alloc = []
 std = ["alloc"]
+
+# ---- choice 3: geometry decoders (§4/§15) -----------------------------------
+# One per GeomEncoding; a container whose geom byte has no compiled decoder
+# is refused at load (Error::Geometry). Presets carry theirs; `custom` users
+# pick the one(s) their assets use. `geom-image` is little-endian-only
+# (typed coordinate slices) — enabling it on a big-endian target is a
+# compile_error.
+geom-varint = []
+geom-fixed = []
+geom-image = []
 
 # ---- codec decoders (additive, §7) ------------------------------------------
 gzip = ["dep:miniz_oxide", "alloc"]
@@ -47,7 +59,7 @@ xz = ["dep:lzma-rust2", "alloc"]
 [package.metadata.docs.rs]
 # representative set (§11): the mandatory choices can't be defaulted, so
 # docs.rs picks one of each + the decoders
-features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz"]
+features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint", "geom-fixed", "geom-image"]
 
 [dependencies]
 # no default features: keeps the derives no_std (Error derive = core::error::Error)

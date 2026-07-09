@@ -396,7 +396,7 @@ live in the §15 entry.
 
 ## 11. Features & config — **decided**: preset data crates + consumer-side custom
 
-Two **mandatory, at-least-one-of feature choices**. (Unification-safe by
+Three **mandatory, at-least-one-of feature choices**. (Unification-safe by
 construction: an "at least one of N" error can only be *silenced* by feature
 union, never triggered — unlike "exactly one of N", which union breaks.)
 
@@ -407,6 +407,14 @@ union, never triggered — unlike "exactly one of N", which union breaks.)
    `from_static`, `core`-rung capable). `-static` is the *codec* axis —
    orthogonal to possible future *dataset* variants like `balanced-1970`.
 2. **Environment:** `std` / `alloc` / `core` (ladder, see below).
+3. **Geometry decoder** (2026-07-09): `geom-varint` / `geom-fixed` /
+   `geom-image`, one per `GeomEncoding`. Presets enable the one their recipe
+   uses (all `geom-varint` today), so a bare preset feature stays a complete
+   build; `custom` users pick their asset's. A container whose geom byte has
+   no compiled decoder is refused at load (`Error::Geometry`), mirroring the
+   codec features. `geom-image` is little-endian-only (typed coordinate
+   slices) and is a compile_error on big-endian targets — precise because it
+   is an opt-in; BE hosts keep the other encodings.
 
 `default = []` — forgetting to choose fails loudly, with the error message as
 onboarding (embedded-friendlier than the ecosystem's silent `default = ["std"]`,
@@ -504,8 +512,9 @@ deliberate bare-metal intent and satisfies choice 2:
   also attach generation logs + checksums to a GitHub release.
 
 **Status (2026-07): implemented — all five presets ship.** `utz` enforces the
-two mandatory choices (tier: `tiny`/`tiny-static`/`compact`/`balanced`/
-`accurate`/`custom`; env ladder `core` ⊂ `alloc` ⊂ `std`) with the
+mandatory choices (tier: `tiny`/`tiny-static`/`compact`/`balanced`/
+`accurate`/`custom`; env ladder `core` ⊂ `alloc` ⊂ `std`; geometry
+`geom-varint`/`geom-fixed`/`geom-image`) with the
 compile_error onboarding, and API availability follows the rung:
 `from_static` (zero-copy) + `lookup` + `lookup_coarse` on `core`;
 `from_slice`/`from_vec` + `preload` (eager) on `alloc`; `from_reader` on

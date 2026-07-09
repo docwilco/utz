@@ -15,8 +15,8 @@ utz = { path = "../utz", features = [
     "std", "gzip", "ruzstd", "brotli", "xz",
     # presets, for benching by shape name
     "tiny", "tiny-static", "compact", "balanced", "accurate",
-    # the build.rs-generated codec-none twins
-    "custom",
+    # the build.rs-generated custom shapes span all three geometry decoders
+    "custom", "geom-varint", "geom-fixed", "geom-image",
 ] }
 utz-bench-common = { path = "../utz-bench-common" }
 

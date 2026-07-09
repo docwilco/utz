@@ -134,15 +134,18 @@ pip_impl!(contains_f64, ring_hit_f64, edge_f64, f64);
 
 /// Coordinate-pair storage the EagerImage kernels widen from (v7: image
 /// coords are stored at quant width — i16/i32 as typed slices, i24 packed).
+#[cfg(feature = "geom-image")]
 pub trait CoordPair: Copy {
     fn xy(&self) -> (i32, i32);
 }
+#[cfg(feature = "geom-image")]
 impl CoordPair for (i32, i32) {
     #[inline(always)]
     fn xy(&self) -> (i32, i32) {
         *self
     }
 }
+#[cfg(feature = "geom-image")]
 impl CoordPair for (i16, i16) {
     #[inline(always)]
     fn xy(&self) -> (i32, i32) {
@@ -152,6 +155,7 @@ impl CoordPair for (i16, i16) {
 
 /// [`ring_hit_i64`] generalized over the pair width (monomorphizes to the
 /// same loop; i16 pairs widen in the load).
+#[cfg(feature = "geom-image")]
 pub fn ring_hit_pairs<P: CoordPair>(ring: &[P], px: i32, py: i32) -> RingHit {
     let n = ring.len();
     if n < 3 {
@@ -182,8 +186,10 @@ pub fn ring_hit_pairs<P: CoordPair>(ring: &[P], px: i32, py: i32) -> RingHit {
 /// cores — measured a tie with hand-blocked aligned loads on Xtensa, §15).
 #[derive(Clone, Copy)]
 #[repr(transparent)]
+#[cfg(feature = "geom-image")]
 pub struct Pack24(pub [u8; 6]);
 
+#[cfg(feature = "geom-image")]
 impl CoordPair for Pack24 {
     #[inline(always)]
     fn xy(&self) -> (i32, i32) {
@@ -205,6 +211,7 @@ impl CoordPair for Pack24 {
 }
 
 /// [`ring_hit_pairs`] at i128 edge width — the i32-quant image path.
+#[cfg(feature = "geom-image")]
 pub fn ring_hit_pairs_wide<P: CoordPair>(ring: &[P], px: i32, py: i32) -> RingHit {
     let n = ring.len();
     if n < 3 {

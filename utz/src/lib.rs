@@ -10,7 +10,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-// §11: two mandatory, at-least-one-of feature choices. "At least one of"
+// §11: three mandatory, at-least-one-of feature choices. "At least one of"
 // errors can only be *silenced* by feature union, never triggered — safe
 // under cargo's feature unification. The message is the onboarding.
 #[cfg(not(any(
@@ -29,6 +29,19 @@ compile_error!(
 compile_error!(
     "utz: choose an environment: `std`, `alloc` (no_std + allocator), \
      or `core` (bare metal: uncompressed assets only, ~zero heap)"
+);
+#[cfg(not(any(feature = "geom-varint", feature = "geom-fixed", feature = "geom-image")))]
+compile_error!(
+    "utz: pick at least one geometry decoder: `geom-varint` (what the presets \
+     use — they enable it themselves), `geom-fixed`, or `geom-image`"
+);
+// EagerImage reads coordinate sections as native-integer slices — LE hosts
+// only. Refusing at compile time is precise here because it is an opt-in:
+// big-endian builds keep every other encoding by not enabling this feature.
+#[cfg(all(feature = "geom-image", target_endian = "big"))]
+compile_error!(
+    "utz: `geom-image` (EagerImage) requires a little-endian host; \
+     the `geom-varint`/`geom-fixed` encodings work on any endianness"
 );
 
 #[cfg(feature = "alloc")]
@@ -94,11 +107,10 @@ pub enum Error {
     /// of a bare `include_bytes!`.
     #[display("EagerImage container not 4-byte aligned (use include_container!)")]
     Misaligned,
-    /// `EagerImage` coordinate sections are read as native-integer slices,
-    /// supported on little-endian hosts only (every target in scope; the
-    /// arc-store encodings work on any endianness).
-    #[display("EagerImage containers require a little-endian host")]
-    Endianness,
+    /// The container's geometry encoding has no compiled decoder — enable
+    /// the matching `geom-varint` / `geom-fixed` / `geom-image` feature.
+    #[display("geometry decoder not compiled in (enable the matching geom-* feature)")]
+    Geometry,
 }
 
 /// Embed a `.utz` container 4-byte aligned. Required for
