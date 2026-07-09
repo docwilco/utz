@@ -40,4 +40,4 @@ clap = { version = "4", features = ["derive"] }
 # runtime crate, exercised by roundtrip/visualize/bench subcommands; pure-Rust
 # zstd backend (ruzstd) here — the zstd-sys backend is compile-checked
 # separately (cargo check -p utz --features std,zstd-sys)
-utz = { path = "../utz", features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint", "geom-fixed", "geom-image"] }
+utz = { path = "../utz", features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint", "geom-fixed", "geom-image", "geom-coarse"] }

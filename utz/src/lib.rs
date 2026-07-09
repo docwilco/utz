@@ -30,10 +30,16 @@ compile_error!(
     "utz: choose an environment: `std`, `alloc` (no_std + allocator), \
      or `core` (bare metal: uncompressed assets only, ~zero heap)"
 );
-#[cfg(not(any(feature = "geom-varint", feature = "geom-fixed", feature = "geom-image")))]
+#[cfg(not(any(
+    feature = "geom-varint",
+    feature = "geom-fixed",
+    feature = "geom-image",
+    feature = "geom-coarse"
+)))]
 compile_error!(
     "utz: pick at least one geometry decoder: `geom-varint` (what the presets \
-     use — they enable it themselves), `geom-fixed`, or `geom-image`"
+     use — they enable it themselves), `geom-fixed`, `geom-image`, or \
+     `geom-coarse` (grid-only assets, cell precision)"
 );
 // EagerImage reads coordinate sections as native-integer slices — LE hosts
 // only. Refusing at compile time is precise here because it is an opt-in:
@@ -107,6 +113,8 @@ pub mod caps {
     pub const GEOM_FIXED: bool = cfg!(feature = "geom-fixed");
     /// EagerImage geometry decoder (`geom-image`)
     pub const GEOM_IMAGE: bool = cfg!(feature = "geom-image");
+    /// grid-only coarse assets (`geom-coarse`)
+    pub const GEOM_COARSE: bool = cfg!(feature = "geom-coarse");
     /// gzip payload decoder (`gzip`)
     pub const GZIP: bool = cfg!(feature = "gzip");
     /// zstd payload decoder (either backend: `ruzstd` / `zstd-sys`)

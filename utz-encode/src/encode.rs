@@ -86,6 +86,13 @@ pub enum GeomEncoding {
     /// no preload pass). No arc store; shared arcs duplicated per ring:
     /// raw ~4.1–4.3× the varint payload, best-compressed +61–94% (xz).
     EagerImage = 2,
+    /// Grid-only asset (§10/§15): header + tzid pool + parent + grid, no
+    /// geometry at all. `lookup()` answers at cell precision (== the
+    /// dominant-first coarse answer) — precision is an asset property, like
+    /// `eps_m`. Smallest flash by far (~⅓ of even the varint payload for
+    /// tiny); endianness-independent; the `geom-coarse` reader compiles no
+    /// PIP code.
+    Coarse = 3,
 }
 
 impl SimplifyAlgo {
@@ -307,6 +314,8 @@ pub fn payload_from_topology(
         Some((coords, ring_ends, ipolys)) => {
             (coords.len() as u64, ring_ends.len() as u32, ipolys.len() as u32)
         }
+        // coarse: no geometry — polys counts the parent table entries
+        None if p.geom == GeomEncoding::Coarse => (0, 0, parent.len() as u32),
         None => {
             let mut coords: u64 = 0;
             let (mut rings, mut polys) = (0u32, 0u32);
@@ -348,7 +357,14 @@ pub fn payload_from_topology(
         o.extend_from_slice(&v.to_le_bytes()[0..n]);
     };
     let (arcs_off, rings_off);
-    if let Some((coords, ring_ends, ipolys)) = &image {
+    if p.geom == GeomEncoding::Coarse {
+        // ---- coarse (geom=3): no geometry sections, just the parent table
+        // (border-cell candidate poly ids still resolve to features) ----
+        arcs_off = o.len() as u32;
+        stats.zones = arcs_off - stats.header;
+        rings_off = o.len() as u32;
+        for &pf in &parent { o.extend_from_slice(&pf.to_le_bytes()); }
+    } else if let Some((coords, ring_ends, ipolys)) = &image {
         // ---- eager-image geometry (geom=2): [coords (i32,i32)][ring_ends
         // u32][polys bbox 4×i32 + rend u32], coords 4-aligned within the
         // payload (the 12-byte outer header keeps it 4-aligned in flash) ----
@@ -405,7 +421,9 @@ pub fn payload_from_topology(
                         push_fixed(&mut arc_data, y);
                     }
                 }
-                GeomEncoding::EagerImage => unreachable!("image branch above"),
+                GeomEncoding::EagerImage | GeomEncoding::Coarse => {
+                    unreachable!("handled above")
+                }
             }
         }
         arc_offsets.push(arc_data.len() as u32);

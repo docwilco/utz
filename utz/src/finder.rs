@@ -260,8 +260,8 @@ impl Finder {
     #[cfg(feature = "alloc")]
     pub fn eager_from_slice(bytes: &[u8]) -> Result<Finder, Error> {
         let mut f = Finder::from_slice(bytes)?;
-        if f.hdr.geom == 2 {
-            return Ok(f); // EagerImage: the decoded buffer already IS the cache
+        if f.hdr.geom >= 2 {
+            return Ok(f); // EagerImage/coarse: nothing further to decode
         }
         f.preload();
         // keep [header + zone strings], [parent table] and [grid] —
@@ -309,8 +309,8 @@ impl Finder {
     /// caller check fit before committing.
     #[cfg(feature = "alloc")]
     pub fn preload_bytes(&self) -> usize {
-        if self.hdr.geom == 2 {
-            return 0; // EagerImage: nothing to decode
+        if self.hdr.geom >= 2 {
+            return 0; // EagerImage / coarse: nothing to decode
         }
         let h = &self.hdr;
         h.eager_coords as usize * core::mem::size_of::<(i32, i32)>()
@@ -325,8 +325,10 @@ impl Finder {
     /// doubling. A no-op if already preloaded.
     #[cfg(feature = "alloc")]
     pub fn preload(&mut self) {
-        if self.eager.is_some() || self.hdr.geom == 2 {
-            return; // geom=2 (EagerImage): the payload already IS the cache
+        if self.eager.is_some() || self.hdr.geom >= 2 {
+            // geom=2 (EagerImage): the payload already IS the cache;
+            // geom=3 (coarse): nothing to decode
+            return;
         }
         let (h, b) = (&self.hdr, &self.payload[..]);
         let mut e = Eager {
@@ -381,6 +383,11 @@ impl Finder {
                 // (v4) — resolve the winner's feature via the parent table
                 let (s, e) = self.list_bounds(v & 0x7FFF);
                 let b = &self.payload[..];
+                // coarse assets carry no geometry: cell precision IS the
+                // asset's precision — the dominant-first head is the answer
+                if cfg!(feature = "geom-coarse") && self.hdr.geom == 3 {
+                    return self.tzid(self.parent_of(read_u16(b, s)));
+                }
                 let mut first = None;
                 for pos in (s..e).step_by(2) {
                     let pid = read_u16(b, pos);

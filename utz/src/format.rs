@@ -123,14 +123,15 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
     let geom = p[3];
     let flags = p[4];
     let grid_deg = f32::from_le_bytes([p[5], p[6], p[7], p[8]]);
-    if !matches!(quant_bits, 16 | 24 | 32) || geom > 2 || flags != 0 || !(grid_deg > 0.0) {
+    if !matches!(quant_bits, 16 | 24 | 32) || geom > 3 || flags != 0 || !(grid_deg > 0.0) {
         return Err(Error::BadFormat);
     }
     // a valid geom byte whose decoder isn't compiled in is refused loudly
     let compiled = match geom {
         0 => cfg!(feature = "geom-varint"),
         1 => cfg!(feature = "geom-fixed"),
-        _ => cfg!(feature = "geom-image"),
+        2 => cfg!(feature = "geom-image"),
+        _ => cfg!(feature = "geom-coarse"),
     };
     if !compiled {
         return Err(Error::Geometry);
@@ -156,7 +157,13 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
     let parent = rings_off;
     let (n_arcs, arc_offsets, arc_data, poly_offsets, ring_data);
     let (img_coords, img_ring_ends, img_polys);
-    if geom == 2 {
+    if geom == 3 {
+        // coarse: no geometry sections at all — just parent + grid
+        need(parent + n_polys * 2)?;
+        (n_arcs, arc_offsets, arc_data) = (0, usize::MAX, usize::MAX);
+        (poly_offsets, ring_data) = (usize::MAX, usize::MAX);
+        (img_coords, img_ring_ends, img_polys) = (usize::MAX, usize::MAX, usize::MAX);
+    } else if geom == 2 {
         // EagerImage: the preload-cache layout in place of arc store + ring
         // records. Coords must be 4-aligned within the payload (encoder
         // pads; the v6 12-byte outer header preserves it in flash).

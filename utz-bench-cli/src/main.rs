@@ -24,6 +24,7 @@ static COMPACT_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-
 // eager-image twins need 4-aligned statics (EagerImage slice casts)
 static TINY_EAGER: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
 static COMPACT_EAGER: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/compact-eager-static.utz"));
+static TINY_COARSE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz"));
 
 // capability guards emitted next to each build.rs asset: a feature mismatch
 // between the recipes and this crate's utz features is a compile error
@@ -33,6 +34,7 @@ include!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz.guard.rs"));
 include!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz.guard.rs"));
 include!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz.guard.rs"));
 include!(concat!(env!("OUT_DIR"), "/compact-eager-static.utz.guard.rs"));
+include!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz.guard.rs"));
 
 /// The embedded container for a shape name, if the argument is one.
 fn embedded(name: &str) -> Option<&'static [u8]> {
@@ -41,6 +43,7 @@ fn embedded(name: &str) -> Option<&'static [u8]> {
         "tiny-static" => utz::data::TINY_STATIC,
         "tiny-fixed-static" => TINY_FIXED,
         "tiny-eager-static" => TINY_EAGER,
+        "tiny-coarse" => TINY_COARSE,
         "compact" => utz::data::COMPACT,
         "compact-none" => COMPACT_NONE,
         "compact-fixed-none" => COMPACT_FIXED,

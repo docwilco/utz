@@ -52,4 +52,12 @@ fn main() {
         .out_path(format!("{out}/compact-eager-static.utz"))
         .generate()
         .expect("generate compact-eager-static.utz");
+    // grid-only coarse asset: cell-precision answers, ~1/4 the flash of even
+    // the varint payload — the lookup_coarse tier measured end to end
+    Config::tiny()
+        .codec(Codec::Uncompressed)
+        .geom(GeomEncoding::Coarse)
+        .out_path(format!("{out}/tiny-coarse.utz"))
+        .generate()
+        .expect("generate tiny-coarse.utz");
 }

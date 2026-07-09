@@ -52,6 +52,7 @@ static COMPACT_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-
 // eager-image twins: 4-aligned statics (EagerImage slice casts from flash)
 static TINY_EAGER: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
 static COMPACT_EAGER: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/compact-eager-static.utz"));
+static TINY_COARSE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz"));
 
 // capability guards emitted next to each build.rs asset: a feature mismatch
 // between the recipes and this crate's utz features is a compile error
@@ -61,6 +62,7 @@ include!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz.guard.rs"));
 include!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz.guard.rs"));
 include!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz.guard.rs"));
 include!(concat!(env!("OUT_DIR"), "/compact-eager-static.utz.guard.rs"));
+include!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz.guard.rs"));
 
 /// modest by host standards; lookups run ~250-300x host on this core (see
 /// README) so a round must stay in seconds, not minutes
@@ -262,6 +264,8 @@ fn main() -> ! {
     // eager-image: slice kernels straight off flash — eager speed, zero RAM
     xip_leg("tiny-eager xip-flash", TINY_EAGER, &pts);
     xip_leg("compact-eager xip-flash", COMPACT_EAGER, &pts);
+    // grid-only: lookup() == lookup_coarse (cell precision; own checksum)
+    xip_leg("tiny-coarse xip-flash", TINY_COARSE, &pts);
     xip_leg("balanced xip-flash", BALANCED_NONE, &pts);
 
     // --- streaming from RAM (uncompressed copy) ---

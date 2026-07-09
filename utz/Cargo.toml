@@ -48,6 +48,9 @@ std = ["alloc"]
 geom-varint = []
 geom-fixed = []
 geom-image = []
+# grid-only assets (GeomEncoding::Coarse): no PIP code at all; lookup()
+# answers at cell precision (the asset's precision); endian-independent
+geom-coarse = []
 
 # ---- codec decoders (additive, §7) ------------------------------------------
 gzip = ["dep:miniz_oxide", "alloc"]
@@ -59,7 +62,7 @@ xz = ["dep:lzma-rust2", "alloc"]
 [package.metadata.docs.rs]
 # representative set (§11): the mandatory choices can't be defaulted, so
 # docs.rs picks one of each + the decoders
-features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint", "geom-fixed", "geom-image"]
+features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint", "geom-fixed", "geom-image", "geom-coarse"]
 
 [dependencies]
 # no default features: keeps the derives no_std (Error derive = core::error::Error)

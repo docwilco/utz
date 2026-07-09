@@ -61,7 +61,8 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         "varint" | "delta" => encode::GeomEncoding::DeltaVarint,
         "fixed" => encode::GeomEncoding::Fixed,
         "eager" | "image" => encode::GeomEncoding::EagerImage,
-        c => anyhow::bail!("unknown geom {c:?}: use varint|fixed|eager"),
+        "coarse" => encode::GeomEncoding::Coarse,
+        c => anyhow::bail!("unknown geom {c:?}: use varint|fixed|eager|coarse"),
     };
     let (feats, release) = utz_build::load_with_release(&a.ds)?;
     let p = Params {

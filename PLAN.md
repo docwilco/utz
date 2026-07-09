@@ -421,6 +421,18 @@ union, never triggered — unlike "exactly one of N", which union breaks.)
    mismatch is a compile error naming the asset and the missing feature
    (build.rs cannot see the target `utz`'s features, but a const evaluated
    inside `utz` can). The benches dogfood all six guards.
+   **`GeomEncoding::Coarse` (geom byte 3, 2026-07-09)**: grid-only assets —
+   header + tzid pool + parent + grid, no geometry. `lookup()` answers at
+   cell precision (the dominant-first head; precision is an asset property,
+   like `eps_m`) — `lookup_coarse` and `lookup` coincide. `geom-coarse`
+   builds compile no PIP code, no unsafe, any endianness; the pure-coarse
+   feature set `{core, custom, geom-coarse}` is the smallest possible utz.
+   Measured: **tiny-coarse = 40.8 K flash (⅓ of tiny-static), host 0.036
+   µs/lookup (5.7× the i16 image), S3 XIP 23 µs (3.9× the image, 12× varint
+   XIP), zero RAM** — checksum 28561 host = target. The full tiny ladder
+   (flash → S3 µs/lookup, all zero-RAM XIP): coarse 41 K → 23 · varint
+   125 K → 285 · fixed 172 K → 224 · i16 image 267 K → 89; plus preload
+   125 K + 455 K RAM → 108.
 
 `default = []` — forgetting to choose fails loudly, with the error message as
 onboarding (embedded-friendlier than the ecosystem's silent `default = ["std"]`,
