@@ -66,11 +66,23 @@ const _: () = assert!(
         && core::mem::align_of::<crate::pip::Pack24>() == 1
 );
 
-/// EagerImage coords are read via 4-byte slice casts — verify the payload
-/// lands them aligned (static assets: [`crate::include_container!`]).
-fn check_alignment(payload: &[u8], hdr: &Header) -> Result<(), Error> {
-    if hdr.geom == 2 && (payload.as_ptr() as usize + hdr.img_coords) % 4 != 0 {
-        return Err(Error::Misaligned);
+/// EagerImage load-time checks: the coords are read via typed slice casts,
+/// so the payload must land them 4-aligned (static assets:
+/// [`crate::include_container!`]) and the host must be little-endian — the
+/// (i16,i16)/(i32,i32) casts reinterpret LE bytes as native ints (Pack24
+/// converts, tuples cannot). Refuse loudly instead of returning silently
+/// byte-swapped answers.
+fn check_image(payload: &[u8], hdr: &Header) -> Result<(), Error> {
+    if hdr.geom == 2 {
+        #[cfg(target_endian = "big")]
+        {
+            let _ = payload;
+            return Err(Error::Endianness);
+        }
+        #[cfg(target_endian = "little")]
+        if (payload.as_ptr() as usize + hdr.img_coords) % 4 != 0 {
+            return Err(Error::Misaligned);
+        }
     }
     Ok(())
 }
@@ -194,7 +206,7 @@ impl Finder {
         }
         let payload = &bytes[start..];
         let hdr = format::parse(payload)?;
-        check_alignment(payload, &hdr)?;
+        check_image(payload, &hdr)?;
         Ok(Finder {
             payload: payload.into(),
             hdr,
@@ -216,7 +228,7 @@ impl Finder {
             decompress::decompress(codec, raw_len, &bytes[start..])?
         };
         let hdr = format::parse(&payload)?;
-        check_alignment(&payload, &hdr)?;
+        check_image(&payload, &hdr)?;
         Ok(Finder { payload: payload.into(), hdr, eager: None })
     }
 
@@ -237,7 +249,7 @@ impl Finder {
             decompress::decompress(codec, raw_len, &bytes[start..])?
         };
         let hdr = format::parse(&payload)?;
-        check_alignment(&payload, &hdr)?;
+        check_image(&payload, &hdr)?;
         Ok(Finder { payload: payload.into(), hdr, eager: None })
     }
 

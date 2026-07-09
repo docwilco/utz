@@ -94,6 +94,11 @@ pub enum Error {
     /// of a bare `include_bytes!`.
     #[display("EagerImage container not 4-byte aligned (use include_container!)")]
     Misaligned,
+    /// `EagerImage` coordinate sections are read as native-integer slices,
+    /// supported on little-endian hosts only (every target in scope; the
+    /// arc-store encodings work on any endianness).
+    #[display("EagerImage containers require a little-endian host")]
+    Endianness,
 }
 
 /// Embed a `.utz` container 4-byte aligned. Required for
