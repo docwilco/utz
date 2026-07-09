@@ -54,6 +54,20 @@ type Payload = alloc::borrow::Cow<'static, [u8]>;
 #[cfg(not(feature = "alloc"))]
 type Payload = &'static [u8];
 
+// EagerImage casts payload bytes to coordinate pairs — pin the layout
+const _: () = assert!(
+    core::mem::size_of::<(i32, i32)>() == 8 && core::mem::align_of::<(i32, i32)>() == 4
+);
+
+/// EagerImage coords are read via 4-byte slice casts — verify the payload
+/// lands them aligned (static assets: [`crate::include_container!`]).
+fn check_alignment(payload: &[u8], hdr: &Header) -> Result<(), Error> {
+    if hdr.geom == 2 && (payload.as_ptr() as usize + hdr.img_coords) % 4 != 0 {
+        return Err(Error::Misaligned);
+    }
+    Ok(())
+}
+
 /// Eager-mode storage: every ring decoded, flat (§9). Ranges are exclusive
 /// ends; a range's start is the previous entry's end (global across
 /// features, so no per-item start field).
@@ -173,6 +187,7 @@ impl Finder {
         }
         let payload = &bytes[start..];
         let hdr = format::parse(payload)?;
+        check_alignment(payload, &hdr)?;
         Ok(Finder {
             payload: payload.into(),
             hdr,
@@ -194,6 +209,7 @@ impl Finder {
             decompress::decompress(codec, raw_len, &bytes[start..])?
         };
         let hdr = format::parse(&payload)?;
+        check_alignment(&payload, &hdr)?;
         Ok(Finder { payload: payload.into(), hdr, eager: None })
     }
 
@@ -214,6 +230,7 @@ impl Finder {
             decompress::decompress(codec, raw_len, &bytes[start..])?
         };
         let hdr = format::parse(&payload)?;
+        check_alignment(&payload, &hdr)?;
         Ok(Finder { payload: payload.into(), hdr, eager: None })
     }
 
@@ -230,6 +247,9 @@ impl Finder {
     #[cfg(feature = "alloc")]
     pub fn eager_from_slice(bytes: &[u8]) -> Result<Finder, Error> {
         let mut f = Finder::from_slice(bytes)?;
+        if f.hdr.geom == 2 {
+            return Ok(f); // EagerImage: the decoded buffer already IS the cache
+        }
         f.preload();
         // keep [header + zone strings], [parent table] and [grid] —
         // everything lookups still read after preload; the arc store and
@@ -276,6 +296,9 @@ impl Finder {
     /// caller check fit before committing.
     #[cfg(feature = "alloc")]
     pub fn preload_bytes(&self) -> usize {
+        if self.hdr.geom == 2 {
+            return 0; // EagerImage: nothing to decode
+        }
         let h = &self.hdr;
         h.eager_coords as usize * core::mem::size_of::<(i32, i32)>()
             + h.eager_rings as usize * core::mem::size_of::<u32>()
@@ -289,8 +312,8 @@ impl Finder {
     /// doubling. A no-op if already preloaded.
     #[cfg(feature = "alloc")]
     pub fn preload(&mut self) {
-        if self.eager.is_some() {
-            return;
+        if self.eager.is_some() || self.hdr.geom == 2 {
+            return; // geom=2 (EagerImage): the payload already IS the cache
         }
         let (h, b) = (&self.hdr, &self.payload[..]);
         let mut e = Eager {
@@ -425,6 +448,9 @@ impl Finder {
     /// (orientation bit ignored) with O(1) state, and parity XORs across
     /// arcs order-independently.
     fn poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
+        if self.hdr.geom == 2 {
+            return self.image_poly_contains(pid, px, py);
+        }
         #[cfg(feature = "alloc")]
         if let Some(e) = &self.eager {
             return self.eager_poly_contains(e, pid, px, py);
@@ -511,6 +537,53 @@ impl Finder {
         } else {
             pip::RingHit::Outside
         }
+    }
+
+    /// EagerImage path (geom=2): the payload geometry IS the eager cache —
+    /// the same slice-kernel fold as eager mode, straight off the payload
+    /// bytes (flash in zero-copy mode). Works on the bare `core` rung.
+    fn image_poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
+        let (h, b) = (&self.hdr, &self.payload[..]);
+        let wide = h.quant_bits == 32;
+        let pe = h.img_polys + pid as usize * 20;
+        let bb = [
+            read_u32(b, pe) as i32,
+            read_u32(b, pe + 4) as i32,
+            read_u32(b, pe + 8) as i32,
+            read_u32(b, pe + 12) as i32,
+        ];
+        if !(px >= bb[0] && py >= bb[1] && px <= bb[2] && py <= bb[3]) {
+            return false;
+        }
+        let rend = read_u32(b, pe + 16) as usize;
+        let rstart = if pid == 0 { 0 } else { read_u32(b, pe - 4) as usize };
+        let mut inside = false;
+        let mut cstart =
+            if rstart == 0 { 0 } else { read_u32(b, h.img_ring_ends + (rstart - 1) * 4) as usize };
+        for ri in rstart..rend {
+            let cend = read_u32(b, h.img_ring_ends + ri * 4) as usize;
+            // SAFETY: img_coords is 4-aligned (checked at load), (i32, i32)
+            // is 8 bytes / align 4 (asserted at the top of this file), and
+            // parse bounds the image sections against the header counts.
+            let ring: &[(i32, i32)] = unsafe {
+                core::slice::from_raw_parts(
+                    b.as_ptr().add(h.img_coords + cstart * 8) as *const (i32, i32),
+                    cend - cstart,
+                )
+            };
+            cstart = cend;
+            let hit = if wide {
+                pip::ring_hit_i128(ring, px, py)
+            } else {
+                pip::ring_hit_i64(ring, px, py)
+            };
+            match hit {
+                pip::RingHit::Boundary => return true,
+                pip::RingHit::Inside => inside = !inside,
+                pip::RingHit::Outside => {}
+            }
+        }
+        inside
     }
 
     /// Eager path: same even-odd fold over the pre-decoded poly (indexed

@@ -31,7 +31,7 @@ pub struct Args {
     /// simplification algorithm: rdp|ii (visvalingam: builder API only, §14.8)
     #[arg(long, default_value = "rdp")]
     algo: String,
-    /// arc-store encoding: varint|fixed (fixed: +flash, streaming lookups
+    /// geometry encoding: varint|fixed|eager (fixed: +flash, streaming lookups
     /// skip varint decode — the XIP -static speed tier, §13)
     #[arg(long, default_value = "varint")]
     geom: String,
@@ -60,7 +60,8 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let geom = match a.geom.as_str() {
         "varint" | "delta" => encode::GeomEncoding::DeltaVarint,
         "fixed" => encode::GeomEncoding::Fixed,
-        c => anyhow::bail!("unknown geom {c:?}: use varint|fixed"),
+        "eager" | "image" => encode::GeomEncoding::EagerImage,
+        c => anyhow::bail!("unknown geom {c:?}: use varint|fixed|eager"),
     };
     let (feats, release) = utz_build::load_with_release(&a.ds)?;
     let p = Params {

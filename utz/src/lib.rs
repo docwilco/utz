@@ -89,4 +89,27 @@ pub enum Error {
     /// (or `from_static` was handed a non-`uncompressed` container).
     #[display("codec not compiled in, or decompression failed")]
     Decompress,
+    /// An `EagerImage` container's coordinate section is not 4-byte aligned
+    /// in memory — embed static assets with [`include_container!`] instead
+    /// of a bare `include_bytes!`.
+    #[display("EagerImage container not 4-byte aligned (use include_container!)")]
+    Misaligned,
+}
+
+/// Embed a `.utz` container 4-byte aligned. Required for
+/// [`Finder::from_static`] on `EagerImage` assets — the PIP kernels read
+/// `(i32, i32)` pairs straight from the embedded bytes, and a bare
+/// `include_bytes!` guarantees no alignment. Harmless for any other asset.
+#[macro_export]
+macro_rules! include_container {
+    ($path:expr) => {{
+        #[repr(C)]
+        struct Aligned<A, B: ?Sized> {
+            _align: [A; 0],
+            bytes: B,
+        }
+        static ALIGNED: &Aligned<u32, [u8]> =
+            &Aligned { _align: [], bytes: *include_bytes!($path) };
+        &ALIGNED.bytes
+    }};
 }

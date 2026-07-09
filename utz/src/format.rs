@@ -10,16 +10,20 @@ use crate::Error;
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
 pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 5; // v5: per-poly bbox back in the ring record (point-
-                           // granular gate the cell-granular grid can't give);
-                           // v4 poly-granular grid; v3 geom byte
+pub const VERSION: u8 = 6; // v6: 12-byte outer header (payload starts 4-aligned
+                           // for EagerImage slice casts) + geom=2 EagerImage;
+                           // v5 per-poly bbox; v4 poly-granular grid; v3 geom
+/// Outer container header length (v6): magic4 + version + codec + raw_len u32
+/// + 2 reserved bytes so a 4-aligned container gives a 4-aligned payload.
+pub const OUTER_LEN: usize = 12;
 
 /// Parsed header: every section position needed for O(1) access.
 #[derive(Clone, Copy)]
 pub struct Header {
     pub dataset: u8,
     pub quant_bits: u8,
-    /// arc-store encoding: 0 = delta+varint, 1 = absolute fixed-width
+    /// geometry encoding: 0 = delta+varint arcs, 1 = fixed-width arcs,
+    /// 2 = EagerImage (flattened per-ring coords, no arc store)
     pub geom: u8,
     /// simplification algorithm the asset was built with (§14.8):
     /// 0 = RDP, 1 = Visvalingam, 2 = Imai–Iri — provenance, not decode logic
@@ -40,6 +44,11 @@ pub struct Header {
     pub parent: usize,
     pub poly_offsets: usize, // u32[eager_polys+1]
     pub ring_data: usize,
+    // eager-image sections (geom=2 only; usize::MAX otherwise): the
+    // preload-cache layout serialized — coords 4-aligned within the payload
+    pub img_coords: usize, // (i32, i32)[eager_coords]
+    pub img_ring_ends: usize, // u32[eager_rings]
+    pub img_polys: usize, // (bbox [i32; 4] + ring_end u32)[eager_polys]
     // eager-cache reservation counts (v2): exact Vec sizes for `preload`
     // (coords is Σ referenced-arc vcounts — may only over-estimate)
     pub eager_coords: u32,
@@ -96,10 +105,10 @@ pub fn unzigzag(v: u64) -> i64 {
 /// Validate the outer header; returns (codec, raw_len, payload_start).
 /// `raw_len` is the UNCOMPRESSED payload size (single exact allocation).
 pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize), Error> {
-    if bytes.len() < 10 || bytes[0..4] != MAGIC || bytes[4] != VERSION {
+    if bytes.len() < OUTER_LEN || bytes[0..4] != MAGIC || bytes[4] != VERSION {
         return Err(Error::BadFormat);
     }
-    Ok((bytes[5], read_u32(bytes, 6) as usize, 10))
+    Ok((bytes[5], read_u32(bytes, 6) as usize, OUTER_LEN))
 }
 
 /// Parse the payload header + section directory.
@@ -111,7 +120,7 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
     let simplify_algo = p[2];
     let geom = p[3];
     let grid_deg = f32::from_le_bytes([p[4], p[5], p[6], p[7]]);
-    if !matches!(quant_bits, 16 | 24 | 32) || geom > 1 || !(grid_deg > 0.0) {
+    if !matches!(quant_bits, 16 | 24 | 32) || geom > 2 || !(grid_deg > 0.0) {
         return Err(Error::BadFormat);
     }
     let eps_m = f32::from_le_bytes([p[8], p[9], p[10], p[11]]);
@@ -131,15 +140,36 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
     let str_offsets = pos;
     let pool = str_offsets + (n_features as usize + 1) * 2;
 
-    need(arcs_off + 4)?;
-    let n_arcs = read_u32(p, arcs_off);
-    let arc_offsets = arcs_off + 4;
-    let arc_data = arc_offsets + (n_arcs as usize + 1) * 4;
-
     let n_polys = eager_polys as usize;
     let parent = rings_off;
-    let poly_offsets = parent + n_polys * 2;
-    let ring_data = poly_offsets + (n_polys + 1) * 4;
+    let (n_arcs, arc_offsets, arc_data, poly_offsets, ring_data);
+    let (img_coords, img_ring_ends, img_polys);
+    if geom == 2 {
+        // EagerImage: the preload-cache layout in place of arc store + ring
+        // records. Coords must be 4-aligned within the payload (encoder
+        // pads; the v6 12-byte outer header preserves it in flash).
+        img_coords = arcs_off;
+        if img_coords % 4 != 0 {
+            return Err(Error::BadFormat);
+        }
+        img_ring_ends = img_coords + eager_coords as usize * 8;
+        img_polys = img_ring_ends + eager_rings as usize * 4;
+        need(img_polys + n_polys * 20)?;
+        // the flattened image is self-delimiting — the counts must agree
+        if eager_rings > 0 && read_u32(p, img_ring_ends + (eager_rings as usize - 1) * 4) != eager_coords {
+            return Err(Error::BadFormat);
+        }
+        (n_arcs, arc_offsets, arc_data) = (0, usize::MAX, usize::MAX);
+        (poly_offsets, ring_data) = (usize::MAX, usize::MAX);
+    } else {
+        need(arcs_off + 4)?;
+        n_arcs = read_u32(p, arcs_off);
+        arc_offsets = arcs_off + 4;
+        arc_data = arc_offsets + (n_arcs as usize + 1) * 4;
+        poly_offsets = parent + n_polys * 2;
+        ring_data = poly_offsets + (n_polys + 1) * 4;
+        (img_coords, img_ring_ends, img_polys) = (usize::MAX, usize::MAX, usize::MAX);
+    }
 
     need(grid_off + 4)?;
     let ncols = read_u16(p, grid_off);
@@ -157,6 +187,7 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
         str_offsets, pool,
         n_arcs, arc_offsets, arc_data,
         parent, poly_offsets, ring_data,
+        img_coords, img_ring_ends, img_polys,
         eager_coords, eager_rings, eager_polys,
         ncols, nrows, primary, uniq, list_offsets, list_ids,
     })

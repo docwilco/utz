@@ -69,6 +69,7 @@ fn main() {
         assert_eq!(codec, 0, "{path}: need a codec-none container");
         let p = &bytes[start..];
         let h = format::parse(p).unwrap();
+    assert!(h.geom <= 1, "arc-store containers only (geom 0/1)");
         let fb = fixed_bytes(h.quant_bits);
         let arcs_off = h.arc_offsets - 4; // n_arcs u32 sits before the table
         let grid_block = h.primary - 4; // ncols/nrows u16s before primary

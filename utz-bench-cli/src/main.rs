@@ -21,6 +21,9 @@ static COMPACT_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-n
 static BALANCED_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/balanced-none.utz"));
 static TINY_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz"));
 static COMPACT_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz"));
+// eager-image twins need 4-aligned statics (EagerImage slice casts)
+static TINY_EAGER: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
+static COMPACT_EAGER: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/compact-eager-static.utz"));
 
 /// The embedded container for a shape name, if the argument is one.
 fn embedded(name: &str) -> Option<&'static [u8]> {
@@ -28,9 +31,11 @@ fn embedded(name: &str) -> Option<&'static [u8]> {
         "tiny" => utz::data::TINY,
         "tiny-static" => utz::data::TINY_STATIC,
         "tiny-fixed-static" => TINY_FIXED,
+        "tiny-eager-static" => TINY_EAGER,
         "compact" => utz::data::COMPACT,
         "compact-none" => COMPACT_NONE,
         "compact-fixed-none" => COMPACT_FIXED,
+        "compact-eager-static" => COMPACT_EAGER,
         "balanced" => utz::data::BALANCED,
         "balanced-none" => BALANCED_NONE,
         "accurate" => utz::data::ACCURATE,

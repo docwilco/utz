@@ -38,4 +38,18 @@ fn main() {
         .out_path(format!("{out}/compact-fixed-none.utz"))
         .generate()
         .expect("generate compact-fixed-none.utz");
+    // eager-image twins (§15): the geometry section IS the preload cache —
+    // slice kernels run straight off flash (eager speed, zero RAM, no boot)
+    Config::tiny()
+        .codec(Codec::Uncompressed)
+        .geom(GeomEncoding::EagerImage)
+        .out_path(format!("{out}/tiny-eager-static.utz"))
+        .generate()
+        .expect("generate tiny-eager-static.utz");
+    Config::compact()
+        .codec(Codec::Uncompressed)
+        .geom(GeomEncoding::EagerImage)
+        .out_path(format!("{out}/compact-eager-static.utz"))
+        .generate()
+        .expect("generate compact-eager-static.utz");
 }

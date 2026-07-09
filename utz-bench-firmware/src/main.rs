@@ -49,6 +49,9 @@ static COMPACT_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-n
 static BALANCED_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/balanced-none.utz"));
 static TINY_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz"));
 static COMPACT_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz"));
+// eager-image twins: 4-aligned statics (EagerImage slice casts from flash)
+static TINY_EAGER: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
+static COMPACT_EAGER: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/compact-eager-static.utz"));
 
 /// modest by host standards; lookups run ~250-300x host on this core (see
 /// README) so a round must stay in seconds, not minutes
@@ -247,6 +250,9 @@ fn main() -> ! {
     xip_leg("tiny-fixed xip-flash", TINY_FIXED, &pts);
     xip_leg("compact xip-flash", COMPACT_NONE, &pts);
     xip_leg("compact-fixed xip-flash", COMPACT_FIXED, &pts);
+    // eager-image: slice kernels straight off flash — eager speed, zero RAM
+    xip_leg("tiny-eager xip-flash", TINY_EAGER, &pts);
+    xip_leg("compact-eager xip-flash", COMPACT_EAGER, &pts);
     xip_leg("balanced xip-flash", BALANCED_NONE, &pts);
 
     // --- streaming from RAM (uncompressed copy) ---

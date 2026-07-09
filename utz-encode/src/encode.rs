@@ -36,9 +36,12 @@ use crate::{clean, topo, Feat};
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
 pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 5; // v5: per-poly bbox back in the ring record (point-
-                           // granular gate the cell-granular grid can't give);
-                           // v4 poly-granular grid; v3 geom byte
+pub const VERSION: u8 = 6; // v6: 12-byte outer header (payload starts 4-aligned
+                           // for EagerImage slice casts) + geom=2 EagerImage;
+                           // v5 per-poly bbox; v4 poly-granular grid; v3 geom
+/// Outer container header length (v6): magic4 + version + codec + raw_len u32
+/// + 2 reserved/pad bytes so a 4-aligned container gives a 4-aligned payload.
+pub const OUTER_LEN: usize = 12;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u8)]
@@ -76,6 +79,13 @@ pub enum GeomEncoding {
     #[default]
     DeltaVarint = 0,
     Fixed = 1,
+    /// The geometry section IS the preload cache (§15): flattened per-ring
+    /// `(i32, i32)` runs + ring/poly index tables, 4-aligned — the slice
+    /// kernels run straight off flash (`from_static`: eager speed, zero RAM,
+    /// zero boot) or straight off the decompressed buffer (`from_slice`:
+    /// no preload pass). No arc store; shared arcs duplicated per ring:
+    /// raw ~4.1–4.3× the varint payload, best-compressed +61–94% (xz).
+    EagerImage = 2,
 }
 
 impl SimplifyAlgo {
@@ -224,6 +234,50 @@ pub fn payload_from_topology(
         csr.list_ids.len()
     );
 
+    // EagerImage (geom=2): flatten the geometry into the exact preload-cache
+    // shape now, so the header's eager counts are exact and the sections
+    // below just serialize it. Junction dedup stays within a ring.
+    let image = if p.geom == GeomEncoding::EagerImage {
+        let mut coords: Vec<(i32, i32)> = Vec::new();
+        let mut ring_ends: Vec<u32> = Vec::new();
+        let mut ipolys: Vec<([i32; 4], u32)> = Vec::new();
+        for fi in 0..feats.len() {
+            for poly in &t.structure[fi] {
+                let pstart = coords.len();
+                for &ri in poly {
+                    let rstart = coords.len();
+                    for &r in &t.ring_refs[ri] {
+                        let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
+                        let seg = coords.len();
+                        let a = &arcs_q[id];
+                        if rev {
+                            coords.extend(a.iter().rev());
+                        } else {
+                            coords.extend(a.iter());
+                        }
+                        // drop the duplicated junction vertex between arcs
+                        if seg > rstart && coords.get(seg - 1) == coords.get(seg) {
+                            coords.remove(seg);
+                        }
+                    }
+                    // drop the duplicated ring-closure vertex (ring_hit wraps)
+                    if coords.len() > rstart + 1 && coords.last() == coords.get(rstart) {
+                        coords.pop();
+                    }
+                    ring_ends.push(coords.len() as u32);
+                }
+                let mut bb = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
+                for &(x, y) in &coords[pstart..] {
+                    bb = [bb[0].min(x), bb[1].min(y), bb[2].max(x), bb[3].max(y)];
+                }
+                ipolys.push((bb, ring_ends.len() as u32));
+            }
+        }
+        Some((coords, ring_ends, ipolys))
+    } else {
+        None
+    };
+
     let mut stats = PayloadStats {
         n_arcs: arcs_q.len() as u32,
         n_verts: arcs_q.iter().map(|a| a.len() as u32).sum(),
@@ -246,21 +300,31 @@ pub fn payload_from_topology(
     o.extend_from_slice(&[0u8; 12]);
     // eager-cache reservation counts (v2): what preload will hold, known
     // exactly here — coords as Σ referenced-arc vcounts (junction dedup at
-    // decode shrinks it a hair; a reservation may only over-estimate)
-    let mut eager_coords: u64 = 0;
-    let (mut eager_rings, mut eager_polys) = (0u32, 0u32);
-    for fi in 0..feats.len() {
-        for poly in &t.structure[fi] {
-            eager_polys += 1;
-            for &ri in poly {
-                eager_rings += 1;
-                eager_coords += t.ring_refs[ri]
-                    .iter()
-                    .map(|&r| arcs_q[(r >> 1) as usize].len() as u64)
-                    .sum::<u64>();
-            }
+    // decode shrinks it a hair; a reservation may only over-estimate).
+    // EagerImage headers carry the EXACT image counts (they locate the
+    // sections, not a reservation).
+    let (eager_coords, eager_rings, eager_polys) = match &image {
+        Some((coords, ring_ends, ipolys)) => {
+            (coords.len() as u64, ring_ends.len() as u32, ipolys.len() as u32)
         }
-    }
+        None => {
+            let mut coords: u64 = 0;
+            let (mut rings, mut polys) = (0u32, 0u32);
+            for fi in 0..feats.len() {
+                for poly in &t.structure[fi] {
+                    polys += 1;
+                    for &ri in poly {
+                        rings += 1;
+                        coords += t.ring_refs[ri]
+                            .iter()
+                            .map(|&r| arcs_q[(r >> 1) as usize].len() as u64)
+                            .sum::<u64>();
+                    }
+                }
+            }
+            (coords, rings, polys)
+        }
+    };
     anyhow::ensure!(eager_coords <= u32::MAX as u64, "eager_coords overflows u32");
     anyhow::ensure!(eager_polys as usize == parent.len(), "poly count mismatch");
     o.extend_from_slice(&(eager_coords as u32).to_le_bytes());
@@ -279,78 +343,108 @@ pub fn payload_from_topology(
     for v in &str_off { o.extend_from_slice(&v.to_le_bytes()); }
     o.extend_from_slice(&pool);
 
-    // ---- arc store ----
-    let arcs_off = o.len() as u32;
-    stats.zones = arcs_off - stats.header;
     let push_fixed = |o: &mut Vec<u8>, v: i32| {
         let n = (p.quant_bits as usize + 7) / 8;
         o.extend_from_slice(&v.to_le_bytes()[0..n]);
     };
-    o.extend_from_slice(&(arcs_q.len() as u32).to_le_bytes());
-    let mut arc_data = Vec::new();
-    let mut arc_offsets: Vec<u32> = Vec::with_capacity(arcs_q.len() + 1);
-    for a in &arcs_q {
-        arc_offsets.push(arc_data.len() as u32);
-        put_varint(&mut arc_data, a.len() as u64);
-        match p.geom {
-            GeomEncoding::DeltaVarint => {
-                let (mut px, mut py) = (0i64, 0i64);
-                for (i, &(x, y)) in a.iter().enumerate() {
-                    if i == 0 {
+    let (arcs_off, rings_off);
+    if let Some((coords, ring_ends, ipolys)) = &image {
+        // ---- eager-image geometry (geom=2): [coords (i32,i32)][ring_ends
+        // u32][polys bbox 4×i32 + rend u32], coords 4-aligned within the
+        // payload (the 12-byte outer header keeps it 4-aligned in flash) ----
+        while o.len() % 4 != 0 {
+            o.push(0);
+        }
+        arcs_off = o.len() as u32;
+        stats.zones = arcs_off - stats.header;
+        for &(x, y) in coords {
+            o.extend_from_slice(&x.to_le_bytes());
+            o.extend_from_slice(&y.to_le_bytes());
+        }
+        for v in ring_ends {
+            o.extend_from_slice(&v.to_le_bytes());
+        }
+        for &(bb, rend) in ipolys {
+            for v in bb {
+                o.extend_from_slice(&v.to_le_bytes());
+            }
+            o.extend_from_slice(&rend.to_le_bytes());
+        }
+        // ---- ring index reduces to the parent table ----
+        rings_off = o.len() as u32;
+        stats.arcs = rings_off - arcs_off;
+        for &pf in &parent { o.extend_from_slice(&pf.to_le_bytes()); }
+    } else {
+        // ---- arc store ----
+        arcs_off = o.len() as u32;
+        stats.zones = arcs_off - stats.header;
+        o.extend_from_slice(&(arcs_q.len() as u32).to_le_bytes());
+        let mut arc_data = Vec::new();
+        let mut arc_offsets: Vec<u32> = Vec::with_capacity(arcs_q.len() + 1);
+        for a in &arcs_q {
+            arc_offsets.push(arc_data.len() as u32);
+            put_varint(&mut arc_data, a.len() as u64);
+            match p.geom {
+                GeomEncoding::DeltaVarint => {
+                    let (mut px, mut py) = (0i64, 0i64);
+                    for (i, &(x, y)) in a.iter().enumerate() {
+                        if i == 0 {
+                            push_fixed(&mut arc_data, x);
+                            push_fixed(&mut arc_data, y);
+                        } else {
+                            put_varint(&mut arc_data, zigzag(x as i64 - px));
+                            put_varint(&mut arc_data, zigzag(y as i64 - py));
+                        }
+                        (px, py) = (x as i64, y as i64);
+                    }
+                }
+                GeomEncoding::Fixed => {
+                    for &(x, y) in a {
                         push_fixed(&mut arc_data, x);
                         push_fixed(&mut arc_data, y);
-                    } else {
-                        put_varint(&mut arc_data, zigzag(x as i64 - px));
-                        put_varint(&mut arc_data, zigzag(y as i64 - py));
                     }
-                    (px, py) = (x as i64, y as i64);
                 }
-            }
-            GeomEncoding::Fixed => {
-                for &(x, y) in a {
-                    push_fixed(&mut arc_data, x);
-                    push_fixed(&mut arc_data, y);
-                }
+                GeomEncoding::EagerImage => unreachable!("image branch above"),
             }
         }
-    }
-    arc_offsets.push(arc_data.len() as u32);
-    for v in &arc_offsets { o.extend_from_slice(&v.to_le_bytes()); }
-    o.extend_from_slice(&arc_data);
+        arc_offsets.push(arc_data.len() as u32);
+        for v in &arc_offsets { o.extend_from_slice(&v.to_le_bytes()); }
+        o.extend_from_slice(&arc_data);
 
-    // ---- ring index (v4: per-poly records — grid candidates are polys;
-    // parent table maps them to features; no bboxes, the grid localizes) ----
-    let rings_off = o.len() as u32;
-    stats.arcs = rings_off - arcs_off;
-    for &pf in &parent { o.extend_from_slice(&pf.to_le_bytes()); }
-    let mut ring_data = Vec::new();
-    let mut poly_offsets: Vec<u32> = Vec::with_capacity(parent.len() + 1);
-    for fi in 0..feats.len() {
-        for poly in &t.structure[fi] {
-            poly_offsets.push(ring_data.len() as u32);
-            // per-poly bbox (v5): the point-granular gate — a streaming miss
-            // returns before touching any arc, preload reads instead of
-            // recomputing. Rejects ~5% of poly-grid candidates for 4 compares
-            // (§15) — ~20x above the check's break-even.
-            let mut bb = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
-            for &ri in poly {
-                for &r in &t.ring_refs[ri] {
-                    for &(x, y) in &arcs_q[(r >> 1) as usize] {
-                        bb = (bb.0.min(x), bb.1.min(y), bb.2.max(x), bb.3.max(y));
+        // ---- ring index (v4: per-poly records — grid candidates are polys;
+        // parent table maps them to features) ----
+        rings_off = o.len() as u32;
+        stats.arcs = rings_off - arcs_off;
+        for &pf in &parent { o.extend_from_slice(&pf.to_le_bytes()); }
+        let mut ring_data = Vec::new();
+        let mut poly_offsets: Vec<u32> = Vec::with_capacity(parent.len() + 1);
+        for fi in 0..feats.len() {
+            for poly in &t.structure[fi] {
+                poly_offsets.push(ring_data.len() as u32);
+                // per-poly bbox (v5): the point-granular gate — a streaming
+                // miss returns before touching any arc, preload reads instead
+                // of recomputing. Rejects ~5% of poly-grid candidates for 4
+                // compares (§15) — ~20x above the check's break-even.
+                let mut bb = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+                for &ri in poly {
+                    for &r in &t.ring_refs[ri] {
+                        for &(x, y) in &arcs_q[(r >> 1) as usize] {
+                            bb = (bb.0.min(x), bb.1.min(y), bb.2.max(x), bb.3.max(y));
+                        }
                     }
                 }
-            }
-            for v in [bb.0, bb.1, bb.2, bb.3] { push_fixed(&mut ring_data, v); }
-            ring_data.extend_from_slice(&(poly.len() as u16).to_le_bytes());
-            for &ri in poly {
-                put_varint(&mut ring_data, t.ring_refs[ri].len() as u64);
-                for &r in &t.ring_refs[ri] { put_varint(&mut ring_data, r as u64); }
+                for v in [bb.0, bb.1, bb.2, bb.3] { push_fixed(&mut ring_data, v); }
+                ring_data.extend_from_slice(&(poly.len() as u16).to_le_bytes());
+                for &ri in poly {
+                    put_varint(&mut ring_data, t.ring_refs[ri].len() as u64);
+                    for &r in &t.ring_refs[ri] { put_varint(&mut ring_data, r as u64); }
+                }
             }
         }
+        poly_offsets.push(ring_data.len() as u32);
+        for v in &poly_offsets { o.extend_from_slice(&v.to_le_bytes()); }
+        o.extend_from_slice(&ring_data);
     }
-    poly_offsets.push(ring_data.len() as u32);
-    for v in &poly_offsets { o.extend_from_slice(&v.to_le_bytes()); }
-    o.extend_from_slice(&ring_data);
 
     // ---- grid ----
     let grid_off = o.len() as u32;
@@ -374,11 +468,12 @@ pub fn payload_from_topology(
 pub fn finish(payload: Vec<u8>, codec: Codec) -> Vec<u8> {
     let raw_len = payload.len() as u32;
     let body = compress(&payload, codec);
-    let mut o = Vec::with_capacity(body.len() + 10);
+    let mut o = Vec::with_capacity(body.len() + OUTER_LEN);
     o.extend_from_slice(&MAGIC);
     o.push(VERSION);
     o.push(codec as u8);
     o.extend_from_slice(&raw_len.to_le_bytes());
+    o.extend_from_slice(&[0u8; 2]); // reserved; pads the payload to +12 (v6)
     o.extend_from_slice(&body);
     o
 }

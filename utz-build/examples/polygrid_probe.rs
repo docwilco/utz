@@ -55,6 +55,7 @@ fn load_feats(bytes: &[u8]) -> (format::Header, Vec<Feat>) {
     assert_eq!(codec, 0, "need a codec-none container");
     let p = &bytes[start..];
     let h = format::parse(p).unwrap();
+    assert!(h.geom <= 1, "arc-store containers only (geom 0/1)");
     let qmax = ((1u64 << (h.quant_bits - 1)) - 1) as f64;
     let dq = |v: i32, half: f64| v as f64 / qmax * half;
     let mut feats: Vec<Feat> = (0..h.n_features)
