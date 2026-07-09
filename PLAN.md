@@ -414,7 +414,13 @@ union, never triggered — unlike "exactly one of N", which union breaks.)
    no compiled decoder is refused at load (`Error::Geometry`), mirroring the
    codec features. `geom-image` is little-endian-only (typed coordinate
    slices) and is a compile_error on big-endian targets — precise because it
-   is an opt-in; BE hosts keep the other encodings.
+   is an opt-in; BE hosts keep the other encodings. **Capability guards**:
+   `utz::caps` exposes the resolved features as consts, and
+   `Config::generate` / the `gen` CLI write `<asset>.guard.rs` beside every
+   asset — `include!` it next to the `include_bytes!` and a recipe/feature
+   mismatch is a compile error naming the asset and the missing feature
+   (build.rs cannot see the target `utz`'s features, but a const evaluated
+   inside `utz` can). The benches dogfood all six guards.
 
 `default = []` — forgetting to choose fails loudly, with the error message as
 onboarding (embedded-friendlier than the ecosystem's silent `default = ["std"]`,

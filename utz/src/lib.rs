@@ -92,6 +92,31 @@ pub mod data {
     pub use utz_data_accurate::ACCURATE;
 }
 
+/// Compile-time capabilities of THIS utz build (its resolved features).
+///
+/// For asset guards: `utz_build::Config::generate` writes a
+/// `<asset>.guard.rs` next to each asset, asserting the caps it needs —
+/// `include!` it beside the `include_bytes!` and a feature mismatch becomes
+/// a compile error in your crate instead of a load error in the field.
+/// Also useful directly for OTA/file-loaded assets:
+/// `assert!(utz::caps::XZ)` at startup.
+pub mod caps {
+    /// delta+varint arc geometry decoder (`geom-varint`)
+    pub const GEOM_VARINT: bool = cfg!(feature = "geom-varint");
+    /// fixed-width arc geometry decoder (`geom-fixed`)
+    pub const GEOM_FIXED: bool = cfg!(feature = "geom-fixed");
+    /// EagerImage geometry decoder (`geom-image`)
+    pub const GEOM_IMAGE: bool = cfg!(feature = "geom-image");
+    /// gzip payload decoder (`gzip`)
+    pub const GZIP: bool = cfg!(feature = "gzip");
+    /// zstd payload decoder (either backend: `ruzstd` / `zstd-sys`)
+    pub const ZSTD: bool = cfg!(any(feature = "ruzstd", feature = "zstd-sys"));
+    /// brotli payload decoder (`brotli`)
+    pub const BROTLI: bool = cfg!(feature = "brotli");
+    /// xz payload decoder (`xz`)
+    pub const XZ: bool = cfg!(feature = "xz");
+}
+
 /// Errors surfaced by the reader.
 #[derive(Debug, PartialEq, derive_more::Display, derive_more::Error)]
 pub enum Error {

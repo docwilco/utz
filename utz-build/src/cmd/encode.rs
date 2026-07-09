@@ -91,6 +91,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         PathBuf::from(format!("{}-{}m{}-{}.utz", a.ds, a.eps_m, w, a.codec))
     });
     std::fs::write(&out, &container)?;
+    utz_build::config::write_guard(&out, geom, codec)?;
     println!("wrote {} ({:.1} KiB, {codec:?}, TZBB {release})", out.display(), container.len() as f64 / 1024.0);
     Ok(())
 }

@@ -53,6 +53,15 @@ static COMPACT_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-
 static TINY_EAGER: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
 static COMPACT_EAGER: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/compact-eager-static.utz"));
 
+// capability guards emitted next to each build.rs asset: a feature mismatch
+// between the recipes and this crate's utz features is a compile error
+include!(concat!(env!("OUT_DIR"), "/compact-none.utz.guard.rs"));
+include!(concat!(env!("OUT_DIR"), "/balanced-none.utz.guard.rs"));
+include!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz.guard.rs"));
+include!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz.guard.rs"));
+include!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz.guard.rs"));
+include!(concat!(env!("OUT_DIR"), "/compact-eager-static.utz.guard.rs"));
+
 /// modest by host standards; lookups run ~250-300x host on this core (see
 /// README) so a round must stay in seconds, not minutes
 const NPTS: usize = 2_000;
