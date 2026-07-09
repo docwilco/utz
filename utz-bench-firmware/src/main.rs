@@ -52,6 +52,7 @@ static COMPACT_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-
 // eager-image twins: 4-aligned statics (EagerImage slice casts from flash)
 static TINY_EAGER: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
 static COMPACT_EAGER: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/compact-eager-static.utz"));
+static COMPACT_EAGER_UA: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/compact-eager-ua.utz"));
 
 /// modest by host standards; lookups run ~250-300x host on this core (see
 /// README) so a round must stay in seconds, not minutes
@@ -253,6 +254,8 @@ fn main() -> ! {
     // eager-image: slice kernels straight off flash — eager speed, zero RAM
     xip_leg("tiny-eager xip-flash", TINY_EAGER, &pts);
     xip_leg("compact-eager xip-flash", COMPACT_EAGER, &pts);
+    // read_unaligned i24 path: the strict-alignment worst case on Xtensa
+    xip_leg("compact-eager-ua xip-flash", COMPACT_EAGER_UA, &pts);
     xip_leg("balanced xip-flash", BALANCED_NONE, &pts);
 
     // --- streaming from RAM (uncompressed copy) ---

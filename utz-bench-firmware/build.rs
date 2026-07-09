@@ -52,4 +52,13 @@ fn main() {
         .out_path(format!("{out}/compact-eager-static.utz"))
         .generate()
         .expect("generate compact-eager-static.utz");
+    // unaligned twin: measures the read_unaligned i24 kernel (fast on
+    // permissive cores, the slow path on Xtensa)
+    Config::compact()
+        .codec(Codec::Uncompressed)
+        .geom(GeomEncoding::EagerImage)
+        .align_image_rings(false)
+        .out_path(format!("{out}/compact-eager-ua.utz"))
+        .generate()
+        .expect("generate compact-eager-ua.utz");
 }

@@ -10,9 +10,9 @@ use crate::Error;
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
 pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 6; // v6: 12-byte outer header (payload starts 4-aligned
-                           // for EagerImage slice casts) + geom=2 EagerImage;
-                           // v5 per-poly bbox; v4 poly-granular grid; v3 geom
+pub const VERSION: u8 = 7; // v7: flags byte + image coords at quant width
+                           // (i24 packed, optional ring alignment); v6 12-byte
+                           // outer + EagerImage; v5 bbox; v4 poly grid; v3 geom
 /// Outer container header length (v6): magic4 + version + codec + raw_len u32
 /// + 2 reserved bytes so a 4-aligned container gives a 4-aligned payload.
 pub const OUTER_LEN: usize = 12;
@@ -23,8 +23,11 @@ pub struct Header {
     pub dataset: u8,
     pub quant_bits: u8,
     /// geometry encoding: 0 = delta+varint arcs, 1 = fixed-width arcs,
-    /// 2 = EagerImage (flattened per-ring coords, no arc store)
+    /// 2 = EagerImage (flattened per-ring coords at quant width, no arc store)
     pub geom: u8,
+    /// bit0: i24 image rings start at even vertex indices (aligned-block
+    /// kernel usable); other bits reserved
+    pub flags: u8,
     /// simplification algorithm the asset was built with (§14.8):
     /// 0 = RDP, 1 = Visvalingam, 2 = Imai–Iri — provenance, not decode logic
     pub simplify_algo: u8,
@@ -114,18 +117,19 @@ pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize), Error> {
 /// Parse the payload header + section directory.
 pub fn parse(p: &[u8]) -> Result<Header, Error> {
     let need = |n: usize| if p.len() < n { Err(Error::BadFormat) } else { Ok(()) };
-    need(13)?;
+    need(14)?;
     let dataset = p[0];
     let quant_bits = p[1];
     let simplify_algo = p[2];
     let geom = p[3];
-    let grid_deg = f32::from_le_bytes([p[4], p[5], p[6], p[7]]);
+    let flags = p[4];
+    let grid_deg = f32::from_le_bytes([p[5], p[6], p[7], p[8]]);
     if !matches!(quant_bits, 16 | 24 | 32) || geom > 2 || !(grid_deg > 0.0) {
         return Err(Error::BadFormat);
     }
-    let eps_m = f32::from_le_bytes([p[8], p[9], p[10], p[11]]);
-    let rel_len = p[12] as usize;
-    let mut pos = 13 + rel_len; // tzbb_release skipped (read via header_release)
+    let eps_m = f32::from_le_bytes([p[9], p[10], p[11], p[12]]);
+    let rel_len = p[13] as usize;
+    let mut pos = 14 + rel_len; // tzbb_release skipped (read via header_release)
     need(pos + 26)?;
     let n_features = read_u16(p, pos);
     pos += 2;
@@ -152,12 +156,18 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
         if img_coords % 4 != 0 {
             return Err(Error::BadFormat);
         }
-        img_ring_ends = img_coords + eager_coords as usize * 8;
+        // coords at quant width (v7): 4 / 6 / 8 bytes per vertex
+        let vb = 2 * fixed_bytes(quant_bits);
+        img_ring_ends = img_coords + eager_coords as usize * vb;
         img_polys = img_ring_ends + eager_rings as usize * 4;
         need(img_polys + n_polys * 20)?;
-        // the flattened image is self-delimiting — the counts must agree
-        if eager_rings > 0 && read_u32(p, img_ring_ends + (eager_rings as usize - 1) * 4) != eager_coords {
-            return Err(Error::BadFormat);
+        // self-delimiting check: the last ring end must land on the coord
+        // count (one trailing pad slot allowed for aligned i24 images)
+        if eager_rings > 0 {
+            let last = read_u32(p, img_ring_ends + (eager_rings as usize - 1) * 4);
+            if last > eager_coords || eager_coords - last > 1 {
+                return Err(Error::BadFormat);
+            }
         }
         (n_arcs, arc_offsets, arc_data) = (0, usize::MAX, usize::MAX);
         (poly_offsets, ring_data) = (usize::MAX, usize::MAX);
@@ -183,7 +193,7 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
     need(list_ids)?;
 
     Ok(Header {
-        dataset, quant_bits, geom, simplify_algo, grid_deg, eps_m, n_features,
+        dataset, quant_bits, geom, flags, simplify_algo, grid_deg, eps_m, n_features,
         str_offsets, pool,
         n_arcs, arc_offsets, arc_data,
         parent, poly_offsets, ring_data,
@@ -195,6 +205,6 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
 
 /// TZBB release string recorded in the header.
 pub fn release(p: &[u8]) -> &[u8] {
-    let n = p[12] as usize;
-    &p[13..13 + n]
+    let n = p[13] as usize;
+    &p[14..14 + n]
 }

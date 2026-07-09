@@ -38,6 +38,7 @@ pub struct Config {
     codec: Codec,
     simplify: SimplifyAlgo,
     geom: GeomEncoding,
+    align_image_rings: bool,
     density_weight_floor: Option<f64>,
     out: Option<PathBuf>,
 }
@@ -52,6 +53,7 @@ impl Default for Config {
             codec: Codec::Gzip,
             simplify: SimplifyAlgo::Rdp,
             geom: GeomEncoding::DeltaVarint,
+            align_image_rings: true,
             density_weight_floor: None,
             out: None,
         }
@@ -157,6 +159,15 @@ impl Config {
         self
     }
 
+    /// EagerImage + i24 only: pad ring starts so the packed 6 B/vertex
+    /// coords read with aligned word loads — fast everywhere, required for
+    /// speed on strict-alignment cores (Xtensa). Default on. Off saves the
+    /// ~6 B/ring pad and uses `read_unaligned` (fast on x86 / ARMv7-M+).
+    pub fn align_image_rings(mut self, align: bool) -> Self {
+        self.align_image_rings = align;
+        self
+    }
+
     /// Population-density-weighted simplification: ε multiplier floor in the
     /// densest cells (tiny uses 1e-3). First use downloads GHS-POP (~460 MB,
     /// cached).
@@ -183,6 +194,7 @@ impl Config {
             codec: self.codec,
             simplify: self.simplify,
             geom: self.geom,
+            align_image_rings: self.align_image_rings,
         };
         let bytes = match self.density_weight_floor {
             Some(w) => {

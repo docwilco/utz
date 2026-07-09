@@ -86,6 +86,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             codec: Codec::Uncompressed,
             simplify: Default::default(),
             geom: Default::default(),
+            align_image_rings: true,
         };
         let payload = encode::build_payload(&feats, &p)?;
         let raw = payload.len();

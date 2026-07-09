@@ -231,6 +231,7 @@ pub extern "C" fn utz_enc_payload(
         grid_deg,
         codec: Codec::Uncompressed,
         geom: Default::default(),
+        align_image_rings: true,
         // same 0/1/2 byte convention as the viewer's algo knob
         simplify: match algo {
             1 => crate::encode::SimplifyAlgo::Visvalingam,

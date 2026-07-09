@@ -73,6 +73,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         codec: Codec::Zstd,
         simplify: Default::default(),
         geom: Default::default(),
+        align_image_rings: true,
     };
     let container = |t: &topo::Topology| -> anyhow::Result<Vec<u8>> {
         Ok(encode::finish(encode::payload_from_topology(t, &t.arc_coords, &feats, &p)?.0, p.codec))
