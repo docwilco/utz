@@ -129,7 +129,7 @@ and the known-point tests as regression fixtures. Nothing else survives.
 ```
 header:      magic, version, dataset(now|1970|all), tzbb_release,
              eps, quant_bits, simplify_algo (rdp|vw|ii, §14.8),
-             geom (v3: delta+varint | fixed-width), grid_deg, codec,
+             geom (v3: delta+varint | fixed-width | v6: eager-image), grid_deg, codec,
              eager_coords/eager_rings/eager_polys u32 (v2)
 zone table:  tzid string pool + offsets
 arc store:   per arc: [varint vcount][i{16,24,32} first vertex][zigzag-varint
@@ -925,6 +925,22 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   of all three versions on every leg — XIP 299/1395/2457, fixed
   227/946, eager 107/411/711, preload 97/610/2048 ms (regression
   recovered); answers bit-identical throughout.
+  **v6 (2026-07-09): `GeomEncoding::EagerImage`** — the geometry section
+  IS the preload cache (flattened per-ring (i32,i32) runs + index tables,
+  4-aligned; 12-byte outer header keeps payload alignment; no arc store;
+  `include_container!` for aligned statics, `Error::Misaligned` otherwise;
+  preload/eager_from_slice become no-ops). Sizes as predicted: tiny 481 K,
+  compact 2 540 K (~4×). Host: 0.40/0.72 µs — fastest mode measured. S3
+  XIP: tiny 145 µs, compact 638 µs — **2.0–2.1× over varint XIP at zero
+  RAM and zero boot**, but ~35–55% above RAM-eager (108/410): the slice
+  kernels consume words fast enough that flash fetch latency finally
+  shows (streaming hid it behind decode work — "flash ≈ RAM" is a
+  compute-bound artifact, not a memory-system fact). Checksums exact on
+  all 11 shapes, host and target.
+  **The full tiny ladder (S3, opt-z, flash/RAM/boot → µs/lookup):**
+  varint XIP 125 K/0/0 → 293 · fixed XIP 172 K/0/0 → 224 · eager-image
+  XIP 481 K/0/0 → 145 · preload 125 K/455 K/97 ms → 108 · gzip
+  eager-slice 71 K/491 K/134 ms → 103.
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
   reads vs streaming's sequential prefetch); `geometry-rs` comparison.
