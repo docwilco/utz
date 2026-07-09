@@ -941,6 +941,23 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   varint XIP 125 K/0/0 → 293 · fixed XIP 172 K/0/0 → 224 · eager-image
   XIP 481 K/0/0 → 145 · preload 125 K/455 K/97 ms → 108 · gzip
   eager-slice 71 K/491 K/134 ms → 103.
+  **v7 (2026-07-09): image coords at quant width.** Packing measured
+  first (`imagepack_size`): it HURTS compressed size (+3–13% xz/brotli —
+  codecs model the sign-extension bytes better than packing does), so
+  packed images are for uncompressed XIP + RAM footprint only. i16 = 4
+  B/vertex typed slices (generic `CoordPair` kernel); i24 packed 6 B with
+  two kernels — aligned-block (3 word loads / 2 vertices; needs even ring
+  starts, `Config::align_image_rings`, flags bit0) and `read_unaligned`
+  (LLVM: fast on x86/ARMv7-M+, byte assembly on Xtensa); i32 unchanged.
+  No target detection: the asset flag picks the kernel. Sizes: tiny image
+  481→267 K (−45%), compact 2 540→1 930 K (−24%). **S3: tiny i16-image
+  XIP 89 µs — beats RAM-eager (108): halved fetch outruns the PSRAM
+  cache. compact i24 image 497 (blocks) / 490 (unaligned — a TIE on
+  Xtensa; byte assembly didn't lose, flash fetch dominates) vs 638 for
+  the v6 i32 image.** Host: i16 0.221 µs (fastest mode measured);
+  unaligned 0.75 beats blocks 1.23 on x86. Checksums exact on all 12
+  shapes × all kernels, host + target. Data verdict: the unaligned asset
+  is never worse — consider flipping align_image_rings default off.
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
   reads vs streaming's sequential prefetch); `geometry-rs` comparison.
