@@ -19,6 +19,11 @@ use crate::Error;
 
 /// Decompress `body` into an owned buffer of exactly `raw_len` bytes
 /// (`raw_len` comes from the outer header). Codec 0 copies.
+///
+/// # Errors
+/// [`Error::Decompress`] if the codec has no compiled-in backend or the
+/// stream is corrupt; [`Error::BadFormat`] if the decoded size disagrees
+/// with `raw_len`.
 #[allow(unused_variables)]
 pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>, Error> {
     let out = match codec {

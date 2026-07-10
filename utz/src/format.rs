@@ -112,6 +112,10 @@ pub fn unzigzag(v: u64) -> i64 {
 
 /// Validate the outer header; returns (codec, `raw_len`, `payload_start`).
 /// `raw_len` is the UNCOMPRESSED payload size (single exact allocation).
+///
+/// # Errors
+/// [`Error::BadFormat`] if the bytes are too short or the magic/version
+/// don't match.
 pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize), Error> {
     if bytes.len() < OUTER_LEN || bytes[0..4] != MAGIC || bytes[4] != VERSION {
         return Err(Error::BadFormat);
@@ -120,6 +124,11 @@ pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize), Error> {
 }
 
 /// Parse the payload header + section directory.
+///
+/// # Errors
+/// [`Error::BadFormat`] for invalid header fields or a section overrunning
+/// the payload; [`Error::Geometry`] if the geometry encoding has no
+/// compiled-in decoder.
 pub fn parse(p: &[u8]) -> Result<Header, Error> {
     let need = |n: usize| if p.len() < n { Err(Error::BadFormat) } else { Ok(()) };
     need(14)?;

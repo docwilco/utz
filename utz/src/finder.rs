@@ -118,6 +118,9 @@ impl Finder {
     /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
     /// `tiny-static` is the zero-copy one (`from_static`, bare `core`); the
     /// rest are compressed and load lazy (`from_slice`).
+    ///
+    /// # Errors
+    /// As [`Finder::from_slice`] on the baked preset asset.
     #[cfg(all(
         feature = "tiny",
         not(any(
@@ -133,6 +136,9 @@ impl Finder {
     /// Load the preset selected by the (single) enabled preset feature.
     /// Cfg'd out when several presets are in the tree — load explicitly with
     /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
+    ///
+    /// # Errors
+    /// As [`Finder::from_static`] on the baked preset asset.
     #[cfg(all(
         feature = "tiny-static",
         not(any(
@@ -148,6 +154,9 @@ impl Finder {
     /// Load the preset selected by the (single) enabled preset feature.
     /// Cfg'd out when several presets are in the tree — load explicitly with
     /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
+    ///
+    /// # Errors
+    /// As [`Finder::from_slice`] on the baked preset asset.
     #[cfg(all(
         feature = "compact",
         not(any(
@@ -163,6 +172,9 @@ impl Finder {
     /// Load the preset selected by the (single) enabled preset feature.
     /// Cfg'd out when several presets are in the tree — load explicitly with
     /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
+    ///
+    /// # Errors
+    /// As [`Finder::from_slice`] on the baked preset asset.
     #[cfg(all(
         feature = "balanced",
         not(any(
@@ -178,6 +190,9 @@ impl Finder {
     /// Load the preset selected by the (single) enabled preset feature.
     /// Cfg'd out when several presets are in the tree — load explicitly with
     /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
+    ///
+    /// # Errors
+    /// As [`Finder::from_slice`] on the baked preset asset.
     #[cfg(all(
         feature = "accurate",
         not(any(
@@ -194,6 +209,11 @@ impl Finder {
     /// Borrow a container from `&'static` bytes (flash partition,
     /// `include_bytes!`, …) — zero-copy mode: no RAM payload. Only the
     /// `uncompressed` codec is accepted here.
+    ///
+    /// # Errors
+    /// [`Error::Decompress`] if the container is compressed;
+    /// [`Error::BadFormat`]/[`Error::Geometry`] for an invalid container or
+    /// header; [`Error::Misaligned`] for unaligned `EagerImage` coords.
     pub fn from_static(bytes: &'static [u8]) -> Result<Finder, Error> {
         let (codec, _, start) = format::outer(bytes)?;
         if codec != 0 {
@@ -214,6 +234,12 @@ impl Finder {
     /// decompressing per the codec byte. For compressed assets already in
     /// memory/flash (preset statics, OTA blobs) — no copy of the compressed
     /// input is made.
+    ///
+    /// # Errors
+    /// [`Error::BadFormat`]/[`Error::Geometry`] for an invalid container or
+    /// header; [`Error::Decompress`] if the codec isn't compiled in or the
+    /// payload fails to decode; [`Error::Misaligned`] for unaligned
+    /// `EagerImage` coords.
     #[cfg(feature = "alloc")]
     pub fn from_slice(bytes: &[u8]) -> Result<Finder, Error> {
         let (codec, raw_len, start) = format::outer(bytes)?;
@@ -232,6 +258,9 @@ impl Finder {
     /// point for compressed containers. Lazy mode either way: even an
     /// uncompressed owned buffer keeps the payload in RAM — zero-copy needs
     /// [`from_static`](Finder::from_static).
+    ///
+    /// # Errors
+    /// As [`Finder::from_slice`].
     #[cfg(feature = "alloc")]
     pub fn from_vec(bytes: Vec<u8>) -> Result<Finder, Error> {
         let (codec, raw_len, start) = format::outer(&bytes)?;
@@ -258,6 +287,9 @@ impl Finder {
     /// the eager entry point; for uncompressed assets prefer
     /// [`from_static`](Finder::from_static) + [`preload`](Finder::preload),
     /// which keeps the payload in flash entirely.
+    ///
+    /// # Errors
+    /// As [`Finder::from_slice`], which performs the load.
     #[cfg(feature = "alloc")]
     pub fn eager_from_slice(bytes: &[u8]) -> Result<Finder, Error> {
         let mut f = Finder::from_slice(bytes)?;
@@ -293,6 +325,10 @@ impl Finder {
     }
 
     /// Read a container from any `Read` source into an owned buffer.
+    ///
+    /// # Errors
+    /// [`Error::BadFormat`] if reading fails; otherwise as
+    /// [`Finder::from_vec`].
     #[cfg(feature = "std")]
     pub fn from_reader(mut r: impl std::io::Read) -> Result<Finder, Error> {
         let mut bytes = Vec::new();
