@@ -47,7 +47,9 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     let cell_of = |px: i32, py: i32| -> usize {
         let lon = f64::from(px) / QMAX * 180.0;
         let lat = f64::from(py) / QMAX * 90.0;
+        #[expect(clippy::cast_possible_truncation, reason = "cell index, fraction dropped then clamped")]
         let c = (((lon + 180.0) / deg) as isize).clamp(0, ncols as isize - 1) as usize;
+        #[expect(clippy::cast_possible_truncation, reason = "cell index, fraction dropped then clamped")]
         let r = (((lat + 90.0) / deg) as isize).clamp(0, nrows as isize - 1) as usize;
         r * ncols + c
     };
@@ -84,7 +86,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     let t = Instant::now();
     let mut lin: Vec<Option<u16>> = Vec::with_capacity(npts);
     for &(px, py) in &pts {
-        lin.push((0..fpolys.len() as u16).find(|&fid| contains_feat(fid, px, py)));
+        lin.push((0..u16::try_from(fpolys.len()).expect("feature count fits u16")).find(|&fid| contains_feat(fid, px, py)));
     }
     let t_lin = t.elapsed();
 

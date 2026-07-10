@@ -289,6 +289,7 @@ mod tests {
     /// so agreement with i64 over full-range random polygons is a hard
     /// assertion, boundaries included.
     #[test]
+    #[expect(clippy::cast_possible_truncation, reason = "test PRNG: values constructed within i24/i32 range")]
     fn f64_matches_i64_at_i24_range() {
         const M: i64 = 1 << 23; // i24 coordinate range
         let mut lcg = 0x0dd_ba11u64;
@@ -334,6 +335,7 @@ mod tests {
     /// cross-validate against the geo i64 oracle (PLAN.md §8) on random
     /// integer polygons — interiors must agree everywhere off-boundary.
     #[test]
+    #[expect(clippy::cast_possible_truncation, reason = "test PRNG: values constructed within i24/i32 range")]
     fn geo_oracle_agreement() {
         use geo::Contains;
         let mut lcg = 0xdead_beefu64;

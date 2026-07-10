@@ -69,9 +69,11 @@ pub struct Problem {
 pub fn find_problems(t: &Topology, arc_coords: &[Vec<(f64, f64)>], qbits: u32) -> Vec<Problem> {
     let qmax = ((1u64 << (qbits - 1)) - 1) as f64;
     let mut cst = CleanStats::default();
+    #[expect(clippy::cast_possible_truncation, reason = "lon/lat bounded, products < i32::MAX; float as saturates")]
+    let quantize = |&(x, y): &(f64, f64)| (((x / 180.0 * qmax).round()) as i32, ((y / 90.0 * qmax).round()) as i32);
     let arcs_q: Vec<Vec<(i32, i32)>> = arc_coords.iter().map(|a| {
         let mut q: Vec<(i32, i32)> = a.iter()
-            .map(|&(x, y)| (((x / 180.0 * qmax).round()) as i32, ((y / 90.0 * qmax).round()) as i32))
+            .map(quantize)
             .collect();
         let closed = a.len() > 1 && a.first() == a.last();
         clean::clean_arc(&mut q, closed, &mut cst);
@@ -107,7 +109,7 @@ pub fn ring_bad(ri: usize, c: &[(i32, i32)], b: &mut Bad) {
     }
     let seg = |i: usize| (c[i], c[(i + 1) % n]);
     let minx = |i: usize| { let (p, q) = seg(i); p.0.min(q.0) };
-    let mut idx: Vec<u32> = (0..n as u32).collect();
+    let mut idx: Vec<u32> = (0..u32::try_from(n).expect("segment count fits u32")).collect();
     idx.sort_unstable_by_key(|&i| minx(i as usize));
     for ai in 0..n {
         let i = idx[ai] as usize;

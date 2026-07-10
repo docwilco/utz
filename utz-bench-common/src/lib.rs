@@ -50,7 +50,7 @@ pub fn run(finder: &utz::Finder, pts: &[(f64, f64)], now_us: &mut dyn FnMut() ->
         }
     }
     let elapsed_us = now_us().saturating_sub(t0);
-    BenchResult { lookups: pts.len() as u32, hits, elapsed_us, checksum }
+    BenchResult { lookups: u32::try_from(pts.len()).expect("point count fits u32"), hits, elapsed_us, checksum }
 }
 
 /// `warmup` + `rounds` passes; returns the fastest round (steady-state cost,

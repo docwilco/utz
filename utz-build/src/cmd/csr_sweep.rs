@@ -35,6 +35,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
 
         for deg in DEGS {
             // keep subcell resolution ~0.25° regardless of cell size
+            #[expect(clippy::cast_possible_truncation, reason = "deg ≤ 10 → tiny positive integer")]
             let sub = ((deg * 4.0).round() as usize).max(2);
             let g = grid::build(&out.simplified, deg, sub);
             let csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
@@ -42,7 +43,9 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
             let total = g.ncols * g.nrows;
             let border = csr.primary.iter().filter(|&&p| p & 0x8000 != 0 && p != 0x7FFF).count();
             let hits = pts.iter().filter(|&&(lon, lat)| {
+                #[expect(clippy::cast_possible_truncation, reason = "cell index, fraction dropped then clamped")]
                 let c = (((lon + 180.0) / deg) as isize).clamp(0, g.ncols as isize - 1) as usize;
+                #[expect(clippy::cast_possible_truncation, reason = "cell index, fraction dropped then clamped")]
                 let r = (((lat + 90.0) / deg) as isize).clamp(0, g.nrows as isize - 1) as usize;
                 let p = csr.primary[r * g.ncols + c];
                 p & 0x8000 != 0 && p != 0x7FFF

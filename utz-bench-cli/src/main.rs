@@ -80,7 +80,7 @@ fn main() -> Result<(), Error> {
 
     let pts = utz_bench_common::gen_pts(a.npts);
     let t0 = Instant::now();
-    let mut now_us = move || t0.elapsed().as_micros() as u64;
+    let mut now_us = move || u64::try_from(t0.elapsed().as_micros()).expect("elapsed fits u64");
     let r = utz_bench_common::run_rounds(&finder, &pts, a.rounds, &mut now_us);
     println!(
         "{} lookups · {} hits · {} µs · {:.3} µs/lookup · {:.0} lookups/s · checksum {}",

@@ -68,7 +68,9 @@ impl DensityGrid {
     /// Density at a point; outside the grid → 0.
     #[must_use]
     pub fn sample(&self, lon: f64, lat: f64) -> f64 {
+        #[expect(clippy::cast_possible_truncation, reason = "floored cell index fits i64")]
         let ix = ((lon - self.lon0) / self.dlon).floor() as i64;
+        #[expect(clippy::cast_possible_truncation, reason = "floored cell index fits i64")]
         let iy = ((self.lat0 - lat) / self.dlat).floor() as i64;
         self.cell_val(ix, iy)
     }
@@ -82,7 +84,9 @@ impl DensityGrid {
         // continuous cell-space coordinates (x → lon cells, y → rows south)
         let (x0, y0) = ((a.0 - self.lon0) / self.dlon, (self.lat0 - a.1) / self.dlat);
         let (x1, y1) = ((b.0 - self.lon0) / self.dlon, (self.lat0 - b.1) / self.dlat);
+        #[expect(clippy::cast_possible_truncation, reason = "floored cell coords fit i64")]
         let (mut ix, mut iy) = (x0.floor() as i64, y0.floor() as i64);
+        #[expect(clippy::cast_possible_truncation, reason = "floored cell coords fit i64")]
         let (ex, ey) = (x1.floor() as i64, y1.floor() as i64);
         let mut best = self.cell_val(ix, iy);
         let (dx, dy) = (x1 - x0, y1 - y0);
@@ -127,7 +131,9 @@ impl DensityGrid {
         } else {
             ix
         };
-        f64::from(self.cells[iy as usize * self.w + ix as usize])
+        let (ix, iy) =
+            (usize::try_from(ix).expect("checked in range"), usize::try_from(iy).expect("checked in range"));
+        f64::from(self.cells[iy * self.w + ix])
     }
 
     /// Decode the GHS-POP `GeoTIFF`, summing 8×8 pixel blocks and converting
@@ -154,7 +160,7 @@ impl DensityGrid {
         let (cw, ch) = dec.chunk_dimensions();
         let (cw, ch) = (cw as usize, ch as usize);
         let across = sw.div_ceil(cw);
-        for chunk in 0..(across * sh.div_ceil(ch)) as u32 {
+        for chunk in 0..u32::try_from(across * sh.div_ceil(ch)).expect("chunk count fits u32") {
             let (x_off, y_off) = ((chunk as usize % across) * cw, (chunk as usize / across) * ch);
             // GDAL writes all-nodata ocean tiles as sparse (offset 0) — skip
             let Ok(data) = dec.read_chunk(chunk) else { continue };
@@ -189,6 +195,7 @@ impl DensityGrid {
         // is plenty: weighting needs order-of-magnitude density, not
         // demographics. cos clamped at 85° (population there ≈ 0 anyway).
         let (dlon, dlat) = (sdlon * DOWNSAMPLE as f64, sdlat * DOWNSAMPLE as f64);
+        #[expect(clippy::cast_possible_truncation, reason = "density → f32 grid cell, rounding is fine")]
         let cells = (0..w * h)
             .map(|i| {
                 let lat_c = lat0 - (((i / w) as f64) + 0.5) * dlat;
@@ -204,8 +211,8 @@ impl DensityGrid {
         let tmp = path.with_extension("part");
         let mut f = BufWriter::new(std::fs::File::create(&tmp)?);
         f.write_all(SIDECAR_MAGIC)?;
-        f.write_all(&(self.w as u32).to_le_bytes())?;
-        f.write_all(&(self.h as u32).to_le_bytes())?;
+        f.write_all(&u32::try_from(self.w).expect("grid width fits u32").to_le_bytes())?;
+        f.write_all(&u32::try_from(self.h).expect("grid height fits u32").to_le_bytes())?;
         for v in [self.lon0, self.lat0, self.dlon, self.dlat] {
             f.write_all(&v.to_le_bytes())?;
         }

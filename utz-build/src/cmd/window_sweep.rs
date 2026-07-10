@@ -155,7 +155,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         for dict in xz_dicts {
             use lzma_rust2::Write as _; // no_std lzma-rust2 XzWriter
             let mut opts = lzma_rust2::XzOptions::with_preset(9);
-            opts.lzma_options.dict_size = (dict as u32).max(4096);
+            opts.lzma_options.dict_size = u32::try_from(dict).expect("dict fits u32").max(4096);
             opts.lzma_options.nice_len = 273;
             opts.lzma_options.depth_limit = 512;
             // no_std lzma_rust2::Error isn't std::error::Error → stringify

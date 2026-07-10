@@ -40,7 +40,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
                 Ok(format!("{:.1}", encode::compress(&payload, c)?.len() as f64 / 1024.0))
             };
             println!("{:>7}{:>6}{:>11} K{:>11} K{:>11} K{:>11} K{:>11} K",
-                eps_m as u64, format!("i{qbits}"),
+                eps_m, format!("i{qbits}"),
                 format!("{:.1}", payload.len() as f64 / 1024.0),
                 kb(Codec::Gzip)?, kb(Codec::Zstd)?, kb(Codec::Brotli)?, kb(Codec::Xz)?);
         }

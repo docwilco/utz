@@ -363,6 +363,7 @@ impl Finder {
     /// up front from the v2 header counts — peak = final, no growth
     /// doubling. A no-op if already preloaded.
     #[cfg(feature = "alloc")]
+    #[expect(clippy::cast_possible_truncation, reason = "counts bounded by the parse-validated u32 header reservations")]
     pub fn preload(&mut self) {
         if self.eager.is_some() || self.hdr.geom >= 2 {
             // geom=2 (EagerImage): the payload already IS the cache;
@@ -462,6 +463,7 @@ impl Finder {
     fn qmax(&self) -> f64 {
         ((1u64 << (self.hdr.quant_bits - 1)) - 1) as f64
     }
+    #[expect(clippy::cast_possible_truncation, reason = "|v*qmax| < i32::MAX for in-range lon/lat; float as saturates, wild input degrades to a miss")]
     fn quantize(&self, pos: Position) -> (i32, i32) {
         // round-half-away like the encoder (f64::round is std-only)
         let r = |v: f64| (v + if v >= 0.0 { 0.5 } else { -0.5 }) as i32;
@@ -469,6 +471,7 @@ impl Finder {
         (r(pos.lon / 180.0 * q), r(pos.lat / 90.0 * q))
     }
 
+    #[expect(clippy::cast_possible_truncation, reason = "cast saturates then clamped to grid range")]
     fn cell_value(&self, px: i32, py: i32) -> u16 {
         let (h, q) = (&self.hdr, self.qmax());
         let d = f64::from(h.grid_deg);
@@ -555,6 +558,7 @@ impl Finder {
 
     /// Fold one arc's internal segments through the edge kernel. `Inside` =
     /// this arc contributed an odd number of ray crossings.
+    #[expect(clippy::cast_possible_truncation, reason = "coords accumulate i16/i24/i32-width deltas; sums fit i32 by format")]
     fn scan_arc(&self, id: usize, px: i32, py: i32) -> pip::RingHit {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let wide = h.quant_bits == 32;
@@ -699,6 +703,7 @@ impl Finder {
     /// Decode one signed arc ref onto the end of `coords` (join-deduplicated).
     /// Eager-mode decode only; the lazy path streams via `scan_arc` instead.
     #[cfg(feature = "alloc")]
+    #[expect(clippy::cast_possible_truncation, reason = "coords accumulate i16/i24/i32-width deltas; sums fit i32 by format")]
     fn append_arc(&self, r: u32, coords: &mut Vec<(i32, i32)>) {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);

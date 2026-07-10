@@ -45,7 +45,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             if lookup(&srefs, lo, la) != truth[i] { miss += 1; }
         }
         println!("{:>8}{:>10}{:>8.1}%{:>12}{:>12}{:>12}{:>10.3}%",
-            eps_m as u64, out.verts, 100.0 * out.verts as f64 / v0 as f64,
+            eps_m, out.verts, 100.0 * out.verts as f64 / v0 as f64,
             raw, z, x, 100.0 * miss as f64 / sample as f64);
     }
     Ok(())

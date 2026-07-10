@@ -45,7 +45,9 @@ pub fn run(a: Args) -> utz_build::Result<()> {
 
     // reference: linear first-hit over the same quantized geometry
     let qmax = ((1u64 << (qbits - 1)) - 1) as f64;
+    #[expect(clippy::cast_possible_truncation, reason = "|lon/180·qmax| ≤ qmax < 2^31")]
     let qx = |lon: f64| (lon / 180.0 * qmax).round() as i32;
+    #[expect(clippy::cast_possible_truncation, reason = "|lat/90·qmax| ≤ qmax < 2^31")]
     let qy = |lat: f64| (lat / 90.0 * qmax).round() as i32;
     let t = topo::build_topology(&feats, eps_m / 111_320.0);
     let arcs_dq: Vec<Vec<(f64, f64)>> = t.arc_coords.iter()
@@ -131,6 +133,7 @@ fn build_refs(feats: &[Feat], qmax: f64) -> Vec<Ref> {
     feats.iter().map(|f| {
         let polys = f.polys.iter().filter_map(|p| {
             let rings: Vec<Vec<(i32, i32)>> = p.iter().map(|r| {
+                #[expect(clippy::cast_possible_truncation, reason = "|coord·qmax| ≤ qmax < 2^31")]
                 let mut q: Vec<(i32, i32)> = r.iter()
                     .map(|&(x, y)| ((x / 180.0 * qmax).round() as i32, (y / 90.0 * qmax).round() as i32))
                     .collect();

@@ -22,8 +22,10 @@ pub const QMAX: f64 = 8_388_607.0; // 2^23 - 1
 // names that reflect the i24ness of these functions. Plus, don't use x/y when
 // we can be explicit with lat/lon.
 #[must_use]
+#[expect(clippy::cast_possible_truncation, reason = "lon bounded, |lon/180*QMAX| < i32::MAX; float as saturates")]
 pub fn qx(lon: f64) -> i32 { (lon / 180.0 * QMAX).round() as i32 }
 #[must_use]
+#[expect(clippy::cast_possible_truncation, reason = "lat bounded, |lat/90*QMAX| < i32::MAX; float as saturates")]
 pub fn qy(lat: f64) -> i32 { (lat / 90.0 * QMAX).round() as i32 }
 
 pub fn push_i24(out: &mut Vec<u8>, v: i32) {

@@ -10,6 +10,7 @@ use geozero::ToGeo;
 
 struct CFeat { tzid: String, bbox: [i32; 4], rings: Vec<Vec<(i32, i32)>> }
 const S: f64 = 1e7;
+#[expect(clippy::cast_possible_truncation, reason = "rounded deg*1e7 (±1.8e9) fits i32")]
 fn q(v: f64) -> i32 { (v * S).round() as i32 }
 
 #[derive(clap::Args)]

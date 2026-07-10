@@ -13,7 +13,9 @@ pub use utz_simplify::{simplify, Simplify};
 
 // quantization parameterized by bit-width (i16 abs, i24 abs, i32 abs, ...)
 fn qmax_of(bits: u32) -> f64 { ((1u64 << (bits - 1)) - 1) as f64 }
+#[expect(clippy::cast_possible_truncation, reason = "lon bounded, |lon/180*qmax| < i32::MAX; float as saturates")]
 fn qxb(lon: f64, qmax: f64) -> i32 { (lon / 180.0 * qmax).round() as i32 }
+#[expect(clippy::cast_possible_truncation, reason = "lat bounded, |lat/90*qmax| < i32::MAX; float as saturates")]
 fn qyb(lat: f64, qmax: f64) -> i32 { (lat / 90.0 * qmax).round() as i32 }
 fn pushb(out: &mut Vec<u8>, v: i32, bits: u32) {
     let n = bits.div_ceil(8) as usize; // bytes per axis (i16->2, i24->3, i32->4)
@@ -114,7 +116,7 @@ fn build_topology_impl(feats: &[Feat], algo: Simplify, edge_weight: Option<&Edge
     let mut vid: HashMap<(u64, u64), VId> = HashMap::new();
     let mut vcoord: Vec<(f64, f64)> = Vec::new();
     let get = |x: f64, y: f64, vid: &mut HashMap<(u64, u64), VId>, vc: &mut Vec<(f64, f64)>| -> VId {
-        *vid.entry((x.to_bits(), y.to_bits())).or_insert_with(|| { vc.push((x, y)); (vc.len() - 1) as VId })
+        *vid.entry((x.to_bits(), y.to_bits())).or_insert_with(|| { vc.push((x, y)); VId::try_from(vc.len() - 1).expect("vertex id fits u32") })
     };
     let mut rings: Vec<Vec<VId>> = Vec::new();
     let mut structure: Vec<Vec<Vec<usize>>> = Vec::new();
@@ -139,14 +141,15 @@ fn build_topology_impl(feats: &[Feat], algo: Simplify, edge_weight: Option<&Edge
             let (a, b) = (seq[i], seq[(i + 1) % n]);
             let key = if a < b { (a, b) } else { (b, a) };
             let e = owners.entry(key).or_default();
-            if e.last() != Some(&(ri as u32)) { e.push(ri as u32); }
+            let ri32 = u32::try_from(ri).expect("ring id fits u32");
+            if e.last() != Some(&ri32) { e.push(ri32); }
         }
     }
     let mut sig_ids: HashMap<Vec<u32>, u32> = HashMap::new();
     let mut edge_sig: HashMap<(VId, VId), u32> = HashMap::new();
     for (k, v) in &owners {
         let mut s = v.clone(); s.sort_unstable(); s.dedup();
-        let next = sig_ids.len() as u32;
+        let next = u32::try_from(sig_ids.len()).expect("arc id fits u32");
         let id = *sig_ids.entry(s).or_insert(next);
         edge_sig.insert(*k, id);
     }
@@ -159,7 +162,7 @@ fn build_topology_impl(feats: &[Feat], algo: Simplify, edge_weight: Option<&Edge
     let intern = |seq: Vec<VId>, ai: &mut HashMap<Vec<VId>, u32>, av: &mut Vec<Vec<VId>>| -> u32 {
         let mut rev = seq.clone(); rev.reverse();
         let (canon, dir) = if seq <= rev { (seq, 0u32) } else { (rev, 1u32) };
-        let next = av.len() as u32;
+        let next = u32::try_from(av.len()).expect("arc id fits u32");
         let id = *ai.entry(canon.clone()).or_insert_with(|| { av.push(canon); next });
         (id << 1) | dir
     };
@@ -242,21 +245,22 @@ pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: b
     let mut pool: Vec<String> = Vec::new();
     let mut sidx: HashMap<String, u16> = HashMap::new();
     for f in feats {
-        if let Some(t) = &f.tzid { if !sidx.contains_key(t) { sidx.insert(t.clone(), pool.len() as u16); pool.push(t.clone()); } }
+        if let Some(t) = &f.tzid { if !sidx.contains_key(t) { sidx.insert(t.clone(), u16::try_from(pool.len()).expect("tzid pool index fits u16")); pool.push(t.clone()); } }
     }
     let mut o = Vec::new();
     o.extend_from_slice(&0x4E45_4442u32.to_le_bytes());
-    o.extend_from_slice(&(feats.len() as u32).to_le_bytes());
-    o.extend_from_slice(&(pool.len() as u16).to_le_bytes());
-    for s in &pool { o.extend_from_slice(&(s.len() as u16).to_le_bytes()); o.extend_from_slice(s.as_bytes()); }
-    o.extend_from_slice(&(arc_coords.len() as u32).to_le_bytes());
+    o.extend_from_slice(&u32::try_from(feats.len()).expect("feature count fits u32").to_le_bytes());
+    o.extend_from_slice(&u16::try_from(pool.len()).expect("tzid pool count fits u16").to_le_bytes());
+    for s in &pool { o.extend_from_slice(&u16::try_from(s.len()).expect("tzid length fits u16").to_le_bytes()); o.extend_from_slice(s.as_bytes()); }
+    o.extend_from_slice(&u32::try_from(arc_coords.len()).expect("arc count fits u32").to_le_bytes());
     for a in arc_coords {
         put_varint(&mut o, a.len() as u64);
         let (mut px, mut py) = (0i64, 0i64);
         for (i, &(x, y)) in a.iter().enumerate() {
             let (cx, cy) = (i64::from(qxb(x, qmax)), i64::from(qyb(y, qmax)));
             if abs_fixed || i == 0 {
-                pushb(&mut o, cx as i32, qbits); pushb(&mut o, cy as i32, qbits);
+                let (cx32, cy32) = (i32::try_from(cx).expect("quantized coord fits i32"), i32::try_from(cy).expect("quantized coord fits i32"));
+                pushb(&mut o, cx32, qbits); pushb(&mut o, cy32, qbits);
             } else {
                 put_varint(&mut o, zigzag(cx - px)); put_varint(&mut o, zigzag(cy - py));
             }
@@ -264,15 +268,17 @@ pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: b
         }
     }
     for (fi, f) in feats.iter().enumerate() {
-        o.extend_from_slice(&(f.offset as f32).to_le_bytes());
+        #[expect(clippy::cast_possible_truncation, reason = "f32 header field")]
+        let offset32 = f.offset as f32;
+        o.extend_from_slice(&offset32.to_le_bytes());
         let ti = f.tzid.as_ref().map_or(0xFFFF, |t| sidx[t]);
         o.extend_from_slice(&ti.to_le_bytes());
         let (mut nx, mut ny, mut xx, mut xy) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
         for p in &f.polys { for r in p { for &(x, y) in r { let (a, b) = (qxb(x, qmax), qyb(y, qmax)); nx = nx.min(a); ny = ny.min(b); xx = xx.max(a); xy = xy.max(b); }}}
         for v in [nx, ny, xx, xy] { pushb(&mut o, v, qbits); }
-        o.extend_from_slice(&(structure[fi].len() as u16).to_le_bytes());
+        o.extend_from_slice(&u16::try_from(structure[fi].len()).expect("poly count fits u16").to_le_bytes());
         for poly in &structure[fi] {
-            o.extend_from_slice(&(poly.len() as u16).to_le_bytes());
+            o.extend_from_slice(&u16::try_from(poly.len()).expect("ring count fits u16").to_le_bytes());
             for &ring_idx in poly {
                 put_varint(&mut o, ring_refs[ring_idx].len() as u64);
                 for &r in &ring_refs[ring_idx] { put_varint(&mut o, u64::from(r)); }

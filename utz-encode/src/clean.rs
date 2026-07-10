@@ -233,7 +233,7 @@ pub fn drop_degenerate_rings(
                 Some(&ext) if ring_ok[ext] => {}
                 _ => {
                     st.polys_dropped += 1;
-                    st.rings_dropped += poly.len() as u32;
+                    st.rings_dropped += u32::try_from(poly.len()).expect("ring count fits u32");
                     continue;
                 }
             }
@@ -262,7 +262,7 @@ pub fn drop_degenerate_rings(
     let mut new_arcs = Vec::with_capacity(arcs.len());
     for (i, a) in arcs.into_iter().enumerate() {
         if used[i] {
-            remap[i] = new_arcs.len() as u32;
+            remap[i] = u32::try_from(new_arcs.len()).expect("arc count fits u32");
             new_arcs.push(a);
         } else {
             st.arcs_dropped += 1;

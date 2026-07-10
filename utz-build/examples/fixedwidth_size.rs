@@ -45,15 +45,16 @@ fn arc_coords(p: &[u8], h: &format::Header, id: usize) -> Vec<(i32, i32)> {
     let mut x = i64::from(read_fixed(p, pos, h.quant_bits));
     let mut y = i64::from(read_fixed(p, pos + fb, h.quant_bits));
     pos += 2 * fb;
-    let mut coords = Vec::with_capacity(vcount as usize);
-    coords.push((x as i32, y as i32));
+    let mut coords = Vec::with_capacity(usize::try_from(vcount).expect("vcount fits usize"));
+    let c = |v: i64| i32::try_from(v).expect("quantized coord fits i32");
+    coords.push((c(x), c(y)));
     for _ in 1..vcount {
         let (dx, p3) = read_varint(p, pos);
         let (dy, p4) = read_varint(p, p3);
         pos = p4;
         x += unzigzag(dx);
         y += unzigzag(dy);
-        coords.push((x as i32, y as i32));
+        coords.push((c(x), c(y)));
     }
     coords
 }
@@ -78,7 +79,7 @@ fn main() -> utz_build::Result<()> {
         let mut a_offsets: Vec<u32> = Vec::with_capacity(h.n_arcs as usize + 1);
         let mut a_data: Vec<u8> = Vec::new();
         for id in 0..h.n_arcs as usize {
-            a_offsets.push(a_data.len() as u32);
+            a_offsets.push(u32::try_from(a_data.len()).expect("arc data fits u32"));
             let coords = arc_coords(p, &h, id);
             write_varint(coords.len() as u64, &mut a_data);
             for (x, y) in coords {
@@ -86,7 +87,7 @@ fn main() -> utz_build::Result<()> {
                 write_fixed(y, fb, &mut a_data);
             }
         }
-        a_offsets.push(a_data.len() as u32);
+        a_offsets.push(u32::try_from(a_data.len()).expect("arc data fits u32"));
         let mut pa = p[..arcs_off].to_vec();
         pa.extend_from_slice(&h.n_arcs.to_le_bytes());
         for o in &a_offsets {
@@ -130,7 +131,7 @@ fn main() -> utz_build::Result<()> {
                     coords.extend_from_slice(&x.to_le_bytes());
                     coords.extend_from_slice(&y.to_le_bytes());
                 }
-                ncoords = start_n + ring.len() as u32;
+                ncoords = start_n + u32::try_from(ring.len()).expect("ring len fits u32");
                 nrings += 1;
                 ring_ends.extend_from_slice(&ncoords.to_le_bytes());
             }

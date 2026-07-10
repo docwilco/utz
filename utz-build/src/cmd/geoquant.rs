@@ -17,7 +17,9 @@ pub fn run(_a: Args) -> utz_build::Result<()> {
             let ext = p[0].clone();
             let holes: Vec<Vec<(f64, f64)>> = p[1..].to_vec();
             f64p.push((tz.clone(), poly_f64(&ext, &holes)));
+            #[expect(clippy::cast_possible_truncation, reason = "rounded deg*1e6 fits i64")]
             i64p.push((tz.clone(), poly_i(&ext, &holes, 1e6, |v| v as i64)));
+            #[expect(clippy::cast_possible_truncation, reason = "rounded deg*1e6 (±1.8e8) fits i32")]
             i32p.push((tz.clone(), poly_i(&ext, &holes, 1e6, |v| v as i32)));
         }
     }
@@ -25,8 +27,10 @@ pub fn run(_a: Args) -> utz_build::Result<()> {
 
     let look_f64 = |lo: f64, la: f64| -> String { let pt = Point::new(lo, la);
         for (tz, p) in &f64p { if p.contains(&pt) { return tz.clone(); } } String::new() };
+    #[expect(clippy::cast_possible_truncation, reason = "rounded deg*1e6 fits i64")]
     let look_i64 = |lo: f64, la: f64| -> String { let pt = Point::new((lo * 1e6).round() as i64, (la * 1e6).round() as i64);
         for (tz, p) in &i64p { if p.contains(&pt) { return tz.clone(); } } String::new() };
+    #[expect(clippy::cast_possible_truncation, reason = "rounded deg*1e6 (±1.8e8) fits i32")]
     let look_i32 = |lo: f64, la: f64| -> String { let pt = Point::new((lo * 1e6).round() as i32, (la * 1e6).round() as i32);
         for (tz, p) in &i32p { if p.contains(&pt) { return tz.clone(); } } String::new() };
 

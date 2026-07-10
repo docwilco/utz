@@ -33,12 +33,13 @@ pub struct CellGrid {
 /// Panics if any coordinate is NaN (scanline crossings become unsortable).
 #[must_use]
 pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
-    let ncols = (360.0 / deg).ceil() as usize;
-    let nrows = (180.0 / deg).ceil() as usize;
+    #[expect(clippy::cast_possible_truncation, reason = "deg >= 0.1 so at most 3600 cells; float as saturates")]
+    let (ncols, nrows) = ((360.0 / deg).ceil() as usize, (180.0 / deg).ceil() as usize);
     let total = ncols * nrows;
 
     // ---- pass 1: edge walk -> candidate sets ----
     let mut sets: Vec<HashSet<u16>> = vec![HashSet::new(); total];
+    #[expect(clippy::cast_possible_truncation, reason = "cast saturates then clamped to grid range")]
     let cell = |lon: f64, lat: f64| -> usize {
         let c = (((lon + 180.0) / deg) as isize).clamp(0, ncols as isize - 1) as usize;
         let r = (((lat + 90.0) / deg) as isize).clamp(0, nrows as isize - 1) as usize;
@@ -51,10 +52,11 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
                 for i in 0..n {
                     let (x0, y0) = ring[i];
                     let (x1, y1) = ring[(i + 1) % n];
-                    let steps = ((((x1 - x0).abs()).max((y1 - y0).abs()) / deg * 2.0).ceil() as usize).max(1);
+                    #[expect(clippy::cast_possible_truncation, reason = "span/deg bounded by world size; float as saturates")]
+                let steps = ((((x1 - x0).abs()).max((y1 - y0).abs()) / deg * 2.0).ceil() as usize).max(1);
                     for s in 0..=steps {
                         let t = s as f64 / steps as f64;
-                        sets[cell(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)].insert(fid as u16);
+                        sets[cell(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)].insert(u16::try_from(fid).expect("feature id fits u16"));
                     }
                 }
             }
@@ -79,14 +81,17 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
                     if y0 == y1 { continue; }
                     let (ylo, yhi) = if y0 < y1 { (y0, y1) } else { (y1, y0) };
                     // rows whose center lat is in [ylo, yhi)
+                    #[expect(clippy::cast_possible_truncation, reason = "row index bounded to [0, frows); float as saturates")]
                     let j0 = (((ylo + 90.0) / r - 0.5).ceil().max(0.0)) as usize;
+                    #[expect(clippy::cast_possible_truncation, reason = "row index bounded to [0, frows); float as saturates")]
                     let j1 = (((yhi + 90.0) / r - 0.5).floor().min(frows as f64 - 1.0)) as isize;
                     let mut j = j0 as isize;
                     while j <= j1 {
                         let lat = -90.0 + (j as f64 + 0.5) * r;
                         if lat >= ylo && lat < yhi {
                             let x = x0 + (lat - y0) / (y1 - y0) * (x1 - x0);
-                            if row_x[j as usize].is_empty() { touched.push(j as u32); }
+                            if row_x[j as usize].is_empty() { touched.push(u32::try_from(j).expect("row index fits u32")); }
+                            #[expect(clippy::cast_possible_truncation, reason = "crossing x stored at f32 by design (row_x)")]
                             row_x[j as usize].push(x as f32);
                         }
                         j += 1;
@@ -99,12 +104,14 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
                 xs.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
                 for pair in xs.chunks_exact(2) {
                     let (xa, xb) = (f64::from(pair[0]), f64::from(pair[1]));
+                    #[expect(clippy::cast_possible_truncation, reason = "col index bounded to [0, fcols); float as saturates")]
                     let i0 = (((xa + 180.0) / r - 0.5).ceil().max(0.0)) as usize;
+                    #[expect(clippy::cast_possible_truncation, reason = "col index bounded to [0, fcols); float as saturates")]
                     let i1 = (((xb + 180.0) / r - 0.5).floor().min(fcols as f64 - 1.0)) as isize;
                     let base = j as usize * fcols;
                     let mut i = i0 as isize;
                     while i <= i1 {
-                        owner[base + i as usize] = fid as u16;
+                        owner[base + i as usize] = u16::try_from(fid).expect("feature id fits u16");
                         i += 1;
                     }
                 }
@@ -210,7 +217,7 @@ pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
                     }
                 }
             }
-            let next = lists.len() as u16;
+            let next = u16::try_from(lists.len()).expect("interned list index fits u16 (encode re-checks 15-bit)");
             let li = *index.entry(list.clone()).or_insert_with(|| { lists.push(list); next });
             *pc = 0x8000 | li;
         } else {
@@ -224,7 +231,7 @@ pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
     list_offsets.push(0u16);
     for l in &lists {
         list_ids.extend_from_slice(l);
-        list_offsets.push(list_ids.len() as u16);
+        list_offsets.push(u16::try_from(list_ids.len()).expect("list ids fit u16 offsets (encode re-checks)"));
     }
     Csr { primary, list_offsets, list_ids, uniq_lists: lists.len() }
 }

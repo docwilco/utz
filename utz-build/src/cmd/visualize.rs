@@ -89,16 +89,17 @@ fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> utz_build::Result<Vec<u8>> 
     names.sort_unstable();
     names.dedup();
     let idx: std::collections::HashMap<&str, u16> =
-        names.iter().enumerate().map(|(i, &n)| (n, i as u16)).collect();
+        names.iter().enumerate().map(|(i, &n)| (n, u16::try_from(i).expect("zone count fits u16"))).collect();
 
+    #[expect(clippy::cast_possible_truncation, reason = "360/0.1 and 180/0.1 are small exact integers")]
     let (w, h) = ((360.0 / STEP) as usize, (180.0 / STEP) as usize);
     let mut o = Vec::with_capacity(16 + w * h * 2);
     o.extend_from_slice(b"uTZz");
-    o.extend_from_slice(&(w as u32).to_le_bytes());
-    o.extend_from_slice(&(h as u32).to_le_bytes());
-    o.extend_from_slice(&(names.len() as u32).to_le_bytes());
+    o.extend_from_slice(&u32::try_from(w).expect("lattice width fits u32").to_le_bytes());
+    o.extend_from_slice(&u32::try_from(h).expect("lattice height fits u32").to_le_bytes());
+    o.extend_from_slice(&u32::try_from(names.len()).expect("zone count fits u32").to_le_bytes());
     for n in &names {
-        o.extend_from_slice(&(n.len() as u16).to_le_bytes());
+        o.extend_from_slice(&u16::try_from(n.len()).expect("tzid len fits u16").to_le_bytes());
         o.extend_from_slice(n.as_bytes());
     }
     o.resize(o.len().next_multiple_of(2), 0);
