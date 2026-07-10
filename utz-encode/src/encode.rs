@@ -30,8 +30,9 @@
 //! PIPs is exactly what the grid indexed.
 
 
+use crate::error::ensure;
 use crate::grid::{self, Order};
-use crate::{clean, topo, Feat};
+use crate::{clean, topo, Error, Feat};
 
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
@@ -102,14 +103,11 @@ impl SimplifyAlgo {
     ///
     /// `Visvalingam` is rejected: its knob is an area, not ε (see the message
     /// for the workaround).
-    pub fn to_simplify(self, eps_deg: f64) -> anyhow::Result<utz_simplify::Simplify> {
+    pub fn to_simplify(self, eps_deg: f64) -> crate::Result<utz_simplify::Simplify> {
         Ok(match self {
             SimplifyAlgo::Rdp => utz_simplify::Simplify::Rdp { eps: eps_deg },
             SimplifyAlgo::ImaiIri => utz_simplify::Simplify::ImaiIri { eps: eps_deg },
-            SimplifyAlgo::Visvalingam => anyhow::bail!(
-                "visvalingam's knob is an area, not ε — build the topology with \
-                 topo::build_topology_algo and use payload_from_topology"
-            ),
+            SimplifyAlgo::Visvalingam => return Err(Error::VisvalingamEps),
         })
     }
 }
@@ -158,8 +156,8 @@ pub struct PayloadStats {
 /// # Errors
 ///
 /// Same as [`build_payload`].
-pub fn encode(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
-    Ok(finish(&build_payload(feats, p)?, p.codec))
+pub fn encode(feats: &[Feat], p: &Params) -> crate::Result<Vec<u8>> {
+    finish(&build_payload(feats, p)?, p.codec)
 }
 
 /// Everything but the outer header + compression (so size sweeps can compress
@@ -169,7 +167,7 @@ pub fn encode(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
 ///
 /// `p.simplify == Visvalingam` (see [`SimplifyAlgo::to_simplify`]); otherwise
 /// as [`payload_from_topology`].
-pub fn build_payload(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
+pub fn build_payload(feats: &[Feat], p: &Params) -> crate::Result<Vec<u8>> {
     let algo = p.simplify.to_simplify(p.eps_m / 111_320.0)?;
     let t = topo::build_topology_algo(feats, algo);
     Ok(payload_from_topology(&t, &t.arc_coords, feats, p)?.0)
@@ -192,10 +190,13 @@ pub fn payload_from_topology(
     arc_coords: &[Vec<(f64, f64)>],
     feats: &[Feat],
     p: &Params,
-) -> anyhow::Result<(Vec<u8>, PayloadStats)> {
-    anyhow::ensure!(matches!(p.quant_bits, 16 | 24 | 32), "quant_bits must be 16/24/32");
-    anyhow::ensure!((0.1..=45.0).contains(&p.grid_deg), "grid_deg must be within 0.1–45");
-    anyhow::ensure!(feats.len() < 0x7FFF, "feature count exceeds 15-bit zone ids");
+) -> crate::Result<(Vec<u8>, PayloadStats)> {
+    ensure!(matches!(p.quant_bits, 16 | 24 | 32), Error::QuantBits { bits: p.quant_bits });
+    ensure!((0.1..=45.0).contains(&p.grid_deg), Error::GridDeg { deg: p.grid_deg });
+    ensure!(
+        feats.len() < 0x7FFF,
+        Error::FormatLimit { what: "feature count (15-bit zone ids)", n: feats.len(), max: 0x7FFE }
+    );
     let qmax = ((1u64 << (p.quant_bits - 1)) - 1) as f64;
     let qx = |lon: f64| (lon / 180.0 * qmax).round() as i32;
     let qy = |lat: f64| (lat / 90.0 * qmax).round() as i32;
@@ -234,7 +235,10 @@ pub fn payload_from_topology(
             parent.push(fi as u16);
         }
     }
-    anyhow::ensure!(poly_feats.len() < 0x7FFF, "polygon count exceeds 15-bit ids");
+    ensure!(
+        poly_feats.len() < 0x7FFF,
+        Error::FormatLimit { what: "polygon count (15-bit ids)", n: poly_feats.len(), max: 0x7FFE }
+    );
     let g = grid::build(&poly_feats, p.grid_deg, 8);
     let areas = grid::feat_areas(&poly_feats);
     let mut csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
@@ -249,17 +253,13 @@ pub fn payload_from_topology(
     // list index, and list_offsets index into list_ids as u16 — a fine grid
     // on a dense dataset can overflow both. Fail loudly instead of the `as
     // u16` wrap silently corrupting the tables.
-    anyhow::ensure!(
+    ensure!(
         csr.uniq_lists < 0x7FFF,
-        "grid {}°: {} unique candidate lists exceeds the 15-bit tag space — coarsen the grid",
-        p.grid_deg,
-        csr.uniq_lists
+        Error::GridLists { deg: p.grid_deg, n: csr.uniq_lists }
     );
-    anyhow::ensure!(
+    ensure!(
         u16::try_from(csr.list_ids.len()).is_ok(),
-        "grid {}°: {} interned list ids overflow the u16 offset table — coarsen the grid",
-        p.grid_deg,
-        csr.list_ids.len()
+        Error::GridListIds { deg: p.grid_deg, n: csr.list_ids.len() }
     );
 
     // EagerImage (geom=2): flatten the geometry into the exact preload-cache
@@ -321,7 +321,10 @@ pub fn payload_from_topology(
     ];
     o.extend_from_slice(&(p.grid_deg as f32).to_le_bytes());
     o.extend_from_slice(&(p.eps_m as f32).to_le_bytes());
-    anyhow::ensure!(p.tzbb_release.len() < 256, "tzbb_release too long");
+    ensure!(
+        p.tzbb_release.len() < 256,
+        Error::FormatLimit { what: "tzbb_release bytes", n: p.tzbb_release.len(), max: 255 }
+    );
     o.push(p.tzbb_release.len() as u8);
     o.extend_from_slice(p.tzbb_release.as_bytes());
     o.extend_from_slice(&(feats.len() as u16).to_le_bytes());
@@ -356,8 +359,14 @@ pub fn payload_from_topology(
             (coords, rings, polys)
         }
     };
-    anyhow::ensure!(u32::try_from(eager_coords).is_ok(), "eager_coords overflows u32");
-    anyhow::ensure!(eager_polys as usize == parent.len(), "poly count mismatch");
+    ensure!(
+        u32::try_from(eager_coords).is_ok(),
+        Error::FormatLimit { what: "eager_coords", n: eager_coords as usize, max: u32::MAX as usize }
+    );
+    ensure!(
+        eager_polys as usize == parent.len(),
+        Error::FormatLimit { what: "eager_polys (must equal parent count)", n: eager_polys as usize, max: parent.len() }
+    );
     o.extend_from_slice(&(eager_coords as u32).to_le_bytes());
     o.extend_from_slice(&eager_rings.to_le_bytes());
     o.extend_from_slice(&eager_polys.to_le_bytes());
@@ -506,10 +515,13 @@ pub fn payload_from_topology(
 }
 
 /// Prepend the outer header, compressing the payload with `codec`.
-#[must_use]
-pub fn finish(payload: &[u8], codec: Codec) -> Vec<u8> {
+///
+/// # Errors
+///
+/// As [`compress`].
+pub fn finish(payload: &[u8], codec: Codec) -> crate::Result<Vec<u8>> {
     let raw_len = payload.len() as u32;
-    let body = compress(payload, codec);
+    let body = compress(payload, codec)?;
     let mut o = Vec::with_capacity(body.len() + OUTER_LEN);
     o.extend_from_slice(&MAGIC);
     o.push(VERSION);
@@ -517,25 +529,25 @@ pub fn finish(payload: &[u8], codec: Codec) -> Vec<u8> {
     o.extend_from_slice(&raw_len.to_le_bytes());
     o.extend_from_slice(&[0u8; 2]); // reserved; pads the payload to +12 (v6)
     o.extend_from_slice(&body);
-    o
+    Ok(o)
 }
 
 /// Compress `raw` with `codec` (body only, no outer header).
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics on `Codec::Zstd` when utz-encode was built without the `zstd`
-/// feature, or if the underlying compressor fails (not expected when writing
-/// to memory).
-#[must_use]
-pub fn compress(raw: &[u8], codec: Codec) -> Vec<u8> {
-    match codec {
+/// [`Error::ZstdNotCompiled`] on `Codec::Zstd` when utz-encode was built
+/// without the `zstd` feature; [`Error::Compress`]/[`Error::Xz`] if the
+/// underlying compressor fails (not expected when writing to memory).
+pub fn compress(raw: &[u8], codec: Codec) -> crate::Result<Vec<u8>> {
+    let xz_err = |e| Error::Xz(format!("{e:?}"));
+    Ok(match codec {
         Codec::Uncompressed => raw.to_vec(),
         Codec::Gzip => miniz_oxide::deflate::compress_to_vec_zlib(raw, 10),
         #[cfg(feature = "zstd")]
-        Codec::Zstd => zstd::encode_all(raw, 22).expect("zstd"),
+        Codec::Zstd => zstd::encode_all(raw, 22)?,
         #[cfg(not(feature = "zstd"))]
-        Codec::Zstd => panic!("utz-encode built without the `zstd` feature"),
+        Codec::Zstd => return Err(Error::ZstdNotCompiled),
         Codec::Brotli => {
             let mut out = Vec::new();
             let params = brotli::enc::BrotliEncoderParams {
@@ -543,7 +555,7 @@ pub fn compress(raw: &[u8], codec: Codec) -> Vec<u8> {
                 lgwin: 24,
                 ..Default::default()
             };
-            brotli::BrotliCompress(&mut &raw[..], &mut out, &params).expect("brotli");
+            brotli::BrotliCompress(&mut &raw[..], &mut out, &params)?;
             out
         }
         Codec::Xz => {
@@ -554,11 +566,11 @@ pub fn compress(raw: &[u8], codec: Codec) -> Vec<u8> {
             // lzma-rust2 has no -9e helper; this is liblzma's extreme delta
             opts.lzma_options.nice_len = 273;
             opts.lzma_options.depth_limit = 512;
-            let mut w = lzma_rust2::XzWriter::new(Vec::new(), opts).expect("xz");
-            w.write_all(raw).expect("xz");
-            w.finish().expect("xz")
+            let mut w = lzma_rust2::XzWriter::new(Vec::new(), opts).map_err(xz_err)?;
+            w.write_all(raw).map_err(xz_err)?;
+            w.finish().map_err(xz_err)?
         }
-    }
+    })
 }
 
 fn zigzag(v: i64) -> u64 { ((v << 1) ^ (v >> 63)) as u64 }

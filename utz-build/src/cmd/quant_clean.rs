@@ -11,6 +11,7 @@
 use utz_build::clean::{self, CleanStats};
 use utz_build::topo;
 use utz_build::validate::{self, Bad, Kind};
+use utz_build::{ensure, Error};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -31,13 +32,13 @@ pub struct Args {
     viewer: String,
 }
 
-pub fn run(a: &Args) -> anyhow::Result<()> {
+pub fn run(a: &Args) -> utz_build::Result<()> {
     let feats = utz_build::load(&a.ds)?;
     let t = topo::build_topology(&feats, a.eps_m / 111_320.0);
     println!("{} · RDP ε {} m · {} arcs, {} rings\n", a.ds, a.eps_m, t.arc_coords.len(), t.ring_refs.len());
 
     for &qbits in &a.qbits {
-        anyhow::ensure!(matches!(qbits, 16 | 24 | 32), "qbits must be 16/24/32");
+        ensure!(matches!(qbits, 16 | 24 | 32), Error::Msg(format!("qbits must be 16/24/32 (got {qbits})")));
         let qmax = ((1u64 << (qbits - 1)) - 1) as f64;
         let quant = |a: &Vec<(f64, f64)>| -> Vec<(i32, i32)> {
             a.iter()

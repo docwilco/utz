@@ -32,7 +32,7 @@ pub struct Args {
 /// hoisted bbox test).
 struct P<'a> { fi: usize, bbox: (i32, i32, i32, i32), rings: Vec<&'a [(i32, i32)]> }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: Args) -> utz_build::Result<()> {
     let (ds, eps_m, npts) = (a.ds, a.eps_m, a.npts);
 
     let feats = utz_build::load(&ds)?;

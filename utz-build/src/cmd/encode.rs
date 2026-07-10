@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use utz_build::density::DensityGrid;
 use utz_build::encode::{self, Codec, Params};
 use utz_simplify::DensityWeight;
+use utz_build::{ensure, Error};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -43,26 +44,26 @@ pub struct Args {
     out: Option<PathBuf>,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: Args) -> utz_build::Result<()> {
     let codec = match a.codec.as_str() {
         "none" | "uncompressed" => Codec::Uncompressed,
         "gzip" => Codec::Gzip,
         "zstd" => Codec::Zstd,
         "brotli" => Codec::Brotli,
         "xz" => Codec::Xz,
-        c => anyhow::bail!("unknown codec {c:?}: use none|gzip|zstd|brotli|xz"),
+        c => return Err(Error::Msg(format!("unknown codec {c:?}: use none|gzip|zstd|brotli|xz"))),
     };
     let simplify = match a.algo.as_str() {
         "rdp" => encode::SimplifyAlgo::Rdp,
         "ii" | "imai-iri" => encode::SimplifyAlgo::ImaiIri,
-        c => anyhow::bail!("unknown algo {c:?}: use rdp|ii (visvalingam needs the builder API)"),
+        c => return Err(Error::Msg(format!("unknown algo {c:?}: use rdp|ii (visvalingam needs the builder API)"))),
     };
     let geom = match a.geom.as_str() {
         "varint" | "delta" => encode::GeomEncoding::DeltaVarint,
         "fixed" => encode::GeomEncoding::Fixed,
         "eager" | "image" => encode::GeomEncoding::EagerImage,
         "coarse" => encode::GeomEncoding::Coarse,
-        c => anyhow::bail!("unknown geom {c:?}: use varint|fixed|eager|coarse"),
+        c => return Err(Error::Msg(format!("unknown geom {c:?}: use varint|fixed|eager|coarse"))),
     };
     let (feats, release) = utz_build::load_with_release(&a.ds)?;
     let p = Params {
@@ -84,8 +85,11 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     };
 
     // sanity: the runtime must accept what we just wrote
-    let f = utz::Finder::from_vec(container.clone()).map_err(|e| anyhow::anyhow!("verify: {e}"))?;
-    anyhow::ensure!(f.lookup(utz::Position { lon: -0.1276, lat: 51.5072 }).is_some(), "verify lookup failed");
+    let f = utz::Finder::from_vec(container.clone())?;
+    ensure!(
+        f.lookup(utz::Position { lon: -0.1276, lat: 51.5072 }).is_some(),
+        Error::Msg("verify lookup failed".into())
+    );
 
     let out = a.out.unwrap_or_else(|| {
         let w = a.w_min.map(|w| format!("-w{w}")).unwrap_or_default();

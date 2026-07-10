@@ -24,7 +24,9 @@ repository = "" # TBD
 [workspace.dependencies]
 geo = "0.32"
 geo-types = "0.7"
-anyhow = "1"
+# error derives (Display/Error/From) — the workspace error-type pattern;
+# no_std-capable, so the device crate shares it
+derive_more = { version = "2", default-features = false, features = ["display", "error", "from"] }
 # no_std, macro-only; 4-aligned embedding for any asset a Finder borrows in
 # place. Drop once RFC 3806's `static_align` (#[align(N)] on statics)
 # stabilizes: https://github.com/rust-lang/rfcs/pull/3806

@@ -11,7 +11,7 @@ fn template_path(name: &str) -> String {
 ///
 /// # Errors
 /// I/O failure reading the template file.
-pub fn webdist_index() -> anyhow::Result<String> {
+pub fn webdist_index() -> crate::Result<String> {
     Ok(std::fs::read_to_string(template_path("webdist_index.html"))?)
 }
 

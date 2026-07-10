@@ -66,7 +66,7 @@ features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint", "g
 
 [dependencies]
 # no default features: keeps the derives no_std (Error derive = core::error::Error)
-derive_more = { version = "2", default-features = false, features = ["display", "error"] }
+derive_more = { workspace = true }
 miniz_oxide = { version = "0.8", optional = true, default-features = false, features = ["with-alloc"] }
 ruzstd = { version = "0.8", optional = true, default-features = false }
 zstd = { version = "0.13", optional = true }

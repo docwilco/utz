@@ -13,7 +13,7 @@ pub struct Args {
     qbits: Vec<u32>,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: Args) -> utz_build::Result<()> {
     let (eps_m, bits) = (a.eps_m, a.qbits);
     let feats = utz_build::load("now")?;
     let v0: usize = feats.iter().flat_map(|f| &f.polys).flatten().map(std::vec::Vec::len).sum();

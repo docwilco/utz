@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::time::Instant;
 
 use utz_build::encode::{self, Codec, Params};
+use utz_build::{ensure, Error};
 
 /// Counts live/peak heap bytes for the whole binary (the other subcommands
 /// pay two relaxed atomics per alloc — noise). `realloc` stays at the trait
@@ -68,7 +69,7 @@ pub struct Args {
     quant: Option<u32>,
 }
 
-pub fn run(a: &Args) -> anyhow::Result<()> {
+pub fn run(a: &Args) -> utz_build::Result<()> {
     // preset candidates (§14.5): i16 pairs with ε≥500, i24 with ε≤250 (§15)
     let shapes: Vec<(f64, u32)> = match a.eps {
         Some(e) => vec![(e, a.quant.unwrap_or(if e <= 250.0 { 24 } else { 16 }))],
@@ -103,10 +104,10 @@ pub fn run(a: &Args) -> anyhow::Result<()> {
         println!("{}", "-".repeat(63));
 
         // decode through the shipped path; peak-RAM model: decoded + window + state
-        let row = |name: &str, window: usize, codec: Codec, blob: Vec<u8>| -> anyhow::Result<()> {
+        let row = |name: &str, window: usize, codec: Codec, blob: Vec<u8>| -> utz_build::Result<()> {
             let (out, peak, ms) = measure(|| utz::decompress::decompress(codec as u8, raw, &blob));
-            let out = out.map_err(|e| anyhow::anyhow!("{name} decode: {e:?}"))?;
-            anyhow::ensure!(out == payload, "{name} roundtrip mismatch");
+            let out = out.map_err(|e| Error::Msg(format!("{name} decode: {e:?}")))?;
+            ensure!(out == payload, Error::Msg(format!("{name} roundtrip mismatch")));
             let win_eff = window.min(raw); // beyond raw, back-refs can't reach (§7)
             println!(
                 "{:>8}{:>9}{:>9.1}K{:>7.1}%{:>9.1}{:>9.1}K{:>8.1}K",
@@ -159,9 +160,9 @@ pub fn run(a: &Args) -> anyhow::Result<()> {
             opts.lzma_options.depth_limit = 512;
             // no_std lzma_rust2::Error isn't std::error::Error → stringify
             let mut w = lzma_rust2::XzWriter::new(Vec::new(), opts)
-                .map_err(|e| anyhow::anyhow!("xz: {e:?}"))?;
-            w.write_all(&payload).map_err(|e| anyhow::anyhow!("xz: {e:?}"))?;
-            let blob = w.finish().map_err(|e| anyhow::anyhow!("xz: {e:?}"))?;
+                .map_err(|e| Error::Msg(format!("xz: {e:?}")))?;
+            w.write_all(&payload).map_err(|e| Error::Msg(format!("xz: {e:?}")))?;
+            let blob = w.finish().map_err(|e| Error::Msg(format!("xz: {e:?}")))?;
             row("xz9", dict, Codec::Xz, blob)?;
         }
     }

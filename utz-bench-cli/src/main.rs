@@ -54,14 +54,23 @@ struct Args {
     rounds: usize,
 }
 
-fn main() -> anyhow::Result<()> {
+/// Workspace error pattern (see `utz::Error`): derive_more, foreign errors
+/// via `derive_more::From`.
+#[derive(Debug, derive_more::Display, derive_more::Error, derive_more::From)]
+enum Error {
+    Io(std::io::Error),
+    #[display("decode: {_0}")]
+    Utz(utz::Error),
+}
+
+fn main() -> Result<(), Error> {
     let a = Args::parse();
     let bytes = match embedded(&a.container) {
         Some(b) => b.to_vec(),
         None => std::fs::read(&a.container)?,
     };
     let size = bytes.len();
-    let finder = utz::Finder::from_vec(bytes).map_err(|e| anyhow::anyhow!("decode: {e}"))?;
+    let finder = utz::Finder::from_vec(bytes)?;
     println!(
         "{}: {:.1} KiB container, tzbb release {:?}",
         a.container,

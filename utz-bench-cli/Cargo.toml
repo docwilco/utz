@@ -9,7 +9,7 @@ publish = false
 # preset features), their codec-none twins (utz-bench-common::assets), or any
 # .utz container file.
 [dependencies]
-anyhow = { workspace = true }
+derive_more = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 # the geom-* decoders for the custom shapes come via utz-bench-common
 utz = { path = "../utz", features = [

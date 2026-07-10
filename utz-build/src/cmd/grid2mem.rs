@@ -13,7 +13,7 @@ pub struct Args {
     deg: f64,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: Args) -> utz_build::Result<()> {
     let (ds, d) = (a.ds, a.deg);
 
     // rings tagged with their feature (zone) id

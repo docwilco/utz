@@ -22,7 +22,7 @@ pub struct Args {
     npts: usize,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: Args) -> utz_build::Result<()> {
     let (ds, eps_m, npts) = (a.ds, a.eps_m, a.npts);
     let qbits = 24u32;
 
@@ -114,7 +114,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     // every codec must roundtrip to the same answers as the uncompressed finder
     let payload = encode::build_payload(&feats, &p)?;
     for codec in [Codec::Gzip, Codec::Zstd, Codec::Brotli, Codec::Xz] {
-        let c = encode::finish(&payload, codec);
+        let c = encode::finish(&payload, codec)?;
         let f = utz::Finder::from_reader(&c[..])
             .unwrap_or_else(|e| panic!("{codec:?} decode failed: {e:?}"));
         assert_eq!(f.tzbb_release(), "roundtrip-dev");

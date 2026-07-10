@@ -5,11 +5,12 @@
 //!     utz-build density-probe
 
 use utz_build::density::DensityGrid;
+use utz_build::{ensure, Error};
 
 #[derive(clap::Args)]
 pub struct Args {}
 
-pub fn run(_a: Args) -> anyhow::Result<()> {
+pub fn run(_a: Args) -> utz_build::Result<()> {
     let t = std::time::Instant::now();
     let g = DensityGrid::load(&utz_build::cache_dir())?;
     println!("loaded {}x{} grid in {:.1?}", g.w, g.h, t.elapsed());
@@ -48,7 +49,7 @@ pub fn run(_a: Args) -> anyhow::Result<()> {
     println!("max_along Solent->Suffolk (crosses London): {along:.0} p/km2");
     ok &= along > 3000.0;
 
-    anyhow::ensure!(ok, "probe expectations failed");
+    ensure!(ok, Error::Msg("probe expectations failed".into()));
     println!("all probes pass");
     Ok(())
 }

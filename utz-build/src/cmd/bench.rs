@@ -18,7 +18,7 @@ pub struct Args {
     path: Option<String>,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: Args) -> utz_build::Result<()> {
     let path = a.path.unwrap_or_else(|| utz_build::fgb_path(&utz_build::dataset("now").unwrap()).unwrap());
     let bytes = std::fs::read(&path)?;
     let file_mib = bytes.len() as f64 / f64::from(1 << 20);

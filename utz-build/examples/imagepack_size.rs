@@ -9,7 +9,7 @@
 use utz::format::{self, fixed_bytes};
 use utz_build::encode::{compress, Codec};
 
-fn main() {
+fn main() -> utz_build::Result<()> {
     println!(
         "{:<30} {:>9} {:>9} {:>9} {:>9}",
         "image payload", "raw", "gzip", "xz", "brotli"
@@ -43,10 +43,11 @@ fn main() {
                 "{:<30} {:>9} {:>9} {:>9} {:>9}",
                 label,
                 k(payload.len()),
-                k(compress(&payload, Codec::Gzip).len()),
-                k(compress(&payload, Codec::Xz).len()),
-                k(compress(&payload, Codec::Brotli).len()),
+                k(compress(&payload, Codec::Gzip)?.len()),
+                k(compress(&payload, Codec::Xz)?.len()),
+                k(compress(&payload, Codec::Brotli)?.len()),
             );
         }
     }
+    Ok(())
 }

@@ -22,7 +22,7 @@ crate-type = ["lib"]
 zstd = ["dep:zstd"]
 
 [dependencies]
-anyhow = { workspace = true }
+derive_more = { workspace = true }
 # simplification menu + DensityWeight (shared with the viewer via this cdylib)
 utz-simplify = { path = "../utz-simplify" }
 # codecs (all pure Rust except optional zstd)

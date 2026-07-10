@@ -23,7 +23,7 @@ pub struct Args {
     w_min: f64,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: Args) -> utz_build::Result<()> {
     // stored vertices binned by the density at the vertex itself
     const BANDS: [(f64, f64, &str); 4] = [
         (0.0, 5.0, "<5 (empty)"),
@@ -74,8 +74,8 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         simplify: encode::SimplifyAlgo::default(),
         geom: encode::GeomEncoding::default(),
     };
-    let container = |t: &topo::Topology| -> anyhow::Result<Vec<u8>> {
-        Ok(encode::finish(&encode::payload_from_topology(t, &t.arc_coords, &feats, &p)?.0, p.codec))
+    let container = |t: &topo::Topology| -> utz_build::Result<Vec<u8>> {
+        Ok(encode::finish(&encode::payload_from_topology(t, &t.arc_coords, &feats, &p)?.0, p.codec)?)
     };
     let cu = container(&t_u)?;
     let cw = container(&t_w)?;

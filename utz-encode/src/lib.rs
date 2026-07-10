@@ -8,6 +8,9 @@
 //! Everything here is pure Rust with no filesystem/network access; the one
 //! C-backed codec (zstd) sits behind the `zstd` cargo feature.
 
+mod error;
+pub use error::{Error, Result};
+
 mod types;
 pub use types::*;
 

@@ -19,7 +19,7 @@ pub struct Args {
     eps_m: f64,
 }
 
-pub fn run(a: &Args) -> anyhow::Result<()> {
+pub fn run(a: &Args) -> utz_build::Result<()> {
     let eps_m = a.eps_m;
     let pts = gen_pts(NPTS);
 

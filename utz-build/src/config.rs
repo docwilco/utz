@@ -195,7 +195,7 @@ impl Config {
     /// Invalid dataset name, source download/parse failure, encoding failure,
     /// missing `OUT_DIR` when no `out_path` is set, or I/O writing the asset
     /// and its guard file.
-    pub fn generate(self) -> anyhow::Result<PathBuf> {
+    pub fn generate(self) -> crate::Result<PathBuf> {
         let (feats, release) = crate::load_with_release(&self.dataset)?;
         let p = Params {
             dataset: crate::dataset(&self.dataset)?.code(),
@@ -219,7 +219,7 @@ impl Config {
         };
         let out = if let Some(p) = self.out { p } else {
             let dir = std::env::var_os("OUT_DIR")
-                .ok_or_else(|| anyhow::anyhow!("no OUT_DIR (not in a build.rs?) — set .out_path()"))?;
+                .ok_or_else(|| crate::Error::NoOutDir)?;
             PathBuf::from(dir).join("tz.utz")
         };
         std::fs::write(&out, &bytes)?;
@@ -234,7 +234,7 @@ impl Config {
 ///
 /// # Errors
 /// I/O failure writing `<out>.guard.rs`.
-pub fn write_guard(out: &std::path::Path, geom: GeomEncoding, codec: Codec) -> anyhow::Result<()> {
+pub fn write_guard(out: &std::path::Path, geom: GeomEncoding, codec: Codec) -> crate::Result<()> {
     let name = out.file_name().and_then(|n| n.to_str()).unwrap_or("asset");
     let (gc, gf) = match geom {
         GeomEncoding::DeltaVarint => ("GEOM_VARINT", "geom-varint"),

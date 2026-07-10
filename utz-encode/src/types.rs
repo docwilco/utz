@@ -1,6 +1,10 @@
 //! Shared geometry types + quantization helpers for the encoder and measurements.
 
 /// exterior ring first, then interior (hole) rings; no duplicated closing vertex.
+// TODO: Seeing lots of uses of Vec<(T, T)> and Vec<Vec<(T,T)> around the
+// codebase for rings, which does not use these two. Should probably be generic?
+// Also we use Position in our public API to prevent lat/lon confusion, maybe we
+// should use it internally ourselves? So Ring becomes Vec<Position> etc.
 pub type Ring = Vec<(f64, f64)>;
 pub type Poly = Vec<Ring>;
 
@@ -13,6 +17,10 @@ pub struct Feat {
 // i24 absolute global grid (~2.4 m lon / 1.2 m lat) — default; topo::encode_topology_q
 // takes a `qbits` for i16/i24/i32.
 pub const QMAX: f64 = 8_388_607.0; // 2^23 - 1
+// TODO: Explain why these only exist for i24 (because there's no actual i24
+// type). Maybe we should use the i24 crate? And we should be using function
+// names that reflect the i24ness of these functions. Plus, don't use x/y when
+// we can be explicit with lat/lon.
 #[must_use]
 pub fn qx(lon: f64) -> i32 { (lon / 180.0 * QMAX).round() as i32 }
 #[must_use]

@@ -35,7 +35,7 @@ pub struct Args {
     algo: String,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: Args) -> utz_build::Result<()> {
     let (ds, eps_m, w_min, algo_key) = (a.ds, a.eps_m, a.w_min, a.algo);
     let algo = |eps_deg: f64| -> Simplify {
         match algo_key.as_str() {

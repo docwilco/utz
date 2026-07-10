@@ -16,7 +16,7 @@ pub struct Args {
     ds: String,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: Args) -> utz_build::Result<()> {
     let ds = a.ds;
     let feats = utz_build::load(&ds)?;
     let v0: usize = feats.iter().flat_map(|f| &f.polys).flatten().map(std::vec::Vec::len).sum();

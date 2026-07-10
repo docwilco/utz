@@ -6,7 +6,7 @@ use geo_types::{LineString, Point, Polygon};
 #[derive(clap::Args)]
 pub struct Args {}
 
-pub fn run(_a: Args) -> anyhow::Result<()> {
+pub fn run(_a: Args) -> utz_build::Result<()> {
     // load geometry once (f64), build parallel i64 / i32 copies at deg*1e6 (~0.11 m)
     let mut f64p: Vec<(String, Polygon<f64>)> = Vec::new();
     let mut i64p: Vec<(String, Polygon<i64>)> = Vec::new();

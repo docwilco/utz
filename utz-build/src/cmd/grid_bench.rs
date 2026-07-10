@@ -30,7 +30,7 @@ pub struct Args {
     npts: usize,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: Args) -> utz_build::Result<()> {
     let (ds, eps_m, deg, npts) = (a.ds, a.eps_m, a.deg, a.npts);
 
     let feats = utz_build::load(&ds)?;

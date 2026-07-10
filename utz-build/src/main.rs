@@ -52,7 +52,17 @@ enum Cmd {
     Bench(cmd::bench::Args),
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> std::process::ExitCode {
+    match run() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> utz_build::Result<()> {
     match Cmd::parse() {
         Cmd::Visualize(a) => cmd::visualize::run(a),
         Cmd::Gen(a) => cmd::encode::run(a),

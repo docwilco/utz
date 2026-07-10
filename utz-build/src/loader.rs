@@ -11,7 +11,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::{download, Dataset, Feat, Poly, Ring};
+use crate::{download, Dataset, Error, Feat, Poly, Ring};
 
 const REPO: &str = "https://github.com/evansiroky/timezone-boundary-builder";
 
@@ -25,21 +25,21 @@ const REPO: &str = "https://github.com/evansiroky/timezone-boundary-builder";
 /// # Errors
 /// I/O failure caching the freshly probed tag (probe failures themselves
 /// fall back to the cached tag or `"dev"`).
-pub fn resolve_release(cache_dir: &Path) -> anyhow::Result<String> {
+pub fn resolve_release(cache_dir: &Path) -> crate::Result<String> {
     if let Ok(tag) = std::env::var("UTZ_TZBB_RELEASE") {
         if !tag.is_empty() {
             return Ok(tag);
         }
     }
     let tag_file = cache_dir.join("tzbb-release.tag");
-    let probed: anyhow::Result<String> = (|| {
+    let probed: crate::Result<String> = (|| {
         let resp = ureq::AgentBuilder::new().redirects(0).build()
             .get(&format!("{REPO}/releases/latest")).call()?;
         resp.header("location")
             .and_then(|l| l.split_once("/releases/tag/"))
             .map(|(_, t)| t.trim_matches('/').to_string())
             .filter(|t| !t.is_empty())
-            .ok_or_else(|| anyhow::anyhow!("no /releases/tag/ redirect (status {})", resp.status()))
+            .ok_or_else(|| Error::NoReleaseRedirect { status: resp.status() })
     })();
     match probed {
         Ok(tag) => {
@@ -79,7 +79,7 @@ pub fn dataset_url(d: Dataset, release: &str) -> String {
 ///
 /// # Errors
 /// Release-tag caching, download, or zip/`GeoJSON` parse failure.
-pub fn load_tzbb(d: Dataset, cache_dir: &Path) -> anyhow::Result<(Vec<Feat>, String)> {
+pub fn load_tzbb(d: Dataset, cache_dir: &Path) -> crate::Result<(Vec<Feat>, String)> {
     let release = resolve_release(cache_dir)?;
     let zip_path = download::fetch(&dataset_url(d, &release), cache_dir)?;
     Ok((load_geojson_zip(&zip_path)?, release))
@@ -90,7 +90,7 @@ pub fn load_tzbb(d: Dataset, cache_dir: &Path) -> anyhow::Result<(Vec<Feat>, Str
 /// # Errors
 /// I/O or zip-archive failure, no `.json`/`.geojson` entry, or `GeoJSON`
 /// parse failure.
-pub fn load_geojson_zip(path: &Path) -> anyhow::Result<Vec<Feat>> {
+pub fn load_geojson_zip(path: &Path) -> crate::Result<Vec<Feat>> {
     let file = std::fs::File::open(path)?;
     let mut zip = zip::ZipArchive::new(BufReader::new(file))?;
     let name = (0..zip.len())
@@ -100,7 +100,7 @@ pub fn load_geojson_zip(path: &Path) -> anyhow::Result<Vec<Feat>> {
                 .extension()
                 .is_some_and(|e| e.eq_ignore_ascii_case("json") || e.eq_ignore_ascii_case("geojson"))
         })
-        .ok_or_else(|| anyhow::anyhow!("no geojson entry in {}", path.display()))?;
+        .ok_or_else(|| Error::NoGeojsonEntry { path: path.into() })?;
     let mut buf = Vec::new();
     zip.by_name(&name)?.read_to_end(&mut buf)?;
     parse_geojson(&buf)
@@ -125,7 +125,7 @@ enum Geom {
 ///
 /// # Errors
 /// JSON that doesn't deserialize as a Polygon/`MultiPolygon` `FeatureCollection`.
-pub fn parse_geojson(bytes: &[u8]) -> anyhow::Result<Vec<Feat>> {
+pub fn parse_geojson(bytes: &[u8]) -> crate::Result<Vec<Feat>> {
     let fc: Fc = serde_json::from_slice(bytes)?;
     Ok(fc.features.into_iter().map(|f| {
         let polys: Vec<Poly> = match f.geometry {

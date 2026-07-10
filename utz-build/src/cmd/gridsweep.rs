@@ -10,7 +10,7 @@ pub struct Args {
     ds: String,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: Args) -> utz_build::Result<()> {
     let ds = a.ds;
     let feats = utz_build::load(&ds)?;
     let rings: Vec<Vec<(f64, f64)>> = feats.iter()

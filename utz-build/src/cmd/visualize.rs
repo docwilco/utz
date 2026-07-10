@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 
 use utz_build::encode::{self, Codec, Params};
 use utz_build::{topo, viz};
+use utz_build::{ensure, Error};
 
 const DATASETS: [&str; 6] = ["now", "1970", "all", "land-now", "land-1970", "land-all"];
 
@@ -22,7 +23,7 @@ pub struct Args {
     out: PathBuf,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: Args) -> utz_build::Result<()> {
     let out = a.out;
     std::fs::create_dir_all(&out)?;
 
@@ -70,7 +71,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
 /// (little-endian): `"uTZz" | u32 w | u32 h | u32 n_zones
 /// | per zone: u16 len + utf8 tzid | pad to 2 | u16 ids[w·h]`
 /// (0xFFFF = no zone; row 0 = 90°N, col 0 = 180°W, cell centers sampled).
-fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> anyhow::Result<Vec<u8>> {
+fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> utz_build::Result<Vec<u8>> {
     const STEP: f64 = 0.1;
     let p = Params {
         dataset: utz_build::dataset(ds)?.code(),
@@ -83,7 +84,7 @@ fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> anyhow::Result<Vec<u8>> {
         geom: encode::GeomEncoding::default(),
     };
     let finder = utz::Finder::from_vec(encode::encode(feats, &p)?)
-        .map_err(|e| anyhow::anyhow!("finder: {e}"))?;
+?;
     let mut names: Vec<&str> = feats.iter().filter_map(|f| f.tzid.as_deref()).collect();
     names.sort_unstable();
     names.dedup();
@@ -113,7 +114,7 @@ fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> anyhow::Result<Vec<u8>> {
 }
 
 /// zlib-deflate (the browser side inflates with `DecompressionStream('deflate')`).
-fn write_z(path: &Path, data: &[u8]) -> anyhow::Result<usize> {
+fn write_z(path: &Path, data: &[u8]) -> utz_build::Result<usize> {
     let z = miniz_oxide::deflate::compress_to_vec_zlib(data, 6);
     std::fs::write(path, &z)?;
     Ok(z.len())
@@ -121,7 +122,7 @@ fn write_z(path: &Path, data: &[u8]) -> anyhow::Result<usize> {
 
 /// Build utz-encode (simplify + live container encode) for
 /// wasm32-unknown-unknown and return the cdylib bytes.
-fn build_wasm() -> anyhow::Result<Vec<u8>> {
+fn build_wasm() -> utz_build::Result<Vec<u8>> {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
     // cdylib requested here rather than in utz-encode's crate-type — see the
     // [lib] comment in utz-encode/Cargo.toml
@@ -129,6 +130,9 @@ fn build_wasm() -> anyhow::Result<Vec<u8>> {
         .args(["rustc", "-p", "utz-encode", "--release", "--target", "wasm32-unknown-unknown", "--crate-type", "cdylib"])
         .current_dir(root)
         .status()?;
-    anyhow::ensure!(status.success(), "wasm build failed — try: rustup target add wasm32-unknown-unknown");
+    ensure!(
+        status.success(),
+        Error::Msg("wasm build failed — try: rustup target add wasm32-unknown-unknown".into())
+    );
     Ok(std::fs::read(format!("{root}/target/wasm32-unknown-unknown/release/utz_encode.wasm"))?)
 }

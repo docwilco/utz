@@ -12,6 +12,9 @@
 // re-export it all so `utz_build::topo::…` paths keep working
 pub use utz_encode::*;
 
+pub mod error;
+pub use error::{Error, Result};
+
 pub mod config;
 pub mod density;
 pub mod download;
@@ -57,7 +60,7 @@ impl Dataset {
 ///
 /// # Errors
 /// Unrecognized dataset name.
-pub fn dataset(ds: &str) -> anyhow::Result<Dataset> {
+pub fn dataset(ds: &str) -> crate::Result<Dataset> {
     let (land, rest) = match ds.strip_prefix("land-") {
         Some(r) => (true, r),
         None => (false, ds),
@@ -66,7 +69,7 @@ pub fn dataset(ds: &str) -> anyhow::Result<Dataset> {
         "now" | "osm" => "now",
         "1970" | "osm1970" => "1970",
         "all" | "full" | "comprehensive" => "all",
-        _ => anyhow::bail!("unknown dataset {ds:?}: use [land-]now|1970|all"),
+        _ => return Err(Error::UnknownDataset { ds: ds.into() }),
     };
     Ok(Dataset { vintage, oceans: !land })
 }
@@ -78,7 +81,7 @@ pub fn dataset(ds: &str) -> anyhow::Result<Dataset> {
 ///
 /// # Errors
 /// See [`load_with_release`].
-pub fn load(ds: &str) -> anyhow::Result<Vec<Feat>> {
+pub fn load(ds: &str) -> crate::Result<Vec<Feat>> {
     Ok(load_with_release(ds)?.0)
 }
 
@@ -89,12 +92,12 @@ pub fn load(ds: &str) -> anyhow::Result<Vec<Feat>> {
 /// # Errors
 /// Invalid dataset name, `UTZ_SOURCE=fgb` for a dataset with no legacy
 /// `.fgb`, `.fgb` read/parse failure, or TZBB download/parse failure.
-pub fn load_with_release(ds: &str) -> anyhow::Result<(Vec<Feat>, String)> {
+pub fn load_with_release(ds: &str) -> crate::Result<(Vec<Feat>, String)> {
     let d = dataset(ds)?;
     let fgb = fgb_path(&d);
     let legacy = |p: &str| Ok((load_fgb(p)?, "dev".to_string()));
     match std::env::var("UTZ_SOURCE").as_deref() {
-        Ok("fgb") => legacy(&fgb.ok_or_else(|| anyhow::anyhow!("no legacy .fgb for dataset {}", d.name()))?),
+        Ok("fgb") => legacy(&fgb.ok_or_else(|| Error::NoLegacyFgb { ds: d.name() })?),
         Ok("tzbb") => loader::load_tzbb(d, &cache_dir()),
         _ => match fgb {
             Some(p) if std::path::Path::new(&p).exists() => legacy(&p),
@@ -116,13 +119,13 @@ pub fn encode_weighted(
     p: &encode::Params,
     grid: &density::DensityGrid,
     model: utz_simplify::DensityWeight,
-) -> anyhow::Result<Vec<u8>> {
+) -> crate::Result<Vec<u8>> {
     let eps_deg = p.eps_m / 111_320.0;
     let algo = p.simplify.to_simplify(eps_deg)?;
     let t = topo::build_topology_weighted(feats, algo, &|a, b| {
         model.weight(grid.max_along(a, b))
     });
-    Ok(encode::finish(&encode::payload_from_topology(&t, &t.arc_coords, feats, p)?.0, p.codec))
+    Ok(encode::finish(&encode::payload_from_topology(&t, &t.arc_coords, feats, p)?.0, p.codec)?)
 }
 
 /// Workspace-root `cache/` for downloaded TZBB releases (gitignored).
@@ -147,7 +150,7 @@ pub fn fgb_path(d: &Dataset) -> Option<String> {
     }
 }
 
-fn load_fgb(path: &str) -> anyhow::Result<Vec<Feat>> {
+fn load_fgb(path: &str) -> crate::Result<Vec<Feat>> {
     let bytes = std::fs::read(path)?;
     let mut reader = BufReader::new(&bytes[..]);
     let fgb = FgbReader::open(&mut reader)?;

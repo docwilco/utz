@@ -11,7 +11,7 @@ pub struct Args {
     ds: Vec<String>,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: Args) -> utz_build::Result<()> {
     let dss = a.ds;
     for ds in &dss {
         let feats = utz_build::load(ds)?;

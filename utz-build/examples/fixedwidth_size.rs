@@ -58,7 +58,7 @@ fn arc_coords(p: &[u8], h: &format::Header, id: usize) -> Vec<(i32, i32)> {
     coords
 }
 
-fn main() {
+fn main() -> utz_build::Result<()> {
     println!(
         "{:<28} {:>9} {:>9} {:>9} {:>9}",
         "payload variant", "raw", "gzip", "xz", "brotli"
@@ -166,10 +166,11 @@ fn main() {
                 "{:<28} {:>9} {:>9} {:>9} {:>9}",
                 label,
                 k(payload.len()),
-                k(compress(&payload, Codec::Gzip).len()),
-                k(compress(&payload, Codec::Xz).len()),
-                k(compress(&payload, Codec::Brotli).len()),
+                k(compress(&payload, Codec::Gzip)?.len()),
+                k(compress(&payload, Codec::Xz)?.len()),
+                k(compress(&payload, Codec::Brotli)?.len()),
             );
         }
     }
+    Ok(())
 }

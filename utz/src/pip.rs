@@ -293,6 +293,9 @@ mod tests {
         const M: i64 = 1 << 23; // i24 coordinate range
         let mut lcg = 0x0dd_ba11u64;
         let mut next = |m: i64| -> i32 {
+            // TODO: These two numbers are used in many places in the workspace:
+            // 1. They should be constants defined in one place.
+            // 2. Can't really read them, so why not make them hexadecimal for space?
             lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
             (((lcg >> 33) as i64 % m) - m / 2) as i32
         };

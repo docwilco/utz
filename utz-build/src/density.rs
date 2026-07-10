@@ -16,6 +16,8 @@ use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 use tiff::decoder::{Decoder, DecodingResult, Limits};
+
+use crate::Error;
 use tiff::tags::Tag;
 
 pub const GHS_POP_URL: &str = "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/\
@@ -49,7 +51,7 @@ impl DensityGrid {
     /// # Errors
     /// Corrupt sidecar, or on first build: GHS-POP download failure, zip
     /// extraction/TIFF decode failure, or I/O writing the sidecar.
-    pub fn load(cache_dir: &Path) -> anyhow::Result<Self> {
+    pub fn load(cache_dir: &Path) -> crate::Result<Self> {
         let sidecar = cache_dir.join(SIDECAR_NAME);
         if sidecar.exists() {
             return Self::read_sidecar(&sidecar);
@@ -134,7 +136,7 @@ impl DensityGrid {
     /// # Errors
     /// I/O or TIFF decode failure, missing geotransform tags, or a sample
     /// format other than f32/f64.
-    pub fn from_ghs_pop_tif(tif_path: &Path) -> anyhow::Result<Self> {
+    pub fn from_ghs_pop_tif(tif_path: &Path) -> crate::Result<Self> {
         const KM_PER_DEG: f64 = 111.32;
         let mut dec = Decoder::new(BufReader::new(std::fs::File::open(tif_path)?))?
             .with_limits(Limits::unlimited());
@@ -143,7 +145,7 @@ impl DensityGrid {
         // geotransform: pixel scale + tiepoint (don't assume ±180/±90 cover)
         let scale = dec.get_tag_f64_vec(Tag::ModelPixelScaleTag)?;
         let tie = dec.get_tag_f64_vec(Tag::ModelTiepointTag)?;
-        anyhow::ensure!(scale.len() >= 2 && tie.len() >= 5, "missing geotransform");
+        crate::ensure!(scale.len() >= 2 && tie.len() >= 5, Error::MissingGeotransform);
         let (sdlon, sdlat) = (scale[0], scale[1]);
         let (lon0, lat0) = (tie[3] - tie[0] * sdlon, tie[4] + tie[1] * sdlat);
 
@@ -179,7 +181,7 @@ impl DensityGrid {
                         }
                     }
                 }
-                other => anyhow::bail!("unexpected GHS-POP sample format {other:?}"),
+                other => return Err(Error::BadSampleFormat { format: format!("{other:?}") }),
             }
         }
 
@@ -198,7 +200,7 @@ impl DensityGrid {
         Ok(Self { w, h, lon0, lat0, dlon, dlat, cells })
     }
 
-    fn write_sidecar(&self, path: &Path) -> anyhow::Result<()> {
+    fn write_sidecar(&self, path: &Path) -> crate::Result<()> {
         let tmp = path.with_extension("part");
         let mut f = BufWriter::new(std::fs::File::create(&tmp)?);
         f.write_all(SIDECAR_MAGIC)?;
@@ -210,16 +212,16 @@ impl DensityGrid {
         for c in &self.cells {
             f.write_all(&c.to_le_bytes())?;
         }
-        f.into_inner()?;
+        f.into_inner().map_err(std::io::IntoInnerError::into_error)?;
         std::fs::rename(&tmp, path)?;
         Ok(())
     }
 
-    fn read_sidecar(path: &Path) -> anyhow::Result<Self> {
+    fn read_sidecar(path: &Path) -> crate::Result<Self> {
         let mut f = BufReader::new(std::fs::File::open(path)?);
         let mut magic = [0u8; 4];
         f.read_exact(&mut magic)?;
-        anyhow::ensure!(&magic == SIDECAR_MAGIC, "bad density sidecar magic");
+        crate::ensure!(&magic == SIDECAR_MAGIC, Error::BadSidecar("bad magic"));
         let mut u = [0u8; 4];
         f.read_exact(&mut u)?;
         let w = u32::from_le_bytes(u) as usize;
@@ -233,7 +235,7 @@ impl DensityGrid {
         }
         let mut bytes = Vec::new();
         f.read_to_end(&mut bytes)?;
-        anyhow::ensure!(bytes.len() == w * h * 4, "density sidecar size mismatch");
+        crate::ensure!(bytes.len() == w * h * 4, Error::BadSidecar("size mismatch"));
         let cells = bytes.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
         Ok(Self { w, h, lon0: geo[0], lat0: geo[1], dlon: geo[2], dlat: geo[3], cells })
     }
@@ -241,12 +243,12 @@ impl DensityGrid {
 
 /// Extract the single `.tif` entry from the GHS-POP zip next to it
 /// (the tiff decoder needs `Seek`, which zip entries don't offer).
-fn extract_tif(zip_path: &Path, cache_dir: &Path) -> anyhow::Result<PathBuf> {
+fn extract_tif(zip_path: &Path, cache_dir: &Path) -> crate::Result<PathBuf> {
     let mut archive = zip::ZipArchive::new(std::fs::File::open(zip_path)?)?;
     let name = archive
         .file_names()
         .find(|n| Path::new(n).extension().is_some_and(|e| e.eq_ignore_ascii_case("tif")))
-        .ok_or_else(|| anyhow::anyhow!("no .tif in {}", zip_path.display()))?
+        .ok_or_else(|| Error::NoTif { zip: zip_path.into() })?
         .to_string();
     let out = cache_dir.join(name.rsplit('/').next().unwrap());
     let mut entry = archive.by_name(&name)?;

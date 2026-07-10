@@ -15,7 +15,7 @@ pub struct Args {
     grid_deg: f64,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: Args) -> utz_build::Result<()> {
     let (ds, grid_deg) = (a.ds, a.grid_deg);
     let feats = utz_build::load(&ds)?;
     println!("{} full container, grid {grid_deg}°, dominant-first CSR", ds.to_uppercase());
@@ -36,11 +36,13 @@ pub fn run(a: Args) -> anyhow::Result<()> {
                 geom: encode::GeomEncoding::default(),
             };
             let payload = encode::build_payload(&feats, &p)?;
-            let kb = |c: Codec| format!("{:.1}", encode::compress(&payload, c).len() as f64 / 1024.0);
+            let kb = |c: Codec| -> utz_build::Result<String> {
+                Ok(format!("{:.1}", encode::compress(&payload, c)?.len() as f64 / 1024.0))
+            };
             println!("{:>7}{:>6}{:>11} K{:>11} K{:>11} K{:>11} K{:>11} K",
                 eps_m as u64, format!("i{qbits}"),
                 format!("{:.1}", payload.len() as f64 / 1024.0),
-                kb(Codec::Gzip), kb(Codec::Zstd), kb(Codec::Brotli), kb(Codec::Xz));
+                kb(Codec::Gzip)?, kb(Codec::Zstd)?, kb(Codec::Brotli)?, kb(Codec::Xz)?);
         }
     }
     Ok(())
