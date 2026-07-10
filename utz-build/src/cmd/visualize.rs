@@ -47,7 +47,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     for ds in DATASETS {
         let feats = utz_build::load(ds)?;
         let topo0 = topo::build_topology(&feats, 0.0);
-        let verts: usize = topo0.arc_coords.iter().map(|a| a.len()).sum();
+        let verts: usize = topo0.arc_coords.iter().map(std::vec::Vec::len).sum();
         let code = utz_build::dataset(ds)?.code();
         let bin = viz::dataset_bin(&topo0, &feats, code, "webdist", dens.as_ref());
         let z = write_z(&out.join(format!("{ds}.bin.z")), &bin)?;
@@ -55,9 +55,9 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         println!(
             "{ds}: {} arcs, {verts} verts, {:.1} MiB -> {:.1} MiB (+ zones {:.1} MiB)",
             topo0.arc_coords.len(),
-            bin.len() as f64 / (1 << 20) as f64,
-            z as f64 / (1 << 20) as f64,
-            zn as f64 / (1 << 20) as f64
+            bin.len() as f64 / f64::from(1 << 20),
+            z as f64 / f64::from(1 << 20),
+            zn as f64 / f64::from(1 << 20)
         );
     }
     println!("wrote {}", out.display());

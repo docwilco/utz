@@ -47,8 +47,8 @@ pub fn run(a: Args) -> anyhow::Result<()> {
 
     let border: usize = sets.iter().filter(|s| s.len() > 1).count();
     let interior_or_empty = total - border;
-    let multi_ids: usize = sets.iter().filter(|s| s.len() > 1).map(|s| s.len()).sum();
-    let maxc = sets.iter().map(|s| s.len()).max().unwrap_or(0);
+    let multi_ids: usize = sets.iter().filter(|s| s.len() > 1).map(std::collections::HashSet::len).sum();
+    let maxc = sets.iter().map(std::collections::HashSet::len).max().unwrap_or(0);
 
     println!("{} @ {d}deg  ({nfeat} zones)", ds.to_uppercase());
     println!("  grid: {ncols} x {nrows} = {total} cells");
@@ -67,7 +67,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let alloc = 16usize; // rough per-allocation heap overhead
     // every non-empty cell heap-allocates its inner Vec
     let nonempty = total - sets.iter().filter(|s| s.is_empty()).count();
-    let all_ids: usize = sets.iter().map(|s| s.len()).sum();
+    let all_ids: usize = sets.iter().map(std::collections::HashSet::len).sum();
     let c32 = total * vec_hdr32 + nonempty * alloc + all_ids * 2;
     let c64 = total * vec_hdr64 + nonempty * alloc + all_ids * 2;
 
@@ -77,7 +77,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         if s.len() > 1 { let mut v: Vec<u16> = s.iter().copied().collect(); v.sort_unstable(); uniq.insert(v); }
     }
     let uniq_lists = uniq.len();
-    let uniq_ids: usize = uniq.iter().map(|v| v.len()).sum();
+    let uniq_ids: usize = uniq.iter().map(std::vec::Vec::len).sum();
     // primary u16 + list_offsets u16[uniq+1] + list_ids u16[uniq_ids]
     let interned = total * 2 + (uniq_lists + 1) * 2 + uniq_ids * 2;
 

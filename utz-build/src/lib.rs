@@ -1,4 +1,4 @@
-//! μTZ build + exploration crate.
+//! `μTZ` build + exploration crate.
 //!
 //! Home of the encoder (topology + RDP + quantization + grid + container) and
 //! the measurement examples ported from the old `formatlab` prototype. Also
@@ -29,7 +29,7 @@ use geozero::ToGeo;
 
 /// The two dataset knobs (PLAN.md §6): merge vintage × ocean coverage.
 /// TZBB's terminology: `now` = "Same since now", `1970` = "Same since 1970",
-/// `all` = "Comprehensive" (every tzid, unsuffixed release). μTZ defaults to
+/// `all` = "Comprehensive" (every tzid, unsuffixed release). `μTZ` defaults to
 /// with-oceans; a `land-` prefix selects the land-only releases.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Dataset {
@@ -40,11 +40,13 @@ pub struct Dataset {
 
 impl Dataset {
     /// Canonical name: `now`, `1970`, `all`, `land-now`, …
+    #[must_use]
     pub fn name(&self) -> String {
         if self.oceans { self.vintage.to_string() } else { format!("land-{}", self.vintage) }
     }
     /// Header byte (see encode.rs): bits 0–1 vintage (0=now, 1=1970, 2=all),
     /// bit 2 set = land-only.
+    #[must_use]
     pub fn code(&self) -> u8 {
         let v = match self.vintage { "now" => 0, "1970" => 1, _ => 2 };
         v | if self.oceans { 0 } else { 4 }
@@ -110,12 +112,14 @@ pub fn encode_weighted(
 }
 
 /// Workspace-root `cache/` for downloaded TZBB releases (gitignored).
+#[must_use]
 pub fn cache_dir() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../cache"))
 }
 
 /// Legacy prebuilt `.fgb` location (old spatialtime workspace; with-oceans
 /// now/1970 only). Override the directory with `UTZ_ASSETS`.
+#[must_use]
 pub fn fgb_path(d: &Dataset) -> Option<String> {
     if !d.oceans {
         return None;

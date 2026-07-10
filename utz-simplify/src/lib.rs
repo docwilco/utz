@@ -45,6 +45,7 @@ pub enum Simplify {
 }
 
 /// Dispatch on [`Simplify`].
+#[must_use]
 pub fn simplify(algo: Simplify, pts: &[(f64, f64)]) -> Vec<(f64, f64)> {
     match algo {
         Simplify::None => pts.to_vec(),
@@ -57,6 +58,7 @@ pub fn simplify(algo: Simplify, pts: &[(f64, f64)]) -> Vec<(f64, f64)> {
 /// [`simplify`] with per-vertex tolerance multipliers: the effective parameter
 /// at `pts[i]` is `param * w[i]` (Visvalingam: `min_area * w[i]²`). One
 /// strictly positive weight per point; all-ones reproduces [`simplify`].
+#[must_use]
 pub fn simplify_weighted(algo: Simplify, pts: &[(f64, f64)], w: &[f64]) -> Vec<(f64, f64)> {
     match algo {
         Simplify::None => pts.to_vec(),
@@ -88,12 +90,14 @@ impl DensityWeight {
     /// `d_hi` default: ~2000 people/km² is already a dense city.
     pub const DEFAULT_D_HI: f64 = 2000.0;
 
+    #[must_use]
     pub fn new(w_min: f64) -> Self {
         Self { w_min, d_lo: Self::DEFAULT_D_LO, d_hi: Self::DEFAULT_D_HI }
     }
 
     /// Tolerance multiplier ∈ [`w_min`, 1] for a density in people/km²
     /// (NaN or `w_min ≥ 1` → 1: weighting off).
+    #[must_use]
     pub fn weight(&self, density: f64) -> f64 {
         if density.is_nan() || density <= self.d_lo || self.w_min >= 1.0 {
             return 1.0;
@@ -119,6 +123,7 @@ fn seg_dist2(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
 }
 
 /// Ramer–Douglas–Peucker keeping both endpoints; result has ≥ 2 points.
+#[must_use]
 pub fn rdp(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
     if pts.len() < 3 || eps <= 0.0 {
         return pts.to_vec();
@@ -129,6 +134,7 @@ pub fn rdp(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
 }
 
 /// [`rdp`] with per-vertex multipliers: deviation at `pts[i]` ≤ `eps * w[i]`.
+#[must_use]
 pub fn rdp_w(pts: &[(f64, f64)], eps: f64, w: &[f64]) -> Vec<(f64, f64)> {
     assert_eq!(pts.len(), w.len(), "one weight per point");
     if pts.len() < 3 || eps <= 0.0 {
@@ -172,12 +178,14 @@ fn rdp_rec(p: &[(f64, f64)], a: usize, b: usize, e2_of: impl Fn(usize) -> f64 + 
 /// Visvalingam–Whyatt: repeatedly remove the interior point whose triangle
 /// (prev, point, next) has the smallest area, while that area < `min_area`.
 /// Ties break on lower index for reproducible builds.
+#[must_use]
 pub fn visvalingam(pts: &[(f64, f64)], min_area: f64) -> Vec<(f64, f64)> {
     vw_impl(pts, min_area, |_| 1.0)
 }
 
 /// [`visvalingam`] with per-vertex multipliers: `pts[i]` is dropped while its
 /// triangle area < `min_area * w[i]²` (areas scale as distance²).
+#[must_use]
 pub fn visvalingam_w(pts: &[(f64, f64)], min_area: f64, w: &[f64]) -> Vec<(f64, f64)> {
     assert_eq!(pts.len(), w.len(), "one weight per point");
     let w2: Vec<f64> = w.iter().map(|&x| x * x).collect();
@@ -260,6 +268,7 @@ fn vw_impl(pts: &[(f64, f64)], min_area: f64, w2_of: impl Fn(usize) -> f64 + Cop
 /// plain RDP on real arcs) and escalate toward the `eps/2` cap only while the
 /// prefiltered arc stays too big. Deviation bounds compose, so the total
 /// stays ≤ `eps`; prefiltered results are near-optimal rather than optimal.
+#[must_use]
 pub fn imai_iri(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
     if pts.len() < 3 || eps <= 0.0 {
         return pts.to_vec();
@@ -278,7 +287,7 @@ pub fn imai_iri(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
     }
 }
 
-/// caps the lazy backward-row bitsets at 2·II_MAX ≈ 32 MB transient
+/// caps the lazy backward-row bitsets at `2·II_MAX` ≈ 32 MB transient
 const II_MAX: usize = 8192;
 
 /// [`imai_iri`] with per-vertex multipliers: deviation at `pts[i]` ≤
@@ -286,6 +295,7 @@ const II_MAX: usize = 8192;
 /// that bound is exact only where `w` is locally ~constant across a prefilter
 /// shortcut (negligible for weights sampled from a coarse grid through a
 /// smooth map); the global `eps * max(w)` bound always holds.
+#[must_use]
 pub fn imai_iri_w(pts: &[(f64, f64)], eps: f64, w: &[f64]) -> Vec<(f64, f64)> {
     assert_eq!(pts.len(), w.len(), "one weight per point");
     if pts.len() < 3 || eps <= 0.0 {
@@ -490,7 +500,7 @@ mod tests {
 
     #[test]
     fn collinear_collapses() {
-        let line: Vec<(f64, f64)> = (0..10).map(|i| (i as f64, 0.0)).collect();
+        let line: Vec<(f64, f64)> = (0..10).map(|i| (f64::from(i), 0.0)).collect();
         assert_eq!(rdp(&line, 0.01).len(), 2);
         assert_eq!(visvalingam(&line, 0.01).len(), 2);
         assert_eq!(imai_iri(&line, 0.01).len(), 2);
@@ -498,7 +508,7 @@ mod tests {
 
     #[test]
     fn spike_survives() {
-        let mut line: Vec<(f64, f64)> = (0..10).map(|i| (i as f64, 0.0)).collect();
+        let mut line: Vec<(f64, f64)> = (0..10).map(|i| (f64::from(i), 0.0)).collect();
         line[5] = (5.0, 3.0);
         assert!(rdp(&line, 0.5).contains(&(5.0, 3.0)));
         assert!(visvalingam(&line, 0.5).contains(&(5.0, 3.0)));
@@ -716,7 +726,7 @@ mod tests {
     #[test]
     fn weighted_refines_locally() {
         // a bump under the uniform tolerance vanishes — until its weight drops
-        let mut line: Vec<(f64, f64)> = (0..10).map(|i| (i as f64, 0.0)).collect();
+        let mut line: Vec<(f64, f64)> = (0..10).map(|i| (f64::from(i), 0.0)).collect();
         line[5] = (5.0, 0.3);
         let bump = line[5];
         let mut w = vec![1.0; line.len()];
@@ -773,7 +783,7 @@ mod tests {
         assert!((m.weight(m.d_hi * 0.9999) - 0.1).abs() < 1e-3);
         let mut last = 1.0;
         for i in 0..100 {
-            let d = m.d_lo * (m.d_hi / m.d_lo).powf(i as f64 / 99.0);
+            let d = m.d_lo * (m.d_hi / m.d_lo).powf(f64::from(i) / 99.0);
             let w = m.weight(d);
             assert!(w <= last + 1e-15 && (m.w_min..=1.0).contains(&w), "d={d} w={w}");
             last = w;

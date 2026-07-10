@@ -19,7 +19,7 @@ pub struct Args {
 pub fn run(a: Args) -> anyhow::Result<()> {
     let ds = a.ds;
     let feats = utz_build::load(&ds)?;
-    let v0: usize = feats.iter().flat_map(|f| &f.polys).flatten().map(|r| r.len()).sum();
+    let v0: usize = feats.iter().flat_map(|f| &f.polys).flatten().map(std::vec::Vec::len).sum();
     println!("{}: {} features, {v0} vertices\n", ds.to_uppercase(), feats.len());
 
     // full-precision reference lookups

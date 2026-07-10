@@ -1,4 +1,4 @@
-//! μTZ `compact` preset asset (PLAN.md §11, §14.5): dataset `now`, RDP
+//! `μTZ` `compact` preset asset (PLAN.md §11, §14.5): dataset `now`, RDP
 //! ε=1 000 m with pop-density weight floor 1e-3, i24, 4/3° grid, xz.
 //!
 //! Regenerate (writes `data/compact.utz`, gitignored):

@@ -42,8 +42,8 @@ fn arc_coords(p: &[u8], h: &format::Header, id: usize) -> Vec<(i32, i32)> {
     let mut pos = h.arc_data + read_u32(p, h.arc_offsets + id * 4) as usize;
     let (vcount, p2) = read_varint(p, pos);
     pos = p2;
-    let mut x = read_fixed(p, pos, h.quant_bits) as i64;
-    let mut y = read_fixed(p, pos + fb, h.quant_bits) as i64;
+    let mut x = i64::from(read_fixed(p, pos, h.quant_bits));
+    let mut y = i64::from(read_fixed(p, pos + fb, h.quant_bits));
     pos += 2 * fb;
     let mut coords = Vec::with_capacity(vcount as usize);
     coords.push((x as i32, y as i32));

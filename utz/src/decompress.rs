@@ -5,11 +5,11 @@
 //! | feature    | codec byte | crate                | needs `std`? |
 //! |------------|-----------:|----------------------|--------------|
 //! | (always)   | 0          | — (memcpy)           | no           |
-//! | `gzip`     | 1          | miniz_oxide          | no (alloc)   |
+//! | `gzip`     | 1          | `miniz_oxide`          | no (alloc)   |
 //! | `ruzstd`   | 2          | ruzstd (pure Rust)   | no (alloc)   |
 //! | `zstd-sys` | 2          | zstd (C libzstd)     | yes          |
 //! | `brotli`   | 3          | brotli-decompressor (no-stdlib) | no (alloc) |
-//! | `xz`       | 4          | lzma-rust2 (no_std)  | no (alloc)   |
+//! | `xz`       | 4          | lzma-rust2 (`no_std`)  | no (alloc)   |
 //!
 //! If both zstd backends are enabled, `zstd-sys` wins (faster).
 

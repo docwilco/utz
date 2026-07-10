@@ -16,8 +16,8 @@ fn eager_from_slice_matches_lazy_and_preload() {
     for i in 0..60u32 {
         for j in 0..30u32 {
             let pos = utz::Position {
-                lon: -180.0 + (i as f64 + 0.37) * 6.0,
-                lat: -90.0 + (j as f64 + 0.61) * 6.0,
+                lon: -180.0 + (f64::from(i) + 0.37) * 6.0,
+                lat: -90.0 + (f64::from(j) + 0.61) * 6.0,
             };
             let want = lazy.lookup(pos);
             assert_eq!(eager.lookup(pos), want, "at {pos:?}");

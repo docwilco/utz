@@ -8,7 +8,7 @@
 //! per-poly bbox becomes redundant).
 //!
 //! Reports the CSR cost of the finer lists (unique-list count vs the 15-bit
-//! tag space, list_ids growth), the pruning waste it would eliminate (polys
+//! tag space, `list_ids` growth), the pruning waste it would eliminate (polys
 //! parsed per border-cell candidate today vs polys actually near the cell),
 //! and the net size delta (grid growth − dropped bboxes + poly→feature
 //! table). Also builds the feature grid at deg/2 and deg/4 for the
@@ -34,8 +34,8 @@ fn arc_coords(p: &[u8], h: &format::Header, id: usize) -> Vec<(i32, i32)> {
         }
         return coords;
     }
-    let mut x = read_fixed(p, pos, h.quant_bits) as i64;
-    let mut y = read_fixed(p, pos + fb, h.quant_bits) as i64;
+    let mut x = i64::from(read_fixed(p, pos, h.quant_bits));
+    let mut y = i64::from(read_fixed(p, pos + fb, h.quant_bits));
     pos += 2 * fb;
     coords.push((x as i32, y as i32));
     for _ in 1..vcount {
@@ -57,7 +57,7 @@ fn load_feats(bytes: &[u8]) -> (format::Header, Vec<Feat>) {
     let h = format::parse(p).unwrap();
     assert!(h.geom <= 1, "arc-store containers only (geom 0/1)");
     let qmax = ((1u64 << (h.quant_bits - 1)) - 1) as f64;
-    let dq = |v: i32, half: f64| v as f64 / qmax * half;
+    let dq = |v: i32, half: f64| f64::from(v) / qmax * half;
     let mut feats: Vec<Feat> = (0..h.n_features)
         .map(|_| Feat { offset: 0.0, tzid: None, polys: Vec::new() })
         .collect();
@@ -122,7 +122,7 @@ fn main() {
     for path in std::env::args().skip(1) {
         let bytes = std::fs::read(&path).unwrap();
         let (h, feats) = load_feats(&bytes);
-        let deg = h.grid_deg as f64;
+        let deg = f64::from(h.grid_deg);
         let fb = fixed_bytes(h.quant_bits);
         let npolys: usize = feats.iter().map(|f| f.polys.len()).sum();
         let polys_per_feat: Vec<usize> = feats.iter().map(|f| f.polys.len()).collect();

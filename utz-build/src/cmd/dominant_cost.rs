@@ -63,8 +63,8 @@ fn early_exit(g: &grid::CellGrid, csr: &grid::Csr) -> f64 {
         let li = (p & 0x7FFF) as usize;
         let first = csr.list_ids[csr.list_offsets[li] as usize];
         for &(z, n) in &g.tallies[c] {
-            tot += n as u64;
-            if z == first { hit += n as u64; }
+            tot += u64::from(n);
+            if z == first { hit += u64::from(n); }
         }
     }
     if tot == 0 { 0.0 } else { hit as f64 / tot as f64 }

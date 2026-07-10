@@ -65,6 +65,7 @@ pub struct Problem {
 /// arcs at `qbits`, then locate every surviving crossing/overlap. A spot on a
 /// shared border is reported once per owning ring (dedupe by coordinates for
 /// display).
+#[must_use]
 pub fn find_problems(t: &Topology, arc_coords: &[Vec<(f64, f64)>], qbits: u32) -> Vec<Problem> {
     let qmax = ((1u64 << (qbits - 1)) - 1) as f64;
     let mut cst = CleanStats::default();
@@ -137,8 +138,8 @@ pub fn ring_bad(ri: usize, c: &[(i32, i32)], b: &mut Bad) {
                     let mut pts = [p1, p2, q1, q2];
                     pts.sort_unstable();
                     let (x, y) = (
-                        (pts[1].0 as f64 + pts[2].0 as f64) / 2.0,
-                        (pts[1].1 as f64 + pts[2].1 as f64) / 2.0,
+                        f64::midpoint(f64::from(pts[1].0), f64::from(pts[2].0)),
+                        f64::midpoint(f64::from(pts[1].1), f64::from(pts[2].1)),
                     );
                     b.locs.push(Loc { ring: ri, kind: Kind::Overlap, x, y });
                 }
@@ -155,11 +156,11 @@ fn cross_point(
     (p1, p2): ((i32, i32), (i32, i32)),
     (q1, q2): ((i32, i32), (i32, i32)),
 ) -> (f64, f64) {
-    let (dx, dy) = ((p2.0 - p1.0) as f64, (p2.1 - p1.1) as f64);
-    let (ex, ey) = ((q2.0 - q1.0) as f64, (q2.1 - q1.1) as f64);
+    let (dx, dy) = (f64::from(p2.0 - p1.0), f64::from(p2.1 - p1.1));
+    let (ex, ey) = (f64::from(q2.0 - q1.0), f64::from(q2.1 - q1.1));
     let denom = dx * ey - dy * ex;
-    let t = ((q1.0 - p1.0) as f64 * ey - (q1.1 - p1.1) as f64 * ex) / denom;
-    (p1.0 as f64 + t * dx, p1.1 as f64 + t * dy)
+    let t = (f64::from(q1.0 - p1.0) * ey - f64::from(q1.1 - p1.1) * ex) / denom;
+    (f64::from(p1.0) + t * dx, f64::from(p1.1) + t * dy)
 }
 
 enum Class {
@@ -170,12 +171,12 @@ enum Class {
 }
 
 fn orient(a: (i32, i32), b: (i32, i32), c: (i32, i32)) -> i128 {
-    (b.0 as i128 - a.0 as i128) * (c.1 as i128 - a.1 as i128)
-        - (b.1 as i128 - a.1 as i128) * (c.0 as i128 - a.0 as i128)
+    (i128::from(b.0) - i128::from(a.0)) * (i128::from(c.1) - i128::from(a.1))
+        - (i128::from(b.1) - i128::from(a.1)) * (i128::from(c.0) - i128::from(a.0))
 }
 
 fn sgn(v: i128) -> i8 {
-    (v > 0) as i8 - (v < 0) as i8
+    i8::from(v > 0) - i8::from(v < 0)
 }
 
 fn in_bbox(p: (i32, i32), a: (i32, i32), b: (i32, i32)) -> bool {

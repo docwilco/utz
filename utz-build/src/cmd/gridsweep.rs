@@ -16,13 +16,13 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let rings: Vec<Vec<(f64, f64)>> = feats.iter()
         .flat_map(|f| f.polys.iter().flatten().cloned())
         .collect();
-    let nedges: usize = rings.iter().map(|r| r.len()).sum();
+    let nedges: usize = rings.iter().map(std::vec::Vec::len).sum();
     println!("{}: {} rings, ~{} edges\n", ds.to_uppercase(), rings.len(), nedges);
     println!("{:>4}{:>12}{:>12}{:>11}{:>13}{:>11}", "deg", "cells", "border", "interior", "P(PIP)", "grid mem");
     println!("{}", "-".repeat(63));
 
     for d in 1u32..=20 {
-        let df = d as f64;
+        let df = f64::from(d);
         let ncols = ((360.0 / df).ceil()) as usize;
         let nrows = ((180.0 / df).ceil()) as usize;
         let total = ncols * nrows;

@@ -1,7 +1,7 @@
 //! Population density for density-weighted simplification (GHS-POP R2023A).
 //!
 //! Source: JRC's Global Human Settlement Layer population grid — a single
-//! global GeoTIFF, WGS84, 30 arc-seconds (~1 km), population *count* per
+//! global `GeoTIFF`, WGS84, 30 arc-seconds (~1 km), population *count* per
 //! cell, free direct download. One-time: fetch the ~460 MB zip through the
 //! [`crate::download`] cache, stream-decode the tif tile by tile summing 8×8
 //! blocks into a 4-arc-minute grid, convert counts → people/km², and cache
@@ -60,6 +60,7 @@ impl DensityGrid {
     }
 
     /// Density at a point; outside the grid → 0.
+    #[must_use]
     pub fn sample(&self, lon: f64, lat: f64) -> f64 {
         let ix = ((lon - self.lon0) / self.dlon).floor() as i64;
         let iy = ((self.lat0 - lat) / self.dlat).floor() as i64;
@@ -70,6 +71,7 @@ impl DensityGrid {
     /// (Amanatides–Woo traversal in cell space). This — not per-vertex
     /// sampling — is what boundary weighting uses: a long straight edge can
     /// cross a metro area without placing a vertex in it.
+    #[must_use]
     pub fn max_along(&self, a: (f64, f64), b: (f64, f64)) -> f64 {
         // continuous cell-space coordinates (x → lon cells, y → rows south)
         let (x0, y0) = ((a.0 - self.lon0) / self.dlon, (self.lat0 - a.1) / self.dlat);
@@ -80,17 +82,17 @@ impl DensityGrid {
         let (dx, dy) = (x1 - x0, y1 - y0);
         let (sx, sy) = (if dx > 0.0 { 1 } else { -1 }, if dy > 0.0 { 1 } else { -1 });
         // param t along the segment at the next x/y cell-boundary crossing
-        let (mut tx, tdx) = if dx != 0.0 {
+        let (mut tx, tdx) = if dx == 0.0 {
+            (f64::INFINITY, f64::INFINITY)
+        } else {
             let first = (ix + i64::from(dx > 0.0)) as f64;
             (((first - x0) / dx).abs().max(0.0), (1.0 / dx).abs())
-        } else {
-            (f64::INFINITY, f64::INFINITY)
         };
-        let (mut ty, tdy) = if dy != 0.0 {
+        let (mut ty, tdy) = if dy == 0.0 {
+            (f64::INFINITY, f64::INFINITY)
+        } else {
             let first = (iy + i64::from(dy > 0.0)) as f64;
             (((first - y0) / dy).abs().max(0.0), (1.0 / dy).abs())
-        } else {
-            (f64::INFINITY, f64::INFINITY)
         };
         // exactly one boundary crossing per step — no float termination games
         for _ in 0..(ex - ix).abs() + (ey - iy).abs() {
@@ -122,7 +124,7 @@ impl DensityGrid {
         f64::from(self.cells[iy as usize * self.w + ix as usize])
     }
 
-    /// Decode the GHS-POP GeoTIFF, summing 8×8 pixel blocks and converting
+    /// Decode the GHS-POP `GeoTIFF`, summing 8×8 pixel blocks and converting
     /// population counts to people/km².
     pub fn from_ghs_pop_tif(tif_path: &Path) -> anyhow::Result<Self> {
         let mut dec = Decoder::new(BufReader::new(std::fs::File::open(tif_path)?))?

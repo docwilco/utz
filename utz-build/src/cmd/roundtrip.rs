@@ -52,7 +52,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         .map(|a| {
             let mut q: Vec<(i32, i32)> = a.iter().map(|&(x, y)| (qx(x), qy(y))).collect();
             q.dedup();
-            q.iter().map(|&(x, y)| (x as f64 / qmax * 180.0, y as f64 / qmax * 90.0)).collect()
+            q.iter().map(|&(x, y)| (f64::from(x) / qmax * 180.0, f64::from(y) / qmax * 90.0)).collect()
         })
         .collect();
     let quantized = t.reconstruct(&feats, &arcs_dq);
@@ -67,12 +67,12 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     for (i, &(lo, la)) in pts.iter().enumerate() {
         let (px, py) = (qx(lo), qy(la));
         let want = lookup_linear(&refs, px, py);
-        let g = got[i].map(|s| s.to_string());
+        let g = got[i].map(std::string::ToString::to_string);
         if g == want { continue; }
         diff += 1;
         // finder answer valid if its feature actually contains the point
-        let ok = g.as_deref().map(|tz| refs.iter().any(|(t, polys)| t == tz
-            && polys.iter().any(|p| contains(p, px, py)))).unwrap_or(false);
+        let ok = g.as_deref().is_some_and(|tz| refs.iter().any(|(t, polys)| t == tz
+            && polys.iter().any(|p| contains(p, px, py))));
         if !ok {
             wrong += 1;
             if shown < 8 { shown += 1; println!("  WRONG ({lo:.4},{la:.4}) finder={g:?} linear={want:?}"); }
@@ -144,7 +144,7 @@ fn build_refs(feats: &[Feat], qmax: f64) -> Vec<Ref> {
     }).collect()
 }
 fn contains(rings: &[Vec<(i32, i32)>], px: i32, py: i32) -> bool {
-    let slices: Vec<&[(i32, i32)]> = rings.iter().map(|r| r.as_slice()).collect();
+    let slices: Vec<&[(i32, i32)]> = rings.iter().map(std::vec::Vec::as_slice).collect();
     utz::pip::contains_i64(&slices, px, py)
 }
 fn lookup_linear(refs: &[Ref], px: i32, py: i32) -> Option<String> {

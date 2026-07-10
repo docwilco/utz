@@ -22,7 +22,7 @@ fn pushb(out: &mut Vec<u8>, v: i32, bits: u32) {
 
 fn zigzag(v: i64) -> u64 { ((v << 1) ^ (v >> 63)) as u64 }
 fn put_varint(out: &mut Vec<u8>, mut v: u64) {
-    loop { let b = (v & 0x7f) as u8; v >>= 7; if v == 0 { out.push(b); break; } else { out.push(b | 0x80); } }
+    loop { let b = (v & 0x7f) as u8; v >>= 7; if v == 0 { out.push(b); break; }    out.push(b | 0x80); }
 }
 
 type VId = u32;
@@ -47,6 +47,7 @@ pub struct Topology {
 
 impl Topology {
     /// Reconstruct feature geometry from (possibly re-quantized) arc coords.
+    #[must_use]
     pub fn reconstruct(&self, feats: &[Feat], arc_coords: &[Vec<(f64, f64)>]) -> Vec<Feat> {
         let ring_coords = |ring_idx: usize| -> Vec<(f64, f64)> {
             let mut c: Vec<(f64, f64)> = Vec::new();
@@ -69,23 +70,27 @@ impl Topology {
     }
 }
 
+#[must_use]
 pub fn encode_topology(feats: &[Feat], eps_deg: f64) -> TopoOut {
     encode_topology_q(feats, eps_deg, 24)
 }
 
 /// `qbits` selects the absolute grid: 16 = i16 (~611 m lon), 24 = i24 (~2.4 m), 32 = cm.
+#[must_use]
 pub fn encode_topology_q(feats: &[Feat], eps_deg: f64, qbits: u32) -> TopoOut {
     encode_topology_qm(feats, eps_deg, qbits, false)
 }
 
 /// Steps 1–4 of Format B: dedup vertices, cut shared arcs at junctions,
 /// topology-aware RDP (each arc simplified exactly once, endpoints fixed).
+#[must_use]
 pub fn build_topology(feats: &[Feat], eps_deg: f64) -> Topology {
     build_topology_algo(feats, Simplify::Rdp { eps: eps_deg })
 }
 
 /// [`build_topology`] with the simplification algorithm as a knob
 /// (`utz-simplify` menu: RDP / Visvalingam–Whyatt / Imai–Iri / None).
+#[must_use]
 pub fn build_topology_algo(feats: &[Feat], algo: Simplify) -> Topology {
     build_topology_impl(feats, algo, None)
 }
@@ -224,15 +229,16 @@ fn build_topology_impl(feats: &[Feat], algo: Simplify, edge_weight: Option<&Edge
 
 /// `abs_fixed`: store arc vertices as fixed-width absolute ints (random-access)
 /// instead of the default delta + zigzag-varint stream.
+#[must_use]
 pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: bool) -> TopoOut {
     let qmax = qmax_of(qbits);
     let topo = build_topology(feats, eps_deg);
     let Topology { arc_coords, ring_refs, structure } = &topo;
-    let verts: usize = arc_coords.iter().map(|a| a.len()).sum();
+    let verts: usize = arc_coords.iter().map(std::vec::Vec::len).sum();
     let simplified = topo.reconstruct(feats, arc_coords);
 
     // 5. serialize
-    let total_refs: usize = ring_refs.iter().map(|r| r.len()).sum();
+    let total_refs: usize = ring_refs.iter().map(std::vec::Vec::len).sum();
     let mut pool: Vec<String> = Vec::new();
     let mut sidx: HashMap<String, u16> = HashMap::new();
     for f in feats {
@@ -248,7 +254,7 @@ pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: b
         put_varint(&mut o, a.len() as u64);
         let (mut px, mut py) = (0i64, 0i64);
         for (i, &(x, y)) in a.iter().enumerate() {
-            let (cx, cy) = (qxb(x, qmax) as i64, qyb(y, qmax) as i64);
+            let (cx, cy) = (i64::from(qxb(x, qmax)), i64::from(qyb(y, qmax)));
             if abs_fixed || i == 0 {
                 pushb(&mut o, cx as i32, qbits); pushb(&mut o, cy as i32, qbits);
             } else {
@@ -259,7 +265,7 @@ pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: b
     }
     for (fi, f) in feats.iter().enumerate() {
         o.extend_from_slice(&(f.offset as f32).to_le_bytes());
-        let ti = f.tzid.as_ref().map(|t| sidx[t]).unwrap_or(0xFFFF);
+        let ti = f.tzid.as_ref().map_or(0xFFFF, |t| sidx[t]);
         o.extend_from_slice(&ti.to_le_bytes());
         let (mut nx, mut ny, mut xx, mut xy) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
         for p in &f.polys { for r in p { for &(x, y) in r { let (a, b) = (qxb(x, qmax), qyb(y, qmax)); nx = nx.min(a); ny = ny.min(b); xx = xx.max(a); xy = xy.max(b); }}}
@@ -269,7 +275,7 @@ pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: b
             o.extend_from_slice(&(poly.len() as u16).to_le_bytes());
             for &ring_idx in poly {
                 put_varint(&mut o, ring_refs[ring_idx].len() as u64);
-                for &r in &ring_refs[ring_idx] { put_varint(&mut o, r as u64); }
+                for &r in &ring_refs[ring_idx] { put_varint(&mut o, u64::from(r)); }
             }
         }
     }
@@ -285,7 +291,7 @@ mod tests {
     /// interior vertices with 0.001 bumps (fodder for simplification).
     fn two_squares() -> Vec<Feat> {
         let shared: Vec<(f64, f64)> = (0..=10)
-            .map(|i| (1.0 + if i % 2 == 1 { 0.001 } else { 0.0 }, i as f64 / 10.0))
+            .map(|i| (1.0 + if i % 2 == 1 { 0.001 } else { 0.0 }, f64::from(i) / 10.0))
             .collect(); // (1,0) … (1,1), odd indices bumped east
         let mut left: Ring = vec![(0.0, 0.0)];
         left.extend(&shared); // up the shared border
@@ -368,16 +374,16 @@ mod tests {
         // "dense" stretch around y=0.5: edges whose midpoint falls in it get a
         // small multiplier (0.05 * 0.01 = 0.0005 < the 0.001 bumps)
         let weight = |a: (f64, f64), b: (f64, f64)| {
-            if (0.42..=0.58).contains(&((a.1 + b.1) / 2.0)) { 0.05 } else { 1.0 }
+            if (0.42..=0.58).contains(&f64::midpoint(a.1, b.1)) { 0.05 } else { 1.0 }
         };
         let t = build_topology_weighted(&feats, Simplify::Rdp { eps: 0.01 }, &weight);
         let rec = t.reconstruct(&feats, &t.arc_coords);
         for f in &rec {
             let ring = &f.polys[0][0];
             // the weighted stretch survives in BOTH zones (arc shared once)…
-            assert!(ring.contains(&kept_bump), "{:?}", ring);
+            assert!(ring.contains(&kept_bump), "{ring:?}");
             // …and the uniform-weight stretches still simplify away
-            assert!(!ring.contains(&dropped_bump), "{:?}", ring);
+            assert!(!ring.contains(&dropped_bump), "{ring:?}");
         }
         // unweighted at the same eps drops every bump
         let rec0 = {

@@ -29,6 +29,7 @@ pub fn webdist_index() -> anyhow::Result<String> {
 /// | u32 n_rings | per ring: u32 nrefs | u32 refs (id<<1|rev)
 /// | per feature: u16 npolys | per poly: u16 nrings | u32 ring_idx[nrings]`
 /// — byte-packed, no alignment (the WASM parser reads bytewise).
+#[must_use]
 pub fn dataset_bin(
     t: &crate::topo::Topology,
     feats: &[crate::Feat],
@@ -38,7 +39,7 @@ pub fn dataset_bin(
 ) -> Vec<u8> {
     let arcs = &t.arc_coords;
     let n_arcs = arcs.len();
-    let n_verts: usize = arcs.iter().map(|a| a.len()).sum();
+    let n_verts: usize = arcs.iter().map(std::vec::Vec::len).sum();
     let mut o = Vec::with_capacity(24 + 4 * n_arcs + 20 * n_verts);
     o.extend_from_slice(b"uTZv");
     o.extend_from_slice(&(u32::from(g.is_some()) | 2).to_le_bytes());
@@ -100,6 +101,7 @@ pub fn dataset_bin(
 /// | u8 cells[w·h]` — the grid max-pooled 4× and log-quantized
 /// (0 = unpopulated → transparent, 255 ≈ 50k p/km²); the JS reprojects
 /// rows to Mercator when drawing.
+#[must_use]
 pub fn heat_bin(g: &crate::density::DensityGrid) -> Vec<u8> {
     const DS: usize = 4;
     let (w, h) = (g.w.div_ceil(DS), g.h.div_ceil(DS));

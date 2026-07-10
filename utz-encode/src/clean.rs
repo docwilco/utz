@@ -33,8 +33,8 @@ enum Kind {
 
 /// How the path bends at `q` between `p` and `r` (all distinct from `q`).
 fn classify(p: (i32, i32), q: (i32, i32), r: (i32, i32)) -> Kind {
-    let (ax, ay) = ((q.0 - p.0) as i64, (q.1 - p.1) as i64);
-    let (bx, by) = ((r.0 - q.0) as i64, (r.1 - q.1) as i64);
+    let (ax, ay) = (i64::from(q.0 - p.0), i64::from(q.1 - p.1));
+    let (bx, by) = (i64::from(r.0 - q.0), i64::from(r.1 - q.1));
     if ax * by != ay * bx {
         return Kind::Keep;
     }
@@ -138,6 +138,7 @@ fn clean_cyclic(a: &mut Vec<(i32, i32)>, st: &mut CleanStats) {
 
 /// Assemble one ring's quantized coords from its signed arc refs — the
 /// integer twin of `Topology::reconstruct`'s ring assembly.
+#[must_use]
 pub fn ring_coords_q(refs: &[u32], arcs: &[Vec<(i32, i32)>]) -> Vec<(i32, i32)> {
     let mut c: Vec<(i32, i32)> = Vec::new();
     for &r in refs {
@@ -162,6 +163,7 @@ pub fn ring_coords_q(refs: &[u32], arcs: &[Vec<(i32, i32)>]) -> Vec<(i32, i32)> 
 /// matters: a bowtie with equal opposite lobes has signed area 0 yet still
 /// covers both lobes under the runtime's even-odd rule — dropping it would
 /// lose real coverage. Exact in i128 for all qbits.
+#[must_use]
 pub fn ring_degenerate(c: &[(i32, i32)]) -> bool {
     if c.len() < 3 {
         return true;
@@ -169,7 +171,7 @@ pub fn ring_degenerate(c: &[(i32, i32)]) -> bool {
     let mut a2: i128 = 0;
     for i in 0..c.len() {
         let (p, q) = (c[i], c[(i + 1) % c.len()]);
-        a2 += p.0 as i128 * q.1 as i128 - q.0 as i128 * p.1 as i128;
+        a2 += i128::from(p.0) * i128::from(q.1) - i128::from(q.0) * i128::from(p.1);
     }
     a2 == 0 && !has_proper_cross(c)
 }
@@ -180,9 +182,9 @@ pub fn ring_degenerate(c: &[(i32, i32)]) -> bool {
 fn has_proper_cross(c: &[(i32, i32)]) -> bool {
     let n = c.len();
     let orient = |a: (i32, i32), b: (i32, i32), p: (i32, i32)| -> i8 {
-        let v = (b.0 as i128 - a.0 as i128) * (p.1 as i128 - a.1 as i128)
-            - (b.1 as i128 - a.1 as i128) * (p.0 as i128 - a.0 as i128);
-        (v > 0) as i8 - (v < 0) as i8
+        let v = (i128::from(b.0) - i128::from(a.0)) * (i128::from(p.1) - i128::from(a.1))
+            - (i128::from(b.1) - i128::from(a.1)) * (i128::from(p.0) - i128::from(a.0));
+        i8::from(v > 0) - i8::from(v < 0)
     };
     for i in 0..n {
         let (p1, p2) = (c[i], c[(i + 1) % n]);

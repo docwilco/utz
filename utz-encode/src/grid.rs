@@ -19,7 +19,7 @@ pub struct CellGrid {
     pub nrows: usize,
     /// sorted candidate feature ids per cell (from the edge walk; empty = no ring)
     pub sets: Vec<Vec<u16>>,
-    /// dominant zone per cell from subcell ownership (NO_ZONE if nothing filled)
+    /// dominant zone per cell from subcell ownership (`NO_ZONE` if nothing filled)
     pub dominant: Vec<u16>,
     /// per-cell subcell ownership tallies (candidate id -> subcells owned)
     pub tallies: Vec<Vec<(u16, u32)>>,
@@ -27,6 +27,7 @@ pub struct CellGrid {
 
 /// Rasterize `feats` onto a `deg`-cell grid; ownership sampled on a grid
 /// `sub`× finer (sub=8 at 2° → 0.25° subcells).
+#[must_use]
 pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
     let ncols = (360.0 / deg).ceil() as usize;
     let nrows = (180.0 / deg).ceil() as usize;
@@ -93,7 +94,7 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
                 let xs = &mut row_x[j as usize];
                 xs.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
                 for pair in xs.chunks_exact(2) {
-                    let (xa, xb) = (pair[0] as f64, pair[1] as f64);
+                    let (xa, xb) = (f64::from(pair[0]), f64::from(pair[1]));
                     let i0 = (((xa + 180.0) / r - 0.5).ceil().max(0.0)) as usize;
                     let i1 = (((xb + 180.0) / r - 0.5).floor().min(fcols as f64 - 1.0)) as isize;
                     let base = j as usize * fcols;
@@ -125,8 +126,7 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
         .map(|t| {
             t.iter()
                 .max_by_key(|&(&z, &c)| (c, core::cmp::Reverse(z)))
-                .map(|(&z, _)| z)
-                .unwrap_or(NO_ZONE)
+                .map_or(NO_ZONE, |(&z, _)| z)
         })
         .collect();
     let tallies: Vec<Vec<(u16, u32)>> = tallies.into_iter().map(|t| {
@@ -153,14 +153,14 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
 pub enum Order {
     /// ascending feature id — maximal interning (baseline)
     IdSorted,
-    /// descending global zone area — deterministic per set, same interning as IdSorted
+    /// descending global zone area — deterministic per set, same interning as `IdSorted`
     AreaDesc,
     /// this cell's dominant zone first, rest id-sorted — best early-exit, breaks interning
     CellDominantFirst,
 }
 
 pub struct Csr {
-    /// u16 per cell: high bit 0 = zone id (or NO_ZONE marker semantics left to
+    /// u16 per cell: high bit 0 = zone id (or `NO_ZONE` marker semantics left to
     /// the container), high bit 1 = index into the interned lists
     pub primary: Vec<u16>,
     pub list_offsets: Vec<u16>,
@@ -169,6 +169,7 @@ pub struct Csr {
 }
 
 impl Csr {
+    #[must_use]
     pub fn bytes(&self) -> usize {
         self.primary.len() * 2 + self.list_offsets.len() * 2 + self.list_ids.len() * 2
     }
@@ -176,6 +177,7 @@ impl Csr {
 
 /// Build the interned CSR. `areas` (global zone area, any consistent unit) is
 /// used by `AreaDesc`/`CellDominantFirst`.
+#[must_use]
 pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
     let total = grid.ncols * grid.nrows;
     let mut primary = vec![0u16; total];
@@ -221,6 +223,7 @@ pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
 
 /// Approximate global area per feature (equirectangular shoelace with cos-lat
 /// correction; exteriors minus holes, clamped ≥ 0). Ranking only.
+#[must_use]
 pub fn feat_areas(feats: &[Feat]) -> Vec<f64> {
     feats.iter().map(|f| {
         let mut a = 0.0f64;

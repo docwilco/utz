@@ -33,7 +33,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let feats = utz_build::load(&ds)?;
     let out = topo::encode_topology(&feats, eps_m / 111_320.0);
     let quant = quantize(&out.simplified);
-    let verts: usize = quant.iter().flat_map(|(_, ps)| ps).flatten().map(|r| r.len()).sum();
+    let verts: usize = quant.iter().flat_map(|(_, ps)| ps).flatten().map(std::vec::Vec::len).sum();
     println!("{} eps={eps_m}m: {} features, {verts} quantized verts, {npts} points\n",
         ds.to_uppercase(), quant.len());
 
@@ -41,7 +41,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let gpolys: Vec<(usize, geo::Polygon<i64>)> = quant.iter().enumerate()
         .flat_map(|(fi, (_, polys))| polys.iter().map(move |p| {
             let ring = |r: &Vec<(i32, i32)>| -> geo::LineString<i64> {
-                let mut v: Vec<(i64, i64)> = r.iter().map(|&(x, y)| (x as i64, y as i64)).collect();
+                let mut v: Vec<(i64, i64)> = r.iter().map(|&(x, y)| (i64::from(x), i64::from(y))).collect();
                 if v.first() != v.last() { if let Some(&f) = v.first() { v.push(f); } }
                 v.into()
             };
@@ -57,7 +57,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     struct P<'a> { fi: usize, bbox: (i32, i32, i32, i32), rings: Vec<&'a [(i32, i32)]> }
     let polys: Vec<P> = quant.iter().enumerate()
         .flat_map(|(fi, (_, ps))| ps.iter().map(move |p| {
-            let rings: Vec<&[(i32, i32)]> = p.iter().map(|r| r.as_slice()).collect();
+            let rings: Vec<&[(i32, i32)]> = p.iter().map(std::vec::Vec::as_slice).collect();
             let mut bb = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
             for &(x, y) in &p[0] {
                 bb = (bb.0.min(x), bb.1.min(y), bb.2.max(x), bb.3.max(y));
@@ -116,7 +116,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let t = Instant::now();
     let mut oracle: Vec<Option<usize>> = Vec::with_capacity(npts);
     for &(px, py) in &pts {
-        let pt = geo::Point::new(px as i64, py as i64);
+        let pt = geo::Point::new(i64::from(px), i64::from(py));
         oracle.push(gpolys.iter().zip(&polys)
             .find(|((_, p), b)| px >= b.bbox.0 && py >= b.bbox.1 && px <= b.bbox.2 && py <= b.bbox.3
                 && p.contains(&pt))
@@ -131,7 +131,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         .flat_map(|(fi, (_, polys))| polys.iter().map(move |p| {
             let ring = |r: &Vec<(i32, i32)>| -> Vec<geometry_rs::Point> {
                 let mut v: Vec<geometry_rs::Point> = r.iter()
-                    .map(|&(x, y)| geometry_rs::Point { x: x as f64, y: y as f64 })
+                    .map(|&(x, y)| geometry_rs::Point { x: f64::from(x), y: f64::from(y) })
                     .collect();
                 let first = v[0];
                 v.push(first); // expects closed GeoJSON-style rings
@@ -143,7 +143,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let t = Instant::now();
     let mut gm: Vec<Option<usize>> = Vec::with_capacity(npts);
     for &(px, py) in &pts {
-        let pt = geometry_rs::Point { x: px as f64, y: py as f64 };
+        let pt = geometry_rs::Point { x: f64::from(px), y: f64::from(py) };
         gm.push(gm_polys.iter().zip(&polys)
             .find(|((_, p), b)| px >= b.bbox.0 && py >= b.bbox.1 && px <= b.bbox.2 && py <= b.bbox.3
                 && p.contains_point(pt))

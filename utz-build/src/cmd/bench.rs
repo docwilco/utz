@@ -21,7 +21,7 @@ pub struct Args {
 pub fn run(a: Args) -> anyhow::Result<()> {
     let path = a.path.unwrap_or_else(|| utz_build::fgb_path(&utz_build::dataset("now").unwrap()).unwrap());
     let bytes = std::fs::read(&path)?;
-    let file_mib = bytes.len() as f64 / (1 << 20) as f64;
+    let file_mib = bytes.len() as f64 / f64::from(1 << 20);
 
     // ---- parse into custom in-memory form + stats ----
     let mut cf: Vec<CFeat> = Vec::new();
@@ -51,11 +51,11 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             }
         }
     }
-    println!("{}", path);
+    println!("{path}");
     println!("  features={}  verts={}  largest-feature-verts={}", cf.len(), nverts, biggest);
-    println!("  fgb in RAM (decompressed): {:.1} MiB", file_mib);
-    println!("  custom in-memory (i32 rings+bbox): {:.1} MiB", (nverts as f64 * 8.0 + cf.len() as f64 * 64.0) / (1 << 20) as f64);
-    println!("  largest to_geo() transient (f64 geo::MultiPolygon): {:.1} MiB\n", biggest as f64 * 16.0 / (1 << 20) as f64);
+    println!("  fgb in RAM (decompressed): {file_mib:.1} MiB");
+    println!("  custom in-memory (i32 rings+bbox): {:.1} MiB", (nverts as f64 * 8.0 + cf.len() as f64 * 64.0) / f64::from(1 << 20));
+    println!("  largest to_geo() transient (f64 geo::MultiPolygon): {:.1} MiB\n", biggest as f64 * 16.0 / f64::from(1 << 20));
 
     let pts = gen_pts(5000);
 
@@ -70,8 +70,8 @@ pub fn run(a: Args) -> anyhow::Result<()> {
                 for i in 0..n {
                     let (ax, ay) = ring[i]; let (bx, by) = ring[(i + 1) % n];
                     if (ay > py) != (by > py) {
-                        let dy = (by - ay) as i64;
-                        let lhs = (px - ax) as i64 * dy; let rhs = (bx - ax) as i64 * (py - ay) as i64;
+                        let dy = i64::from(by - ay);
+                        let lhs = i64::from(px - ax) * dy; let rhs = i64::from(bx - ax) * i64::from(py - ay);
                         if (dy > 0 && lhs < rhs) || (dy < 0 && lhs > rhs) { inside = !inside; }
                     }
                 }

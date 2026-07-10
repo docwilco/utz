@@ -5,13 +5,13 @@
 //! misassigned region decomposes exactly into "pockets" between the raw
 //! sub-chain and its shortcut (split where the chain crosses the shortcut
 //! line). Per config this reports:
-//!   - max deviation (m, same flat 111 320 m/deg convention as eps_m)
+//!   - max deviation (m, same flat 111 320 m/deg convention as `eps_m`)
 //!   - misassigned area (km², sum of |pocket|)
 //!   - misassigned population (people: pocket area × GHS-POP density at the
 //!     pocket — pockets are ≤ ε wide, far below the 4′ grid, so one sample
 //!     per pocket is essentially exact)
 //!
-//!     utz-build accuracy [ds] [eps_m] [w_min] [rdp|vw|ii]
+//!     utz-build accuracy [ds] [`eps_m`] [`w_min`] [rdp|vw|ii]
 
 use utz_build::density::DensityGrid;
 use utz_build::topo::{self, Simplify, Topology};
@@ -53,7 +53,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
 
     let e = eps_m / 111_320.0;
     let configs: Vec<(String, Topology)> = vec![
-        (format!("uniform ε{}", eps_m), topo::build_topology_algo(&feats, algo(e))),
+        (format!("uniform ε{eps_m}"), topo::build_topology_algo(&feats, algo(e))),
         (format!("uniform ε{}", eps_m / 2.0), topo::build_topology_algo(&feats, algo(e / 2.0))),
         (
             format!("weighted ε{eps_m}×{w_min}"),
@@ -65,7 +65,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     println!("{:>22} {:>9} {:>10} {:>12} {:>14}", "config", "verts", "max dev", "misassigned", "misassigned");
     println!("{:>22} {:>9} {:>10} {:>12} {:>14}", "", "", "(m)", "area (km²)", "pop (people)");
     for (name, t) in &configs {
-        let verts: usize = t.arc_coords.iter().map(|a| a.len()).sum();
+        let verts: usize = t.arc_coords.iter().map(std::vec::Vec::len).sum();
         let m = measure(&t0, t, &grid);
         println!(
             "{name:>22} {verts:>9} {:>10.1} {:>12.1} {:>14.0}",
@@ -108,7 +108,7 @@ fn measure(t0: &Topology, t: &Topology, grid: &DensityGrid) -> Acc {
 }
 
 /// Decompose the region between a raw sub-chain and its shortcut
-/// (chain.first() → chain.last()) into pockets, splitting the anchored
+/// (`chain.first()` → `chain.last()`) into pockets, splitting the anchored
 /// shoelace accumulation wherever the chain crosses the shortcut line.
 fn pocket_scan(chain: &[(f64, f64)], grid: &DensityGrid, acc: &mut Acc) {
     let (a, b) = (chain[0], *chain.last().unwrap());

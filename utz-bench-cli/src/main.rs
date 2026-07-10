@@ -1,4 +1,4 @@
-//! Host-side μTZ lookup bench: same harness (utz-bench-common) and the same
+//! Host-side `μTZ` lookup bench: same harness (utz-bench-common) and the same
 //! deterministic points as the ESP32-S3 firmware, so host and target numbers
 //! (and answer checksums) are directly comparable.
 //!

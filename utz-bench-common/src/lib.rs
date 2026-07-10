@@ -1,4 +1,4 @@
-//! Shared μTZ lookup-bench harness: deterministic points, an injected time
+//! Shared `μTZ` lookup-bench harness: deterministic points, an injected time
 //! source (host `Instant` / firmware timer), and elision-proof results.
 //! `no_std` + `alloc` so the exact same code runs on the CLI and the
 //! ESP32-S3 firmware.
@@ -11,6 +11,7 @@ use alloc::vec::Vec;
 
 /// Deterministic pseudo-random lon/lat points (same LCG recipe as the
 /// utz-build measurement commands, so numbers are comparable).
+#[must_use]
 pub fn gen_pts(n: usize) -> Vec<(f64, f64)> {
     let mut lcg = 0x1234_5678u64;
     let mut next = || {
@@ -31,8 +32,9 @@ pub struct BenchResult {
 }
 
 impl BenchResult {
+    #[must_use]
     pub fn us_per_lookup(&self) -> f64 {
-        self.elapsed_us as f64 / self.lookups.max(1) as f64
+        self.elapsed_us as f64 / f64::from(self.lookups.max(1))
     }
 }
 
@@ -58,7 +60,7 @@ pub fn run_rounds(finder: &utz::Finder, pts: &[(f64, f64)], rounds: usize, now_u
     let _ = run(finder, pts, now_us); // warmup
     for _ in 0..rounds.max(1) {
         let r = run(finder, pts, now_us);
-        if best.as_ref().map(|b| r.elapsed_us < b.elapsed_us).unwrap_or(true) {
+        if best.as_ref().is_none_or(|b| r.elapsed_us < b.elapsed_us) {
             best = Some(r);
         }
     }

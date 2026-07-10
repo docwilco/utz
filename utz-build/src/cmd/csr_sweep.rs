@@ -51,7 +51,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             let primary_b = csr.primary.len() * 2;
             let side_b = (csr.list_offsets.len() + csr.list_ids.len()) * 2;
             assert!(csr.uniq_lists < 0x7FFF, "list index overflows the 15-bit tag at {deg}°");
-            assert!(csr.list_ids.len() <= u16::MAX as usize, "list_offsets u16 overflow at {deg}°");
+            assert!(u16::try_from(csr.list_ids.len()).is_ok(), "list_offsets u16 overflow at {deg}°");
             println!("{:>4}{:>9}{:>9}{:>9.1}%{:>8.1}%{:>7}{:>8}{:>8.1} KB{:>8.1} KB{:>8.1} KB",
                 deg, total, border,
                 100.0 * border as f64 / total as f64,

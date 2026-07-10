@@ -39,7 +39,7 @@ pub const MAGIC: [u8; 4] = *b"uTZ1";
 pub const VERSION: u8 = 7; // v7: flags byte + image coords at quant width
                            // (i24 packed, optional ring alignment); v6 12-byte
                            // outer + EagerImage; v5 bbox; v4 poly grid; v3 geom
-/// Outer container header length (v6): magic4 + version + codec + raw_len u32
+/// Outer container header length (v6): magic4 + version + codec + `raw_len` u32
 /// + 2 reserved/pad bytes so a 4-aligned container gives a 4-aligned payload.
 pub const OUTER_LEN: usize = 12;
 
@@ -178,7 +178,7 @@ pub fn payload_from_topology(
     let qmax = ((1u64 << (p.quant_bits - 1)) - 1) as f64;
     let qx = |lon: f64| (lon / 180.0 * qmax).round() as i32;
     let qy = |lat: f64| (lat / 90.0 * qmax).round() as i32;
-    let dq = |v: i32, half: f64| v as f64 / qmax * half;
+    let dq = |v: i32, half: f64| f64::from(v) / qmax * half;
 
     // quantize arcs, then clean the snapping artifacts per shared arc (dups,
     // zero-area spikes, collinear pass-throughs) and drop rings that
@@ -219,7 +219,7 @@ pub fn payload_from_topology(
     let mut csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
     // interior/single cells answer without PIP — store the FEATURE id
     // (coarse answers need no parent hop); border lists keep poly ids
-    for v in csr.primary.iter_mut() {
+    for v in &mut csr.primary {
         if *v & 0x8000 == 0 && *v != 0x7FFF {
             *v = parent[*v as usize];
         }
@@ -235,7 +235,7 @@ pub fn payload_from_topology(
         csr.uniq_lists
     );
     anyhow::ensure!(
-        csr.list_ids.len() <= u16::MAX as usize,
+        u16::try_from(csr.list_ids.len()).is_ok(),
         "grid {}°: {} interned list ids overflow the u16 offset table — coarsen the grid",
         p.grid_deg,
         csr.list_ids.len()
@@ -335,7 +335,7 @@ pub fn payload_from_topology(
             (coords, rings, polys)
         }
     };
-    anyhow::ensure!(eager_coords <= u32::MAX as u64, "eager_coords overflows u32");
+    anyhow::ensure!(u32::try_from(eager_coords).is_ok(), "eager_coords overflows u32");
     anyhow::ensure!(eager_polys as usize == parent.len(), "poly count mismatch");
     o.extend_from_slice(&(eager_coords as u32).to_le_bytes());
     o.extend_from_slice(&eager_rings.to_le_bytes());
@@ -410,10 +410,10 @@ pub fn payload_from_topology(
                             push_fixed(&mut arc_data, x);
                             push_fixed(&mut arc_data, y);
                         } else {
-                            put_varint(&mut arc_data, zigzag(x as i64 - px));
-                            put_varint(&mut arc_data, zigzag(y as i64 - py));
+                            put_varint(&mut arc_data, zigzag(i64::from(x) - px));
+                            put_varint(&mut arc_data, zigzag(i64::from(y) - py));
                         }
-                        (px, py) = (x as i64, y as i64);
+                        (px, py) = (i64::from(x), i64::from(y));
                     }
                 }
                 GeomEncoding::Fixed => {
@@ -457,7 +457,7 @@ pub fn payload_from_topology(
                 ring_data.extend_from_slice(&(poly.len() as u16).to_le_bytes());
                 for &ri in poly {
                     put_varint(&mut ring_data, t.ring_refs[ri].len() as u64);
-                    for &r in &t.ring_refs[ri] { put_varint(&mut ring_data, r as u64); }
+                    for &r in &t.ring_refs[ri] { put_varint(&mut ring_data, u64::from(r)); }
                 }
             }
         }
@@ -485,6 +485,7 @@ pub fn payload_from_topology(
 }
 
 /// Prepend the outer header, compressing the payload with `codec`.
+#[must_use]
 pub fn finish(payload: Vec<u8>, codec: Codec) -> Vec<u8> {
     let raw_len = payload.len() as u32;
     let body = compress(&payload, codec);
@@ -498,6 +499,7 @@ pub fn finish(payload: Vec<u8>, codec: Codec) -> Vec<u8> {
     o
 }
 
+#[must_use]
 pub fn compress(raw: &[u8], codec: Codec) -> Vec<u8> {
     match codec {
         Codec::Uncompressed => raw.to_vec(),
@@ -536,6 +538,6 @@ fn put_varint(out: &mut Vec<u8>, mut v: u64) {
     loop {
         let b = (v & 0x7f) as u8;
         v >>= 7;
-        if v == 0 { out.push(b); break; } else { out.push(b | 0x80); }
+        if v == 0 { out.push(b); break; }        out.push(b | 0x80);
     }
 }

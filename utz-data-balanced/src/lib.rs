@@ -1,4 +1,4 @@
-//! μTZ `balanced` preset asset (PLAN.md §11, §14.5): dataset `now`, RDP
+//! `μTZ` `balanced` preset asset (PLAN.md §11, §14.5): dataset `now`, RDP
 //! ε=50 m with pop-density weight floor 2e-2, i24, 2/3° grid, brotli.
 //!
 //! Regenerate (writes `data/balanced.utz`, gitignored):

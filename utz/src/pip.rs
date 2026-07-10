@@ -6,7 +6,7 @@
 //! product `(b-a)×(p-a)` in a wide type decides crossing direction AND
 //! boundary (collinear) for each edge whose y-span touches the scanline.
 //!
-//! Width follows the quantization grid (overflow bound: product ≤ 4·coord_max²):
+//! Width follows the quantization grid (overflow bound: product ≤ `4·coord_max²)`:
 //! - `contains_i64`  — safe for i16/i24 grids (|coord| ≤ 2^23 → products ≤ 2^48)
 //! - `contains_i128` — for i32-fine grids (deg×1e7 overflows i64)
 //! - `contains_f64`  — **test/bench only**, never dispatched by lookup.
@@ -132,7 +132,7 @@ pip_impl!(contains_i128, ring_hit_i128, edge_i128, i128);
 // per-edge i32->f64 casts included in its cost, as any real f64 path would pay
 pip_impl!(contains_f64, ring_hit_f64, edge_f64, f64);
 
-/// Coordinate-pair storage the EagerImage kernels widen from (v7: image
+/// Coordinate-pair storage the `EagerImage` kernels widen from (v7: image
 /// coords are stored at quant width — i16/i32 as typed slices, i24 packed).
 #[cfg(feature = "geom-image")]
 pub trait CoordPair: Copy {
@@ -149,7 +149,7 @@ impl CoordPair for (i32, i32) {
 impl CoordPair for (i16, i16) {
     #[inline(always)]
     fn xy(&self) -> (i32, i32) {
-        (self.0 as i32, self.1 as i32)
+        (i32::from(self.0), i32::from(self.1))
     }
 }
 
@@ -202,8 +202,8 @@ impl CoordPair for Pack24 {
         // SAFETY: both 4-byte reads lie within this 6-byte struct
         let (xw, yw) = unsafe {
             (
-                u32::from_le((p as *const u32).read_unaligned()),
-                u32::from_le((p.add(2) as *const u32).read_unaligned()),
+                u32::from_le(p.cast::<u32>().read_unaligned()),
+                u32::from_le(p.add(2).cast::<u32>().read_unaligned()),
             )
         };
         (((xw << 8) as i32) >> 8, (yw as i32) >> 8)
@@ -302,10 +302,10 @@ mod tests {
             let mut pts: Vec<(i32, i32)> = (0..n)
                 .map(|k| {
                     let ang = k as f64 / n as f64 * core::f64::consts::TAU;
-                    let r = (1 << 12) + next(1 << 20).unsigned_abs() as i64;
+                    let r = (1 << 12) + i64::from(next(1 << 20).unsigned_abs());
                     (
-                        (cx as i64 + (ang.cos() * r as f64) as i64).clamp(-M, M - 1) as i32,
-                        (cy as i64 + (ang.sin() * r as f64) as i64).clamp(-M, M - 1) as i32,
+                        (i64::from(cx) + (ang.cos() * r as f64) as i64).clamp(-M, M - 1) as i32,
+                        (i64::from(cy) + (ang.sin() * r as f64) as i64).clamp(-M, M - 1) as i32,
                     )
                 })
                 .collect();
@@ -345,7 +345,7 @@ mod tests {
             let mut pts: Vec<(i32, i32)> = (0..n)
                 .map(|k| {
                     let ang = k as f64 / n as f64 * core::f64::consts::TAU;
-                    let r = 50 + next(400) as i64;
+                    let r = 50 + i64::from(next(400));
                     (cx + (ang.cos() * r as f64) as i32, cy + (ang.sin() * r as f64) as i32)
                 })
                 .collect();
@@ -353,18 +353,18 @@ mod tests {
             if pts.first() == pts.last() { pts.pop(); }
             if pts.len() < 3 { continue; }
 
-            let ext: geo::LineString<i64> = pts.iter().map(|&(x, y)| (x as i64, y as i64)).collect();
+            let ext: geo::LineString<i64> = pts.iter().map(|&(x, y)| (i64::from(x), i64::from(y))).collect();
             let gpoly = geo::Polygon::new(ext, vec![]);
             let rings: &[&[(i32, i32)]] = &[&pts];
             for _ in 0..200 {
                 let (px, py) = (cx + next(1200) - 600, cy + next(1200) - 600);
                 let ours = contains_i64(rings, px, py);
-                let geo_says = gpoly.contains(&geo::Point::new(px as i64, py as i64));
+                let geo_says = gpoly.contains(&geo::Point::new(i64::from(px), i64::from(py)));
                 if ours != geo_says {
                     // geo::Contains excludes the boundary; we claim it. Only
                     // that exact disagreement is allowed.
                     use geo::algorithm::Intersects;
-                    let on_boundary = gpoly.exterior().intersects(&geo::Point::new(px as i64, py as i64));
+                    let on_boundary = gpoly.exterior().intersects(&geo::Point::new(i64::from(px), i64::from(py)));
                     assert!(ours && on_boundary, "disagree off-boundary at ({px},{py})");
                 }
             }

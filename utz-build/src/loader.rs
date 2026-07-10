@@ -2,9 +2,9 @@
 //! timezone-boundary-builder **with-oceans**; the only choice is the merge
 //! vintage: `now` (65 zones, default) or `1970` (304 zones).
 //!
-//! Preferred path: download the GeoJSON zip (conditional GET) → parse.
+//! Preferred path: download the `GeoJSON` zip (conditional GET) → parse.
 //! Legacy path: prebuilt `.fgb` from the old spatialtime workspace (kept until
-//! the GeoJSON pipeline is the default everywhere).
+//! the `GeoJSON` pipeline is the default everywhere).
 
 use std::io::{BufReader, Read as _};
 use std::path::Path;
@@ -58,8 +58,9 @@ pub fn resolve_release(cache_dir: &Path) -> anyhow::Result<String> {
 
 /// TZBB release asset for a dataset, pinned to `release` (so the bytes and
 /// the header tag can't skew). TZBB naming: the unsuffixed release is the
-/// "Comprehensive" set (μTZ `all`); `-1970` = "Same since 1970"; `-now` =
+/// "Comprehensive" set (`μTZ` `all`); `-1970` = "Same since 1970"; `-now` =
 /// "Same since now"; `with-oceans` selects ocean cover.
+#[must_use]
 pub fn dataset_url(d: Dataset, release: &str) -> String {
     let oceans = if d.oceans { "-with-oceans" } else { "" };
     let vintage = match d.vintage {

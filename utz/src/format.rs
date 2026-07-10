@@ -13,7 +13,7 @@ pub const MAGIC: [u8; 4] = *b"uTZ1";
 pub const VERSION: u8 = 7; // v7: flags byte + image coords at quant width
                            // (i24 packed, optional ring alignment); v6 12-byte
                            // outer + EagerImage; v5 bbox; v4 poly grid; v3 geom
-/// Outer container header length (v6): magic4 + version + codec + raw_len u32
+/// Outer container header length (v6): magic4 + version + codec + `raw_len` u32
 /// + 2 reserved bytes so a 4-aligned container gives a 4-aligned payload.
 pub const OUTER_LEN: usize = 12;
 
@@ -23,7 +23,7 @@ pub struct Header {
     pub dataset: u8,
     pub quant_bits: u8,
     /// geometry encoding: 0 = delta+varint arcs, 1 = fixed-width arcs,
-    /// 2 = EagerImage (flattened per-ring coords at quant width, no arc store)
+    /// 2 = `EagerImage` (flattened per-ring coords at quant width, no arc store)
     pub geom: u8,
     /// reserved, must be zero (room for future format flags)
     pub flags: u8,
@@ -42,7 +42,7 @@ pub struct Header {
     pub arc_offsets: usize, // u32[n_arcs+1]
     pub arc_data: usize,
     // ring index (v4: per-poly records; grid candidates are polys)
-    /// poly id → feature id, u16[eager_polys]
+    /// poly id → feature id, u16[`eager_polys`]
     pub parent: usize,
     pub poly_offsets: usize, // u32[eager_polys+1]
     pub ring_data: usize,
@@ -65,46 +65,52 @@ pub struct Header {
     pub list_ids: usize,
 }
 
+#[must_use]
 pub fn read_u16(b: &[u8], pos: usize) -> u16 {
     u16::from_le_bytes([b[pos], b[pos + 1]])
 }
+#[must_use]
 pub fn read_u32(b: &[u8], pos: usize) -> u32 {
     u32::from_le_bytes([b[pos], b[pos + 1], b[pos + 2], b[pos + 3]])
 }
 
 /// Fixed-width signed coord: 2/3/4 bytes little-endian, sign-extended.
+#[must_use]
 pub fn read_fixed(b: &[u8], pos: usize, qbits: u8) -> i32 {
     match qbits {
-        16 => read_u16(b, pos) as i16 as i32,
+        16 => i32::from(read_u16(b, pos) as i16),
         24 => {
-            let v = (b[pos] as i32) | ((b[pos + 1] as i32) << 8) | ((b[pos + 2] as i32) << 16);
+            let v = i32::from(b[pos]) | (i32::from(b[pos + 1]) << 8) | (i32::from(b[pos + 2]) << 16);
             if v & 0x0080_0000 != 0 { v | !0x00FF_FFFF } else { v }
         }
         _ => read_u32(b, pos) as i32,
     }
 }
+#[must_use]
 pub const fn fixed_bytes(qbits: u8) -> usize {
     (qbits as usize).div_ceil(8)
 }
 
-/// Varint; returns (value, next_pos).
+/// Varint; returns (value, `next_pos`).
+#[must_use]
 pub fn read_varint(b: &[u8], mut pos: usize) -> (u64, usize) {
     let (mut v, mut shift) = (0u64, 0u32);
     loop {
         let byte = b[pos];
         pos += 1;
-        v |= ((byte & 0x7f) as u64) << shift;
+        v |= u64::from(byte & 0x7f) << shift;
         if byte & 0x80 == 0 {
             return (v, pos);
         }
         shift += 7;
     }
 }
+#[must_use]
 pub fn unzigzag(v: u64) -> i64 {
     ((v >> 1) as i64) ^ -((v & 1) as i64)
 }
 
-/// Validate the outer header; returns (codec, raw_len, payload_start).
+/// Validate the outer header; returns (codec, `raw_len`, `payload_start`).
 /// `raw_len` is the UNCOMPRESSED payload size (single exact allocation).
 pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize), Error> {
     if bytes.len() < OUTER_LEN || bytes[0..4] != MAGIC || bytes[4] != VERSION {
@@ -222,6 +228,7 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
 }
 
 /// TZBB release string recorded in the header.
+#[must_use]
 pub fn release(p: &[u8]) -> &[u8] {
     let n = p[13] as usize;
     &p[14..14 + n]

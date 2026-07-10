@@ -1,4 +1,4 @@
-//! μTZ — micro-timezone: tiny, embeddable lat/lon → IANA tzid lookup.
+//! `μTZ` — micro-timezone: tiny, embeddable lat/lon → IANA tzid lookup.
 //!
 //! Self-describing container (see PLAN.md §4) → one generic decoder: grid
 //! prefilter, then per-polygon integer PIP. Three memory modes, selected by
@@ -111,7 +111,7 @@ pub mod caps {
     pub const GEOM_VARINT: bool = cfg!(feature = "geom-varint");
     /// fixed-width arc geometry decoder (`geom-fixed`)
     pub const GEOM_FIXED: bool = cfg!(feature = "geom-fixed");
-    /// EagerImage geometry decoder (`geom-image`)
+    /// `EagerImage` geometry decoder (`geom-image`)
     pub const GEOM_IMAGE: bool = cfg!(feature = "geom-image");
     /// grid-only coarse assets (`geom-coarse`)
     pub const GEOM_COARSE: bool = cfg!(feature = "geom-coarse");
@@ -128,7 +128,7 @@ pub mod caps {
 /// Errors surfaced by the reader.
 #[derive(Debug, PartialEq, derive_more::Display, derive_more::Error)]
 pub enum Error {
-    /// The byte source is not a valid μTZ container.
+    /// The byte source is not a valid `μTZ` container.
     #[display("not a valid μTZ container")]
     BadFormat,
     /// Container is compressed with a codec this build cannot decode

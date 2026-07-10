@@ -1,4 +1,4 @@
-//! Does packing EagerImage coords to quant width beat general compression
+//! Does packing `EagerImage` coords to quant width beat general compression
 //! of the zero-padded i32 pairs? (§15 — decides whether packed images are
 //! worth it for *compressed* assets; uncompressed XIP always saves the raw
 //! 25–50%.) Takes v6 geom=2 codec-none containers, rewrites the coords

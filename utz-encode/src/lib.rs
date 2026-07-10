@@ -1,4 +1,4 @@
-//! μTZ encoder crate — everything between loaded features and a `.utz`
+//! `μTZ` encoder crate — everything between loaded features and a `.utz`
 //! container: shared-arc topology + simplification (topo), quantization,
 //! grid prefilter (grid), and the delta+varint container serializer with its
 //! generic-compression codecs (encode).

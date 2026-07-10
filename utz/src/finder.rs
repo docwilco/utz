@@ -67,11 +67,11 @@ const _: () = assert!(
         && core::mem::align_of::<crate::pip::Pack24>() == 1
 );
 
-/// EagerImage load-time check: the coords are read via typed slice casts,
+/// `EagerImage` load-time check: the coords are read via typed slice casts,
 /// so the payload must land them 4-aligned (static assets:
 /// [`crate::include_bytes_aligned!`]`(4, ..)`). Endianness is a compile-time
 /// refusal —
-/// see the `geom-image` compile_error in lib.rs.
+/// see the `geom-image` `compile_error` in lib.rs.
 fn check_image(payload: &[u8], hdr: &Header) -> Result<(), Error> {
     #[cfg(feature = "geom-image")]
     if hdr.geom == 2 && !(payload.as_ptr() as usize + hdr.img_coords).is_multiple_of(4) {
@@ -301,6 +301,7 @@ impl Finder {
     }
 
     /// TZBB release recorded in the container header.
+    #[must_use]
     pub fn tzbb_release(&self) -> &str {
         core::str::from_utf8(format::release(&self.payload[..])).unwrap_or("")
     }
@@ -309,6 +310,7 @@ impl Finder {
     /// size, straight from the v2 header counts. O(1); lets a constrained
     /// caller check fit before committing.
     #[cfg(feature = "alloc")]
+    #[must_use]
     pub fn preload_bytes(&self) -> usize {
         if self.hdr.geom >= 2 {
             return 0; // EagerImage / coarse: nothing to decode
@@ -374,6 +376,7 @@ impl Finder {
     /// Zero-copy/lazy Finders test candidates directly off the payload bytes
     /// (zero alloc); eager ones (after [`preload`](Finder::preload)) scan
     /// pre-decoded rings.
+    #[must_use]
     pub fn lookup(&self, pos: Position) -> Option<&str> {
         let (px, py) = self.quantize(pos);
         match self.cell_value(px, py) {
@@ -406,6 +409,7 @@ impl Finder {
 
     /// Grid-only approximate lookup: no geometry decoded, ~cell-size border
     /// error. Border cells answer with the cell's dominant zone.
+    #[must_use]
     pub fn lookup_coarse(&self, pos: Position) -> Option<&str> {
         let (px, py) = self.quantize(pos);
         match self.cell_value(px, py) {
@@ -431,11 +435,11 @@ impl Finder {
 
     fn cell_value(&self, px: i32, py: i32) -> u16 {
         let (h, q) = (&self.hdr, self.qmax());
-        let d = h.grid_deg as f64;
-        let lon = px as f64 / q * 180.0;
-        let lat = py as f64 / q * 90.0;
-        let c = (((lon + 180.0) / d) as i64).clamp(0, h.ncols as i64 - 1) as usize;
-        let r = (((lat + 90.0) / d) as i64).clamp(0, h.nrows as i64 - 1) as usize;
+        let d = f64::from(h.grid_deg);
+        let lon = f64::from(px) / q * 180.0;
+        let lat = f64::from(py) / q * 90.0;
+        let c = (((lon + 180.0) / d) as i64).clamp(0, i64::from(h.ncols) - 1) as usize;
+        let r = (((lat + 90.0) / d) as i64).clamp(0, i64::from(h.nrows) - 1) as usize;
         read_u16(&self.payload[..], h.primary + (r * h.ncols as usize + c) * 2)
     }
 
@@ -523,8 +527,8 @@ impl Finder {
         let (vcount, p2) = read_varint(b, pos);
         pos = p2;
         let fb = fixed_bytes(h.quant_bits);
-        let mut x = read_fixed(b, pos, h.quant_bits) as i64;
-        let mut y = read_fixed(b, pos + fb, h.quant_bits) as i64;
+        let mut x = i64::from(read_fixed(b, pos, h.quant_bits));
+        let mut y = i64::from(read_fixed(b, pos + fb, h.quant_bits));
         pos += 2 * fb;
         let mut inside = false;
         let (mut x0, mut y0) = (x as i32, y as i32);
@@ -561,7 +565,7 @@ impl Finder {
         }
     }
 
-    /// EagerImage path (geom=2): the payload geometry IS the eager cache —
+    /// `EagerImage` path (geom=2): the payload geometry IS the eager cache —
     /// one generic slice kernel folds straight off the payload bytes (flash
     /// in zero-copy mode). Coord width follows the quant width (v7): i16 /
     /// i32 as typed pairs, i24 as [`pip::Pack24`] (align 1 — no alignment
@@ -598,17 +602,17 @@ impl Finder {
             let hit = unsafe {
                 match h.quant_bits {
                     16 => pip::ring_hit_pairs(
-                        core::slice::from_raw_parts(ring(cstart, 4) as *const (i16, i16), n),
+                        core::slice::from_raw_parts(ring(cstart, 4).cast::<(i16, i16)>(), n),
                         px,
                         py,
                     ),
                     24 => pip::ring_hit_pairs(
-                        core::slice::from_raw_parts(ring(cstart, 6) as *const pip::Pack24, n),
+                        core::slice::from_raw_parts(ring(cstart, 6).cast::<pip::Pack24>(), n),
                         px,
                         py,
                     ),
                     _ => pip::ring_hit_pairs_wide(
-                        core::slice::from_raw_parts(ring(cstart, 8) as *const (i32, i32), n),
+                        core::slice::from_raw_parts(ring(cstart, 8).cast::<(i32, i32)>(), n),
                         px,
                         py,
                     ),
@@ -666,8 +670,8 @@ impl Finder {
         let (vcount, p2) = read_varint(b, pos);
         pos = p2;
         let fb = fixed_bytes(h.quant_bits);
-        let mut x = read_fixed(b, pos, h.quant_bits) as i64;
-        let mut y = read_fixed(b, pos + fb, h.quant_bits) as i64;
+        let mut x = i64::from(read_fixed(b, pos, h.quant_bits));
+        let mut y = i64::from(read_fixed(b, pos + fb, h.quant_bits));
         pos += 2 * fb;
         let start = coords.len();
         coords.push((x as i32, y as i32));

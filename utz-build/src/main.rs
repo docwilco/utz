@@ -1,4 +1,4 @@
-//! μTZ build & measurement CLI. Each subcommand lives in its own module
+//! `μTZ` build & measurement CLI. Each subcommand lives in its own module
 //! under [`cmd`] (these were formerly cargo examples).
 
 use clap::Parser;

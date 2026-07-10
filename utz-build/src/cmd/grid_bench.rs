@@ -45,8 +45,8 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let pts: Vec<(i32, i32)> = gen_pts(npts).iter().map(|&(lo, la)| (qx(lo), qy(la))).collect();
     let (ncols, nrows) = (g.ncols, g.nrows);
     let cell_of = |px: i32, py: i32| -> usize {
-        let lon = px as f64 / QMAX * 180.0;
-        let lat = py as f64 / QMAX * 90.0;
+        let lon = f64::from(px) / QMAX * 180.0;
+        let lat = f64::from(py) / QMAX * 90.0;
         let c = (((lon + 180.0) / deg) as isize).clamp(0, ncols as isize - 1) as usize;
         let r = (((lat + 90.0) / deg) as isize).clamp(0, nrows as isize - 1) as usize;
         r * ncols + c
@@ -54,7 +54,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let contains_feat = |fid: u16, px: i32, py: i32| -> bool {
         fpolys[fid as usize].iter().any(|p|
             px >= p.bbox.0 && py >= p.bbox.1 && px <= p.bbox.2 && py <= p.bbox.3 && {
-                let rings: Vec<&[(i32, i32)]> = p.rings.iter().map(|r| r.as_slice()).collect();
+                let rings: Vec<&[(i32, i32)]> = p.rings.iter().map(std::vec::Vec::as_slice).collect();
                 utz::pip::contains_i64(&rings, px, py)
             })
     };
@@ -100,12 +100,12 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         if tz(a) == tz(b) { continue; }
         diff += 1;
         let (px, py) = pts[i];
-        let ok = a.map(|fa| contains_feat(fa, px, py)).unwrap_or(false);
+        let ok = a.is_some_and(|fa| contains_feat(fa, px, py));
         if !ok {
             wrong += 1;
             if shown < 8 {
                 shown += 1;
-                let (lon, lat) = (px as f64 / QMAX * 180.0, py as f64 / QMAX * 90.0);
+                let (lon, lat) = (f64::from(px) / QMAX * 180.0, f64::from(py) / QMAX * 90.0);
                 let p = csr.primary[cell_of(px, py)];
                 println!("  WRONG ({lon:.4},{lat:.4}) grid={:?} lin={:?} cell={}",
                     tz(a), tz(b), if p & 0x8000 != 0 { "border" } else { "interior" });

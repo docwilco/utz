@@ -1,4 +1,4 @@
-//! μTZ `accurate` preset asset (PLAN.md §11, §14.5): dataset `now`, RDP
+//! `μTZ` `accurate` preset asset (PLAN.md §11, §14.5): dataset `now`, RDP
 //! ε=10 m with pop-density weight floor 1e-1, i32, 0.5° grid, brotli.
 //!
 //! Regenerate (writes `data/accurate.utz`, gitignored):
