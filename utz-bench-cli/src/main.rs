@@ -6,7 +6,7 @@
 //!
 //! A shape name picks an embedded container: the presets (`tiny`,
 //! `tiny-static`, `compact`, `balanced`, `accurate` — the utz-data-* crates,
-//! via the `utz` preset features) or a build.rs-generated custom shape
+//! via the `utz` preset features) or a generated custom shape
 //! (`compact-none`, `balanced-none`, and `tiny-fixed-static` — tiny-static
 //! with fixed-width arcs, the XIP speed tier). Anything else is read as a
 //! `.utz` file path.
@@ -14,27 +14,11 @@
 use std::time::Instant;
 
 use clap::Parser;
-
-// uncompressed twins of the compact/balanced presets, and tiny-static with
-// fixed-width arcs — the XIP speed tier (see build.rs)
-static COMPACT_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-none.utz"));
-static BALANCED_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/balanced-none.utz"));
-static TINY_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz"));
-static COMPACT_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz"));
-// eager-image twins need 4-aligned statics (EagerImage slice casts)
-static TINY_EAGER: &[u8] = utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
-static COMPACT_EAGER: &[u8] = utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/compact-eager-static.utz"));
-static TINY_COARSE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz"));
-
-// capability guards emitted next to each build.rs asset: a feature mismatch
-// between the recipes and this crate's utz features is a compile error
-include!(concat!(env!("OUT_DIR"), "/compact-none.utz.guard.rs"));
-include!(concat!(env!("OUT_DIR"), "/balanced-none.utz.guard.rs"));
-include!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz.guard.rs"));
-include!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz.guard.rs"));
-include!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz.guard.rs"));
-include!(concat!(env!("OUT_DIR"), "/compact-eager-static.utz.guard.rs"));
-include!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz.guard.rs"));
+// the shared custom shapes: uncompressed preset twins across all geometry
+// encodings (recipes + capability guards in utz-bench-common's build.rs)
+use utz_bench_common::assets::{
+    BALANCED_NONE, COMPACT_EAGER, COMPACT_FIXED, COMPACT_NONE, TINY_COARSE, TINY_EAGER, TINY_FIXED,
+};
 
 /// The embedded container for a shape name, if the argument is one.
 fn embedded(name: &str) -> Option<&'static [u8]> {

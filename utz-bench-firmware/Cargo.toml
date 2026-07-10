@@ -13,13 +13,12 @@ publish = false
 # XIP legs borrow uncompressed containers zero-copy from flash
 # (Finder::from_static); the buffered-decode legs need the preset codecs
 # (gzip/xz/brotli — all no_std-clean, PLAN §7). Preset blobs come from the
-# utz-data-* crates via the preset features; the codec-none twins are
-# generated in build.rs via the consumer builder API (`custom`).
+# utz-data-* crates via the preset features; the codec-none twins (and the
+# geom-* decoder features they need) come via utz-bench-common::assets.
 utz = { path = "../utz", default-features = false, features = [
     "alloc", "gzip", "xz", "brotli",
     "tiny", "tiny-static", "compact", "balanced",
-    # the build.rs-generated custom shapes span all three geometry decoders
-    "custom", "geom-varint", "geom-fixed", "geom-image", "geom-coarse",
+    "custom",
 ] }
 utz-bench-common = { path = "../utz-bench-common" }
 esp-hal = { version = "1.0.0", features = ["esp32s3", "unstable"] }
@@ -32,13 +31,9 @@ esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32s3"] }
 esp-storage = { version = "0.9.0", features = ["esp32s3"] }
 embedded-storage = "0.3"
 
-[build-dependencies]
-# consumer builder API for the build.rs-generated codec-none twins; compiled
-# for the host by the esp toolchain
-utz-build = { path = "../utz-build" }
-
-# build.rs runs the encoder — at the default build-override opt-level 0 the
-# weighted RDP pass takes minutes, so optimize build scripts and their deps
+# utz-bench-common's build.rs runs the encoder (compiled for the host by the
+# esp toolchain) — at the default build-override opt-level 0 the weighted RDP
+# pass takes minutes, so optimize build scripts and their deps
 [profile.release.build-override]
 opt-level = 3
 

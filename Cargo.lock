@@ -1960,7 +1960,6 @@ dependencies = [
  "clap",
  "utz",
  "utz-bench-common",
- "utz-build",
 ]
 
 [[package]]
@@ -1968,6 +1967,7 @@ name = "utz-bench-common"
 version = "0.0.0"
 dependencies = [
  "utz",
+ "utz-build",
 ]
 
 [[package]]
@@ -2014,6 +2014,9 @@ version = "0.0.0"
 [[package]]
 name = "utz-data-tiny-static"
 version = "0.0.0"
+dependencies = [
+ "include_bytes_aligned",
+]
 
 [[package]]
 name = "utz-encode"

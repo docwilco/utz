@@ -46,27 +46,12 @@ esp_bootloader_esp_idf::esp_app_desc!();
 use utz::data::{
     BALANCED as BALANCED_BR, COMPACT as COMPACT_XZ, TINY as TINY_GZ, TINY_STATIC as TINY_NONE,
 };
-// …and the build.rs-generated custom shapes (utz-build consumer builder
-// API): uncompressed twins (from_static accepts only codec none) and
-// tiny-static with fixed-width arcs — the XIP speed tier
-static COMPACT_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-none.utz"));
-static BALANCED_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/balanced-none.utz"));
-static TINY_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz"));
-static COMPACT_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz"));
-// eager-image twins: 4-aligned statics (EagerImage slice casts from flash)
-static TINY_EAGER: &[u8] = utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
-static COMPACT_EAGER: &[u8] = utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/compact-eager-static.utz"));
-static TINY_COARSE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz"));
-
-// capability guards emitted next to each build.rs asset: a feature mismatch
-// between the recipes and this crate's utz features is a compile error
-include!(concat!(env!("OUT_DIR"), "/compact-none.utz.guard.rs"));
-include!(concat!(env!("OUT_DIR"), "/balanced-none.utz.guard.rs"));
-include!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz.guard.rs"));
-include!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz.guard.rs"));
-include!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz.guard.rs"));
-include!(concat!(env!("OUT_DIR"), "/compact-eager-static.utz.guard.rs"));
-include!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz.guard.rs"));
+// …and the shared custom shapes: uncompressed twins (from_static accepts
+// only codec none) across all geometry encodings (recipes + capability
+// guards in utz-bench-common's build.rs)
+use utz_bench_common::assets::{
+    BALANCED_NONE, COMPACT_EAGER, COMPACT_FIXED, COMPACT_NONE, TINY_COARSE, TINY_EAGER, TINY_FIXED,
+};
 
 /// modest by host standards; lookups run ~250-300x host on this core (see
 /// README) so a round must stay in seconds, not minutes

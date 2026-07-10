@@ -64,3 +64,29 @@ pub fn run_rounds(finder: &utz::Finder, pts: &[(f64, f64)], rounds: usize, now_u
     }
     best.unwrap()
 }
+
+/// The build.rs-generated custom shapes both benches embed: uncompressed
+/// twins of the presets across all geometry encodings (recipes in build.rs).
+pub mod assets {
+    // uncompressed twins of the compact/balanced presets, and tiny-static
+    // with fixed-width arcs — the XIP speed tier
+    pub static COMPACT_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-none.utz"));
+    pub static BALANCED_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/balanced-none.utz"));
+    pub static TINY_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz"));
+    pub static COMPACT_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz"));
+    // eager-image twins need 4-aligned statics (EagerImage slice casts)
+    pub static TINY_EAGER: &[u8] = utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
+    pub static COMPACT_EAGER: &[u8] = utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/compact-eager-static.utz"));
+    pub static TINY_COARSE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz"));
+
+    // capability guards emitted next to each build.rs asset: a feature
+    // mismatch between the recipes and this crate's utz features is a
+    // compile error
+    include!(concat!(env!("OUT_DIR"), "/compact-none.utz.guard.rs"));
+    include!(concat!(env!("OUT_DIR"), "/balanced-none.utz.guard.rs"));
+    include!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz.guard.rs"));
+    include!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz.guard.rs"));
+    include!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz.guard.rs"));
+    include!(concat!(env!("OUT_DIR"), "/compact-eager-static.utz.guard.rs"));
+    include!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz.guard.rs"));
+}

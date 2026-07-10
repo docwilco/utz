@@ -7,5 +7,15 @@ publish = false
 
 # Shared lookup-bench harness for utz-bench-cli (host) and utz-bench-firmware
 # (ESP32-S3). no_std + alloc; the time source is injected by the caller.
+# Also home of the build.rs-generated custom shapes both benches embed
+# (`assets`) — the geom features cover every encoding those assets span.
 [dependencies]
-utz = { path = "../utz", default-features = false, features = ["alloc", "custom"] }
+utz = { path = "../utz", default-features = false, features = [
+    "alloc", "custom",
+    "geom-varint", "geom-fixed", "geom-image", "geom-coarse",
+] }
+
+[build-dependencies]
+# consumer builder API for the codec-none twins in build.rs (compiled for the
+# host, also under the firmware's esp toolchain)
+utz-build = { path = "../utz-build" }

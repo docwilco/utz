@@ -11,3 +11,7 @@ publish = false
 # generation logs + checksums attached to a GitHub release (§11 provenance).
 
 [dependencies]
+# 4-aligned embedding: this is the one preset borrowed in place by
+# Finder::from_static, so keep it alignment-proof against recipe changes
+# (only EagerImage geometry actually requires it; today's varint does not)
+include_bytes_aligned = { workspace = true }

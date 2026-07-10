@@ -6,19 +6,17 @@ license.workspace = true
 publish = false
 
 # Host-side lookup bench: the preset shapes by name (baked in via the utz
-# preset features), their codec-none twins (generated in build.rs through the
-# consumer builder API), or any .utz container file.
+# preset features), their codec-none twins (utz-bench-common::assets), or any
+# .utz container file.
 [dependencies]
 anyhow = { workspace = true }
 clap = { version = "4", features = ["derive"] }
+# the geom-* decoders for the custom shapes come via utz-bench-common
 utz = { path = "../utz", features = [
     "std", "gzip", "ruzstd", "brotli", "xz",
     # presets, for benching by shape name
     "tiny", "tiny-static", "compact", "balanced", "accurate",
-    # the build.rs-generated custom shapes span all three geometry decoders
-    "custom", "geom-varint", "geom-fixed", "geom-image", "geom-coarse",
+    # arbitrary .utz file paths
+    "custom",
 ] }
 utz-bench-common = { path = "../utz-bench-common" }
-
-[build-dependencies]
-utz-build = { path = "../utz-build" }

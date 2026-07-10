@@ -2,8 +2,9 @@
 //! the consumer builder API (`utz-build` as a build-dependency — the PLAN §11
 //! custom-tier path, dogfooded). The preset shapes come from the `utz-data-*`
 //! crates via `utz` features; only the codec-none twins, which no data crate
-//! ships, are built here. Same recipes as utz-bench-cli/build.rs so host and
-//! target checksums stay comparable.
+//! ships, are built here. One copy for both benches (exposed as
+//! `utz_bench_common::assets`), so host and target checksums stay comparable
+//! by construction.
 
 use utz_build::encode::{Codec, GeomEncoding};
 use utz_build::Config;
