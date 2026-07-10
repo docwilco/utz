@@ -5,12 +5,15 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
-# `lib` for the builder (utz-build); `cdylib` so the same encoder (plus the
-# utz-simplify exports it links in) compiles to WASM for the webdist viewer's
-# live container encode (PLAN.md §12):
-#   cargo build -p utz-encode --release --target wasm32-unknown-unknown
+# `lib` for the builder (utz-build). The webdist viewer's live container
+# encode (PLAN.md §12) wants a WASM cdylib of the same encoder (plus the
+# utz-simplify exports it links in) — requested per-build, NOT via crate-type:
+#   cargo rustc -p utz-encode --release --target wasm32-unknown-unknown --crate-type cdylib
+# (a `cdylib` crate-type would give every build unhashed artifact names, which
+# collide when the workspace builds utz-encode twice: as a member and as a
+# build-dependency via utz-bench-cli's build.rs → utz-build)
 [lib]
-crate-type = ["lib", "cdylib"]
+crate-type = ["lib"]
 
 [features]
 # zstd wraps C libzstd (zstd-sys) — fine natively, a toolchain headache on

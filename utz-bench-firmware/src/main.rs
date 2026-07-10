@@ -422,7 +422,7 @@ fn kernel_bench() {
             RingHit::Boundary => 2,
         }
     };
-    let mut run = |f: fn(&[(i32, i32)], i32, i32) -> RingHit| -> (u64, u64) {
+    let run = |f: fn(&[(i32, i32)], i32, i32) -> RingHit| -> (u64, u64) {
         let t0 = now_us();
         let mut acc = 0u64; // verdict fingerprint; also defeats elision
         for &(px, py) in &pts {

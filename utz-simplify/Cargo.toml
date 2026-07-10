@@ -5,10 +5,12 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
-# `lib` for the builder (utz-build), `cdylib` so the same code compiles to
-# WASM for the tuning-viewer HTML (PLAN.md §12, §14.8):
-#   cargo build -p utz-simplify --release --target wasm32-unknown-unknown
+# `lib` for the builder (utz-build). The tuning-viewer HTML (PLAN.md §12,
+# §14.8) wants a WASM cdylib — requested per-build, NOT via crate-type (which
+# would give unhashed artifact names that collide in workspace builds; see
+# utz-encode/Cargo.toml):
+#   cargo rustc -p utz-simplify --release --target wasm32-unknown-unknown --crate-type cdylib
 [lib]
-crate-type = ["lib", "cdylib"]
+crate-type = ["lib"]
 
 [dependencies]

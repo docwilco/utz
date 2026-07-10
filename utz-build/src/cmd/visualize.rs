@@ -123,8 +123,10 @@ fn write_z(path: &Path, data: &[u8]) -> anyhow::Result<usize> {
 /// wasm32-unknown-unknown and return the cdylib bytes.
 fn build_wasm() -> anyhow::Result<Vec<u8>> {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
+    // cdylib requested here rather than in utz-encode's crate-type — see the
+    // [lib] comment in utz-encode/Cargo.toml
     let status = std::process::Command::new("cargo")
-        .args(["build", "-p", "utz-encode", "--release", "--target", "wasm32-unknown-unknown"])
+        .args(["rustc", "-p", "utz-encode", "--release", "--target", "wasm32-unknown-unknown", "--crate-type", "cdylib"])
         .current_dir(root)
         .status()?;
     anyhow::ensure!(status.success(), "wasm build failed — try: rustup target add wasm32-unknown-unknown");
