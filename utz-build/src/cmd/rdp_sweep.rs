@@ -77,14 +77,14 @@ fn lookup(refs: &[Ref], lon: f64, lat: f64) -> String {
 }
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {
     let mut lcg = 0x1234_5678u64;
-    let mut next = || { lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
+    let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
     (0..n).map(|_| (next() * 360.0 - 180.0, next() * 180.0 - 90.0)).collect()
 }
 fn xz_dmax(raw: &[u8]) -> usize {
+    use lzma_rust2::Write as _; // no_std lzma-rust2 XzWriter
     let bits = (usize::BITS - (raw.len().max(1) - 1).leading_zeros()).clamp(12, 26);
     let mut opts = lzma_rust2::XzOptions::with_preset(9);
     opts.lzma_options.dict_size = 1u32 << bits;
-    use lzma_rust2::Write as _; // no_std lzma-rust2 XzWriter
     let mut w = lzma_rust2::XzWriter::new(Vec::new(), opts).unwrap();
     w.write_all(raw).unwrap();
     w.finish().unwrap().len()

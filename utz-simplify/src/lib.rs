@@ -200,6 +200,27 @@ pub fn visvalingam_w(pts: &[(f64, f64)], min_area: f64, w: &[f64]) -> Vec<(f64, 
     vw_impl(pts, min_area, |i| w2[i])
 }
 
+/// [`vw_impl`] heap entry; max-heap ordered by Reverse-style negated
+/// comparison so the smallest effective area pops first.
+#[derive(PartialEq)]
+struct VwEntry {
+    area: f64,
+    idx: usize,
+    stamp: u32,
+}
+impl Eq for VwEntry {}
+impl Ord for VwEntry {
+    fn cmp(&self, o: &Self) -> core::cmp::Ordering {
+        // BinaryHeap is a max-heap: invert so the smallest area pops first
+        o.area.total_cmp(&self.area).then(o.idx.cmp(&self.idx))
+    }
+}
+impl PartialOrd for VwEntry {
+    fn partial_cmp(&self, o: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
+
 /// Shared VW core: heap entries hold the *effective* area `tri / w2_of(idx)`
 /// compared against the unscaled `min_area` (division by 1.0 is bit-exact, so
 /// the scalar path is unchanged).
@@ -216,29 +237,9 @@ fn vw_impl(pts: &[(f64, f64)], min_area: f64, w2_of: impl Fn(usize) -> f64 + Cop
     let mut alive = vec![true; n];
     let mut stamp = vec![0u32; n];
 
-    // max-heap → order by Reverse-style negated comparison via sort key
-    #[derive(PartialEq)]
-    struct Entry {
-        area: f64,
-        idx: usize,
-        stamp: u32,
-    }
-    impl Eq for Entry {}
-    impl Ord for Entry {
-        fn cmp(&self, o: &Self) -> core::cmp::Ordering {
-            // BinaryHeap is a max-heap: invert so the smallest area pops first
-            o.area.total_cmp(&self.area).then(o.idx.cmp(&self.idx))
-        }
-    }
-    impl PartialOrd for Entry {
-        fn partial_cmp(&self, o: &Self) -> Option<core::cmp::Ordering> {
-            Some(self.cmp(o))
-        }
-    }
-
     let mut heap = std::collections::BinaryHeap::with_capacity(n);
     for i in 1..n - 1 {
-        heap.push(Entry { area: tri(pts[i - 1], pts[i], pts[i + 1]) / w2_of(i), idx: i, stamp: 0 });
+        heap.push(VwEntry { area: tri(pts[i - 1], pts[i], pts[i + 1]) / w2_of(i), idx: i, stamp: 0 });
     }
     while let Some(e) = heap.pop() {
         if !alive[e.idx] || e.stamp != stamp[e.idx] {
@@ -254,7 +255,7 @@ fn vw_impl(pts: &[(f64, f64)], min_area: f64, w2_of: impl Fn(usize) -> f64 + Cop
         for nb in [p, nx] {
             if nb != 0 && nb != n - 1 {
                 stamp[nb] += 1;
-                heap.push(Entry {
+                heap.push(VwEntry {
                     area: tri(pts[prev[nb]], pts[nb], pts[next[nb]]) / w2_of(nb),
                     idx: nb,
                     stamp: stamp[nb],
@@ -303,11 +304,11 @@ const II_MAX: usize = 8192;
 /// that bound is exact only where `w` is locally ~constant across a prefilter
 /// shortcut (negligible for weights sampled from a coarse grid through a
 /// smooth map); the global `eps * max(w)` bound always holds.
-#[must_use]
 ///
 /// # Panics
 ///
 /// Panics if `pts.len() != w.len()`.
+#[must_use]
 pub fn imai_iri_w(pts: &[(f64, f64)], eps: f64, w: &[f64]) -> Vec<(f64, f64)> {
     assert_eq!(pts.len(), w.len(), "one weight per point");
     if pts.len() < 3 || eps <= 0.0 {
@@ -482,7 +483,7 @@ mod tests {
     fn wiggle(n: usize, seed: u64) -> Vec<(f64, f64)> {
         let mut lcg = seed;
         let mut next = || {
-            lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
             (lcg >> 11) as f64 / (1u64 << 53) as f64
         };
         (0..n).map(|i| (i as f64 * 0.1, next() * 2.0 - 1.0)).collect()
@@ -692,7 +693,7 @@ mod tests {
         let mut lcg = seed;
         (0..n)
             .map(|_| {
-                lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
                 lo + (1.0 - lo) * ((lcg >> 11) as f64 / (1u64 << 53) as f64)
             })
             .collect()

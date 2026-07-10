@@ -30,8 +30,8 @@ pub fn run(_a: Args) -> anyhow::Result<()> {
     let look_i32 = |lo: f64, la: f64| -> String { let pt = Point::new((lo * 1e6).round() as i32, (la * 1e6).round() as i32);
         for (tz, p) in &i32p { if p.contains(&pt) { return tz.clone(); } } String::new() };
 
-    let mut lcg = 0x9e3779b97f4a7c15u64;
-    let mut next = || { lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
+    let mut lcg = 0x9e37_79b9_7f4a_7c15u64;
+    let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
     let (mut n, mut d64, mut d32) = (0u64, 0u64, 0u64);
     while n < 8000 {
         let lo = next() * 360.0 - 180.0; let la = next() * 180.0 - 90.0; n += 1;

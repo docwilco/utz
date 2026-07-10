@@ -68,7 +68,7 @@ pub struct Args {
     quant: Option<u32>,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: &Args) -> anyhow::Result<()> {
     // preset candidates (§14.5): i16 pairs with ε≥500, i24 with ε≤250 (§15)
     let shapes: Vec<(f64, u32)> = match a.eps {
         Some(e) => vec![(e, a.quant.unwrap_or(if e <= 250.0 { 24 } else { 16 }))],
@@ -84,8 +84,8 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             quant_bits: qbits,
             grid_deg: a.grid_deg,
             codec: Codec::Uncompressed,
-            simplify: Default::default(),
-            geom: Default::default(),
+            simplify: encode::SimplifyAlgo::default(),
+            geom: encode::GeomEncoding::default(),
         };
         let payload = encode::build_payload(&feats, &p)?;
         let raw = payload.len();

@@ -34,8 +34,8 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         quant_bits: qbits,
         grid_deg: 2.0,
         codec: Codec::Uncompressed,
-        simplify: Default::default(),
-        geom: Default::default(),
+        simplify: encode::SimplifyAlgo::default(),
+        geom: encode::GeomEncoding::default(),
     };
     let container = encode::encode(&feats, &p)?;
     println!("{} container: {:.1} KB uncompressed", ds.to_uppercase(), container.len() as f64 / 1024.0);
@@ -114,7 +114,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     // every codec must roundtrip to the same answers as the uncompressed finder
     let payload = encode::build_payload(&feats, &p)?;
     for codec in [Codec::Gzip, Codec::Zstd, Codec::Brotli, Codec::Xz] {
-        let c = encode::finish(payload.clone(), codec);
+        let c = encode::finish(&payload, codec);
         let f = utz::Finder::from_reader(&c[..])
             .unwrap_or_else(|e| panic!("{codec:?} decode failed: {e:?}"));
         assert_eq!(f.tzbb_release(), "roundtrip-dev");
@@ -154,6 +154,6 @@ fn lookup_linear(refs: &[Ref], px: i32, py: i32) -> Option<String> {
 }
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {
     let mut lcg = 0x1234_5678u64;
-    let mut next = || { lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
+    let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
     (0..n).map(|_| (next() * 360.0 - 180.0, next() * 180.0 - 90.0)).collect()
 }

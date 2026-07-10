@@ -73,10 +73,9 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             pip_needed += 1;
             let li = (p & 0x7FFF) as usize;
             let list = &csr.list_ids[csr.list_offsets[li] as usize..csr.list_offsets[li + 1] as usize];
-            match list.iter().copied().find(|&fid| contains_feat(fid, px, py)) {
-                Some(fid) => Some(fid),
-                None => { fallback += 1; Some(list[0]) } // quantization pushed the point off every candidate
-            }
+            let hit = list.iter().copied().find(|&fid| contains_feat(fid, px, py));
+            if hit.is_none() { fallback += 1; } // quantization pushed the point off every candidate
+            Some(hit.unwrap_or(list[0]))
         });
     }
     let t_grid = t.elapsed();
@@ -142,6 +141,6 @@ fn quantize(f: &Feat) -> Vec<QPoly> {
 
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {
     let mut lcg = 0x1234_5678u64;
-    let mut next = || { lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
+    let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
     (0..n).map(|_| (next() * 360.0 - 180.0, next() * 180.0 - 90.0)).collect()
 }

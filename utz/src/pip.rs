@@ -293,7 +293,7 @@ mod tests {
         const M: i64 = 1 << 23; // i24 coordinate range
         let mut lcg = 0x0dd_ba11u64;
         let mut next = |m: i64| -> i32 {
-            lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
             (((lcg >> 33) as i64 % m) - m / 2) as i32
         };
         for _ in 0..200 {
@@ -335,7 +335,7 @@ mod tests {
         use geo::Contains;
         let mut lcg = 0xdead_beefu64;
         let mut next = |m: i64| -> i32 {
-            lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
             ((lcg >> 33) as i64 % m) as i32
         };
         for _ in 0..200 {

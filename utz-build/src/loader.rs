@@ -95,8 +95,12 @@ pub fn load_geojson_zip(path: &Path) -> anyhow::Result<Vec<Feat>> {
     let mut zip = zip::ZipArchive::new(BufReader::new(file))?;
     let name = (0..zip.len())
         .map(|i| zip.name_for_index(i).unwrap_or("").to_string())
-        .find(|n| n.ends_with(".json") || n.ends_with(".geojson"))
-        .ok_or_else(|| anyhow::anyhow!("no geojson entry in {path:?}"))?;
+        .find(|n| {
+            Path::new(n)
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("json") || e.eq_ignore_ascii_case("geojson"))
+        })
+        .ok_or_else(|| anyhow::anyhow!("no geojson entry in {}", path.display()))?;
     let mut buf = Vec::new();
     zip.by_name(&name)?.read_to_end(&mut buf)?;
     parse_geojson(&buf)
@@ -117,14 +121,14 @@ enum Geom {
     MultiPolygon { coordinates: Vec<Vec<Vec<[f64; 2]>>> },
 }
 
-pub fn parse_geojson(bytes: &[u8]) -> anyhow::Result<Vec<Feat>> {
-    let fc: Fc = serde_json::from_slice(bytes)?;
-    Ok(fc.features.into_iter().map(|f| {
-        let polys: Vec<Poly> = match f.geometry {
 /// Deserialize a TZBB `GeoJSON` `FeatureCollection` into `Feat`s.
 ///
 /// # Errors
 /// JSON that doesn't deserialize as a Polygon/`MultiPolygon` `FeatureCollection`.
+pub fn parse_geojson(bytes: &[u8]) -> anyhow::Result<Vec<Feat>> {
+    let fc: Fc = serde_json::from_slice(bytes)?;
+    Ok(fc.features.into_iter().map(|f| {
+        let polys: Vec<Poly> = match f.geometry {
             Geom::Polygon { coordinates } => vec![rings_of(coordinates)],
             Geom::MultiPolygon { coordinates } => coordinates.into_iter().map(rings_of).collect(),
         };

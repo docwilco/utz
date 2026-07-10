@@ -179,6 +179,7 @@ impl Config {
     }
 
     /// Where to write the asset. Default: `$OUT_DIR/tz.utz` (build.rs context).
+    #[must_use]
     pub fn out_path(mut self, p: impl Into<PathBuf>) -> Self {
         self.out = Some(p.into());
         self
@@ -189,12 +190,12 @@ impl Config {
     /// `utz` features this asset needs (via [`utz::caps`]); `include!` it
     /// next to the `include_bytes!` so a feature mismatch fails the build
     /// instead of the first load.
-    pub fn generate(self) -> anyhow::Result<PathBuf> {
     ///
     /// # Errors
     /// Invalid dataset name, source download/parse failure, encoding failure,
     /// missing `OUT_DIR` when no `out_path` is set, or I/O writing the asset
     /// and its guard file.
+    pub fn generate(self) -> anyhow::Result<PathBuf> {
         let (feats, release) = crate::load_with_release(&self.dataset)?;
         let p = Params {
             dataset: crate::dataset(&self.dataset)?.code(),
@@ -230,10 +231,10 @@ impl Config {
 /// Emit `<asset>.guard.rs`: `const _` assertions against [`utz::caps`] for
 /// the geometry decoder and codec the asset needs (shared by
 /// [`Config::generate`] and the `gen` CLI).
-pub fn write_guard(out: &std::path::Path, geom: GeomEncoding, codec: Codec) -> anyhow::Result<()> {
 ///
 /// # Errors
 /// I/O failure writing `<out>.guard.rs`.
+pub fn write_guard(out: &std::path::Path, geom: GeomEncoding, codec: Codec) -> anyhow::Result<()> {
     let name = out.file_name().and_then(|n| n.to_str()).unwrap_or("asset");
     let (gc, gf) = match geom {
         GeomEncoding::DeltaVarint => ("GEOM_VARINT", "geom-varint"),
@@ -254,9 +255,11 @@ pub fn write_guard(out: &std::path::Path, geom: GeomEncoding, codec: Codec) -> a
         Codec::Xz => Some(("XZ", "xz")),
     };
     if let Some((cc, cf)) = codec_guard {
-        g.push_str(&format!(
-            "const _: () = assert!(utz::caps::{cc}, \"{name} needs the utz feature `{cf}`\");\n"
-        ));
+        use std::fmt::Write as _;
+        let _ = writeln!(
+            g,
+            "const _: () = assert!(utz::caps::{cc}, \"{name} needs the utz feature `{cf}`\");"
+        );
     }
     std::fs::write(format!("{}.guard.rs", out.display()), g)?;
     Ok(())

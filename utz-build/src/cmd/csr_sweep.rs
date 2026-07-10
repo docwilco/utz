@@ -19,7 +19,7 @@ pub struct Args {
     eps_m: f64,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: &Args) -> anyhow::Result<()> {
     let eps_m = a.eps_m;
     let pts = gen_pts(NPTS);
 
@@ -67,6 +67,6 @@ pub fn run(a: Args) -> anyhow::Result<()> {
 
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {
     let mut lcg = 0x1234_5678u64;
-    let mut next = || { lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
+    let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
     (0..n).map(|_| (next() * 360.0 - 180.0, next() * 180.0 - 90.0)).collect()
 }

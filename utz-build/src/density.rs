@@ -135,6 +135,7 @@ impl DensityGrid {
     /// I/O or TIFF decode failure, missing geotransform tags, or a sample
     /// format other than f32/f64.
     pub fn from_ghs_pop_tif(tif_path: &Path) -> anyhow::Result<Self> {
+        const KM_PER_DEG: f64 = 111.32;
         let mut dec = Decoder::new(BufReader::new(std::fs::File::open(tif_path)?))?
             .with_limits(Limits::unlimited());
         let (sw, sh) = dec.dimensions()?;
@@ -154,10 +155,7 @@ impl DensityGrid {
         for chunk in 0..(across * sh.div_ceil(ch)) as u32 {
             let (x_off, y_off) = ((chunk as usize % across) * cw, (chunk as usize / across) * ch);
             // GDAL writes all-nodata ocean tiles as sparse (offset 0) — skip
-            let data = match dec.read_chunk(chunk) {
-                Ok(d) => d,
-                Err(_) => continue,
-            };
+            let Ok(data) = dec.read_chunk(chunk) else { continue };
             let (dw, dh) = dec.chunk_data_dimensions(chunk);
             let (dw, dh) = (dw as usize, dh as usize);
             let mut add = |px: usize, py: usize, v: f64| {
@@ -189,7 +187,6 @@ impl DensityGrid {
         // is plenty: weighting needs order-of-magnitude density, not
         // demographics. cos clamped at 85° (population there ≈ 0 anyway).
         let (dlon, dlat) = (sdlon * DOWNSAMPLE as f64, sdlat * DOWNSAMPLE as f64);
-        const KM_PER_DEG: f64 = 111.32;
         let cells = (0..w * h)
             .map(|i| {
                 let lat_c = lat0 - (((i / w) as f64) + 0.5) * dlat;
@@ -248,7 +245,7 @@ fn extract_tif(zip_path: &Path, cache_dir: &Path) -> anyhow::Result<PathBuf> {
     let mut archive = zip::ZipArchive::new(std::fs::File::open(zip_path)?)?;
     let name = archive
         .file_names()
-        .find(|n| n.ends_with(".tif"))
+        .find(|n| Path::new(n).extension().is_some_and(|e| e.eq_ignore_ascii_case("tif")))
         .ok_or_else(|| anyhow::anyhow!("no .tif in {}", zip_path.display()))?
         .to_string();
     let out = cache_dir.join(name.rsplit('/').next().unwrap());

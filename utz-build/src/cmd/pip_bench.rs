@@ -27,6 +27,11 @@ pub struct Args {
     npts: usize,
 }
 
+/// Per-polygon contender record: ring slices + bbox hoisted out of the loop
+/// (the runtime's grid plays this role; every contender gets the same
+/// hoisted bbox test).
+struct P<'a> { fi: usize, bbox: (i32, i32, i32, i32), rings: Vec<&'a [(i32, i32)]> }
+
 pub fn run(a: Args) -> anyhow::Result<()> {
     let (ds, eps_m, npts) = (a.ds, a.eps_m, a.npts);
 
@@ -52,9 +57,6 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let pts: Vec<(i32, i32)> = gen_pts(npts).iter().map(|&(lo, la)| (qx(lo), qy(la))).collect();
 
     // ---- ours: per-polygon integer PIP, linear first-hit scan ----
-    // ring slices + bbox hoisted out of the loop (the runtime's grid plays
-    // this role; every contender below gets the same hoisted bbox test)
-    struct P<'a> { fi: usize, bbox: (i32, i32, i32, i32), rings: Vec<&'a [(i32, i32)]> }
     let polys: Vec<P> = quant.iter().enumerate()
         .flat_map(|(fi, (_, ps))| ps.iter().map(move |p| {
             let rings: Vec<&[(i32, i32)]> = p.iter().map(std::vec::Vec::as_slice).collect();
@@ -204,6 +206,6 @@ fn quantize(feats: &[Feat]) -> Vec<QFeat> {
 
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {
     let mut lcg = 0x1234_5678u64;
-    let mut next = || { lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
+    let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
     (0..n).map(|_| (next() * 360.0 - 180.0, next() * 180.0 - 90.0)).collect()
 }

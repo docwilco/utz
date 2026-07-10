@@ -24,6 +24,13 @@ pub struct Args {
 }
 
 pub fn run(a: Args) -> anyhow::Result<()> {
+    // stored vertices binned by the density at the vertex itself
+    const BANDS: [(f64, f64, &str); 4] = [
+        (0.0, 5.0, "<5 (empty)"),
+        (5.0, 100.0, "5-100 (rural)"),
+        (100.0, 1000.0, "100-1k (town)"),
+        (1000.0, f64::INFINITY, ">=1k (city)"),
+    ];
     let (ds, eps_m, w_min) = (a.ds, a.eps_m, a.w_min);
 
     let feats = utz_build::load(&ds)?;
@@ -36,13 +43,6 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         model.weight(grid.max_along(a, b))
     });
 
-    // stored vertices binned by the density at the vertex itself
-    const BANDS: [(f64, f64, &str); 4] = [
-        (0.0, 5.0, "<5 (empty)"),
-        (5.0, 100.0, "5-100 (rural)"),
-        (100.0, 1000.0, "100-1k (town)"),
-        (1000.0, f64::INFINITY, ">=1k (city)"),
-    ];
     let hist = |t: &topo::Topology| -> [usize; 4] {
         let mut h = [0usize; 4];
         for a in &t.arc_coords {
@@ -71,11 +71,11 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         quant_bits: 24,
         grid_deg: 2.0,
         codec: Codec::Zstd,
-        simplify: Default::default(),
-        geom: Default::default(),
+        simplify: encode::SimplifyAlgo::default(),
+        geom: encode::GeomEncoding::default(),
     };
     let container = |t: &topo::Topology| -> anyhow::Result<Vec<u8>> {
-        Ok(encode::finish(encode::payload_from_topology(t, &t.arc_coords, &feats, &p)?.0, p.codec))
+        Ok(encode::finish(&encode::payload_from_topology(t, &t.arc_coords, &feats, &p)?.0, p.codec))
     };
     let cu = container(&t_u)?;
     let cw = container(&t_w)?;

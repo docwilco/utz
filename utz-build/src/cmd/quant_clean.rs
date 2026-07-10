@@ -31,7 +31,7 @@ pub struct Args {
     viewer: String,
 }
 
-pub fn run(a: Args) -> anyhow::Result<()> {
+pub fn run(a: &Args) -> anyhow::Result<()> {
     let feats = utz_build::load(&a.ds)?;
     let t = topo::build_topology(&feats, a.eps_m / 111_320.0);
     println!("{} · RDP ε {} m · {} arcs, {} rings\n", a.ds, a.eps_m, t.arc_coords.len(), t.ring_refs.len());
@@ -83,7 +83,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
             // spot on a shared border shows up once per owning ring — group
             // the zones per location instead of repeating the URL
             let mut spots: std::collections::BTreeMap<(String, &str), std::collections::BTreeSet<&str>> =
-                Default::default();
+                std::collections::BTreeMap::new();
             for p in validate::find_problems(&t, &t.arc_coords, qbits) {
                 let kind = match p.kind { Kind::Cross => "cross", Kind::Overlap => "overlap" };
                 let tz = feats[p.feat].tzid.as_deref().unwrap_or("?");

@@ -122,7 +122,7 @@ pub fn encode_weighted(
     let t = topo::build_topology_weighted(feats, algo, &|a, b| {
         model.weight(grid.max_along(a, b))
     });
-    Ok(encode::finish(encode::payload_from_topology(&t, &t.arc_coords, feats, p)?.0, p.codec))
+    Ok(encode::finish(&encode::payload_from_topology(&t, &t.arc_coords, feats, p)?.0, p.codec))
 }
 
 /// Workspace-root `cache/` for downloaded TZBB releases (gitignored).

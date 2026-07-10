@@ -159,7 +159,7 @@ pub struct PayloadStats {
 ///
 /// Same as [`build_payload`].
 pub fn encode(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
-    Ok(finish(build_payload(feats, p)?, p.codec))
+    Ok(finish(&build_payload(feats, p)?, p.codec))
 }
 
 /// Everything but the outer header + compression (so size sweeps can compress
@@ -507,9 +507,9 @@ pub fn payload_from_topology(
 
 /// Prepend the outer header, compressing the payload with `codec`.
 #[must_use]
-pub fn finish(payload: Vec<u8>, codec: Codec) -> Vec<u8> {
+pub fn finish(payload: &[u8], codec: Codec) -> Vec<u8> {
     let raw_len = payload.len() as u32;
-    let body = compress(&payload, codec);
+    let body = compress(payload, codec);
     let mut o = Vec::with_capacity(body.len() + OUTER_LEN);
     o.extend_from_slice(&MAGIC);
     o.push(VERSION);

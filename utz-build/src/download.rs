@@ -34,12 +34,13 @@ pub fn fetch(url: &str, cache_dir: &Path) -> anyhow::Result<PathBuf> {
     match req.call() {
         Ok(resp) if resp.status() == 304 => Ok(file),
         Ok(resp) => {
+            use std::fmt::Write as _;
             let mut hdrs = String::new();
             if let Some(v) = resp.header("etag") {
-                hdrs.push_str(&format!("etag: {v}\n"));
+                let _ = writeln!(hdrs, "etag: {v}");
             }
             if let Some(v) = resp.header("last-modified") {
-                hdrs.push_str(&format!("last-modified: {v}\n"));
+                let _ = writeln!(hdrs, "last-modified: {v}");
             }
             let mut bytes = Vec::new();
             resp.into_reader().read_to_end(&mut bytes)?;

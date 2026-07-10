@@ -161,7 +161,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
 }
 
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {
-    let mut lcg = 0x9e3779b97f4a7c15u64;
-    let mut next = || { lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
+    let mut lcg = 0x9e37_79b9_7f4a_7c15u64;
+    let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
     (0..n).map(|_| (next() * 360.0 - 180.0, next() * 180.0 - 90.0)).collect()
 }
