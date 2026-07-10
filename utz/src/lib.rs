@@ -136,9 +136,9 @@ pub enum Error {
     #[display("codec not compiled in, or decompression failed")]
     Decompress,
     /// An `EagerImage` container's coordinate section is not 4-byte aligned
-    /// in memory — embed static assets with [`include_container!`] instead
-    /// of a bare `include_bytes!`.
-    #[display("EagerImage container not 4-byte aligned (use include_container!)")]
+    /// in memory — embed static assets with [`include_bytes_aligned!`]`(4, ..)`
+    /// instead of a bare `include_bytes!`.
+    #[display("EagerImage container not 4-byte aligned (use include_bytes_aligned!(4, ..))")]
     Misaligned,
     /// The container's geometry encoding has no compiled decoder — enable
     /// the matching `geom-varint` / `geom-fixed` / `geom-image` feature.
@@ -146,21 +146,12 @@ pub enum Error {
     Geometry,
 }
 
-/// Embed a `.utz` container 4-byte aligned. Required for
-/// [`Finder::from_static`] on `EagerImage` assets — the PIP kernels read
+/// Embed a `.utz` container with `include_bytes_aligned!(4, path)`. Required
+/// for [`Finder::from_static`] on `EagerImage` assets — the PIP kernels read
 /// `(i32, i32)` pairs straight from the embedded bytes, and a bare
 /// `include_bytes!` guarantees no alignment. Harmless for any other asset.
-// Re-exported so include_container! expands without consumers depending on
-// include_bytes_aligned themselves. Both the re-export and the dependency can
-// go once RFC 3806's `static_align` stabilizes (`#[align(4)]` on a static
-// holding `*include_bytes!($path)` replaces the whole wrapper-struct dance):
+// Re-exported so consumers don't need their own copy of the dependency. Both
+// the re-export and the dependency can go once RFC 3806's `static_align`
+// stabilizes (`#[align(4)]` on a static holding `*include_bytes!(path)`):
 // https://github.com/rust-lang/rfcs/pull/3806
-#[doc(hidden)]
-pub use include_bytes_aligned::include_bytes_aligned as __include_bytes_aligned;
-
-#[macro_export]
-macro_rules! include_container {
-    ($path:expr) => {
-        $crate::__include_bytes_aligned!(4, $path)
-    };
-}
+pub use include_bytes_aligned::include_bytes_aligned;

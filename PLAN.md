@@ -955,7 +955,8 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   **v6 (2026-07-09): `GeomEncoding::EagerImage`** — the geometry section
   IS the preload cache (flattened per-ring (i32,i32) runs + index tables,
   4-aligned; 12-byte outer header keeps payload alignment; no arc store;
-  `include_container!` for aligned statics, `Error::Misaligned` otherwise;
+  `include_bytes_aligned!(4, ..)` (re-exported) for aligned statics,
+  `Error::Misaligned` otherwise;
   preload/eager_from_slice become no-ops). Sizes as predicted: tiny 481 K,
   compact 2 540 K (~4×). Host: 0.40/0.72 µs — fastest mode measured. S3
   XIP: tiny 145 µs, compact 638 µs — **2.0–2.1× over varint XIP at zero

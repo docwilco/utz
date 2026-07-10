@@ -22,8 +22,8 @@ static BALANCED_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/balanced
 static TINY_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz"));
 static COMPACT_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz"));
 // eager-image twins need 4-aligned statics (EagerImage slice casts)
-static TINY_EAGER: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
-static COMPACT_EAGER: &[u8] = utz::include_container!(concat!(env!("OUT_DIR"), "/compact-eager-static.utz"));
+static TINY_EAGER: &[u8] = utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
+static COMPACT_EAGER: &[u8] = utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/compact-eager-static.utz"));
 static TINY_COARSE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz"));
 
 // capability guards emitted next to each build.rs asset: a feature mismatch

@@ -69,7 +69,8 @@ const _: () = assert!(
 
 /// EagerImage load-time check: the coords are read via typed slice casts,
 /// so the payload must land them 4-aligned (static assets:
-/// [`crate::include_container!`]). Endianness is a compile-time refusal —
+/// [`crate::include_bytes_aligned!`]`(4, ..)`). Endianness is a compile-time
+/// refusal —
 /// see the `geom-image` compile_error in lib.rs.
 fn check_image(payload: &[u8], hdr: &Header) -> Result<(), Error> {
     #[cfg(feature = "geom-image")]
