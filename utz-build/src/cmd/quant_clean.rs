@@ -39,6 +39,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
 
     for &qbits in &a.qbits {
         ensure!(matches!(qbits, 16 | 24 | 32), Error::Msg(format!("qbits must be 16/24/32 (got {qbits})")));
+        #[expect(clippy::cast_precision_loss, reason = "qmax = 2^(bits-1)-1 < 2^31, exact in f64")]
         let qmax = ((1u64 << (qbits - 1)) - 1) as f64;
         #[expect(clippy::cast_possible_truncation, reason = "|coord·qmax| ≤ qmax < 2^31")]
         let quant = |a: &Vec<(f64, f64)>| -> Vec<(i32, i32)> {

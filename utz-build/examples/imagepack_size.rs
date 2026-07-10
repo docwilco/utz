@@ -38,6 +38,7 @@ fn main() -> utz_build::Result<()> {
             (format!("{name} i32 pairs"), p.to_vec()),
             (format!("{name} packed i{}", h.quant_bits), packed),
         ] {
+            #[expect(clippy::cast_precision_loss, reason = "payload byte counts ≪ 2^53; KiB display")]
             let k = |x: usize| format!("{:.1}K", x as f64 / 1024.0);
             println!(
                 "{:<30} {:>9} {:>9} {:>9} {:>9}",

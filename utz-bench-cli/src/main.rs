@@ -71,12 +71,9 @@ fn main() -> Result<(), Error> {
     };
     let size = bytes.len();
     let finder = utz::Finder::from_vec(bytes)?;
-    println!(
-        "{}: {:.1} KiB container, tzbb release {:?}",
-        a.container,
-        size as f64 / 1024.0,
-        finder.tzbb_release()
-    );
+    #[expect(clippy::cast_precision_loss, reason = "container size ≪ 2^53; KiB display")]
+    let kib = size as f64 / 1024.0;
+    println!("{}: {kib:.1} KiB container, tzbb release {:?}", a.container, finder.tzbb_release());
 
     let pts = utz_bench_common::gen_pts(a.npts);
     let t0 = Instant::now();

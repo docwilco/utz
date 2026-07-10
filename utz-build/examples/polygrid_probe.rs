@@ -57,6 +57,7 @@ fn load_feats(bytes: &[u8]) -> (format::Header, Vec<Feat>) {
     let p = &bytes[start..];
     let h = format::parse(p).unwrap();
     assert!(h.geom <= 1, "arc-store containers only (geom 0/1)");
+    #[expect(clippy::cast_precision_loss, reason = "qmax = 2^(bits-1)-1 < 2^31, exact in f64")]
     let qmax = ((1u64 << (h.quant_bits - 1)) - 1) as f64;
     let dq = |v: i32, half: f64| f64::from(v) / qmax * half;
     let mut feats: Vec<Feat> = (0..h.n_features)
@@ -108,12 +109,14 @@ fn measure(feats: &[Feat], deg: f64) -> (grid::CellGrid, Stats) {
     let areas = grid::feat_areas(feats);
     let csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
     let border: Vec<&Vec<u16>> = g.sets.iter().filter(|s| s.len() > 1).collect();
+    #[expect(clippy::cast_precision_loss, reason = "candidate-id sum and border-cell count ≪ 2^53; avg display")]
+    let avg_list = border.iter().map(|s| s.len()).sum::<usize>() as f64 / border.len().max(1) as f64;
     let s = Stats {
         border_cells: border.len(),
         uniq_lists: csr.uniq_lists,
         list_ids: csr.list_ids.len(),
         csr_bytes: csr.bytes(),
-        avg_list: border.iter().map(|s| s.len()).sum::<usize>() as f64 / border.len().max(1) as f64,
+        avg_list,
         max_list: border.iter().map(|s| s.len()).max().unwrap_or(0),
     };
     (g, s)
@@ -170,11 +173,14 @@ fn main() {
         println!("  list_ids (cap 65535)   {:9}          {:9}", sf.list_ids, sp.list_ids);
         println!("  csr bytes              {:9}          {:9}", sf.csr_bytes, sp.csr_bytes);
         println!("  avg/max list           {:5.2}/{:3}          {:5.2}/{:3}", sf.avg_list, sf.max_list, sp.avg_list, sp.max_list);
-        println!(
-            "  polys per border lookup: {:.1} today (bbox-pruned) vs {:.1} poly-grid ({:.1}x fewer)",
+        #[expect(clippy::cast_precision_loss, reason = "poly and border-cell counts ≪ 2^53; ratio display")]
+        let (per_today, per_grid, fewer) = (
             polys_today as f64 / sf.border_cells.max(1) as f64,
             polys_grid as f64 / sf.border_cells.max(1) as f64,
-            polys_today as f64 / polys_grid.max(1) as f64
+            polys_today as f64 / polys_grid.max(1) as f64,
+        );
+        println!(
+            "  polys per border lookup: {per_today:.1} today (bbox-pruned) vs {per_grid:.1} poly-grid ({fewer:.1}x fewer)"
         );
         println!(
             "  net size: csr {:+} − bboxes {} + parents {} = {:+} bytes",

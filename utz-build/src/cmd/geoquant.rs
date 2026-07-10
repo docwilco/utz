@@ -35,6 +35,7 @@ pub fn run(_a: Args) -> utz_build::Result<()> {
         for (tz, p) in &i32p { if p.contains(&pt) { return tz.clone(); } } String::new() };
 
     let mut lcg = 0x9e37_79b9_7f4a_7c15u64;
+    #[expect(clippy::cast_precision_loss, reason = "53-bit mantissa construction: lcg>>11 < 2^53 and 2^53 are both exact")]
     let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
     let (mut n, mut d64, mut d32) = (0u64, 0u64, 0u64);
     while n < 8000 {
@@ -44,8 +45,10 @@ pub fn run(_a: Args) -> utz_build::Result<()> {
         if look_i32(lo, la) != t { d32 += 1; }
     }
     println!("{n} points, vs geo-f64 as reference:");
-    println!("  geo-i64 (deg*1e6) disagreements: {d64}  ({:.3}%)", 100.0 * d64 as f64 / n as f64);
-    println!("  geo-i32 (deg*1e6) disagreements: {d32}  ({:.3}%)  <- overflow in orient2d", 100.0 * d32 as f64 / n as f64);
+    #[expect(clippy::cast_precision_loss, reason = "d64/d32 ≤ n = 8000 sample points; percentage display")]
+    let (p64, p32) = (100.0 * d64 as f64 / n as f64, 100.0 * d32 as f64 / n as f64);
+    println!("  geo-i64 (deg*1e6) disagreements: {d64}  ({p64:.3}%)");
+    println!("  geo-i32 (deg*1e6) disagreements: {d32}  ({p32:.3}%)  <- overflow in orient2d");
     Ok(())
 }
 

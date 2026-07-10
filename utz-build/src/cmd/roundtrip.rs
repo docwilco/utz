@@ -38,12 +38,15 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         geom: encode::GeomEncoding::default(),
     };
     let container = encode::encode(&feats, &p)?;
-    println!("{} container: {:.1} KB uncompressed", ds.to_uppercase(), container.len() as f64 / 1024.0);
+    #[expect(clippy::cast_precision_loss, reason = "container size ≪ 2^53; KB display")]
+    let kb = container.len() as f64 / 1024.0;
+    println!("{} container: {kb:.1} KB uncompressed", ds.to_uppercase());
 
     let finder = utz::Finder::from_reader(&container[..]).expect("decode");
     assert_eq!(finder.tzbb_release(), "roundtrip-dev");
 
     // reference: linear first-hit over the same quantized geometry
+    #[expect(clippy::cast_precision_loss, reason = "qmax = 2^(bits-1)-1 < 2^31, exact in f64")]
     let qmax = ((1u64 << (qbits - 1)) - 1) as f64;
     #[expect(clippy::cast_possible_truncation, reason = "|lon/180·qmax| ≤ qmax < 2^31")]
     let qx = |lon: f64| (lon / 180.0 * qmax).round() as i32;
@@ -64,6 +67,8 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     let t0 = Instant::now();
     let got: Vec<Option<&str>> = pts.iter().map(|&(lo, la)| finder.lookup(utz::Position { lon: lo, lat: la })).collect();
     let dt = t0.elapsed();
+    #[expect(clippy::cast_precision_loss, reason = "elapsed µs ≪ 2^53 (would be 285 years); µs/point display")]
+    let us = |t: std::time::Duration| t.as_micros() as f64 / npts as f64;
 
     let (mut diff, mut wrong, mut shown) = (0usize, 0usize, 0usize);
     for (i, &(lo, la)) in pts.iter().enumerate() {
@@ -81,12 +86,12 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         }
     }
     println!("disagreements: {diff} ({wrong} wrong, {} benign-overlap)", diff - wrong);
-    println!("finder.lookup: {:.2} µs/point over {npts}", dt.as_micros() as f64 / npts as f64);
+    println!("finder.lookup: {:.2} µs/point over {npts}", us(dt));
 
     // coarse sanity: must answer everywhere with-oceans covers, cheaply
     let t0 = Instant::now();
     let fz = pts.iter().filter(|&&(lo, la)| finder.lookup_coarse(utz::Position { lon: lo, lat: la }).is_some()).count();
-    println!("lookup_coarse: {fz}/{npts} answered, {:.2} µs/point", t0.elapsed().as_micros() as f64 / npts as f64);
+    println!("lookup_coarse: {fz}/{npts} answered, {:.2} µs/point", us(t0.elapsed()));
 
     // zero-copy static source (core-rung path) must answer identically —
     // lazy lookup streams PIP straight off the borrowed bytes (§9, §14.7)
@@ -105,12 +110,13 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     let egot: Vec<Option<&str>> = pts.iter().map(|&(lo, la)| ef.lookup(utz::Position { lon: lo, lat: la })).collect();
     let edt = t0.elapsed();
     assert!(egot.iter().zip(&got).all(|(a, b)| a == b), "eager disagrees with lazy");
+    #[expect(clippy::cast_precision_loss, reason = "preloaded heap bytes ≪ 2^53; KB display")]
+    let heap_kb = heap as f64 / 1024.0;
     println!(
-        "eager: preload {:.1} KB heap in {:.1} ms; lookup {:.2} µs/point (lazy {:.2})",
-        heap as f64 / 1024.0,
+        "eager: preload {heap_kb:.1} KB heap in {:.1} ms; lookup {:.2} µs/point (lazy {:.2})",
         ms,
-        edt.as_micros() as f64 / npts as f64,
-        dt.as_micros() as f64 / npts as f64
+        us(edt),
+        us(dt)
     );
 
     // every codec must roundtrip to the same answers as the uncompressed finder
@@ -123,7 +129,9 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         for &(lo, la) in pts.iter().take(2_000) {
             assert_eq!(f.lookup(utz::Position { lon: lo, lat: la }), finder.lookup(utz::Position { lon: lo, lat: la }), "{codec:?} ({lo},{la})");
         }
-        println!("{codec:?}: {:.1} KB, roundtrip OK", c.len() as f64 / 1024.0);
+        #[expect(clippy::cast_precision_loss, reason = "compressed container size ≪ 2^53; KB display")]
+        let ckb = c.len() as f64 / 1024.0;
+        println!("{codec:?}: {ckb:.1} KB, roundtrip OK");
     }
     Ok(())
 }
@@ -157,6 +165,7 @@ fn lookup_linear(refs: &[Ref], px: i32, py: i32) -> Option<String> {
 }
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {
     let mut lcg = 0x1234_5678u64;
+    #[expect(clippy::cast_precision_loss, reason = "53-bit mantissa construction: lcg>>11 < 2^53 and 2^53 are both exact")]
     let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
     (0..n).map(|_| (next() * 360.0 - 180.0, next() * 180.0 - 90.0)).collect()
 }

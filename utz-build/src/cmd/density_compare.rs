@@ -61,7 +61,9 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         println!("{:>16} {:>10} {:>10} {:>+9}", b.2, hu[i], hw[i], hw[i] as i64 - hu[i] as i64);
     }
     let (su, sw) = (hu.iter().sum::<usize>(), hw.iter().sum::<usize>());
-    println!("{:>16} {su:>10} {sw:>10} {:>+9}  ({:+.1}%)\n", "total", sw as i64 - su as i64, 100.0 * (sw as f64 / su as f64 - 1.0));
+    #[expect(clippy::cast_precision_loss, reason = "vertex-count band sums ≪ 2^53; % delta display")]
+    let pct = 100.0 * (sw as f64 / su as f64 - 1.0);
+    println!("{:>16} {su:>10} {sw:>10} {:>+9}  ({pct:+.1}%)\n", "total", sw as i64 - su as i64);
 
     // container size delta (same knobs, zstd; topologies already built above)
     let p = Params {
@@ -79,11 +81,12 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     };
     let cu = container(&t_u)?;
     let cw = container(&t_w)?;
-    println!(
-        "container (i24, zstd): uniform {:.1} KiB -> weighted {:.1} KiB ({:+.1}%)",
+    #[expect(clippy::cast_precision_loss, reason = "container sizes ≪ 2^53; KiB and % display")]
+    let (ku, kw, kpct) = (
         cu.len() as f64 / 1024.0,
         cw.len() as f64 / 1024.0,
-        100.0 * (cw.len() as f64 / cu.len() as f64 - 1.0)
+        100.0 * (cw.len() as f64 / cu.len() as f64 - 1.0),
     );
+    println!("container (i24, zstd): uniform {ku:.1} KiB -> weighted {kw:.1} KiB ({kpct:+.1}%)");
     Ok(())
 }

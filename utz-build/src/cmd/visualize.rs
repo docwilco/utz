@@ -30,7 +30,9 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     let wasm = build_wasm()?;
     std::fs::write(out.join("utz_encode.wasm"), &wasm)?;
     std::fs::write(out.join("index.html"), viz::webdist_index()?)?;
-    println!("index.html + utz_encode.wasm ({:.1} KiB)", wasm.len() as f64 / 1024.0);
+    #[expect(clippy::cast_precision_loss, reason = "wasm blob size ≪ 2^53; KiB display")]
+    let wasm_kib = wasm.len() as f64 / 1024.0;
+    println!("index.html + utz_encode.wasm ({wasm_kib:.1} KiB)");
 
     // density is optional: first use downloads GHS-POP (~460 MB, then cached)
     let dens = match utz_build::density::DensityGrid::load(&utz_build::cache_dir()) {
@@ -42,7 +44,9 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     };
     if let Some(g) = &dens {
         let n = write_z(&out.join("heat.bin.z"), &viz::heat_bin(g))?;
-        println!("heat.bin.z: {:.1} KiB", n as f64 / 1024.0);
+        #[expect(clippy::cast_precision_loss, reason = "deflated heatmap size ≪ 2^53; KiB display")]
+        let heat_kib = n as f64 / 1024.0;
+        println!("heat.bin.z: {heat_kib:.1} KiB");
     }
 
     for ds in DATASETS {
@@ -53,12 +57,15 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         let bin = viz::dataset_bin(&topo0, &feats, code, "webdist", dens.as_ref());
         let z = write_z(&out.join(format!("{ds}.bin.z")), &bin)?;
         let zn = write_z(&out.join(format!("zones-{ds}.bin.z")), &zones_bin(&feats, ds)?)?;
-        println!(
-            "{ds}: {} arcs, {verts} verts, {:.1} MiB -> {:.1} MiB (+ zones {:.1} MiB)",
-            topo0.arc_coords.len(),
+        #[expect(clippy::cast_precision_loss, reason = "raw/deflated bin sizes ≪ 2^53; MiB display")]
+        let (raw_mib, z_mib, zn_mib) = (
             bin.len() as f64 / f64::from(1 << 20),
             z as f64 / f64::from(1 << 20),
-            zn as f64 / f64::from(1 << 20)
+            zn as f64 / f64::from(1 << 20),
+        );
+        println!(
+            "{ds}: {} arcs, {verts} verts, {raw_mib:.1} MiB -> {z_mib:.1} MiB (+ zones {zn_mib:.1} MiB)",
+            topo0.arc_coords.len()
         );
     }
     println!("wrote {}", out.display());
@@ -104,8 +111,10 @@ fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> utz_build::Result<Vec<u8>> 
     }
     o.resize(o.len().next_multiple_of(2), 0);
     for r in 0..h {
+        #[expect(clippy::cast_precision_loss, reason = "r < h = 180/STEP lattice rows; exact")]
         let lat = 90.0 - (r as f64 + 0.5) * STEP;
         for c in 0..w {
+            #[expect(clippy::cast_precision_loss, reason = "c < w = 360/STEP lattice cols; exact")]
             let lon = -180.0 + (c as f64 + 0.5) * STEP;
             let id = finder.lookup(utz::Position { lon, lat }).and_then(|t| idx.get(t).copied()).unwrap_or(0xFFFF);
             o.extend_from_slice(&id.to_le_bytes());

@@ -39,8 +39,10 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     let areas = grid::feat_areas(&out.simplified);
     let csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
     let fpolys: Vec<Vec<QPoly>> = out.simplified.iter().map(quantize).collect();
-    println!("{} eps={eps_m}m grid={deg}°: {} features, {} uniq lists, {:.1} KB CSR, {npts} points",
-        ds.to_uppercase(), fpolys.len(), csr.uniq_lists, csr.bytes() as f64 / 1024.0);
+    #[expect(clippy::cast_precision_loss, reason = "CSR byte size ≪ 2^53; KB display")]
+    let csr_kb = csr.bytes() as f64 / 1024.0;
+    println!("{} eps={eps_m}m grid={deg}°: {} features, {} uniq lists, {csr_kb:.1} KB CSR, {npts} points",
+        ds.to_uppercase(), fpolys.len(), csr.uniq_lists);
 
     let pts: Vec<(i32, i32)> = gen_pts(npts).iter().map(|&(lo, la)| (qx(lo), qy(la))).collect();
     let (ncols, nrows) = (g.ncols, g.nrows);
@@ -115,11 +117,14 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     }
     println!("  disagreements: {diff} ({wrong} wrong, {} benign-overlap)", diff - wrong);
 
-    println!("  PIP needed: {pip_needed}/{npts} ({:.1}%)   fallbacks: {fallback}   tzid disagreements vs linear: {diff}",
-        100.0 * pip_needed as f64 / npts as f64);
-    println!("  grid:   {:>9.2?}  ({:.2} µs/lookup)", t_grid, t_grid.as_micros() as f64 / npts as f64);
+    #[expect(clippy::cast_precision_loss, reason = "pip_needed ≤ npts point count ≪ 2^53; percentage display")]
+    let pip_pct = 100.0 * pip_needed as f64 / npts as f64;
+    println!("  PIP needed: {pip_needed}/{npts} ({pip_pct:.1}%)   fallbacks: {fallback}   tzid disagreements vs linear: {diff}");
+    #[expect(clippy::cast_precision_loss, reason = "elapsed µs ≪ 2^53 (would be 285 years); µs/lookup display")]
+    let us = |t: std::time::Duration| t.as_micros() as f64 / npts as f64;
+    println!("  grid:   {:>9.2?}  ({:.2} µs/lookup)", t_grid, us(t_grid));
     println!("  linear: {:>9.2?}  ({:.2} µs/lookup)   grid speedup {:.1}x\n",
-        t_lin, t_lin.as_micros() as f64 / npts as f64,
+        t_lin, us(t_lin),
         t_lin.as_secs_f64() / t_grid.as_secs_f64());
     Ok(())
 }
@@ -143,6 +148,7 @@ fn quantize(f: &Feat) -> Vec<QPoly> {
 
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {
     let mut lcg = 0x1234_5678u64;
+    #[expect(clippy::cast_precision_loss, reason = "53-bit mantissa construction: lcg>>11 < 2^53 and 2^53 are both exact")]
     let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
     (0..n).map(|_| (next() * 360.0 - 180.0, next() * 180.0 - 90.0)).collect()
 }

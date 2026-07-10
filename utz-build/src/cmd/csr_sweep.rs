@@ -55,13 +55,16 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
             let side_b = (csr.list_offsets.len() + csr.list_ids.len()) * 2;
             assert!(csr.uniq_lists < 0x7FFF, "list index overflows the 15-bit tag at {deg}°");
             assert!(u16::try_from(csr.list_ids.len()).is_ok(), "list_offsets u16 overflow at {deg}°");
-            println!("{:>4}{:>9}{:>9}{:>9.1}%{:>8.1}%{:>7}{:>8}{:>8.1} KB{:>8.1} KB{:>8.1} KB",
-                deg, total, border,
+            #[expect(clippy::cast_precision_loss, reason = "cell/hit counts and CSR byte sizes ≪ 2^53; % and KB display")]
+            let (pb, ph, kp, ks, kt) = (
                 100.0 * border as f64 / total as f64,
                 100.0 * hits as f64 / NPTS as f64,
-                csr.uniq_lists, csr.list_ids.len(),
                 primary_b as f64 / 1024.0, side_b as f64 / 1024.0,
-                (primary_b + side_b) as f64 / 1024.0);
+                (primary_b + side_b) as f64 / 1024.0,
+            );
+            println!("{:>4}{:>9}{:>9}{pb:>9.1}%{ph:>8.1}%{:>7}{:>8}{kp:>8.1} KB{ks:>8.1} KB{kt:>8.1} KB",
+                deg, total, border,
+                csr.uniq_lists, csr.list_ids.len());
         }
         println!();
     }
@@ -70,6 +73,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
 
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {
     let mut lcg = 0x1234_5678u64;
+    #[expect(clippy::cast_precision_loss, reason = "53-bit mantissa construction: lcg>>11 < 2^53 and 2^53 are both exact")]
     let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
     (0..n).map(|_| (next() * 360.0 - 180.0, next() * 180.0 - 90.0)).collect()
 }

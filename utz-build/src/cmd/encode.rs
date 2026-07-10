@@ -97,6 +97,8 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     });
     std::fs::write(&out, &container)?;
     utz_build::config::write_guard(&out, geom, codec)?;
-    println!("wrote {} ({:.1} KiB, {codec:?}, TZBB {release})", out.display(), container.len() as f64 / 1024.0);
+    #[expect(clippy::cast_precision_loss, reason = "container size ≪ 2^53; KiB display")]
+    let kib = container.len() as f64 / 1024.0;
+    println!("wrote {} ({kib:.1} KiB, {codec:?}, TZBB {release})", out.display());
     Ok(())
 }

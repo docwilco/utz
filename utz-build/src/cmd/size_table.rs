@@ -36,12 +36,15 @@ pub fn run(a: Args) -> utz_build::Result<()> {
                 geom: encode::GeomEncoding::default(),
             };
             let payload = encode::build_payload(&feats, &p)?;
+            #[expect(clippy::cast_precision_loss, reason = "compressed payload size ≪ 2^53; KiB display")]
             let kb = |c: Codec| -> utz_build::Result<String> {
                 Ok(format!("{:.1}", encode::compress(&payload, c)?.len() as f64 / 1024.0))
             };
+            #[expect(clippy::cast_precision_loss, reason = "raw payload size ≪ 2^53; KiB display")]
+            let raw_kb = payload.len() as f64 / 1024.0;
             println!("{:>7}{:>6}{:>11} K{:>11} K{:>11} K{:>11} K{:>11} K",
                 eps_m, format!("i{qbits}"),
-                format!("{:.1}", payload.len() as f64 / 1024.0),
+                format!("{raw_kb:.1}"),
                 kb(Codec::Gzip)?, kb(Codec::Zstd)?, kb(Codec::Brotli)?, kb(Codec::Xz)?);
         }
     }

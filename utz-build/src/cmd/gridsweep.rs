@@ -45,6 +45,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
                 let span = (((x1 - x0).abs()).max((y1 - y0).abs()) / df * 2.0).ceil() as usize;
                 let steps = span.max(1);
                 for s in 0..=steps {
+                    #[expect(clippy::cast_precision_loss, reason = "s ≤ steps = small per-edge cell span; exact")]
                     let t = s as f64 / steps as f64;
                     border[cell(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)] = true;
                 }
@@ -52,6 +53,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         }
         let b = border.iter().filter(|&&x| x).count();
         let interior = total - b;
+        #[expect(clippy::cast_precision_loss, reason = "b ≤ total grid-cell count ≪ 2^53; percentage display")]
         let p_pip = 100.0 * b as f64 / total as f64;
         // dense primary-zone u16 per cell + ~2 spillover u16 per border cell
         let mem = total * 2 + b * 4;

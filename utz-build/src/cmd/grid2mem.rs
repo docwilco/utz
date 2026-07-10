@@ -44,6 +44,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             #[expect(clippy::cast_possible_truncation, reason = "edge span in cells is small and non-negative")]
             let steps = ((((x1 - x0).abs()).max((y1 - y0).abs()) / d * 2.0).ceil() as usize).max(1);
             for s in 0..=steps {
+                #[expect(clippy::cast_precision_loss, reason = "s ≤ steps = small per-edge cell span; exact")]
                 let t = s as f64 / steps as f64;
                 sets[cell(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)].insert(*fid);
             }
@@ -58,8 +59,9 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     println!("{} @ {d}deg  ({nfeat} zones)", ds.to_uppercase());
     println!("  grid: {ncols} x {nrows} = {total} cells");
     println!("  border cells (>1 zone): {border}   single/empty: {interior_or_empty}");
-    println!("  candidate ids in border cells: {multi_ids}  (avg {:.2}/border, max {maxc})\n",
-        multi_ids as f64 / border.max(1) as f64);
+    #[expect(clippy::cast_precision_loss, reason = "candidate-id and border-cell counts ≪ 2^53; avg display")]
+    let avg = multi_ids as f64 / border.max(1) as f64;
+    println!("  candidate ids in border cells: {multi_ids}  (avg {avg:.2}/border, max {maxc})\n");
 
     // ---- layout A: flat CSR (fixed-width, platform-independent) ----
     // primary: u16 per cell (zone id, or spill index w/ high-bit flag)
@@ -86,6 +88,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     // primary u16 + list_offsets u16[uniq+1] + list_ids u16[uniq_ids]
     let interned = total * 2 + (uniq_lists + 1) * 2 + uniq_ids * 2;
 
+    #[expect(clippy::cast_precision_loss, reason = "layout byte estimates ≪ 2^53; KB display")]
     let kb = |n: usize| format!("{:.1} KB", n as f64 / 1024.0);
     println!("  unique candidate lists among border cells: {uniq_lists}  ({uniq_ids} ids)");
     println!("  layout D  interned CSR (u16 everywhere): {}   <- dedup repeated lists", kb(interned));

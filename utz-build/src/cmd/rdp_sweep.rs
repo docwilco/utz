@@ -44,9 +44,11 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         for (i, &(lo, la)) in pts.iter().enumerate() {
             if lookup(&srefs, lo, la) != truth[i] { miss += 1; }
         }
-        println!("{:>8}{:>10}{:>8.1}%{:>12}{:>12}{:>12}{:>10.3}%",
-            eps_m, out.verts, 100.0 * out.verts as f64 / v0 as f64,
-            raw, z, x, 100.0 * miss as f64 / sample as f64);
+        #[expect(clippy::cast_precision_loss, reason = "vertex counts and miss ≤ sample point count ≪ 2^53; % display")]
+        let (kept_pct, miss_pct) = (100.0 * out.verts as f64 / v0 as f64, 100.0 * miss as f64 / sample as f64);
+        println!("{:>8}{:>10}{kept_pct:>8.1}%{:>12}{:>12}{:>12}{miss_pct:>10.3}%",
+            eps_m, out.verts,
+            raw, z, x);
     }
     Ok(())
 }
@@ -77,6 +79,7 @@ fn lookup(refs: &[Ref], lon: f64, lat: f64) -> String {
 }
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {
     let mut lcg = 0x1234_5678u64;
+    #[expect(clippy::cast_precision_loss, reason = "53-bit mantissa construction: lcg>>11 < 2^53 and 2^53 are both exact")]
     let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
     (0..n).map(|_| (next() * 360.0 - 180.0, next() * 180.0 - 90.0)).collect()
 }

@@ -22,6 +22,7 @@ pub struct Args {
 pub fn run(a: Args) -> utz_build::Result<()> {
     let path = a.path.unwrap_or_else(|| utz_build::fgb_path(&utz_build::dataset("now").unwrap()).unwrap());
     let bytes = std::fs::read(&path)?;
+    #[expect(clippy::cast_precision_loss, reason = "fgb file size ≪ 2^53; MiB display")]
     let file_mib = bytes.len() as f64 / f64::from(1 << 20);
 
     // ---- parse into custom in-memory form + stats ----
@@ -55,8 +56,12 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     println!("{path}");
     println!("  features={}  verts={}  largest-feature-verts={}", cf.len(), nverts, biggest);
     println!("  fgb in RAM (decompressed): {file_mib:.1} MiB");
-    println!("  custom in-memory (i32 rings+bbox): {:.1} MiB", (nverts as f64 * 8.0 + cf.len() as f64 * 64.0) / f64::from(1 << 20));
-    println!("  largest to_geo() transient (f64 geo::MultiPolygon): {:.1} MiB\n", biggest as f64 * 16.0 / f64::from(1 << 20));
+    #[expect(clippy::cast_precision_loss, reason = "vertex and feature counts ≪ 2^53; MiB estimate")]
+    let mem_mib = (nverts as f64 * 8.0 + cf.len() as f64 * 64.0) / f64::from(1 << 20);
+    println!("  custom in-memory (i32 rings+bbox): {mem_mib:.1} MiB");
+    #[expect(clippy::cast_precision_loss, reason = "largest feature's vertex count ≪ 2^53; MiB estimate")]
+    let big_mib = biggest as f64 * 16.0 / f64::from(1 << 20);
+    println!("  largest to_geo() transient (f64 geo::MultiPolygon): {big_mib:.1} MiB\n");
 
     let pts = gen_pts(5000);
 
@@ -136,6 +141,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         let t = Instant::now();
         let mut hits = 0u64;
         for &(lo, la) in pts.iter().take(n) { if !f(lo, la).is_empty() { hits += 1; } }
+        #[expect(clippy::cast_precision_loss, reason = "n ≤ 5000 bench points; exact")]
         let us = t.elapsed().as_secs_f64() * 1e6 / n as f64;
         println!("  {:<22} {:>9.1} us/lookup   {:>10.0} lookups/s   ({n} pts, {hits} land)", name, us, 1e6 / us);
     };
@@ -163,6 +169,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
 
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {
     let mut lcg = 0x9e37_79b9_7f4a_7c15u64;
+    #[expect(clippy::cast_precision_loss, reason = "53-bit mantissa construction: lcg>>11 < 2^53 and 2^53 are both exact")]
     let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
     (0..n).map(|_| (next() * 360.0 - 180.0, next() * 180.0 - 90.0)).collect()
 }

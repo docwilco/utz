@@ -170,18 +170,20 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     println!("disagreements vs ours-f64: {f64_diff}/{npts} (must be 0: f64 exact at i24)");
     let i128_diff = ours.iter().zip(&ours_i128).filter(|(a, b)| a != b).count();
     println!("disagreements vs ours-i128: {i128_diff}/{npts} (must be 0: wider is exact)");
-    println!("ours:        {:>8.2?}  ({:.1} µs/lookup)", t_ours, t_ours.as_micros() as f64 / npts as f64);
+    #[expect(clippy::cast_precision_loss, reason = "elapsed µs ≪ 2^53 (would be 285 years); µs/lookup display")]
+    let us = |t: std::time::Duration| t.as_micros() as f64 / npts as f64;
+    println!("ours:        {:>8.2?}  ({:.1} µs/lookup)", t_ours, us(t_ours));
     println!("ours-f64:    {:>8.2?}  ({:.1} µs/lookup)   ours {:.2}x",
-        t_f64, t_f64.as_micros() as f64 / npts as f64,
+        t_f64, us(t_f64),
         t_f64.as_secs_f64() / t_ours.as_secs_f64());
     println!("ours-i128:   {:>8.2?}  ({:.1} µs/lookup)   ours {:.2}x",
-        t_i128, t_i128.as_micros() as f64 / npts as f64,
+        t_i128, us(t_i128),
         t_i128.as_secs_f64() / t_ours.as_secs_f64());
     println!("geo:         {:>8.2?}  ({:.1} µs/lookup)   ours {:.2}x",
-        t_geo, t_geo.as_micros() as f64 / npts as f64,
+        t_geo, us(t_geo),
         t_geo.as_secs_f64() / t_ours.as_secs_f64());
     println!("geometry-rs: {:>8.2?}  ({:.1} µs/lookup)   ours {:.2}x",
-        t_gm, t_gm.as_micros() as f64 / npts as f64,
+        t_gm, us(t_gm),
         t_gm.as_secs_f64() / t_ours.as_secs_f64());
     Ok(())
 }
@@ -206,6 +208,7 @@ fn quantize(feats: &[Feat]) -> Vec<QFeat> {
 
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {
     let mut lcg = 0x1234_5678u64;
+    #[expect(clippy::cast_precision_loss, reason = "53-bit mantissa construction: lcg>>11 < 2^53 and 2^53 are both exact")]
     let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
     (0..n).map(|_| (next() * 360.0 - 180.0, next() * 180.0 - 90.0)).collect()
 }

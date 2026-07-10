@@ -14,6 +14,7 @@ use alloc::vec::Vec;
 #[must_use]
 pub fn gen_pts(n: usize) -> Vec<(f64, f64)> {
     let mut lcg = 0x1234_5678u64;
+    #[expect(clippy::cast_precision_loss, reason = "53-bit mantissa construction: lcg>>11 < 2^53 and 2^53 are both exact")]
     let mut next = || {
         lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
         (lcg >> 11) as f64 / (1u64 << 53) as f64
@@ -33,6 +34,7 @@ pub struct BenchResult {
 
 impl BenchResult {
     #[must_use]
+    #[expect(clippy::cast_precision_loss, reason = "elapsed µs ≪ 2^53 (would be 285 years); µs/lookup display")]
     pub fn us_per_lookup(&self) -> f64 {
         self.elapsed_us as f64 / f64::from(self.lookups.max(1))
     }

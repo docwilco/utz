@@ -67,5 +67,7 @@ fn early_exit(g: &grid::CellGrid, csr: &grid::Csr) -> f64 {
             if z == first { hit += u64::from(n); }
         }
     }
-    if tot == 0 { 0.0 } else { hit as f64 / tot as f64 }
+    #[expect(clippy::cast_precision_loss, reason = "hit ≤ tot = subcell tally sum ≪ 2^53; probability")]
+    let p = if tot == 0 { 0.0 } else { hit as f64 / tot as f64 };
+    p
 }

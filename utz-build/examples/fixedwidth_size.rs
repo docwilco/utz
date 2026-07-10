@@ -162,6 +162,7 @@ fn main() -> utz_build::Result<()> {
             (format!("{name} A fixed arcs"), pa),
             (format!("{name} B eager image"), pb),
         ] {
+            #[expect(clippy::cast_precision_loss, reason = "payload byte counts ≪ 2^53; KiB display")]
             let k = |n: usize| format!("{:.1}K", n as f64 / 1024.0);
             println!(
                 "{:<28} {:>9} {:>9} {:>9} {:>9}",

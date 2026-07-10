@@ -90,12 +90,13 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         };
         let payload = encode::build_payload(&feats, &p)?;
         let raw = payload.len();
+        #[expect(clippy::cast_precision_loss, reason = "raw payload size ≪ 2^53; KiB display")]
+        let raw_kb = raw as f64 / 1024.0;
         println!(
-            "\n{} ε={}m i{qbits}, grid {}° — raw {:.1} K",
+            "\n{} ε={}m i{qbits}, grid {}° — raw {raw_kb:.1} K",
             a.ds.to_uppercase(),
             eps_m,
-            a.grid_deg,
-            raw as f64 / 1024.0
+            a.grid_deg
         );
         println!(
             "{:>8}{:>9}{:>10}{:>8}{:>9}{:>10}{:>9}",
@@ -109,15 +110,18 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
             let out = out.map_err(|e| Error::Msg(format!("{name} decode: {e:?}")))?;
             ensure!(out == payload, Error::Msg(format!("{name} roundtrip mismatch")));
             let win_eff = window.min(raw); // beyond raw, back-refs can't reach (§7)
-            println!(
-                "{:>8}{:>9}{:>9.1}K{:>7.1}%{:>9.1}{:>9.1}K{:>8.1}K",
-                name,
-                fmt_win(window),
+            #[expect(clippy::cast_precision_loss, reason = "blob/raw/peak byte sizes ≪ 2^53; KiB and ratio display")]
+            let (comp_kb, ratio, peak_kb, state_kb) = (
                 blob.len() as f64 / 1024.0,
                 blob.len() as f64 / raw as f64 * 100.0,
-                ms,
                 peak as f64 / 1024.0,
-                (peak as isize - raw as isize - win_eff as isize) as f64 / 1024.0
+                (peak as isize - raw as isize - win_eff as isize) as f64 / 1024.0,
+            );
+            println!(
+                "{:>8}{:>9}{comp_kb:>9.1}K{ratio:>7.1}%{:>9.1}{peak_kb:>9.1}K{state_kb:>8.1}K",
+                name,
+                fmt_win(window),
+                ms
             );
             std::io::stdout().flush().ok();
             Ok(())
@@ -178,6 +182,8 @@ fn fmt_win(w: usize) -> String {
     } else if w >= 1024 && w.is_multiple_of(1024) {
         format!("{}K", w >> 10)
     } else {
-        format!("{:.1}K", w as f64 / 1024.0)
+        #[expect(clippy::cast_precision_loss, reason = "window size ≪ 2^53; KiB display")]
+        let kib = w as f64 / 1024.0;
+        format!("{kib:.1}K")
     }
 }
