@@ -84,7 +84,7 @@ pub fn read_fixed(b: &[u8], pos: usize, qbits: u8) -> i32 {
     }
 }
 pub const fn fixed_bytes(qbits: u8) -> usize {
-    (qbits as usize + 7) / 8
+    (qbits as usize).div_ceil(8)
 }
 
 /// Varint; returns (value, next_pos).
@@ -123,7 +123,12 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
     let geom = p[3];
     let flags = p[4];
     let grid_deg = f32::from_le_bytes([p[5], p[6], p[7], p[8]]);
-    if !matches!(quant_bits, 16 | 24 | 32) || geom > 3 || flags != 0 || !(grid_deg > 0.0) {
+    if !matches!(quant_bits, 16 | 24 | 32)
+        || geom > 3
+        || flags != 0
+        || grid_deg.is_nan()
+        || grid_deg <= 0.0
+    {
         return Err(Error::BadFormat);
     }
     // a valid geom byte whose decoder isn't compiled in is refused loudly

@@ -290,13 +290,14 @@ pub fn payload_from_topology(
         clean: cst,
         ..Default::default()
     };
-    let mut o = Vec::new();
     // ---- header ----
-    o.push(p.dataset);
-    o.push(p.quant_bits as u8);
-    o.push(p.simplify as u8);
-    o.push(p.geom as u8);
-    o.push(0); // flags: reserved, zero
+    let mut o = vec![
+        p.dataset,
+        p.quant_bits as u8,
+        p.simplify as u8,
+        p.geom as u8,
+        0, // flags: reserved, zero
+    ];
     o.extend_from_slice(&(p.grid_deg as f32).to_le_bytes());
     o.extend_from_slice(&(p.eps_m as f32).to_le_bytes());
     anyhow::ensure!(p.tzbb_release.len() < 256, "tzbb_release too long");
@@ -353,7 +354,7 @@ pub fn payload_from_topology(
     o.extend_from_slice(&pool);
 
     let push_fixed = |o: &mut Vec<u8>, v: i32| {
-        let n = (p.quant_bits as usize + 7) / 8;
+        let n = (p.quant_bits as usize).div_ceil(8);
         o.extend_from_slice(&v.to_le_bytes()[0..n]);
     };
     let (arcs_off, rings_off);
@@ -507,9 +508,11 @@ pub fn compress(raw: &[u8], codec: Codec) -> Vec<u8> {
         Codec::Zstd => panic!("utz-encode built without the `zstd` feature"),
         Codec::Brotli => {
             let mut out = Vec::new();
-            let mut params = brotli::enc::BrotliEncoderParams::default();
-            params.quality = 11;
-            params.lgwin = 24;
+            let params = brotli::enc::BrotliEncoderParams {
+                quality: 11,
+                lgwin: 24,
+                ..Default::default()
+            };
             brotli::BrotliCompress(&mut &raw[..], &mut out, &params).expect("brotli");
             out
         }

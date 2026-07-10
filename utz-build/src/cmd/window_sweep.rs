@@ -138,9 +138,11 @@ pub fn run(a: Args) -> anyhow::Result<()> {
         // brotli q11: lgwin 10–24
         for wlog in 10..=cap_log.min(24) {
             let mut out = Vec::new();
-            let mut params = brotli::enc::BrotliEncoderParams::default();
-            params.quality = 11;
-            params.lgwin = wlog as i32;
+            let params = brotli::enc::BrotliEncoderParams {
+                quality: 11,
+                lgwin: wlog as i32,
+                ..Default::default()
+            };
             brotli::BrotliCompress(&mut &payload[..], &mut out, &params)?;
             row("br.q11", 1 << wlog, Codec::Brotli, out)?;
         }

@@ -201,6 +201,10 @@ fn has_proper_cross(c: &[(i32, i32)]) -> bool {
     false
 }
 
+/// `(ring_refs, structure, arcs)` mirroring `Topology`'s fields, with arcs
+/// quantized to integer coordinates.
+pub type CleanedTopo = (Vec<Vec<u32>>, Vec<Vec<Vec<usize>>>, Vec<Vec<(i32, i32)>>);
+
 /// Drop rings that quantization collapsed to zero area: a degenerate hole
 /// vanishes alone, a degenerate exterior takes its holes with it. Arcs no
 /// surviving ring references are removed and arc ids compacted. Returns the
@@ -212,7 +216,7 @@ pub fn drop_degenerate_rings(
     structure: &[Vec<Vec<usize>>],
     arcs: Vec<Vec<(i32, i32)>>,
     st: &mut CleanStats,
-) -> (Vec<Vec<u32>>, Vec<Vec<Vec<usize>>>, Vec<Vec<(i32, i32)>>) {
+) -> CleanedTopo {
     let ring_ok: Vec<bool> = ring_refs
         .iter()
         .map(|refs| !ring_degenerate(&ring_coords_q(refs, &arcs)))

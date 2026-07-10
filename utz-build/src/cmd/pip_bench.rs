@@ -184,8 +184,11 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// tzid + polygon → ring → quantized vertices
+type QFeat = (String, Vec<Vec<Vec<(i32, i32)>>>);
+
 /// tzid + per-polygon rings quantized to the i24 grid, degenerate rings dropped.
-fn quantize(feats: &[Feat]) -> Vec<(String, Vec<Vec<Vec<(i32, i32)>>>)> {
+fn quantize(feats: &[Feat]) -> Vec<QFeat> {
     feats.iter().map(|f| {
         let polys = f.polys.iter().map(|p| {
             p.iter().map(|r| {

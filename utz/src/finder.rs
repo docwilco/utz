@@ -74,7 +74,7 @@ const _: () = assert!(
 /// see the `geom-image` compile_error in lib.rs.
 fn check_image(payload: &[u8], hdr: &Header) -> Result<(), Error> {
     #[cfg(feature = "geom-image")]
-    if hdr.geom == 2 && (payload.as_ptr() as usize + hdr.img_coords) % 4 != 0 {
+    if hdr.geom == 2 && !(payload.as_ptr() as usize + hdr.img_coords).is_multiple_of(4) {
         return Err(Error::Misaligned);
     }
     #[cfg(not(feature = "geom-image"))]

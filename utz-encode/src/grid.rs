@@ -185,7 +185,7 @@ pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
         v.sort_unstable_by(|&a, &b| areas[b as usize].partial_cmp(&areas[a as usize]).unwrap()
             .then(a.cmp(&b)));
     };
-    for c in 0..total {
+    for (c, pc) in primary.iter_mut().enumerate() {
         let set = &grid.sets[c];
         if set.len() > 1 {
             let mut list = set.clone(); // already id-sorted
@@ -202,11 +202,11 @@ pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
             }
             let next = lists.len() as u16;
             let li = *index.entry(list.clone()).or_insert_with(|| { lists.push(list); next });
-            primary[c] = 0x8000 | li;
+            *pc = 0x8000 | li;
         } else {
             // interior (single candidate) or no-ring cell: dominant zone
             let z = if set.len() == 1 { set[0] } else { grid.dominant[c] };
-            primary[c] = if z == NO_ZONE { 0x7FFF } else { z };
+            *pc = if z == NO_ZONE { 0x7FFF } else { z };
         }
     }
     let mut list_offsets = Vec::with_capacity(lists.len() + 1);

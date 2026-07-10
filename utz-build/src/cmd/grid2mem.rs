@@ -61,7 +61,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     // offsets: u32 per border cell +1 ; ids: u16 per candidate entry
     let a = total * 2 + (border + 1) * 4 + multi_ids * 2;
     // ---- layout B: primary u16 + inline blob (count u8 + ids), offset u32 ----
-    let b = total * 2 + (border + 1) * 4 + border * 1 + multi_ids * 2;
+    let b = total * 2 + (border + 1) * 4 + border + multi_ids * 2;
     // ---- layout C (naive): Vec<Vec<u16>> — platform dependent ----
     let vec_hdr32 = 12usize; let vec_hdr64 = 24usize;
     let alloc = 16usize; // rough per-allocation heap overhead

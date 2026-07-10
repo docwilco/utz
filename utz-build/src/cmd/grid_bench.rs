@@ -38,7 +38,7 @@ pub fn run(a: Args) -> anyhow::Result<()> {
     let g = grid::build(&out.simplified, deg, 8);
     let areas = grid::feat_areas(&out.simplified);
     let csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
-    let fpolys: Vec<Vec<QPoly>> = out.simplified.iter().map(|f| quantize(f)).collect();
+    let fpolys: Vec<Vec<QPoly>> = out.simplified.iter().map(quantize).collect();
     println!("{} eps={eps_m}m grid={deg}°: {} features, {} uniq lists, {:.1} KB CSR, {npts} points",
         ds.to_uppercase(), fpolys.len(), csr.uniq_lists, csr.bytes() as f64 / 1024.0);
 

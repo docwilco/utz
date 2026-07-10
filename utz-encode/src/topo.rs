@@ -16,7 +16,7 @@ fn qmax_of(bits: u32) -> f64 { ((1u64 << (bits - 1)) - 1) as f64 }
 fn qxb(lon: f64, qmax: f64) -> i32 { (lon / 180.0 * qmax).round() as i32 }
 fn qyb(lat: f64, qmax: f64) -> i32 { (lat / 90.0 * qmax).round() as i32 }
 fn pushb(out: &mut Vec<u8>, v: i32, bits: u32) {
-    let n = ((bits + 7) / 8) as usize; // bytes per axis (i16->2, i24->3, i32->4)
+    let n = bits.div_ceil(8) as usize; // bytes per axis (i16->2, i24->3, i32->4)
     out.extend_from_slice(&v.to_le_bytes()[0..n]);
 }
 
@@ -97,11 +97,14 @@ pub fn build_topology_algo(feats: &[Feat], algo: Simplify) -> Topology {
 /// long edge crossing a dense area pins both flanking vertices. Weights are a
 /// pure function of arc geometry and every shared arc is simplified exactly
 /// once, so neighbouring zones stay stitched by construction.
-pub fn build_topology_weighted(feats: &[Feat], algo: Simplify, edge_weight: &dyn Fn((f64, f64), (f64, f64)) -> f64) -> Topology {
+pub fn build_topology_weighted(feats: &[Feat], algo: Simplify, edge_weight: &EdgeWeightFn<'_>) -> Topology {
     build_topology_impl(feats, algo, Some(edge_weight))
 }
 
-fn build_topology_impl(feats: &[Feat], algo: Simplify, edge_weight: Option<&dyn Fn((f64, f64), (f64, f64)) -> f64>) -> Topology {
+/// Tolerance multiplier for the edge `a`–`b` (see [`build_topology_weighted`]).
+pub type EdgeWeightFn<'a> = dyn Fn((f64, f64), (f64, f64)) -> f64 + 'a;
+
+fn build_topology_impl(feats: &[Feat], algo: Simplify, edge_weight: Option<&EdgeWeightFn<'_>>) -> Topology {
     // 1. dedup vertices (bit-exact) -> ids + coords
     let mut vid: HashMap<(u64, u64), VId> = HashMap::new();
     let mut vcoord: Vec<(f64, f64)> = Vec::new();
@@ -179,7 +182,7 @@ fn build_topology_impl(feats: &[Feat], algo: Simplify, edge_weight: Option<&dyn 
                 let fwd: Vec<VId> = (0..=n).map(|k| seq[(i + k) % n]).collect();
                 let bwd: Vec<VId> = (0..=n).map(|k| seq[(i + n - k) % n]).collect();
                 for (cand, f) in [(fwd, true), (bwd, false)] {
-                    if best.as_ref().map_or(true, |(b, _)| cand < *b) { best = Some((cand, f)); }
+                    if best.as_ref().is_none_or(|(b, _)| cand < *b) { best = Some((cand, f)); }
                 }
             }
             let (canon, forward) = best.unwrap();
@@ -246,9 +249,7 @@ pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: b
         let (mut px, mut py) = (0i64, 0i64);
         for (i, &(x, y)) in a.iter().enumerate() {
             let (cx, cy) = (qxb(x, qmax) as i64, qyb(y, qmax) as i64);
-            if abs_fixed {
-                pushb(&mut o, cx as i32, qbits); pushb(&mut o, cy as i32, qbits);
-            } else if i == 0 {
+            if abs_fixed || i == 0 {
                 pushb(&mut o, cx as i32, qbits); pushb(&mut o, cy as i32, qbits);
             } else {
                 put_varint(&mut o, zigzag(cx - px)); put_varint(&mut o, zigzag(cy - py));

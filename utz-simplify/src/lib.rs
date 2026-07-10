@@ -95,7 +95,7 @@ impl DensityWeight {
     /// Tolerance multiplier ∈ [`w_min`, 1] for a density in people/km²
     /// (NaN or `w_min ≥ 1` → 1: weighting off).
     pub fn weight(&self, density: f64) -> f64 {
-        if !(density > self.d_lo) || self.w_min >= 1.0 {
+        if density.is_nan() || density <= self.d_lo || self.w_min >= 1.0 {
             return 1.0;
         }
         if density >= self.d_hi {
@@ -610,9 +610,9 @@ mod tests {
         'bfs: while !frontier.is_empty() {
             let mut nextf = Vec::new();
             for &i in &frontier {
-                for j in i + 1..n {
-                    if parent[j] == usize::MAX && valid(i, j) {
-                        parent[j] = i;
+                for (j, pj) in parent.iter_mut().enumerate().skip(i + 1) {
+                    if *pj == usize::MAX && valid(i, j) {
+                        *pj = i;
                         if j == n - 1 {
                             break 'bfs;
                         }
