@@ -97,6 +97,11 @@ pub enum GeomEncoding {
 
 impl SimplifyAlgo {
     /// ε-driven `Simplify` for the topology builder.
+    ///
+    /// # Errors
+    ///
+    /// `Visvalingam` is rejected: its knob is an area, not ε (see the message
+    /// for the workaround).
     pub fn to_simplify(self, eps_deg: f64) -> anyhow::Result<utz_simplify::Simplify> {
         Ok(match self {
             SimplifyAlgo::Rdp => utz_simplify::Simplify::Rdp { eps: eps_deg },
@@ -149,12 +154,21 @@ pub struct PayloadStats {
 /// simplification concern, not a serialization one: build the topology
 /// yourself (`topo::build_topology_weighted`) and use
 /// [`payload_from_topology`] + [`finish`] — see utz-build's wrapper.
+///
+/// # Errors
+///
+/// Same as [`build_payload`].
 pub fn encode(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
     Ok(finish(build_payload(feats, p)?, p.codec))
 }
 
 /// Everything but the outer header + compression (so size sweeps can compress
 /// one payload with several codecs).
+///
+/// # Errors
+///
+/// `p.simplify == Visvalingam` (see [`SimplifyAlgo::to_simplify`]); otherwise
+/// as [`payload_from_topology`].
 pub fn build_payload(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
     let algo = p.simplify.to_simplify(p.eps_m / 111_320.0)?;
     let t = topo::build_topology_algo(feats, algo);
@@ -166,6 +180,13 @@ pub fn build_payload(feats: &[Feat], p: &Params) -> anyhow::Result<Vec<u8>> {
 /// per-arc itself); `feats` supplies only per-feature metadata (tzid, offset)
 /// — geometry comes from the arcs. `p.eps_m` is recorded in the header, not
 /// applied.
+///
+/// # Errors
+///
+/// Out-of-range params (`quant_bits` not 16/24/32, `grid_deg` outside 0.1–45,
+/// `tzbb_release` ≥ 256 bytes) or format-limit overflows (feature/polygon
+/// counts past 15-bit zone ids, CSR list tables past their 15-bit/u16 space,
+/// eager coordinate count past u32).
 pub fn payload_from_topology(
     t: &topo::Topology,
     arc_coords: &[Vec<(f64, f64)>],
@@ -499,6 +520,13 @@ pub fn finish(payload: Vec<u8>, codec: Codec) -> Vec<u8> {
     o
 }
 
+/// Compress `raw` with `codec` (body only, no outer header).
+///
+/// # Panics
+///
+/// Panics on `Codec::Zstd` when utz-encode was built without the `zstd`
+/// feature, or if the underlying compressor fails (not expected when writing
+/// to memory).
 #[must_use]
 pub fn compress(raw: &[u8], codec: Codec) -> Vec<u8> {
     match codec {

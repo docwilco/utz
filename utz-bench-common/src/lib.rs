@@ -55,6 +55,10 @@ pub fn run(finder: &utz::Finder, pts: &[(f64, f64)], now_us: &mut dyn FnMut() ->
 
 /// `warmup` + `rounds` passes; returns the fastest round (steady-state cost,
 /// robust against caches warming and interrupt noise).
+///
+/// # Panics
+///
+/// Never: `rounds` is clamped to ≥ 1, so a best round always exists.
 pub fn run_rounds(finder: &utz::Finder, pts: &[(f64, f64)], rounds: usize, now_us: &mut dyn FnMut() -> u64) -> BenchResult {
     let mut best: Option<BenchResult> = None;
     let _ = run(finder, pts, now_us); // warmup

@@ -27,6 +27,10 @@ pub struct CellGrid {
 
 /// Rasterize `feats` onto a `deg`-cell grid; ownership sampled on a grid
 /// `sub`× finer (sub=8 at 2° → 0.25° subcells).
+///
+/// # Panics
+///
+/// Panics if any coordinate is NaN (scanline crossings become unsortable).
 #[must_use]
 pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
     let ncols = (360.0 / deg).ceil() as usize;
@@ -177,6 +181,10 @@ impl Csr {
 
 /// Build the interned CSR. `areas` (global zone area, any consistent unit) is
 /// used by `AreaDesc`/`CellDominantFirst`.
+///
+/// # Panics
+///
+/// Panics with `AreaDesc` if a candidate's `areas` entry is NaN.
 #[must_use]
 pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
     let total = grid.ncols * grid.nrows;

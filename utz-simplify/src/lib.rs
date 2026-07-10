@@ -134,6 +134,10 @@ pub fn rdp(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
 }
 
 /// [`rdp`] with per-vertex multipliers: deviation at `pts[i]` ≤ `eps * w[i]`.
+///
+/// # Panics
+///
+/// Panics if `pts.len() != w.len()`.
 #[must_use]
 pub fn rdp_w(pts: &[(f64, f64)], eps: f64, w: &[f64]) -> Vec<(f64, f64)> {
     assert_eq!(pts.len(), w.len(), "one weight per point");
@@ -185,6 +189,10 @@ pub fn visvalingam(pts: &[(f64, f64)], min_area: f64) -> Vec<(f64, f64)> {
 
 /// [`visvalingam`] with per-vertex multipliers: `pts[i]` is dropped while its
 /// triangle area < `min_area * w[i]²` (areas scale as distance²).
+///
+/// # Panics
+///
+/// Panics if `pts.len() != w.len()`.
 #[must_use]
 pub fn visvalingam_w(pts: &[(f64, f64)], min_area: f64, w: &[f64]) -> Vec<(f64, f64)> {
     assert_eq!(pts.len(), w.len(), "one weight per point");
@@ -296,6 +304,10 @@ const II_MAX: usize = 8192;
 /// shortcut (negligible for weights sampled from a coarse grid through a
 /// smooth map); the global `eps * max(w)` bound always holds.
 #[must_use]
+///
+/// # Panics
+///
+/// Panics if `pts.len() != w.len()`.
 pub fn imai_iri_w(pts: &[(f64, f64)], eps: f64, w: &[f64]) -> Vec<(f64, f64)> {
     assert_eq!(pts.len(), w.len(), "one weight per point");
     if pts.len() < 3 || eps <= 0.0 {
