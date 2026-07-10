@@ -1,0 +1,11 @@
+# ESP-IDF partition table (espflash.toml points here; offsets assume the
+# N16R8 module's 16 MB flash). Adds `utzdata`: one dataset OUTSIDE the app
+# image — flash-with-data.sh writes the tiny-static asset at its offset
+# (keep that script's address in sync) and the firmware finds it by label
+# at runtime (partition leg). Subtype stays `undefined`: custom subtypes
+# panic esp-bootloader-esp-idf's PartitionEntry::partition_type().
+# Name,     Type, SubType,   Offset,    Size,     Flags
+nvs,        data, nvs,       0x9000,    0x6000,
+phy_init,   data, phy,       0xf000,    0x1000,
+factory,    app,  factory,   0x10000,   0xbf0000,
+utzdata,    data, undefined, 0xc00000,  0x40000,

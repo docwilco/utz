@@ -1058,6 +1058,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "esp-storage"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cf2b3f00c9f94b27c62a4f5296b19470c3a083c687c8146e554a459f9bee596"
+dependencies = [
+ "document-features",
+ "embedded-storage",
+ "esp-hal",
+ "esp-hal-procmacros",
+ "esp-metadata-generated 0.4.0",
+ "esp-rom-sys",
+ "esp-sync",
+]
+
+[[package]]
 name = "esp-sync"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1763,6 +1778,12 @@ dependencies = [
  "icu_normalizer",
  "icu_properties",
 ]
+
+[[package]]
+name = "include_bytes_aligned"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb3f0fd7913f9257b6862075640a029db0fff0887a3f49e00059f52b7111cf11"
 
 [[package]]
 name = "indexmap"
@@ -2997,6 +3018,7 @@ version = "0.0.0"
 dependencies = [
  "brotli-decompressor",
  "derive_more",
+ "include_bytes_aligned",
  "lzma-rust2",
  "miniz_oxide",
  "ruzstd",
@@ -3017,11 +3039,13 @@ dependencies = [
 name = "utz-bench-firmware"
 version = "0.0.0"
 dependencies = [
+ "embedded-storage",
  "esp-alloc",
  "esp-backtrace",
  "esp-bootloader-esp-idf",
  "esp-hal",
  "esp-println",
+ "esp-storage",
  "utz",
  "utz-bench-common",
  "utz-build",

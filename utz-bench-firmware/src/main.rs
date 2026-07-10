@@ -14,6 +14,10 @@
 //!   path (decode time printed separately = per-codec embedded decode speed).
 //! - **eager**: `from_static` + `preload` — geometry decoded to RAM once,
 //!   payload stays in flash.
+//! - **partition**: the same tiny-static asset read back out of a dedicated
+//!   `utzdata` flash partition (found by label in the ESP-IDF partition
+//!   table at runtime) instead of the app image — the ship-the-dataset-
+//!   separately path, e.g. for OTA-ing data without the firmware.
 //!
 //! Uses the same harness + points as utz-bench-cli: every leg's checksum must
 //! equal the host run of the same shape at npts=2000.
@@ -187,6 +191,90 @@ fn eager_leg(label: &str, blob: &'static [u8], pts: &[(f64, f64)]) {
     bench(label, &f, pts);
 }
 
+/// partition leg: the dataset is NOT in the app image — it sits in its own
+/// `utzdata` flash partition (partitions.csv), written by flash-with-data.sh.
+/// At runtime: parse the ESP-IDF partition table, find the partition by
+/// label, size the read from the container's outer header (the partition is
+/// bigger than the asset; erased flash is 0xFF), copy to heap, bench. The
+/// asset is the tiny-static preset, so the bytes — and the checksum — must
+/// match the embedded TINY_NONE legs.
+fn partition_leg(
+    label: &str,
+    flash: esp_hal::peripherals::FLASH<'static>,
+    twin: &'static [u8],
+    pts: &[(f64, f64)],
+    psram: &core::ops::Range<usize>,
+) {
+    use embedded_storage::ReadStorage;
+    use esp_bootloader_esp_idf::partitions;
+
+    let mut flash = esp_storage::FlashStorage::new(flash);
+    let mut pt_mem = [0u8; partitions::PARTITION_TABLE_MAX_LEN];
+    let table = match partitions::read_partition_table(&mut flash, &mut pt_mem) {
+        Ok(t) => t,
+        Err(e) => {
+            println!("SKIP {}: partition table unreadable ({:?})", label, e);
+            return;
+        }
+    };
+    let Some(part) = table.iter().find(|p| p.label_as_str() == "utzdata") else {
+        println!("SKIP {}: no utzdata partition — flash via flash-with-data.sh", label);
+        return;
+    };
+    println!(
+        "INFO {}: utzdata partition at {:#x}, {} KiB",
+        label,
+        part.offset(),
+        part.len() / 1024
+    );
+    let mut region = part.as_embedded_storage(&mut flash);
+    let mut head = [0u8; utz::format::OUTER_LEN];
+    if region.read(0, &mut head).is_err() {
+        println!("SKIP {}: header read failed", label);
+        return;
+    }
+    let total = match utz::format::outer(&head) {
+        // codec none: the container is exactly header + raw payload
+        Ok((0, raw_len, start)) => start + raw_len,
+        _ => {
+            println!("SKIP {}: partition holds no uncompressed container — reflash it", label);
+            return;
+        }
+    };
+    if total > region.capacity() || !fits(total) {
+        println!("SKIP {}: {} KiB container too big for partition or heap", label, total / 1024);
+        return;
+    }
+    let mut v = alloc::vec![0u8; total];
+    let where_ = region_of(v.as_ptr() as usize, psram);
+    let t0 = now_us();
+    // bounce through a stack chunk: the ROM read runs with the cache
+    // disabled, so its destination must be internal RAM — the heap buffer
+    // may be PSRAM, which is only reachable through the cache
+    let mut chunk = [0u8; 4096];
+    let mut off = 0usize;
+    while off < total {
+        let n = (total - off).min(chunk.len());
+        if region.read(off as u32, &mut chunk[..n]).is_err() {
+            println!("SKIP {}: flash read failed at offset {:#x}", label, off);
+            return;
+        }
+        v[off..off + n].copy_from_slice(&chunk[..n]);
+        off += n;
+    }
+    let read_us = now_us() - t0;
+    println!(
+        "INFO {}: read {} KiB to {} in {} ms — {} the embedded twin",
+        label,
+        total / 1024,
+        where_,
+        read_us / 1000,
+        if v == twin { "matches" } else { "DIFFERS FROM" }
+    );
+    let f = Finder::from_vec(v).expect("from_vec");
+    bench(label, &f, pts);
+}
+
 /// eager_from_slice leg: compressed asset decoded straight to eager, the
 /// geometry sections dropped — steady-state heap is the eager cache plus
 /// header/tzid/grid only (compare against decode + preload's payload+cache)
@@ -284,6 +372,9 @@ fn main() -> ! {
     }
     ram_leg("compact ram", COMPACT_NONE, &pts, &psram);
     ram_leg("balanced ram", BALANCED_NONE, &pts, &psram);
+
+    // --- flash partition (dataset outside the app image, found at runtime) ---
+    partition_leg("tiny partition", peripherals.FLASH, TINY_NONE, &pts, &psram);
 
     // --- buffered decode (compressed asset in flash → payload in RAM) ---
     decode_leg("tiny decode-gzip", TINY_GZ, TINY_NONE.len(), &pts);

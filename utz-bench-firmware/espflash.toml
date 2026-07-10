@@ -1,0 +1,10 @@
+# found by espflash when run from this directory (the only place the
+# .cargo/config.toml runner applies anyway)
+baudrate = 3000000
+
+[idf]
+partition_table = "partitions.csv"
+
+# N16R8: the partition table addresses past 4 MB, so don't rely on detection
+[flash]
+size = "16MB"

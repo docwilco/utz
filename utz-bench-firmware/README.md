@@ -12,6 +12,13 @@ PLAN §15 memory-mode matrix for each preset shape (tiny / compact / balanced):
   (`from_slice`); the decode time doubles as a per-codec embedded speed number.
 - **eager** — `from_static` + `preload()`: payload in flash, geometry cache
   in RAM.
+- **partition** — the tiny-static asset read back out of a dedicated
+  `utzdata` flash partition instead of the app image: the runner script
+  writes it with `espflash write-bin` (see `partitions.csv` +
+  `flash-with-data.sh`), the firmware finds it by label in the ESP-IDF
+  partition table at runtime, sizes the read from the container header, and
+  verifies the bytes against the embedded twin — the ship-the-dataset-
+  separately path.
 
 The bench uses the same deterministic points as `utz-bench-cli`; every leg's
 printed `checksum` must match the host run for the same shape and npts — a
@@ -48,8 +55,12 @@ the workspace `cache/` if not already there.
 
 ```sh
 cd utz-bench-firmware
-cargo run --release     # espflash flash --monitor (see .cargo/config.toml)
+cargo run --release     # flash-with-data.sh: write-bin the utzdata
+                        # partition, then espflash flash --monitor
 ```
+
+The runner uses the custom `partitions.csv` (via `espflash.toml`); offsets
+assume the N16R8's 16 MB flash.
 
 One `RESULT` line per leg (plus `INFO` decode/preload timings and payload
 placement, `SKIP` where a leg doesn't fit the detected memory), then `DONE`.

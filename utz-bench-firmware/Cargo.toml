@@ -27,6 +27,10 @@ esp-alloc = "0.8"
 esp-println = { version = "0.15", features = ["esp32s3"] }
 esp-backtrace = { version = "0.17", features = ["esp32s3", "panic-handler", "println"] }
 esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32s3"] }
+# the partition leg: raw flash reads (esp-storage) + the ESP-IDF partition
+# table parser (esp-bootloader-esp-idf::partitions) to find `utzdata`
+esp-storage = { version = "0.9.0", features = ["esp32s3"] }
+embedded-storage = "0.3"
 
 [build-dependencies]
 # consumer builder API for the build.rs-generated codec-none twins; compiled
