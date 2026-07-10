@@ -8,6 +8,9 @@ fn template_path(name: &str) -> String {
 
 /// The static webdist viewer page (`webdist_index.html`, no substitutions):
 /// fetches per-dataset `.bin.z` blobs + `utz_simplify.wasm` at runtime.
+///
+/// # Errors
+/// I/O failure reading the template file.
 pub fn webdist_index() -> anyhow::Result<String> {
     Ok(std::fs::read_to_string(template_path("webdist_index.html"))?)
 }
@@ -29,6 +32,10 @@ pub fn webdist_index() -> anyhow::Result<String> {
 /// | u32 n_rings | per ring: u32 nrefs | u32 refs (id<<1|rev)
 /// | per feature: u16 npolys | per poly: u16 nrings | u32 ring_idx[nrings]`
 /// — byte-packed, no alignment (the WASM parser reads bytewise).
+///
+/// # Panics
+/// If `release` or any tzid is 256 bytes or longer (they're stored with
+/// one-byte lengths).
 #[must_use]
 pub fn dataset_bin(
     t: &crate::topo::Topology,

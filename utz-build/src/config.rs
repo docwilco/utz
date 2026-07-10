@@ -190,6 +190,11 @@ impl Config {
     /// next to the `include_bytes!` so a feature mismatch fails the build
     /// instead of the first load.
     pub fn generate(self) -> anyhow::Result<PathBuf> {
+    ///
+    /// # Errors
+    /// Invalid dataset name, source download/parse failure, encoding failure,
+    /// missing `OUT_DIR` when no `out_path` is set, or I/O writing the asset
+    /// and its guard file.
         let (feats, release) = crate::load_with_release(&self.dataset)?;
         let p = Params {
             dataset: crate::dataset(&self.dataset)?.code(),
@@ -226,6 +231,9 @@ impl Config {
 /// the geometry decoder and codec the asset needs (shared by
 /// [`Config::generate`] and the `gen` CLI).
 pub fn write_guard(out: &std::path::Path, geom: GeomEncoding, codec: Codec) -> anyhow::Result<()> {
+///
+/// # Errors
+/// I/O failure writing `<out>.guard.rs`.
     let name = out.file_name().and_then(|n| n.to_str()).unwrap_or("asset");
     let (gc, gf) = match geom {
         GeomEncoding::DeltaVarint => ("GEOM_VARINT", "geom-varint"),

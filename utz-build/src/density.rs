@@ -45,6 +45,10 @@ pub struct DensityGrid {
 impl DensityGrid {
     /// Load from the sidecar cache, building it from GHS-POP on first use
     /// (downloads the zip via [`crate::download::fetch`] if needed).
+    ///
+    /// # Errors
+    /// Corrupt sidecar, or on first build: GHS-POP download failure, zip
+    /// extraction/TIFF decode failure, or I/O writing the sidecar.
     pub fn load(cache_dir: &Path) -> anyhow::Result<Self> {
         let sidecar = cache_dir.join(SIDECAR_NAME);
         if sidecar.exists() {
@@ -126,6 +130,10 @@ impl DensityGrid {
 
     /// Decode the GHS-POP `GeoTIFF`, summing 8×8 pixel blocks and converting
     /// population counts to people/km².
+    ///
+    /// # Errors
+    /// I/O or TIFF decode failure, missing geotransform tags, or a sample
+    /// format other than f32/f64.
     pub fn from_ghs_pop_tif(tif_path: &Path) -> anyhow::Result<Self> {
         let mut dec = Decoder::new(BufReader::new(std::fs::File::open(tif_path)?))?
             .with_limits(Limits::unlimited());

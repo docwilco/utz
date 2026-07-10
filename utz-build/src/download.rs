@@ -7,6 +7,10 @@ use std::path::{Path, PathBuf};
 
 /// Fetch `url` into `cache_dir`, revalidating any cached copy. Returns the
 /// cached file path. Offline with a cached copy present → warn + reuse.
+///
+/// # Errors
+/// URL without a filename component, HTTP failure with no cached copy to
+/// fall back on, or I/O failure writing the cache.
 pub fn fetch(url: &str, cache_dir: &Path) -> anyhow::Result<PathBuf> {
     std::fs::create_dir_all(cache_dir)?;
     let name = url.rsplit('/').next().filter(|s| !s.is_empty())

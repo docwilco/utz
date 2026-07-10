@@ -54,6 +54,9 @@ impl Dataset {
 }
 
 /// Parse a dataset name (`[land-]now|1970|all`; legacy `osm`/`osm1970` accepted).
+///
+/// # Errors
+/// Unrecognized dataset name.
 pub fn dataset(ds: &str) -> anyhow::Result<Dataset> {
     let (land, rest) = match ds.strip_prefix("land-") {
         Some(r) => (true, r),
@@ -72,6 +75,9 @@ pub fn dataset(ds: &str) -> anyhow::Result<Dataset> {
 /// `UTZ_SOURCE=fgb` forces the legacy prebuilt `.fgb`; default prefers the
 /// `.fgb` when it exists (no network, with-oceans now/1970 only) and falls
 /// back to downloading.
+///
+/// # Errors
+/// See [`load_with_release`].
 pub fn load(ds: &str) -> anyhow::Result<Vec<Feat>> {
     Ok(load_with_release(ds)?.0)
 }
@@ -79,6 +85,10 @@ pub fn load(ds: &str) -> anyhow::Result<Vec<Feat>> {
 /// [`load`] plus the TZBB release tag the features came from — for stamping
 /// container headers (provenance, §11). `"dev"` when the source isn't a
 /// pinned release (legacy `.fgb`, offline fallback).
+///
+/// # Errors
+/// Invalid dataset name, `UTZ_SOURCE=fgb` for a dataset with no legacy
+/// `.fgb`, `.fgb` read/parse failure, or TZBB download/parse failure.
 pub fn load_with_release(ds: &str) -> anyhow::Result<(Vec<Feat>, String)> {
     let d = dataset(ds)?;
     let fgb = fgb_path(&d);
@@ -97,6 +107,10 @@ pub fn load_with_release(ds: &str) -> anyhow::Result<(Vec<Feat>, String)> {
 /// per-edge ε multiplier is a simplification knob, so it lives here with the
 /// density code — utz-encode itself stays density-agnostic (see the
 /// `encode::encode` docs).
+///
+/// # Errors
+/// Simplify algorithm/ε parameters rejected by `to_simplify`, or payload
+/// encoding failure.
 pub fn encode_weighted(
     feats: &[Feat],
     p: &encode::Params,

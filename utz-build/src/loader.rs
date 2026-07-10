@@ -21,6 +21,10 @@ const REPO: &str = "https://github.com/evansiroky/timezone-boundary-builder";
 /// `UTZ_TZBB_RELEASE` pins a tag explicitly (skips the probe). With no
 /// network and no cached tag, falls back to `"dev"` with a warning — the
 /// zip cache may still serve the data.
+///
+/// # Errors
+/// I/O failure caching the freshly probed tag (probe failures themselves
+/// fall back to the cached tag or `"dev"`).
 pub fn resolve_release(cache_dir: &Path) -> anyhow::Result<String> {
     if let Ok(tag) = std::env::var("UTZ_TZBB_RELEASE") {
         if !tag.is_empty() {
@@ -72,6 +76,9 @@ pub fn dataset_url(d: Dataset, release: &str) -> String {
 
 /// Download (revalidating) + parse a dataset into `Feat`s. Returns the
 /// features plus the TZBB release tag they came from.
+///
+/// # Errors
+/// Release-tag caching, download, or zip/`GeoJSON` parse failure.
 pub fn load_tzbb(d: Dataset, cache_dir: &Path) -> anyhow::Result<(Vec<Feat>, String)> {
     let release = resolve_release(cache_dir)?;
     let zip_path = download::fetch(&dataset_url(d, &release), cache_dir)?;
@@ -79,6 +86,10 @@ pub fn load_tzbb(d: Dataset, cache_dir: &Path) -> anyhow::Result<(Vec<Feat>, Str
 }
 
 /// Parse the first `.json`/`.geojson` entry of a TZBB release zip.
+///
+/// # Errors
+/// I/O or zip-archive failure, no `.json`/`.geojson` entry, or `GeoJSON`
+/// parse failure.
 pub fn load_geojson_zip(path: &Path) -> anyhow::Result<Vec<Feat>> {
     let file = std::fs::File::open(path)?;
     let mut zip = zip::ZipArchive::new(BufReader::new(file))?;
@@ -110,6 +121,10 @@ pub fn parse_geojson(bytes: &[u8]) -> anyhow::Result<Vec<Feat>> {
     let fc: Fc = serde_json::from_slice(bytes)?;
     Ok(fc.features.into_iter().map(|f| {
         let polys: Vec<Poly> = match f.geometry {
+/// Deserialize a TZBB `GeoJSON` `FeatureCollection` into `Feat`s.
+///
+/// # Errors
+/// JSON that doesn't deserialize as a Polygon/`MultiPolygon` `FeatureCollection`.
             Geom::Polygon { coordinates } => vec![rings_of(coordinates)],
             Geom::MultiPolygon { coordinates } => coordinates.into_iter().map(rings_of).collect(),
         };
