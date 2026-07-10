@@ -79,6 +79,9 @@ utz-data-tiny-static = { path = "../utz-data-tiny-static", optional = true }
 utz-data-compact = { path = "../utz-data-compact", optional = true }
 utz-data-balanced = { path = "../utz-data-balanced", optional = true }
 utz-data-accurate = { path = "../utz-data-accurate", optional = true }
+# no_std, macro-only; backs include_container!. Drop once RFC 3806's
+# `static_align` (#[align(N)] on statics) stabilizes.
+include_bytes_aligned = "0.2.0"
 
 [dev-dependencies]
 geo = { workspace = true }

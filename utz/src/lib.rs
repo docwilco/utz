@@ -150,16 +150,17 @@ pub enum Error {
 /// [`Finder::from_static`] on `EagerImage` assets — the PIP kernels read
 /// `(i32, i32)` pairs straight from the embedded bytes, and a bare
 /// `include_bytes!` guarantees no alignment. Harmless for any other asset.
+// Re-exported so include_container! expands without consumers depending on
+// include_bytes_aligned themselves. Both the re-export and the dependency can
+// go once RFC 3806's `static_align` stabilizes (`#[align(4)]` on a static
+// holding `*include_bytes!($path)` replaces the whole wrapper-struct dance):
+// https://github.com/rust-lang/rfcs/pull/3806
+#[doc(hidden)]
+pub use include_bytes_aligned::include_bytes_aligned as __include_bytes_aligned;
+
 #[macro_export]
 macro_rules! include_container {
-    ($path:expr) => {{
-        #[repr(C)]
-        struct Aligned<A, B: ?Sized> {
-            _align: [A; 0],
-            bytes: B,
-        }
-        static ALIGNED: &Aligned<u32, [u8]> =
-            &Aligned { _align: [], bytes: *include_bytes!($path) };
-        &ALIGNED.bytes
-    }};
+    ($path:expr) => {
+        $crate::__include_bytes_aligned!(4, $path)
+    };
 }
