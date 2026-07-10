@@ -213,6 +213,9 @@ pub type CleanedTopo = (Vec<Vec<u32>>, Vec<Vec<Vec<usize>>>, Vec<Vec<(i32, i32)>
 /// filtered `(ring_refs, structure, arcs)` mirroring `Topology`'s fields.
 /// Dropping a zero-area ring can't open a crack with a neighbour — there was
 /// no area to disagree about.
+///
+/// # Panics
+/// If a polygon has more than `u32::MAX` rings.
 pub fn drop_degenerate_rings(
     ring_refs: &[Vec<u32>],
     structure: &[Vec<Vec<usize>>],

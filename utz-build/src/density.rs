@@ -142,6 +142,10 @@ impl DensityGrid {
     /// # Errors
     /// I/O or TIFF decode failure, missing geotransform tags, or a sample
     /// format other than f32/f64.
+    ///
+    /// # Panics
+    /// If the source raster's dimensions or chunk count exceed u32 (not
+    /// reachable for GHS-POP).
     pub fn from_ghs_pop_tif(tif_path: &Path) -> crate::Result<Self> {
         const KM_PER_DEG: f64 = 111.32;
         let mut dec = Decoder::new(BufReader::new(std::fs::File::open(tif_path)?))?

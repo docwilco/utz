@@ -19,3 +19,6 @@ utz = { path = "../utz", default-features = false, features = [
 # consumer builder API for the codec-none twins in build.rs (compiled for the
 # host, also under the firmware's esp toolchain)
 utz-build = { path = "../utz-build" }
+
+[lints]
+workspace = true

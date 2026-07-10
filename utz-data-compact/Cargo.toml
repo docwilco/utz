@@ -11,3 +11,6 @@ publish = false
 # generation logs + checksums attached to a GitHub release (§11 provenance).
 
 [dependencies]
+
+[lints]
+workspace = true

@@ -233,6 +233,10 @@ fn build_topology_impl(feats: &[Feat], algo: Simplify, edge_weight: Option<&Edge
 /// `abs_fixed`: store arc vertices as fixed-width absolute ints (random-access)
 /// instead of the default delta + zigzag-varint stream.
 #[must_use]
+///
+/// # Panics
+/// If a count or quantized coordinate exceeds its serialized width
+/// (u16 pool/poly counts, u32 arc ids, i32 coords).
 pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: bool) -> TopoOut {
     let qmax = qmax_of(qbits);
     let topo = build_topology(feats, eps_deg);

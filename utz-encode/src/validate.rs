@@ -102,6 +102,9 @@ pub fn find_problems(t: &Topology, arc_coords: &[Vec<(f64, f64)>], qbits: u32) -
 /// Count non-adjacent segment pairs of one ring that intersect, split by
 /// kind. Sweep over min-x-sorted segments — O(n log n + pairs-in-x-overlap),
 /// fine at report scale. Crossing/overlap spots land in `b.locs`.
+///
+/// # Panics
+/// If a ring has more than `u32::MAX` segments.
 pub fn ring_bad(ri: usize, c: &[(i32, i32)], b: &mut Bad) {
     let n = c.len();
     if n < 4 {

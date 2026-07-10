@@ -88,3 +88,6 @@ geo-types = { workspace = true }
 
 # No build.rs / build-dependencies by design (PLAN.md sec 11): preset data ships
 # as utz-data-* crates; custom assets are generated consumer-side via utz-build.
+
+[lints]
+workspace = true

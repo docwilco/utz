@@ -192,6 +192,11 @@ pub fn build_payload(feats: &[Feat], p: &Params) -> crate::Result<Vec<u8>> {
 /// `tzbb_release` ≥ 256 bytes) or format-limit overflows (feature/polygon
 /// counts past 15-bit zone ids, CSR list tables past their 15-bit/u16 space,
 /// eager coordinate count past u32).
+///
+/// # Panics
+/// If a serialized section outgrows its u16/u32 format width where no
+/// [`Error::FormatLimit`] guard applies (payload over 4 GiB — unreachable
+/// for real datasets).
 pub fn payload_from_topology(
     t: &topo::Topology,
     arc_coords: &[Vec<(f64, f64)>],
@@ -390,7 +395,7 @@ pub fn payload_from_topology(
     // wrap silently corrupting the table (same policy as the CSR guards)
     let total_pool: usize = feats.iter().map(|f| f.tzid.as_deref().unwrap_or("").len()).sum();
     ensure!(
-        total_pool <= usize::from(u16::MAX),
+        u16::try_from(total_pool).is_ok(),
         Error::FormatLimit { what: "tzid pool bytes (u16 offsets)", n: total_pool, max: u16::MAX as usize }
     );
     let mut str_off: Vec<u16> = Vec::with_capacity(feats.len() + 1);

@@ -20,3 +20,6 @@ utz = { path = "../utz", features = [
     "custom",
 ] }
 utz-bench-common = { path = "../utz-bench-common" }
+
+[lints]
+workspace = true

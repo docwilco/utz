@@ -54,7 +54,7 @@ struct Args {
     rounds: usize,
 }
 
-/// Workspace error pattern (see `utz::Error`): derive_more, foreign errors
+/// Workspace error pattern (see `utz::Error`): `derive_more`, foreign errors
 /// via `derive_more::From`.
 #[derive(Debug, derive_more::Display, derive_more::Error, derive_more::From)]
 enum Error {

@@ -15,3 +15,6 @@ publish = false
 # Finder::from_static, so keep it alignment-proof against recipe changes
 # (only EagerImage geometry actually requires it; today's varint does not)
 include_bytes_aligned = { workspace = true }
+
+[lints]
+workspace = true

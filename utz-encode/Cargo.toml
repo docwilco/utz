@@ -30,3 +30,6 @@ miniz_oxide = "0.8"
 brotli = "8.0"
 lzma-rust2 = { version = "0.16", default-features = false, features = ["xz", "encoder", "optimization"] }
 zstd = { version = "0.13", optional = true }
+
+[lints]
+workspace = true

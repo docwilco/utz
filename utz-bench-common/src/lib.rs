@@ -40,6 +40,9 @@ impl BenchResult {
 
 /// Run one timed pass of `finder.lookup` over `pts`. `now_us` is any
 /// monotonic microsecond source.
+///
+/// # Panics
+/// If `pts` holds more than `u32::MAX` points.
 pub fn run(finder: &utz::Finder, pts: &[(f64, f64)], now_us: &mut dyn FnMut() -> u64) -> BenchResult {
     let (mut hits, mut checksum) = (0u32, 0u64);
     let t0 = now_us();

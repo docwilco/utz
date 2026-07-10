@@ -113,6 +113,9 @@ pub fn dataset_bin(
 /// (0 = unpopulated → transparent, 255 ≈ 50k p/km²); the JS reprojects
 /// rows to Mercator when drawing.
 #[must_use]
+///
+/// # Panics
+/// If the binned grid dimensions exceed u32 (not reachable at 4' input).
 pub fn heat_bin(g: &crate::density::DensityGrid) -> Vec<u8> {
     const DS: usize = 4;
     let (w, h) = (g.w.div_ceil(DS), g.h.div_ceil(DS));

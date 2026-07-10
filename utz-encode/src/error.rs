@@ -10,7 +10,7 @@ pub enum Error {
     /// signals a codec bug rather than an environment problem
     #[display("compression failed: {_0}")]
     Compress(std::io::Error),
-    /// no_std `lzma_rust2::Error` isn't `core::error::Error` — stringified
+    /// `no_std` `lzma_rust2::Error` isn't `core::error::Error` — stringified
     #[from(skip)]
     #[display("xz compression failed: {_0}")]
     Xz(#[error(not(source))] String),
