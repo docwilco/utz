@@ -304,7 +304,7 @@ mod tests {
             let (cx, cy) = (next(M), next(M));
             let n = 5 + (next(12).unsigned_abs() as usize);
             let mut pts: Vec<(i32, i32)> = (0..n)
-                .map(|k| {
+                .map(#[expect(clippy::cast_precision_loss, reason = "test geometry: k < n ≤ 17 and radius r < 2^12+2^20, all exact in f64")] |k| {
                     let ang = k as f64 / n as f64 * core::f64::consts::TAU;
                     let r = (1 << 12) + i64::from(next(1 << 20).unsigned_abs());
                     (
@@ -348,7 +348,7 @@ mod tests {
             let (cx, cy) = (next(1000) - 500, next(1000) - 500);
             let n = 5 + (next(12) as usize);
             let mut pts: Vec<(i32, i32)> = (0..n)
-                .map(|k| {
+                .map(#[expect(clippy::cast_precision_loss, reason = "test geometry: k < n ≤ 17 and radius r ≤ 450, exact in f64")] |k| {
                     let ang = k as f64 / n as f64 * core::f64::consts::TAU;
                     let r = 50 + i64::from(next(400));
                     (cx + (ang.cos() * r as f64) as i32, cy + (ang.sin() * r as f64) as i32)

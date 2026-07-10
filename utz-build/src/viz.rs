@@ -137,6 +137,7 @@ pub fn heat_bin(g: &crate::density::DensityGrid) -> Vec<u8> {
     o.extend_from_slice(&u32::try_from(w).expect("raster width fits u32").to_le_bytes());
     o.extend_from_slice(&u32::try_from(h).expect("raster height fits u32").to_le_bytes());
     o.extend_from_slice(&[0u8; 4]); // pad so the f64 extents sit 8-aligned
+    #[expect(clippy::cast_precision_loss, reason = "DS = 4, exact in f64")]
     for v in [g.lon0, g.lat0, g.dlon * DS as f64, g.dlat * DS as f64] {
         o.extend_from_slice(&v.to_le_bytes());
     }

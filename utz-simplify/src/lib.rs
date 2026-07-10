@@ -482,11 +482,12 @@ mod tests {
     /// deterministic pseudo-random polyline (LCG, same recipe as pip tests)
     fn wiggle(n: usize, seed: u64) -> Vec<(f64, f64)> {
         let mut lcg = seed;
+        #[expect(clippy::cast_precision_loss, reason = "53-bit mantissa construction: lcg>>11 and 2^53 are both exact in f64")]
         let mut next = || {
             lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
             (lcg >> 11) as f64 / (1u64 << 53) as f64
         };
-        (0..n).map(|i| (i as f64 * 0.1, next() * 2.0 - 1.0)).collect()
+        (0..n).map(#[expect(clippy::cast_precision_loss, reason = "i < n ≤ II_MAX+2000 ≪ 2^53; test x-spacing")] |i| (i as f64 * 0.1, next() * 2.0 - 1.0)).collect()
     }
 
     fn max_deviation(orig: &[(f64, f64)], simp: &[(f64, f64)]) -> f64 {
@@ -692,7 +693,7 @@ mod tests {
     fn rand_weights(n: usize, lo: f64, seed: u64) -> Vec<f64> {
         let mut lcg = seed;
         (0..n)
-            .map(|_| {
+            .map(#[expect(clippy::cast_precision_loss, reason = "53-bit mantissa construction: lcg>>11 and 2^53 are both exact in f64")] |_| {
                 lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
                 lo + (1.0 - lo) * ((lcg >> 11) as f64 / (1u64 << 53) as f64)
             })
@@ -759,6 +760,7 @@ mod tests {
         // > II_MAX: per-point bound may relax where w varies within a
         // prefilter shortcut, but the global eps·max(w) bound always holds
         let pts = wiggle(II_MAX + 2000, 13);
+        #[expect(clippy::cast_precision_loss, reason = "i < pts.len() = II_MAX+2000 ≪ 2^53; test weights")]
         let w: Vec<f64> = (0..pts.len()).map(|i| 0.6 + 0.4 * (i as f64 / 500.0).sin()).collect();
         let eps = 0.3;
         let out = imai_iri_w(&pts, eps, &w);

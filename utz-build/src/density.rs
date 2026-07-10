@@ -95,12 +95,14 @@ impl DensityGrid {
         let (mut tx, tdx) = if dx == 0.0 {
             (f64::INFINITY, f64::INFINITY)
         } else {
+            #[expect(clippy::cast_precision_loss, reason = "|ix| ~ raster width ≤ 43200/8 for in-range lon; exact in f64")]
             let first = (ix + i64::from(dx > 0.0)) as f64;
             (((first - x0) / dx).abs().max(0.0), (1.0 / dx).abs())
         };
         let (mut ty, tdy) = if dy == 0.0 {
             (f64::INFINITY, f64::INFINITY)
         } else {
+            #[expect(clippy::cast_precision_loss, reason = "|iy| ~ raster height ≤ 21600/8 for in-range lat; exact in f64")]
             let first = (iy + i64::from(dy > 0.0)) as f64;
             (((first - y0) / dy).abs().max(0.0), (1.0 / dy).abs())
         };
@@ -124,6 +126,7 @@ impl DensityGrid {
         }
         // wrap longitude when the grid spans the full 360° (it does for
         // GHS-POP; the guard keeps synthetic test grids honest)
+        #[expect(clippy::cast_precision_loss, reason = "raster width w ≤ 43200/8 (GHS-POP downsampled); exact in f64")]
         let ix = if (self.w as f64 * self.dlon - 360.0).abs() < 1e-6 {
             ix.rem_euclid(self.w as i64)
         } else if ix < 0 || ix >= self.w as i64 {
@@ -198,10 +201,12 @@ impl DensityGrid {
         // counts → people/km². 111.32 km/deg with a cos(lat) lon correction
         // is plenty: weighting needs order-of-magnitude density, not
         // demographics. cos clamped at 85° (population there ≈ 0 anyway).
+        #[expect(clippy::cast_precision_loss, reason = "DOWNSAMPLE = 8, exact in f64")]
         let (dlon, dlat) = (sdlon * DOWNSAMPLE as f64, sdlat * DOWNSAMPLE as f64);
         #[expect(clippy::cast_possible_truncation, reason = "density → f32 grid cell, rounding is fine")]
         let cells = (0..w * h)
             .map(|i| {
+                #[expect(clippy::cast_precision_loss, reason = "row index i/w < h ≤ 21600/8; exact in f64")]
                 let lat_c = lat0 - (((i / w) as f64) + 0.5) * dlat;
                 let coslat = lat_c.to_radians().cos().max((85f64).to_radians().cos());
                 let area = (dlat * KM_PER_DEG) * (dlon * KM_PER_DEG * coslat);

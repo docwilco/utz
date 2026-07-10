@@ -37,7 +37,6 @@ pedantic = { level = "warn", priority = -1 }
 # TODO(pedantic): each allow below is pending its one-at-a-time discussion;
 # remove the entry as each lint gets resolved (see the truncation precedent:
 # cast_possible_truncation is fully fixed/#[expect]ed, so it is NOT listed).
-cast_precision_loss = "allow"     # lint 2/9 (~101 sites)
 cast_sign_loss = "allow"          # lint 3/9 (~36)
 cast_possible_wrap = "allow"      # lint 4/9 (~33)
 float_cmp = "allow"               # lint 5/9 (~5)

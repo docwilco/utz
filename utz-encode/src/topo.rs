@@ -12,6 +12,7 @@ use crate::Feat;
 pub use utz_simplify::{simplify, Simplify};
 
 // quantization parameterized by bit-width (i16 abs, i24 abs, i32 abs, ...)
+#[expect(clippy::cast_precision_loss, reason = "qmax = 2^(bits-1)-1 < 2^31, exact in f64")]
 fn qmax_of(bits: u32) -> f64 { ((1u64 << (bits - 1)) - 1) as f64 }
 #[expect(clippy::cast_possible_truncation, reason = "lon bounded, |lon/180*qmax| < i32::MAX; float as saturates")]
 fn qxb(lon: f64, qmax: f64) -> i32 { (lon / 180.0 * qmax).round() as i32 }

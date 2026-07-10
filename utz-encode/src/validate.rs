@@ -67,6 +67,7 @@ pub struct Problem {
 /// display).
 #[must_use]
 pub fn find_problems(t: &Topology, arc_coords: &[Vec<(f64, f64)>], qbits: u32) -> Vec<Problem> {
+    #[expect(clippy::cast_precision_loss, reason = "qmax = 2^(qbits-1)-1 ≤ 2^31-1, exact in f64")]
     let qmax = ((1u64 << (qbits - 1)) - 1) as f64;
     let mut cst = CleanStats::default();
     #[expect(clippy::cast_possible_truncation, reason = "lon/lat bounded, products < i32::MAX; float as saturates")]

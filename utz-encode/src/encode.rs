@@ -209,6 +209,7 @@ pub fn payload_from_topology(
         feats.len() < 0x7FFF,
         Error::FormatLimit { what: "feature count (15-bit zone ids)", n: feats.len(), max: 0x7FFE }
     );
+    #[expect(clippy::cast_precision_loss, reason = "qmax = 2^(quant_bits-1)-1 ≤ 2^31-1, exact in f64")]
     let qmax = ((1u64 << (p.quant_bits - 1)) - 1) as f64;
     #[expect(clippy::cast_possible_truncation, reason = "lon bounded, |lon/180*qmax| < i32::MAX; float as saturates")]
     let qx = |lon: f64| (lon / 180.0 * qmax).round() as i32;

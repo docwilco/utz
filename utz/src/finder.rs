@@ -460,6 +460,7 @@ impl Finder {
         }
     }
 
+    #[expect(clippy::cast_precision_loss, reason = "qmax = 2^(quant_bits-1)-1 ≤ 2^31-1, exact in f64")]
     fn qmax(&self) -> f64 {
         ((1u64 << (self.hdr.quant_bits - 1)) - 1) as f64
     }

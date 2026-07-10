@@ -55,6 +55,7 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
                     #[expect(clippy::cast_possible_truncation, reason = "span/deg bounded by world size; float as saturates")]
                 let steps = ((((x1 - x0).abs()).max((y1 - y0).abs()) / deg * 2.0).ceil() as usize).max(1);
                     for s in 0..=steps {
+                        #[expect(clippy::cast_precision_loss, reason = "s ≤ steps ≤ 2·360/deg ≪ 2^53; interpolation parameter")]
                         let t = s as f64 / steps as f64;
                         sets[cell(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)].insert(u16::try_from(fid).expect("feature id fits u16"));
                     }
@@ -66,6 +67,7 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
     // ---- pass 2: scanline fill on the fine grid -> subcell owners ----
     let fcols = ncols * sub;
     let frows = nrows * sub;
+    #[expect(clippy::cast_precision_loss, reason = "subdivision factor sub = 8 in practice, ≪ 2^53; exact in f64")]
     let r = deg / sub as f64;
     let mut owner: Vec<u16> = vec![NO_ZONE; fcols * frows];
     let mut row_x: Vec<Vec<f32>> = vec![Vec::new(); frows]; // crossing xs per row, reused per poly
@@ -84,9 +86,11 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
                     #[expect(clippy::cast_possible_truncation, reason = "row index bounded to [0, frows); float as saturates")]
                     let j0 = (((ylo + 90.0) / r - 0.5).ceil().max(0.0)) as usize;
                     #[expect(clippy::cast_possible_truncation, reason = "row index bounded to [0, frows); float as saturates")]
+                    #[expect(clippy::cast_precision_loss, reason = "frows = nrows*sub ≤ 8*1800; exact in f64")]
                     let j1 = (((yhi + 90.0) / r - 0.5).floor().min(frows as f64 - 1.0)) as isize;
                     let mut j = j0 as isize;
                     while j <= j1 {
+                        #[expect(clippy::cast_precision_loss, reason = "row index j < frows ≤ 8*1800; exact in f64")]
                         let lat = -90.0 + (j as f64 + 0.5) * r;
                         if lat >= ylo && lat < yhi {
                             let x = x0 + (lat - y0) / (y1 - y0) * (x1 - x0);
@@ -107,6 +111,7 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
                     #[expect(clippy::cast_possible_truncation, reason = "col index bounded to [0, fcols); float as saturates")]
                     let i0 = (((xa + 180.0) / r - 0.5).ceil().max(0.0)) as usize;
                     #[expect(clippy::cast_possible_truncation, reason = "col index bounded to [0, fcols); float as saturates")]
+                    #[expect(clippy::cast_precision_loss, reason = "fcols = ncols*sub ≤ 8*3600; exact in f64")]
                     let i1 = (((xb + 180.0) / r - 0.5).floor().min(fcols as f64 - 1.0)) as isize;
                     let base = j as usize * fcols;
                     let mut i = i0 as isize;
@@ -254,6 +259,7 @@ pub fn feat_areas(feats: &[Feat]) -> Vec<f64> {
 
 fn ring_area(ring: &[(f64, f64)]) -> f64 {
     if ring.len() < 3 { return 0.0; }
+    #[expect(clippy::cast_precision_loss, reason = "ring.len() ≪ 2^53; mean latitude")]
     let midlat = ring.iter().map(|&(_, y)| y).sum::<f64>() / ring.len() as f64;
     let mut s = 0.0;
     for i in 0..ring.len() {
