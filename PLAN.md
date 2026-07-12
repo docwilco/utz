@@ -730,6 +730,22 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
     doesn't fit. Not built yet: for uncompressed assets `from_static` +
     `preload` already leaves the payload in flash, which covered every case
     measured so far (§15).
+11. **TODO: generic PIP kernel (+ future narrow type).** `pip_impl!` currently
+    stamps `contains_/ring_hit_/edge_{i64,i128,f64}` via pastey with the wide
+    type as the one macro parameter. Convert to plain generics — the
+    `$wide::from(x)` refactor already made the bounds pure core traits:
+    `fn edge<W: Copy + PartialOrd + From<i32> + Sub<Output = W> + Mul<Output = W>>`.
+    Monomorphizes to identical code (`#[inline(always)]` unaffected, ESP32 hot
+    path unchanged); drops the pastey dep; the f64 `float_cmp` `#[expect]`
+    dissolves (lints run pre-monomorphization on the opaque `W`); call sites
+    become `pip::contains::<i64>(…)` turbofish (~15 sites in finder.rs, bench
+    tools, tests). Second step, deliberately deferred: a narrow input
+    parameter `N: Into<W>` over the hardcoded `(i32, i32)`. Only worth it with
+    i16 in-memory coord storage for i16-quant assets — halves the eager cache
+    on ESP32 and lets PIP run i32-wide math (cheaper than i64 on a 32-bit
+    core) — but that is a memory-layout project (decode paths, eager cache,
+    `Ring<T>` plumbing), not a kernel signature tweak; no call site exists
+    until then.
 
 ---
 

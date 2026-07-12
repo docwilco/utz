@@ -7,7 +7,7 @@
 use std::time::Instant;
 
 use utz_build::grid::{self, Order};
-use utz_build::{qx, qy, topo, Feat, QMAX};
+use utz_build::{q24_lat, q24_lon, topo, Feat, QMAX_I24};
 
 struct QPoly {
     bbox: (i32, i32, i32, i32),
@@ -44,11 +44,11 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     println!("{} eps={eps_m}m grid={deg}°: {} features, {} uniq lists, {csr_kb:.1} KB CSR, {npts} points",
         ds.to_uppercase(), fpolys.len(), csr.uniq_lists);
 
-    let pts: Vec<(i32, i32)> = gen_pts(npts).iter().map(|&(lo, la)| (qx(lo), qy(la))).collect();
+    let pts: Vec<(i32, i32)> = gen_pts(npts).iter().map(|&(lo, la)| (q24_lon(lo), q24_lat(la))).collect();
     let (ncols, nrows) = (g.ncols, g.nrows);
     let cell_of = |px: i32, py: i32| -> usize {
-        let lon = f64::from(px) / QMAX * 180.0;
-        let lat = f64::from(py) / QMAX * 90.0;
+        let lon = f64::from(px) / QMAX_I24 * 180.0;
+        let lat = f64::from(py) / QMAX_I24 * 90.0;
         #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, reason = "cell index, fraction dropped then clamped")]
         let c = (((lon + 180.0) / deg) as isize).clamp(0, ncols as isize - 1) as usize;
         #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, reason = "cell index, fraction dropped then clamped")]
@@ -108,7 +108,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             wrong += 1;
             if shown < 8 {
                 shown += 1;
-                let (lon, lat) = (f64::from(px) / QMAX * 180.0, f64::from(py) / QMAX * 90.0);
+                let (lon, lat) = (f64::from(px) / QMAX_I24 * 180.0, f64::from(py) / QMAX_I24 * 90.0);
                 let p = csr.primary[cell_of(px, py)];
                 println!("  WRONG ({lon:.4},{lat:.4}) grid={:?} lin={:?} cell={}",
                     tz(a), tz(b), if p & 0x8000 != 0 { "border" } else { "interior" });
@@ -132,7 +132,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
 fn quantize(f: &Feat) -> Vec<QPoly> {
     f.polys.iter().filter_map(|p| {
         let rings: Vec<Vec<(i32, i32)>> = p.iter().map(|r| {
-            let mut q: Vec<(i32, i32)> = r.iter().map(|&(x, y)| (qx(x), qy(y))).collect();
+            let mut q: Vec<(i32, i32)> = r.iter().map(|&(x, y)| (q24_lon(x), q24_lat(y))).collect();
             q.dedup();
             if q.first() == q.last() && q.len() > 1 { q.pop(); }
             q

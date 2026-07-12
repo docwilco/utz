@@ -20,17 +20,18 @@ pub struct Feat {
 
 // i24 absolute global grid (~2.4 m lon / 1.2 m lat) — default; topo::encode_topology_q
 // takes a `qbits` for i16/i24/i32.
-pub const QMAX: f64 = 8_388_607.0; // 2^23 - 1
-// TODO: Explain why these only exist for i24 (because there's no actual i24
-// type). Maybe we should use the i24 crate? And we should be using function
-// names that reflect the i24ness of these functions. Plus, don't use x/y when
-// we can be explicit with lat/lon.
+//
+// There is no native i24 type: quantized coords are STORED at i24 width in
+// the container (see `push_i24`/`fixed_bytes`) but live in i32 in memory —
+// these helpers quantize at the i24 default width, hence the names. The
+// variable-width equivalents are local closures over a `qmax` (encode/topo).
+pub const QMAX_I24: f64 = 8_388_607.0; // 2^23 - 1
 #[must_use]
-#[expect(clippy::cast_possible_truncation, reason = "lon bounded, |lon/180*QMAX| < i32::MAX; float as saturates")]
-pub fn qx(lon: f64) -> i32 { (lon / 180.0 * QMAX).round() as i32 }
+#[expect(clippy::cast_possible_truncation, reason = "lon bounded, |lon/180*QMAX_I24| < i32::MAX; float as saturates")]
+pub fn q24_lon(lon: f64) -> i32 { (lon / 180.0 * QMAX_I24).round() as i32 }
 #[must_use]
-#[expect(clippy::cast_possible_truncation, reason = "lat bounded, |lat/90*QMAX| < i32::MAX; float as saturates")]
-pub fn qy(lat: f64) -> i32 { (lat / 90.0 * QMAX).round() as i32 }
+#[expect(clippy::cast_possible_truncation, reason = "lat bounded, |lat/90*QMAX_I24| < i32::MAX; float as saturates")]
+pub fn q24_lat(lat: f64) -> i32 { (lat / 90.0 * QMAX_I24).round() as i32 }
 
 pub fn push_i24(out: &mut Vec<u8>, v: i32) {
     let b = v.to_le_bytes();

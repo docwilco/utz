@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use geo::Contains;
 
-use utz_build::{qx, qy, topo, Feat};
+use utz_build::{q24_lat, q24_lon, topo, Feat};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -54,7 +54,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         }))
         .collect();
 
-    let pts: Vec<(i32, i32)> = gen_pts(npts).iter().map(|&(lo, la)| (qx(lo), qy(la))).collect();
+    let pts: Vec<(i32, i32)> = gen_pts(npts).iter().map(|&(lo, la)| (q24_lon(lo), q24_lat(la))).collect();
 
     // ---- ours: per-polygon integer PIP, linear first-hit scan ----
     let polys: Vec<P> = quant.iter().enumerate()
@@ -196,7 +196,7 @@ fn quantize(feats: &[Feat]) -> Vec<QFeat> {
     feats.iter().map(|f| {
         let polys = f.polys.iter().map(|p| {
             p.iter().map(|r| {
-                let mut q: Vec<(i32, i32)> = r.iter().map(|&(x, y)| (qx(x), qy(y))).collect();
+                let mut q: Vec<(i32, i32)> = r.iter().map(|&(x, y)| (q24_lon(x), q24_lat(y))).collect();
                 q.dedup();
                 if q.first() == q.last() && q.len() > 1 { q.pop(); }
                 q
