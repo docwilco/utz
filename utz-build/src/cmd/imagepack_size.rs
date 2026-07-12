@@ -16,44 +16,44 @@ pub struct Args {
     paths: Vec<String>,
 }
 
-pub fn run(a: &Args) -> utz_build::Result<()> {
+pub fn run(args: &Args) -> utz_build::Result<()> {
     println!(
         "{:<30} {:>9} {:>9} {:>9} {:>9}",
         "image payload", "raw", "gzip", "xz", "brotli"
     );
-    for path in &a.paths {
+    for path in &args.paths {
         let bytes = std::fs::read(path)?;
         let (codec, _, start) = format::outer(&bytes).expect("not a utz container");
         assert_eq!(codec, 0, "need codec-none");
-        let p = &bytes[start..];
-        let h = format::parse(p).unwrap();
-        assert_eq!(h.geom, 2, "need an EagerImage container");
-        let fb = fixed_bytes(h.quant_bits);
-        let n = h.eager_coords as usize;
+        let container_payload = &bytes[start..];
+        let header = format::parse(container_payload).unwrap();
+        assert_eq!(header.geom, 2, "need an EagerImage container");
+        let coord_bytes = fixed_bytes(header.quant_bits);
+        let coord_count = header.eager_coords as usize;
 
-        // packed variant: each i32 coord truncated to fb bytes (LE keeps the
-        // low bytes; sign travels in the top retained byte)
-        let mut packed = p[..h.img_coords].to_vec();
-        for i in 0..n * 2 {
-            let v = format::read_u32(p, h.img_coords + i * 4);
-            packed.extend_from_slice(&v.to_le_bytes()[..fb]);
+        // packed variant: each i32 coord truncated to coord_bytes bytes (LE
+        // keeps the low bytes; sign travels in the top retained byte)
+        let mut packed = container_payload[..header.img_coords].to_vec();
+        for word_idx in 0..coord_count * 2 {
+            let word = format::read_u32(container_payload, header.img_coords + word_idx * 4);
+            packed.extend_from_slice(&word.to_le_bytes()[..coord_bytes]);
         }
-        packed.extend_from_slice(&p[h.img_ring_ends..]);
+        packed.extend_from_slice(&container_payload[header.img_ring_ends..]);
 
         let name = std::path::Path::new(&path).file_stem().unwrap().to_string_lossy().into_owned();
         for (label, payload) in [
-            (format!("{name} i32 pairs"), p.to_vec()),
-            (format!("{name} packed i{}", h.quant_bits), packed),
+            (format!("{name} i32 pairs"), container_payload.to_vec()),
+            (format!("{name} packed i{}", header.quant_bits), packed),
         ] {
             #[expect(clippy::cast_precision_loss, reason = "payload byte counts ≪ 2^53; KiB display")]
-            let k = |x: usize| format!("{:.1}K", x as f64 / 1024.0);
+            let kib = |len: usize| format!("{:.1}K", len as f64 / 1024.0);
             println!(
                 "{:<30} {:>9} {:>9} {:>9} {:>9}",
                 label,
-                k(payload.len()),
-                k(compress(&payload, Codec::Gzip)?.len()),
-                k(compress(&payload, Codec::Xz)?.len()),
-                k(compress(&payload, Codec::Brotli)?.len()),
+                kib(payload.len()),
+                kib(compress(&payload, Codec::Gzip)?.len()),
+                kib(compress(&payload, Codec::Xz)?.len()),
+                kib(compress(&payload, Codec::Brotli)?.len()),
             );
         }
     }

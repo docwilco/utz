@@ -112,33 +112,33 @@ pub fn dataset_bin(
 /// | u8 cells[w·h]` — the grid max-pooled 4× and log-quantized
 /// (0 = unpopulated → transparent, 255 ≈ 50k p/km²); the JS reprojects
 /// rows to Mercator when drawing.
-#[must_use]
 ///
 /// # Panics
 /// If the binned grid dimensions exceed u32 (not reachable at 4' input).
-pub fn heat_bin(g: &crate::density::DensityGrid) -> Vec<u8> {
+#[must_use]
+pub fn heat_bin(grid: &crate::density::DensityGrid) -> Vec<u8> {
     const DS: usize = 4;
-    let (w, h) = (g.w.div_ceil(DS), g.h.div_ceil(DS));
+    let (width, height) = (grid.width.div_ceil(DS), grid.height.div_ceil(DS));
     let dmax_ln = 50_000f64.ln();
-    let mut cells = vec![0u8; w * h];
-    for r in 0..g.h {
-        for c in 0..g.w {
-            let d = f64::from(g.cells[r * g.w + c]);
-            if d >= 1.0 {
+    let mut cells = vec![0u8; width * height];
+    for row in 0..grid.height {
+        for col in 0..grid.width {
+            let density = f64::from(grid.cells[row * grid.width + col]);
+            if density >= 1.0 {
                 #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "clamped to 1..=255")]
-                let v = (255.0 * d.ln() / dmax_ln).clamp(1.0, 255.0) as u8;
-                let out = &mut cells[r / DS * w + c / DS];
-                *out = (*out).max(v);
+                let heat = (255.0 * density.ln() / dmax_ln).clamp(1.0, 255.0) as u8;
+                let out = &mut cells[row / DS * width + col / DS];
+                *out = (*out).max(heat);
             }
         }
     }
     let mut o = Vec::with_capacity(48 + cells.len());
     o.extend_from_slice(b"uTZh");
-    o.extend_from_slice(&u32::try_from(w).expect("raster width fits u32").to_le_bytes());
-    o.extend_from_slice(&u32::try_from(h).expect("raster height fits u32").to_le_bytes());
+    o.extend_from_slice(&u32::try_from(width).expect("raster width fits u32").to_le_bytes());
+    o.extend_from_slice(&u32::try_from(height).expect("raster height fits u32").to_le_bytes());
     o.extend_from_slice(&[0u8; 4]); // pad so the f64 extents sit 8-aligned
     #[expect(clippy::cast_precision_loss, reason = "DS = 4, exact in f64")]
-    for v in [g.lon0, g.lat0, g.dlon * DS as f64, g.dlat * DS as f64] {
+    for v in [grid.lon0, grid.lat0, grid.dlon * DS as f64, grid.dlat * DS as f64] {
         o.extend_from_slice(&v.to_le_bytes());
     }
     o.extend_from_slice(&cells);

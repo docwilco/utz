@@ -101,43 +101,43 @@ pub fn find_problems(t: &Topology, arc_coords: &[Vec<(f64, f64)>], qbits: u32) -
 
 /// Count non-adjacent segment pairs of one ring that intersect, split by
 /// kind. Sweep over min-x-sorted segments — O(n log n + pairs-in-x-overlap),
-/// fine at report scale. Crossing/overlap spots land in `b.locs`.
+/// fine at report scale. Crossing/overlap spots land in `bad.locs`.
 ///
 /// # Panics
 /// If a ring has more than `u32::MAX` segments.
-pub fn ring_bad(ri: usize, c: &[(i32, i32)], b: &mut Bad) {
-    let n = c.len();
-    if n < 4 {
+pub fn ring_bad(ring_idx: usize, ring: &[(i32, i32)], bad: &mut Bad) {
+    let len = ring.len();
+    if len < 4 {
         return;
     }
-    let seg = |i: usize| (c[i], c[(i + 1) % n]);
-    let minx = |i: usize| { let (p, q) = seg(i); p.0.min(q.0) };
-    let mut idx: Vec<u32> = (0..u32::try_from(n).expect("segment count fits u32")).collect();
-    idx.sort_unstable_by_key(|&i| minx(i as usize));
-    for ai in 0..n {
-        let i = idx[ai] as usize;
-        let (p1, p2) = seg(i);
-        let (maxx, ymin, ymax) = (p1.0.max(p2.0), p1.1.min(p2.1), p1.1.max(p2.1));
-        for &jj in &idx[ai + 1..] {
-            let j = jj as usize;
-            let (q1, q2) = seg(j);
-            if q1.0.min(q2.0) > maxx {
+    let seg = |idx: usize| (ring[idx], ring[(idx + 1) % len]);
+    let min_x = |idx: usize| { let (a, b) = seg(idx); a.0.min(b.0) };
+    let mut order: Vec<u32> = (0..u32::try_from(len).expect("segment count fits u32")).collect();
+    order.sort_unstable_by_key(|&idx| min_x(idx as usize));
+    for sweep_pos in 0..len {
+        let seg_a = order[sweep_pos] as usize;
+        let (p1, p2) = seg(seg_a);
+        let (max_x, min_y, max_y) = (p1.0.max(p2.0), p1.1.min(p2.1), p1.1.max(p2.1));
+        for &other in &order[sweep_pos + 1..] {
+            let seg_b = other as usize;
+            let (q1, q2) = seg(seg_b);
+            if q1.0.min(q2.0) > max_x {
                 break;
             }
-            if i.abs_diff(j) == 1 || i.abs_diff(j) == n - 1 {
+            if seg_a.abs_diff(seg_b) == 1 || seg_a.abs_diff(seg_b) == len - 1 {
                 continue; // adjacent segments share a vertex by construction
             }
-            if q1.1.max(q2.1) < ymin || q1.1.min(q2.1) > ymax {
+            if q1.1.max(q2.1) < min_y || q1.1.min(q2.1) > max_y {
                 continue;
             }
             match seg_class((p1, p2), (q1, q2)) {
                 Class::Cross => {
-                    b.crossings += 1;
+                    bad.crossings += 1;
                     let (x, y) = cross_point((p1, p2), (q1, q2));
-                    b.locs.push(Loc { ring: ri, kind: Kind::Cross, x, y });
+                    bad.locs.push(Loc { ring: ring_idx, kind: Kind::Cross, x, y });
                 }
                 Class::Overlap => {
-                    b.overlaps += 1;
+                    bad.overlaps += 1;
                     // midpoint of the shared stretch: average the two middle
                     // endpoints along the sort order
                     let mut pts = [p1, p2, q1, q2];
@@ -146,9 +146,9 @@ pub fn ring_bad(ri: usize, c: &[(i32, i32)], b: &mut Bad) {
                         f64::midpoint(f64::from(pts[1].0), f64::from(pts[2].0)),
                         f64::midpoint(f64::from(pts[1].1), f64::from(pts[2].1)),
                     );
-                    b.locs.push(Loc { ring: ri, kind: Kind::Overlap, x, y });
+                    bad.locs.push(Loc { ring: ring_idx, kind: Kind::Overlap, x, y });
                 }
-                Class::Touch => b.touches += 1,
+                Class::Touch => bad.touches += 1,
                 Class::None => {}
             }
         }

@@ -111,10 +111,12 @@ fn measure(t0: &Topology, t: &Topology, grid: &DensityGrid) -> Acc {
 /// (`chain.first()` → `chain.last()`) into pockets, splitting the anchored
 /// shoelace accumulation wherever the chain crosses the shortcut line.
 fn pocket_scan(chain: &[(f64, f64)], grid: &DensityGrid, acc: &mut Acc) {
-    let (a, b) = (chain[0], *chain.last().unwrap());
-    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-    let cross_a = |p: (f64, f64), q: (f64, f64)| (p.0 - a.0) * (q.1 - a.1) - (p.1 - a.1) * (q.0 - a.0);
-    let side = |p: (f64, f64)| dx * (p.1 - a.1) - dy * (p.0 - a.0);
+    let (start, end) = (chain[0], *chain.last().unwrap());
+    let (dx, dy) = (end.0 - start.0, end.1 - start.1);
+    let cross_anchored = |from: (f64, f64), to: (f64, f64)| {
+        (from.0 - start.0) * (to.1 - start.1) - (from.1 - start.1) * (to.0 - start.0)
+    };
+    let side = |point: (f64, f64)| dx * (point.1 - start.1) - dy * (point.0 - start.0);
     let len2 = dx * dx + dy * dy;
 
     let flush = |area_deg2: f64, lonc: f64, latc: f64, acc: &mut Acc| {
@@ -124,34 +126,34 @@ fn pocket_scan(chain: &[(f64, f64)], grid: &DensityGrid, acc: &mut Acc) {
     };
 
     // signed pocket accumulator + running centroid of its chain vertices
-    let (mut pocket, mut clon, mut clat, mut np) = (0.0, a.0, a.1, 1.0);
-    for k in 0..chain.len() - 1 {
-        let (p, q) = (chain[k], chain[k + 1]);
+    let (mut pocket, mut clon, mut clat, mut npts) = (0.0, start.0, start.1, 1.0);
+    for seg_idx in 0..chain.len() - 1 {
+        let (curr, next) = (chain[seg_idx], chain[seg_idx + 1]);
         // max deviation (perpendicular distance to the clamped shortcut)
-        if k > 0 {
-            let d2 = if len2 == 0.0 {
-                (p.0 - a.0).powi(2) + (p.1 - a.1).powi(2)
+        if seg_idx > 0 {
+            let dist2 = if len2 == 0.0 {
+                (curr.0 - start.0).powi(2) + (curr.1 - start.1).powi(2)
             } else {
-                let t = (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / len2).clamp(0.0, 1.0);
-                (p.0 - a.0 - t * dx).powi(2) + (p.1 - a.1 - t * dy).powi(2)
+                let frac = (((curr.0 - start.0) * dx + (curr.1 - start.1) * dy) / len2).clamp(0.0, 1.0);
+                (curr.0 - start.0 - frac * dx).powi(2) + (curr.1 - start.1 - frac * dy).powi(2)
             };
-            acc.max_dev_deg = acc.max_dev_deg.max(d2.sqrt());
+            acc.max_dev_deg = acc.max_dev_deg.max(dist2.sqrt());
         }
-        let (sp, sq) = (side(p), side(q));
-        if len2 > 0.0 && sp * sq < 0.0 {
+        let (side_curr, side_next) = (side(curr), side(next));
+        if len2 > 0.0 && side_curr * side_next < 0.0 {
             // chain crosses the shortcut line: split the step at the crossing
-            let t = sp / (sp - sq);
-            let x = (p.0 + t * (q.0 - p.0), p.1 + t * (q.1 - p.1));
-            pocket += cross_a(p, x) / 2.0;
-            flush(pocket, clon / np, clat / np, acc);
-            pocket = cross_a(x, q) / 2.0;
-            (clon, clat, np) = (x.0 + q.0, x.1 + q.1, 2.0);
+            let cross_frac = side_curr / (side_curr - side_next);
+            let crossing = (curr.0 + cross_frac * (next.0 - curr.0), curr.1 + cross_frac * (next.1 - curr.1));
+            pocket += cross_anchored(curr, crossing) / 2.0;
+            flush(pocket, clon / npts, clat / npts, acc);
+            pocket = cross_anchored(crossing, next) / 2.0;
+            (clon, clat, npts) = (crossing.0 + next.0, crossing.1 + next.1, 2.0);
         } else {
-            pocket += cross_a(p, q) / 2.0;
-            clon += q.0;
-            clat += q.1;
-            np += 1.0;
+            pocket += cross_anchored(curr, next) / 2.0;
+            clon += next.0;
+            clat += next.1;
+            npts += 1.0;
         }
     }
-    flush(pocket, clon / np, clat / np, acc);
+    flush(pocket, clon / npts, clat / npts, acc);
 }

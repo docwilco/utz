@@ -38,7 +38,6 @@ pedantic = { level = "warn", priority = -1 }
 # TODO(pedantic): each allow below is pending its one-at-a-time discussion;
 # remove the entry as each lint gets resolved (see the truncation precedent:
 # cast_possible_truncation is fully fixed/#[expect]ed, so it is NOT listed).
-many_single_char_names = "allow"  # lint 6/9 (~10)
 inline_always = "allow"           # lint 8/9 (~3)
 cast_ptr_alignment = "allow"      # lint 9/9 (~2)
 

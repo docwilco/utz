@@ -37,24 +37,24 @@ fn write_fixed(v: i32, fb: usize, out: &mut Vec<u8>) {
 }
 
 /// Decode one arc (forward orientation) into (i32, i32) coords.
-fn arc_coords(p: &[u8], h: &format::Header, id: usize) -> Vec<(i32, i32)> {
-    let fb = fixed_bytes(h.quant_bits);
-    let mut pos = h.arc_data + read_u32(p, h.arc_offsets + id * 4) as usize;
-    let (vcount, p2) = read_varint(p, pos);
-    pos = p2;
-    let mut x = i64::from(read_fixed(p, pos, h.quant_bits));
-    let mut y = i64::from(read_fixed(p, pos + fb, h.quant_bits));
-    pos += 2 * fb;
+fn arc_coords(payload: &[u8], header: &format::Header, id: usize) -> Vec<(i32, i32)> {
+    let coord_bytes = fixed_bytes(header.quant_bits);
+    let mut pos = header.arc_data + read_u32(payload, header.arc_offsets + id * 4) as usize;
+    let (vcount, after_vcount) = read_varint(payload, pos);
+    pos = after_vcount;
+    let mut qlon = i64::from(read_fixed(payload, pos, header.quant_bits));
+    let mut qlat = i64::from(read_fixed(payload, pos + coord_bytes, header.quant_bits));
+    pos += 2 * coord_bytes;
     let mut coords = Vec::with_capacity(usize::try_from(vcount).expect("vcount fits usize"));
-    let c = |v: i64| i32::try_from(v).expect("quantized coord fits i32");
-    coords.push((c(x), c(y)));
+    let to_i32 = |coord: i64| i32::try_from(coord).expect("quantized coord fits i32");
+    coords.push((to_i32(qlon), to_i32(qlat)));
     for _ in 1..vcount {
-        let (dx, p3) = read_varint(p, pos);
-        let (dy, p4) = read_varint(p, p3);
-        pos = p4;
-        x += unzigzag(dx);
-        y += unzigzag(dy);
-        coords.push((c(x), c(y)));
+        let (dlon, after_dlon) = read_varint(payload, pos);
+        let (dlat, after_dlat) = read_varint(payload, after_dlon);
+        pos = after_dlat;
+        qlon += unzigzag(dlon);
+        qlat += unzigzag(dlat);
+        coords.push((to_i32(qlon), to_i32(qlat)));
     }
     coords
 }

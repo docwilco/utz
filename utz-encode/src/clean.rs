@@ -101,40 +101,41 @@ fn clean_open(a: &mut Arc<i32>, st: &mut CleanStats) {
     }
 }
 
-fn clean_cyclic(a: &mut Arc<i32>, st: &mut CleanStats) {
+fn clean_cyclic(arc: &mut Arc<i32>, stats: &mut CleanStats) {
     loop {
         let mut changed = false;
-        let mut i = 0;
-        while a.len() >= 3 && i < a.len() {
-            let n = a.len();
-            let (p, q, r) = (a[(i + n - 1) % n], a[i], a[(i + 1) % n]);
-            if q == p || q == r {
-                a.remove(i);
-                st.dups += 1;
+        let mut idx = 0;
+        while arc.len() >= 3 && idx < arc.len() {
+            let len = arc.len();
+            let (prev, cur, next) =
+                (arc[(idx + len - 1) % len], arc[idx], arc[(idx + 1) % len]);
+            if cur == prev || cur == next {
+                arc.remove(idx);
+                stats.dups += 1;
                 changed = true;
                 continue;
             }
-            match classify(p, q, r) {
+            match classify(prev, cur, next) {
                 Kind::Spike => {
-                    a.remove(i);
-                    st.spikes += 1;
+                    arc.remove(idx);
+                    stats.spikes += 1;
                     changed = true;
                 }
                 Kind::Collinear => {
-                    a.remove(i);
-                    st.collinear += 1;
+                    arc.remove(idx);
+                    stats.collinear += 1;
                     changed = true;
                 }
-                Kind::Keep => i += 1,
+                Kind::Keep => idx += 1,
             }
         }
-        if !changed || a.len() < 3 {
+        if !changed || arc.len() < 3 {
             break;
         }
     }
-    if a.len() == 2 && a[0] == a[1] {
-        a.pop();
-        st.dups += 1;
+    if arc.len() == 2 && arc[0] == arc[1] {
+        arc.pop();
+        stats.dups += 1;
     }
 }
 

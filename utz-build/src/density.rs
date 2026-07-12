@@ -33,8 +33,8 @@ const SIDECAR_NAME: &str = "ghs_pop_e2020_4326_ds8.bin";
 /// Population density (people/km²) on a coarse global lon/lat grid.
 /// Row 0 is the northernmost; `dlat` is positive.
 pub struct DensityGrid {
-    pub w: usize,
-    pub h: usize,
+    pub width: usize,
+    pub height: usize,
     /// west edge of cell (0,0)
     pub lon0: f64,
     /// north edge of cell (0,0)
@@ -122,22 +122,22 @@ impl DensityGrid {
 
     #[expect(clippy::cast_possible_wrap, reason = "raster dims ≤ 43200 ≪ i64::MAX")]
     fn cell_val(&self, ix: i64, iy: i64) -> f64 {
-        if iy < 0 || iy >= self.h as i64 {
+        if iy < 0 || iy >= self.height as i64 {
             return 0.0;
         }
         // wrap longitude when the grid spans the full 360° (it does for
         // GHS-POP; the guard keeps synthetic test grids honest)
         #[expect(clippy::cast_precision_loss, reason = "raster width w ≤ 43200/8 (GHS-POP downsampled); exact in f64")]
-        let ix = if (self.w as f64 * self.dlon - 360.0).abs() < 1e-6 {
-            ix.rem_euclid(self.w as i64)
-        } else if ix < 0 || ix >= self.w as i64 {
+        let ix = if (self.width as f64 * self.dlon - 360.0).abs() < 1e-6 {
+            ix.rem_euclid(self.width as i64)
+        } else if ix < 0 || ix >= self.width as i64 {
             return 0.0;
         } else {
             ix
         };
         let (ix, iy) =
             (usize::try_from(ix).expect("checked in range"), usize::try_from(iy).expect("checked in range"));
-        f64::from(self.cells[iy * self.w + ix])
+        f64::from(self.cells[iy * self.width + ix])
     }
 
     /// Decode the GHS-POP `GeoTIFF`, summing 8×8 pixel blocks and converting
@@ -214,15 +214,15 @@ impl DensityGrid {
                 (sums[i] / area) as f32
             })
             .collect();
-        Ok(Self { w, h, lon0, lat0, dlon, dlat, cells })
+        Ok(Self { width: w, height: h, lon0, lat0, dlon, dlat, cells })
     }
 
     fn write_sidecar(&self, path: &Path) -> crate::Result<()> {
         let tmp = path.with_extension("part");
         let mut f = BufWriter::new(std::fs::File::create(&tmp)?);
         f.write_all(SIDECAR_MAGIC)?;
-        f.write_all(&u32::try_from(self.w).expect("grid width fits u32").to_le_bytes())?;
-        f.write_all(&u32::try_from(self.h).expect("grid height fits u32").to_le_bytes())?;
+        f.write_all(&u32::try_from(self.width).expect("grid width fits u32").to_le_bytes())?;
+        f.write_all(&u32::try_from(self.height).expect("grid height fits u32").to_le_bytes())?;
         for v in [self.lon0, self.lat0, self.dlon, self.dlat] {
             f.write_all(&v.to_le_bytes())?;
         }
@@ -235,26 +235,27 @@ impl DensityGrid {
     }
 
     fn read_sidecar(path: &Path) -> crate::Result<Self> {
-        let mut f = BufReader::new(std::fs::File::open(path)?);
+        let mut file = BufReader::new(std::fs::File::open(path)?);
         let mut magic = [0u8; 4];
-        f.read_exact(&mut magic)?;
+        file.read_exact(&mut magic)?;
         crate::ensure!(&magic == SIDECAR_MAGIC, Error::BadSidecar("bad magic"));
-        let mut u = [0u8; 4];
-        f.read_exact(&mut u)?;
-        let w = u32::from_le_bytes(u) as usize;
-        f.read_exact(&mut u)?;
-        let h = u32::from_le_bytes(u) as usize;
-        let mut d = [0u8; 8];
+        let mut word = [0u8; 4];
+        file.read_exact(&mut word)?;
+        let width = u32::from_le_bytes(word) as usize;
+        file.read_exact(&mut word)?;
+        let height = u32::from_le_bytes(word) as usize;
+        let mut scalar = [0u8; 8];
         let mut geo = [0f64; 4];
-        for g in &mut geo {
-            f.read_exact(&mut d)?;
-            *g = f64::from_le_bytes(d);
+        for field in &mut geo {
+            file.read_exact(&mut scalar)?;
+            *field = f64::from_le_bytes(scalar);
         }
         let mut bytes = Vec::new();
-        f.read_to_end(&mut bytes)?;
-        crate::ensure!(bytes.len() == w * h * 4, Error::BadSidecar("size mismatch"));
-        let cells = bytes.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
-        Ok(Self { w, h, lon0: geo[0], lat0: geo[1], dlon: geo[2], dlat: geo[3], cells })
+        file.read_to_end(&mut bytes)?;
+        crate::ensure!(bytes.len() == width * height * 4, Error::BadSidecar("size mismatch"));
+        let cells =
+            bytes.chunks_exact(4).map(|cell| f32::from_le_bytes(cell.try_into().unwrap())).collect();
+        Ok(Self { width, height, lon0: geo[0], lat0: geo[1], dlon: geo[2], dlat: geo[3], cells })
     }
 }
 
@@ -284,7 +285,7 @@ mod tests {
     fn grid() -> DensityGrid {
         let mut cells = vec![0f32; 100];
         cells[4 * 10 + 5] = 1000.0; // row 4 = lat 5..6 (row 0 is lat 9..10)
-        DensityGrid { w: 10, h: 10, lon0: 0.0, lat0: 10.0, dlon: 1.0, dlat: 1.0, cells }
+        DensityGrid { width: 10, height: 10, lon0: 0.0, lat0: 10.0, dlon: 1.0, dlat: 1.0, cells }
     }
 
     #[test]
@@ -322,7 +323,7 @@ mod tests {
         let path = dir.join(SIDECAR_NAME);
         g.write_sidecar(&path).unwrap();
         let r = DensityGrid::read_sidecar(&path).unwrap();
-        assert_eq!((r.w, r.h, r.lon0, r.lat0, r.dlon, r.dlat), (10, 10, 0.0, 10.0, 1.0, 1.0));
+        assert_eq!((r.width, r.height, r.lon0, r.lat0, r.dlon, r.dlat), (10, 10, 0.0, 10.0, 1.0, 1.0));
         assert_eq!(r.cells, g.cells);
         std::fs::remove_file(&path).unwrap();
     }

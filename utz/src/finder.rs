@@ -474,13 +474,13 @@ impl Finder {
 
     #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "cast saturates then clamped to grid range")]
     fn cell_value(&self, px: i32, py: i32) -> u16 {
-        let (h, q) = (&self.hdr, self.qmax());
-        let d = f64::from(h.grid_deg);
-        let lon = f64::from(px) / q * 180.0;
-        let lat = f64::from(py) / q * 90.0;
-        let c = (((lon + 180.0) / d) as i64).clamp(0, i64::from(h.ncols) - 1) as usize;
-        let r = (((lat + 90.0) / d) as i64).clamp(0, i64::from(h.nrows) - 1) as usize;
-        read_u16(&self.payload[..], h.primary + (r * h.ncols as usize + c) * 2)
+        let (header, qmax) = (&self.hdr, self.qmax());
+        let cell_deg = f64::from(header.grid_deg);
+        let lon = f64::from(px) / qmax * 180.0;
+        let lat = f64::from(py) / qmax * 90.0;
+        let col = (((lon + 180.0) / cell_deg) as i64).clamp(0, i64::from(header.ncols) - 1) as usize;
+        let row = (((lat + 90.0) / cell_deg) as i64).clamp(0, i64::from(header.nrows) - 1) as usize;
+        read_u16(&self.payload[..], header.primary + (row * header.ncols as usize + col) * 2)
     }
 
     fn list_bounds(&self, li: u16) -> (usize, usize) {
@@ -705,29 +705,32 @@ impl Finder {
     /// Eager-mode decode only; the lazy path streams via `scan_arc` instead.
     #[cfg(feature = "alloc")]
     #[expect(clippy::cast_possible_truncation, reason = "coords accumulate i16/i24/i32-width deltas; sums fit i32 by format")]
-    fn append_arc(&self, r: u32, coords: &mut Vec<(i32, i32)>) {
-        let (h, b) = (&self.hdr, &self.payload[..]);
-        let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
-        let mut pos = h.arc_data + read_u32(b, h.arc_offsets + id * 4) as usize;
-        let (vcount, p2) = read_varint(b, pos);
-        pos = p2;
-        let fb = fixed_bytes(h.quant_bits);
-        let mut x = i64::from(read_fixed(b, pos, h.quant_bits));
-        let mut y = i64::from(read_fixed(b, pos + fb, h.quant_bits));
-        pos += 2 * fb;
+    fn append_arc(&self, arc_ref: u32, coords: &mut Vec<(i32, i32)>) {
+        let (header, payload) = (&self.hdr, &self.payload[..]);
+        let (id, rev) = ((arc_ref >> 1) as usize, (arc_ref & 1) == 1);
+        let mut pos = header.arc_data + read_u32(payload, header.arc_offsets + id * 4) as usize;
+        let (vcount, after_vcount) = read_varint(payload, pos);
+        pos = after_vcount;
+        let coord_bytes = fixed_bytes(header.quant_bits);
+        let mut qlon = i64::from(read_fixed(payload, pos, header.quant_bits));
+        let mut qlat = i64::from(read_fixed(payload, pos + coord_bytes, header.quant_bits));
+        pos += 2 * coord_bytes;
         let start = coords.len();
-        coords.push((x as i32, y as i32));
+        coords.push((qlon as i32, qlat as i32));
         for _ in 1..vcount {
-            if cfg!(feature = "geom-fixed") && h.geom == 1 {
-                coords.push((read_fixed(b, pos, h.quant_bits), read_fixed(b, pos + fb, h.quant_bits)));
-                pos += 2 * fb;
+            if cfg!(feature = "geom-fixed") && header.geom == 1 {
+                coords.push((
+                    read_fixed(payload, pos, header.quant_bits),
+                    read_fixed(payload, pos + coord_bytes, header.quant_bits),
+                ));
+                pos += 2 * coord_bytes;
             } else {
-                let (dx, p3) = read_varint(b, pos);
-                let (dy, p4) = read_varint(b, p3);
-                pos = p4;
-                x += unzigzag(dx);
-                y += unzigzag(dy);
-                coords.push((x as i32, y as i32));
+                let (dlon, after_dlon) = read_varint(payload, pos);
+                let (dlat, after_dlat) = read_varint(payload, after_dlon);
+                pos = after_dlat;
+                qlon += unzigzag(dlon);
+                qlat += unzigzag(dlat);
+                coords.push((qlon as i32, qlat as i32));
             }
         }
         if rev {

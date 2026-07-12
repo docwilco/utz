@@ -13,9 +13,9 @@ pub struct Args {}
 pub fn run(_a: Args) -> utz_build::Result<()> {
     let t = std::time::Instant::now();
     let g = DensityGrid::load(&utz_build::cache_dir())?;
-    println!("loaded {}x{} grid in {:.1?}", g.w, g.h, t.elapsed());
+    println!("loaded {}x{} grid in {:.1?}", g.width, g.height, t.elapsed());
     #[expect(clippy::cast_precision_loss, reason = "grid dims w,h ≤ 43200 raster cells; exact")]
-    let (lon1, lat1) = (g.lon0 + g.w as f64 * g.dlon, g.lat0 - g.h as f64 * g.dlat);
+    let (lon1, lat1) = (g.lon0 + g.width as f64 * g.dlon, g.lat0 - g.height as f64 * g.dlat);
     println!(
         "extent: lon [{:.3}, {:.3}] lat [{:.3}, {:.3}] cell {:.4}x{:.4} deg",
         g.lon0,
