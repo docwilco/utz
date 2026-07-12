@@ -4,18 +4,25 @@
 //! 25–50%.) Takes v6 geom=2 codec-none containers, rewrites the coords
 //! section at quant width, compresses both payloads at preset settings.
 //!
-//!     cargo run --release -p utz-build --example imagepack_size -- <eager.utz>...
+//!     utz-build imagepack-size <eager.utz>...
 
 use utz::format::{self, fixed_bytes};
 use utz_build::encode::{compress, Codec};
 
-fn main() -> utz_build::Result<()> {
+#[derive(clap::Args)]
+pub struct Args {
+    /// codec-none .utz container path(s)
+    #[arg(required = true)]
+    paths: Vec<String>,
+}
+
+pub fn run(a: &Args) -> utz_build::Result<()> {
     println!(
         "{:<30} {:>9} {:>9} {:>9} {:>9}",
         "image payload", "raw", "gzip", "xz", "brotli"
     );
-    for path in std::env::args().skip(1) {
-        let bytes = std::fs::read(&path).unwrap();
+    for path in &a.paths {
+        let bytes = std::fs::read(path)?;
         let (codec, _, start) = format::outer(&bytes).expect("not a utz container");
         assert_eq!(codec, 0, "need codec-none");
         let p = &bytes[start..];

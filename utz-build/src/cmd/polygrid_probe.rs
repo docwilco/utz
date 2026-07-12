@@ -14,7 +14,7 @@
 //! table). Also builds the feature grid at deg/2 and deg/4 for the
 //! "grid-only exact answers" scaling curve.
 //!
-//!     cargo run --release -p utz-build --example polygrid_probe -- <none.utz>...
+//!     utz-build polygrid-probe <none.utz>...
 
 use utz::format::{self, fixed_bytes, read_fixed, read_u16, read_u32, read_varint, unzigzag};
 use utz_build::grid::{self, Order};
@@ -122,9 +122,16 @@ fn measure(feats: &[Feat], deg: f64) -> (grid::CellGrid, Stats) {
     (g, s)
 }
 
-fn main() {
-    for path in std::env::args().skip(1) {
-        let bytes = std::fs::read(&path).unwrap();
+#[derive(clap::Args)]
+pub struct Args {
+    /// codec-none .utz container path(s)
+    #[arg(required = true)]
+    paths: Vec<String>,
+}
+
+pub fn run(a: &Args) -> utz_build::Result<()> {
+    for path in &a.paths {
+        let bytes = std::fs::read(path)?;
         let (h, feats) = load_feats(&bytes);
         let deg = f64::from(h.grid_deg);
         let fb = fixed_bytes(h.quant_bits);
@@ -195,4 +202,5 @@ fn main() {
         }
         println!();
     }
+    Ok(())
 }

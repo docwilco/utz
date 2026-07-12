@@ -14,7 +14,7 @@
 //! Section splicing only rewrites the geometry blocks; header offset fields
 //! go stale, which is fine for a size measurement.
 //!
-//!     cargo run --release -p utz-build --example fixedwidth_size -- \
+//!     utz-build fixedwidth-size \
 //!         utz-data-tiny-static/data/tiny-static.utz <compact-none.utz> ...
 
 use utz::format::{self, fixed_bytes, read_fixed, read_u16, read_u32, read_varint, unzigzag};
@@ -59,13 +59,20 @@ fn arc_coords(p: &[u8], h: &format::Header, id: usize) -> Vec<(i32, i32)> {
     coords
 }
 
-fn main() -> utz_build::Result<()> {
+#[derive(clap::Args)]
+pub struct Args {
+    /// codec-none .utz container path(s)
+    #[arg(required = true)]
+    paths: Vec<String>,
+}
+
+pub fn run(a: &Args) -> utz_build::Result<()> {
     println!(
         "{:<28} {:>9} {:>9} {:>9} {:>9}",
         "payload variant", "raw", "gzip", "xz", "brotli"
     );
-    for path in std::env::args().skip(1) {
-        let bytes = std::fs::read(&path).unwrap();
+    for path in &a.paths {
+        let bytes = std::fs::read(path)?;
         let (codec, _, start) = format::outer(&bytes).expect("not a utz container");
         assert_eq!(codec, 0, "{path}: need a codec-none container");
         let p = &bytes[start..];

@@ -48,6 +48,12 @@ enum Cmd {
     Geoquant(cmd::geoquant::Args),
     /// Antimeridian scan: is TZBB already split at ±180°?
     Amscan(cmd::amscan::Args),
+    /// Fixed-width arc-store size vs delta+varint (from codec-none containers)
+    FixedwidthSize(cmd::fixedwidth_size::Args),
+    /// Poly-granular grid vs per-poly bboxes probe
+    PolygridProbe(cmd::polygrid_probe::Args),
+    /// Packed `EagerImage` coords vs general compression (geom=2 containers)
+    ImagepackSize(cmd::imagepack_size::Args),
 }
 
 fn main() -> std::process::ExitCode {
@@ -81,5 +87,8 @@ fn run() -> utz_build::Result<()> {
         Cmd::PipBench(a) => cmd::pip_bench::run(a),
         Cmd::Geoquant(a) => cmd::geoquant::run(a),
         Cmd::Amscan(a) => cmd::amscan::run(a),
+        Cmd::FixedwidthSize(a) => cmd::fixedwidth_size::run(&a),
+        Cmd::PolygridProbe(a) => cmd::polygrid_probe::run(&a),
+        Cmd::ImagepackSize(a) => cmd::imagepack_size::run(&a),
     }
 }
