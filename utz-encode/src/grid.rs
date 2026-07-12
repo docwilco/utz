@@ -80,6 +80,7 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
                 for i in 0..n {
                     let (x0, y0) = ring[i];
                     let (x1, y1) = ring[(i + 1) % n];
+                    #[expect(clippy::float_cmp, reason = "skip exactly-horizontal edges before dividing by y1-y0; near-horizontal must still cross")]
                     if y0 == y1 { continue; }
                     let (ylo, yhi) = if y0 < y1 { (y0, y1) } else { (y1, y0) };
                     // rows whose center lat is in [ylo, yhi)

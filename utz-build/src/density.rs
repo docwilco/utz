@@ -288,6 +288,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::float_cmp, reason = "cell values stored exactly (0.0/1000.0); approximate equality would weaken the test")]
     fn sample_hits_the_right_cell() {
         let g = grid();
         assert_eq!(g.sample(5.5, 5.5), 1000.0);
@@ -298,6 +299,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::float_cmp, reason = "cell values stored exactly (0.0/1000.0); approximate equality would weaken the test")]
     fn max_along_sees_cells_between_vertices() {
         let g = grid();
         // horizontal crossing: both endpoints in cold cells, hot in between

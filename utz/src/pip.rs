@@ -33,12 +33,12 @@
 //!   off the container bytes with O(1) state and no decode buffer.
 
 macro_rules! pip_impl {
-    ($contains:ident, $ring_hit:ident, $edge:ident, $wide:ty) => {
+    ($wide:ident $(, #[$edge_attr:meta])?) => { pastey::paste! {
         /// `rings[0]` = exterior, rest = holes; no duplicated closing vertex.
-        pub fn $contains(rings: &[&[(i32, i32)]], px: i32, py: i32) -> bool {
+        pub fn [<contains_ $wide>](rings: &[&[(i32, i32)]], px: i32, py: i32) -> bool {
             let mut inside = false;
             for ring in rings {
-                match $ring_hit(ring, px, py) {
+                match [<ring_hit_ $wide>](ring, px, py) {
                     RingHit::Boundary => return true,
                     RingHit::Inside => inside = !inside,
                     RingHit::Outside => {}
@@ -49,7 +49,7 @@ macro_rules! pip_impl {
 
         /// Even-odd scan of one OPEN ring (the closing edge `last→first` is
         /// implied). `Inside` = odd crossings of the +x ray from `(px, py)`.
-        pub fn $ring_hit(ring: &[(i32, i32)], px: i32, py: i32) -> RingHit {
+        pub fn [<ring_hit_ $wide>](ring: &[(i32, i32)], px: i32, py: i32) -> RingHit {
             let n = ring.len();
             if n < 3 {
                 return RingHit::Outside;
@@ -58,7 +58,7 @@ macro_rules! pip_impl {
             let (mut x0, mut y0) = ring[n - 1];
             for i in 0..n {
                 let (x1, y1) = ring[i];
-                match $edge((x0, y0), (x1, y1), px, py) {
+                match [<edge_ $wide>]((x0, y0), (x1, y1), px, py) {
                     EdgeHit::Boundary => return RingHit::Boundary,
                     EdgeHit::Cross => inside = !inside,
                     EdgeHit::Miss => {}
@@ -82,34 +82,35 @@ macro_rules! pip_impl {
         /// a downward edge excludes its starting endpoint, horizontal edges
         /// never cross. Direction-symmetric in `a`/`b` by construction.
         #[inline(always)]
-        pub fn $edge(a: (i32, i32), b: (i32, i32), px: i32, py: i32) -> EdgeHit {
+        $(#[$edge_attr])?
+        pub fn [<edge_ $wide>](a: (i32, i32), b: (i32, i32), px: i32, py: i32) -> EdgeHit {
             let ((x0, y0), (x1, y1)) = (a, b);
             if y0 <= py {
                 if y1 >= py {
-                    let cross = ((x1 as $wide) - (x0 as $wide)) * ((py as $wide) - (y0 as $wide))
-                        - ((y1 as $wide) - (y0 as $wide)) * ((px as $wide) - (x0 as $wide));
-                    if cross == (0 as $wide) {
+                    let cross = ($wide::from(x1) - $wide::from(x0)) * ($wide::from(py) - $wide::from(y0))
+                        - ($wide::from(y1) - $wide::from(y0)) * ($wide::from(px) - $wide::from(x0));
+                    if cross == $wide::from(0) {
                         if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
                             return EdgeHit::Boundary;
                         }
-                    } else if cross > (0 as $wide) && y1 != py {
+                    } else if cross > $wide::from(0) && y1 != py {
                         return EdgeHit::Cross; // point strictly left of an upward edge
                     }
                 }
             } else if y1 <= py {
-                let cross = ((x1 as $wide) - (x0 as $wide)) * ((py as $wide) - (y0 as $wide))
-                    - ((y1 as $wide) - (y0 as $wide)) * ((px as $wide) - (x0 as $wide));
-                if cross == (0 as $wide) {
+                let cross = ($wide::from(x1) - $wide::from(x0)) * ($wide::from(py) - $wide::from(y0))
+                    - ($wide::from(y1) - $wide::from(y0)) * ($wide::from(px) - $wide::from(x0));
+                if cross == $wide::from(0) {
                     if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
                         return EdgeHit::Boundary;
                     }
-                } else if cross < (0 as $wide) {
+                } else if cross < $wide::from(0) {
                     return EdgeHit::Cross; // point strictly right of a downward edge
                 }
             }
             EdgeHit::Miss
         }
-    };
+    } };
 }
 
 /// Ring-level verdict: `Inside` toggles polygon parity, `Boundary` claims.
@@ -126,11 +127,11 @@ pub enum EdgeHit {
     Boundary,
 }
 
-pip_impl!(contains_i64, ring_hit_i64, edge_i64, i64);
-pip_impl!(contains_i128, ring_hit_i128, edge_i128, i128);
+pip_impl!(i64);
+pip_impl!(i128);
 // test/bench-only instantiation (see module docs); same &[(i32,i32)] slices,
 // per-edge i32->f64 casts included in its cost, as any real f64 path would pay
-pip_impl!(contains_f64, ring_hit_f64, edge_f64, f64);
+pip_impl!(f64, #[expect(clippy::float_cmp, reason = "cross products are exact in f64 at i24 quant (bit-exact vs i64, tested); zero means on-edge")]);
 
 /// Coordinate-pair storage the `EagerImage` kernels widen from (v7: image
 /// coords are stored at quant width — i16/i32 as typed slices, i24 packed).

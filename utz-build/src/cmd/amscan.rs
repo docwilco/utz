@@ -32,6 +32,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
                             if !wide_tzs.contains(&tz) { wide_tzs.push(tz); }
                         }
                         if !(-180.0..=180.0).contains(&x0) || !(-90.0..=90.0).contains(&y0) { oob += 1; }
+                        #[expect(clippy::float_cmp, reason = "TZBB writes literal ±180.0; counting exact antimeridian vertices")]
                         if x0.abs() == 180.0 { on180 += 1; }
                     }
                 }

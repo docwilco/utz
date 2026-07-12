@@ -777,6 +777,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::float_cmp, reason = "weight() knees are exact early-returns (1.0/w_min); approximate equality would weaken the test")]
     fn density_weight_shape() {
         let m = DensityWeight::new(0.1);
         assert_eq!(m.weight(0.0), 1.0);

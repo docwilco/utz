@@ -81,6 +81,7 @@ utz-data-balanced = { path = "../utz-data-balanced", optional = true }
 utz-data-accurate = { path = "../utz-data-accurate", optional = true }
 # re-exported for embedding EagerImage assets 4-aligned (see workspace toml)
 include_bytes_aligned = { workspace = true }
+pastey = "0.2.3"
 
 [dev-dependencies]
 utz-common = { path = "../utz-common" }
