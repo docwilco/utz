@@ -22,7 +22,7 @@
 
 use crate::encode::{self, Codec, Params, PayloadStats};
 use crate::topo::Topology;
-use crate::{validate, Feat};
+use crate::{validate, Arc, Feat};
 use utz_simplify::{simplify_weighted, DensityWeight, Simplify};
 
 struct State {
@@ -89,7 +89,7 @@ fn parse_blob(b: &[u8]) -> Option<State> {
         return None;
     }
     r.p = r.p.next_multiple_of(8);
-    let mut arc_coords: Vec<Vec<(f64, f64)>> = Vec::with_capacity(n_arcs);
+    let mut arc_coords: Vec<Arc> = Vec::with_capacity(n_arcs);
     for a in 0..n_arcs {
         let mut arc = Vec::with_capacity(offs[a + 1] - offs[a]);
         for _ in offs[a]..offs[a + 1] {
@@ -178,7 +178,7 @@ pub unsafe extern "C" fn utz_enc_init(ptr: *mut u8, len: usize) -> u32 {
 /// [`utz_enc_problems`]. `pre_snap_bits` = Some(qbits) snaps every arc to
 /// that grid BEFORE simplifying (the viewer's Q→S order); the later
 /// quantize step then re-snaps the already-on-grid coords, a no-op.
-fn simplified_arcs(st: &State, algo: u32, eps_m: f64, w_min: f64, pre_snap_bits: Option<u32>) -> Vec<Vec<(f64, f64)>> {
+fn simplified_arcs(st: &State, algo: u32, eps_m: f64, w_min: f64, pre_snap_bits: Option<u32>) -> Vec<Arc> {
     let eps_deg = eps_m / 111_320.0;
     let algo = match algo {
         0 => Simplify::Rdp { eps: eps_deg },

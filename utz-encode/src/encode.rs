@@ -32,7 +32,7 @@
 
 use crate::error::ensure;
 use crate::grid::{self, Order};
-use crate::{clean, topo, Error, Feat};
+use crate::{clean, topo, Arc, Error, Feat};
 
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
@@ -222,7 +222,7 @@ pub fn payload_from_topology(
     // collapsed to zero area — see clean.rs. Junction endpoints stay put, so
     // neighbouring zones remain stitched.
     let mut cst = clean::CleanStats::default();
-    let arcs_q: Vec<Vec<(i32, i32)>> = arc_coords.iter().map(|a| {
+    let arcs_q: Vec<Arc<i32>> = arc_coords.iter().map(|a| {
         let mut q: Vec<(i32, i32)> = a.iter().map(|&(x, y)| (qx(x), qy(y))).collect();
         let closed = a.len() > 1 && a.first() == a.last();
         clean::clean_arc(&mut q, closed, &mut cst);
@@ -238,7 +238,7 @@ pub fn payload_from_topology(
     // rings touch the cell instead of bbox-scanning every poly of every
     // candidate feature (§10/§15 polygrid_probe: 20-24 polys parsed → 2.1,
     // per-poly bboxes redundant, CSR growth ≈ dropped bbox bytes).
-    let arcs_dq: Vec<Vec<(f64, f64)>> = arcs_q.iter()
+    let arcs_dq: Vec<Arc> = arcs_q.iter()
         .map(|a| a.iter().map(|&(x, y)| (dq(x, 180.0), dq(y, 90.0))).collect())
         .collect();
     let quantized = t.reconstruct(feats, &arcs_dq);

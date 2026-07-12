@@ -1,12 +1,16 @@
 //! Shared geometry types + quantization helpers for the encoder and measurements.
 
-/// exterior ring first, then interior (hole) rings; no duplicated closing vertex.
-// TODO: Seeing lots of uses of Vec<(T, T)> and Vec<Vec<(T,T)> around the
-// codebase for rings, which does not use these two. Should probably be generic?
-// Also we use Position in our public API to prevent lat/lon confusion, maybe we
-// should use it internally ourselves? So Ring becomes Vec<Position> etc.
-pub type Ring = Vec<(f64, f64)>;
-pub type Poly = Vec<Ring>;
+// Coordinate tuples are (lon, lat) — equivalently (x, y) with x = lon —
+// everywhere in the workspace: builder f64 degrees and quantized i32 grid
+// units alike. The aliases carry the semantic split: a Ring is closed
+// (implicitly; no duplicated closing vertex), an Arc is an open polyline
+// shared between the rings that reference it.
+/// One closed ring: no duplicated closing vertex.
+pub type Ring<T = f64> = Vec<(T, T)>;
+/// Exterior ring first, then interior (hole) rings.
+pub type Poly<T = f64> = Vec<Ring<T>>;
+/// One open shared-boundary polyline (see `topo`); NOT `std::sync::Arc`.
+pub type Arc<T = f64> = Vec<(T, T)>;
 
 pub struct Feat {
     pub offset: f64,

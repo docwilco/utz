@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use crate::Feat;
+use crate::{Arc, Feat};
 // simplification lives in utz-simplify (shared with the viz HTML via WASM)
 pub use utz_simplify::{simplify, Simplify};
 
@@ -41,7 +41,7 @@ pub struct TopoOut {
 /// The shared-arc topology itself, before any serialization: what the container
 /// encoder (encode.rs) consumes. Arc coords are f64, already RDP-simplified.
 pub struct Topology {
-    pub arc_coords: Vec<Vec<(f64, f64)>>,
+    pub arc_coords: Vec<Arc>,
     /// per ring: signed arc refs (`id << 1 | reversed`)
     pub ring_refs: Vec<Vec<u32>>,
     /// feature → polygon → ring indices into `ring_refs`
@@ -208,7 +208,7 @@ fn build_topology_impl(feats: &[Feat], algo: Simplify, edge_weight: Option<&Edge
     }
 
     // 4. arc coords (+ topology-aware simplification, each arc once)
-    let arc_coords: Vec<Vec<(f64, f64)>> = arcs.iter()
+    let arc_coords: Vec<Arc> = arcs.iter()
         .map(|a| {
             let c: Vec<(f64, f64)> = a.iter().map(|&v| vcoord[v as usize]).collect();
             match edge_weight {

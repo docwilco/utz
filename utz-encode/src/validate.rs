@@ -5,6 +5,7 @@
 
 use crate::clean::{self, CleanStats};
 use crate::topo::Topology;
+use crate::{Arc, Ring};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Kind {
@@ -37,7 +38,7 @@ pub struct Bad {
     pub locs: Vec<Loc>,
 }
 
-pub fn measure(rings: impl Iterator<Item = Vec<(i32, i32)>>) -> Bad {
+pub fn measure(rings: impl Iterator<Item = Ring<i32>>) -> Bad {
     let mut b = Bad::default();
     for (ri, c) in rings.enumerate() {
         b.verts += c.len();
@@ -72,7 +73,7 @@ pub fn find_problems(t: &Topology, arc_coords: &[Vec<(f64, f64)>], qbits: u32) -
     let mut cst = CleanStats::default();
     #[expect(clippy::cast_possible_truncation, reason = "lon/lat bounded, products < i32::MAX; float as saturates")]
     let quantize = |&(x, y): &(f64, f64)| (((x / 180.0 * qmax).round()) as i32, ((y / 90.0 * qmax).round()) as i32);
-    let arcs_q: Vec<Vec<(i32, i32)>> = arc_coords.iter().map(|a| {
+    let arcs_q: Vec<Arc<i32>> = arc_coords.iter().map(|a| {
         let mut q: Vec<(i32, i32)> = a.iter()
             .map(quantize)
             .collect();

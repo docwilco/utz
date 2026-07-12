@@ -9,6 +9,8 @@
 //! polygon in isolation — so neighbouring zones stay stitched by
 //! construction; cleaning a border cleans it identically for both owners.
 
+use crate::{Arc, Ring};
+
 #[derive(Clone, Copy, Default, Debug)]
 pub struct CleanStats {
     /// consecutive duplicate vertices removed
@@ -50,7 +52,7 @@ fn classify(p: (i32, i32), q: (i32, i32), r: (i32, i32)) -> Kind {
 /// cleaned cyclically so artifacts at the arbitrary start vertex are caught
 /// too; open arcs never lose their endpoints — those are junctions shared
 /// with other arcs.
-pub fn clean_arc(a: &mut Vec<(i32, i32)>, closed: bool, st: &mut CleanStats) {
+pub fn clean_arc(a: &mut Arc<i32>, closed: bool, st: &mut CleanStats) {
     if closed {
         if a.len() > 1 && a.first() == a.last() {
             a.pop();
@@ -65,7 +67,7 @@ pub fn clean_arc(a: &mut Vec<(i32, i32)>, closed: bool, st: &mut CleanStats) {
     }
 }
 
-fn clean_open(a: &mut Vec<(i32, i32)>, st: &mut CleanStats) {
+fn clean_open(a: &mut Arc<i32>, st: &mut CleanStats) {
     let mut i = 1;
     while i < a.len() {
         if a[i] == a[i - 1] {
@@ -99,7 +101,7 @@ fn clean_open(a: &mut Vec<(i32, i32)>, st: &mut CleanStats) {
     }
 }
 
-fn clean_cyclic(a: &mut Vec<(i32, i32)>, st: &mut CleanStats) {
+fn clean_cyclic(a: &mut Arc<i32>, st: &mut CleanStats) {
     loop {
         let mut changed = false;
         let mut i = 0;
@@ -139,8 +141,8 @@ fn clean_cyclic(a: &mut Vec<(i32, i32)>, st: &mut CleanStats) {
 /// Assemble one ring's quantized coords from its signed arc refs — the
 /// integer twin of `Topology::reconstruct`'s ring assembly.
 #[must_use]
-pub fn ring_coords_q(refs: &[u32], arcs: &[Vec<(i32, i32)>]) -> Vec<(i32, i32)> {
-    let mut c: Vec<(i32, i32)> = Vec::new();
+pub fn ring_coords_q(refs: &[u32], arcs: &[Arc<i32>]) -> Ring<i32> {
+    let mut c: Ring<i32> = Vec::new();
     for &r in refs {
         let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
         let mut a = arcs[id].clone();
@@ -205,7 +207,7 @@ fn has_proper_cross(c: &[(i32, i32)]) -> bool {
 
 /// `(ring_refs, structure, arcs)` mirroring `Topology`'s fields, with arcs
 /// quantized to integer coordinates.
-pub type CleanedTopo = (Vec<Vec<u32>>, Vec<Vec<Vec<usize>>>, Vec<Vec<(i32, i32)>>);
+pub type CleanedTopo = (Vec<Vec<u32>>, Vec<Vec<Vec<usize>>>, Vec<Arc<i32>>);
 
 /// Drop rings that quantization collapsed to zero area: a degenerate hole
 /// vanishes alone, a degenerate exterior takes its holes with it. Arcs no
@@ -219,7 +221,7 @@ pub type CleanedTopo = (Vec<Vec<u32>>, Vec<Vec<Vec<usize>>>, Vec<Vec<(i32, i32)>
 pub fn drop_degenerate_rings(
     ring_refs: &[Vec<u32>],
     structure: &[Vec<Vec<usize>>],
-    arcs: Vec<Vec<(i32, i32)>>,
+    arcs: Vec<Arc<i32>>,
     st: &mut CleanStats,
 ) -> CleanedTopo {
     let ring_ok: Vec<bool> = ring_refs
