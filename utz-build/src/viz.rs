@@ -125,7 +125,7 @@ pub fn heat_bin(g: &crate::density::DensityGrid) -> Vec<u8> {
         for c in 0..g.w {
             let d = f64::from(g.cells[r * g.w + c]);
             if d >= 1.0 {
-                #[expect(clippy::cast_possible_truncation, reason = "clamped to 1..=255")]
+                #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "clamped to 1..=255")]
                 let v = (255.0 * d.ln() / dmax_ln).clamp(1.0, 255.0) as u8;
                 let out = &mut cells[r / DS * w + c / DS];
                 *out = (*out).max(v);

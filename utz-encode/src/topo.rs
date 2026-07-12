@@ -23,7 +23,7 @@ fn pushb(out: &mut Vec<u8>, v: i32, bits: u32) {
     out.extend_from_slice(&v.to_le_bytes()[0..n]);
 }
 
-fn zigzag(v: i64) -> u64 { ((v << 1) ^ (v >> 63)) as u64 }
+fn zigzag(v: i64) -> u64 { ((v << 1) ^ (v >> 63)).cast_unsigned() }
 fn put_varint(out: &mut Vec<u8>, mut v: u64) {
     loop { let b = (v & 0x7f) as u8; v >>= 7; if v == 0 { out.push(b); break; }    out.push(b | 0x80); }
 }

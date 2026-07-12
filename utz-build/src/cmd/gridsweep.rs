@@ -23,16 +23,16 @@ pub fn run(a: Args) -> utz_build::Result<()> {
 
     for d in 1u32..=20 {
         let df = f64::from(d);
-        #[expect(clippy::cast_possible_truncation, reason = "ceil(360/deg) is a small positive integer")]
+        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "ceil(360/deg) is a small positive integer")]
         let ncols = ((360.0 / df).ceil()) as usize;
-        #[expect(clippy::cast_possible_truncation, reason = "ceil(180/deg) is a small positive integer")]
+        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "ceil(180/deg) is a small positive integer")]
         let nrows = ((180.0 / df).ceil()) as usize;
         let total = ncols * nrows;
         let mut border = vec![false; total];
         let cell = |lon: f64, lat: f64| -> usize {
-            #[expect(clippy::cast_possible_truncation, reason = "cell index, fraction dropped then clamped")]
+            #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, reason = "cell index, fraction dropped then clamped")]
             let c = (((lon + 180.0) / df) as isize).clamp(0, ncols as isize - 1) as usize;
-            #[expect(clippy::cast_possible_truncation, reason = "cell index, fraction dropped then clamped")]
+            #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, reason = "cell index, fraction dropped then clamped")]
             let r = (((lat + 90.0) / df) as isize).clamp(0, nrows as isize - 1) as usize;
             r * ncols + c
         };
@@ -41,7 +41,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             for i in 0..n {
                 let (x0, y0) = ring[i];
                 let (x1, y1) = ring[(i + 1) % n];
-                #[expect(clippy::cast_possible_truncation, reason = "edge span in cells is small and non-negative")]
+                #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "edge span in cells is small and non-negative")]
                 let span = (((x1 - x0).abs()).max((y1 - y0).abs()) / df * 2.0).ceil() as usize;
                 let steps = span.max(1);
                 for s in 0..=steps {

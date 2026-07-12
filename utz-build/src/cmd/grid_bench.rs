@@ -49,9 +49,9 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     let cell_of = |px: i32, py: i32| -> usize {
         let lon = f64::from(px) / QMAX * 180.0;
         let lat = f64::from(py) / QMAX * 90.0;
-        #[expect(clippy::cast_possible_truncation, reason = "cell index, fraction dropped then clamped")]
+        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, reason = "cell index, fraction dropped then clamped")]
         let c = (((lon + 180.0) / deg) as isize).clamp(0, ncols as isize - 1) as usize;
-        #[expect(clippy::cast_possible_truncation, reason = "cell index, fraction dropped then clamped")]
+        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, reason = "cell index, fraction dropped then clamped")]
         let r = (((lat + 90.0) / deg) as isize).clamp(0, nrows as isize - 1) as usize;
         r * ncols + c
     };

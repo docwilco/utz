@@ -120,6 +120,7 @@ impl DensityGrid {
         best
     }
 
+    #[expect(clippy::cast_possible_wrap, reason = "raster dims ≤ 43200 ≪ i64::MAX")]
     fn cell_val(&self, ix: i64, iy: i64) -> f64 {
         if iy < 0 || iy >= self.h as i64 {
             return 0.0;

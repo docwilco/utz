@@ -163,8 +163,8 @@ fn main() {
         // feat_offsets-style table reshaped per poly; u16 parent id per poly)
         let bbox_bytes = npolys * 4 * fb;
         let parent_bytes = npolys * 2;
-        let delta = sp.csr_bytes as isize - sf.csr_bytes as isize - bbox_bytes as isize
-            + parent_bytes as isize;
+        let delta = sp.csr_bytes.cast_signed() - sf.csr_bytes.cast_signed() - bbox_bytes.cast_signed()
+            + parent_bytes.cast_signed();
 
         let name = std::path::Path::new(&path).file_stem().unwrap().to_string_lossy().into_owned();
         println!("== {name}: {} feats, {npolys} polys, {deg:.3}° grid ==", feats.len());
@@ -184,7 +184,7 @@ fn main() {
         );
         println!(
             "  net size: csr {:+} − bboxes {} + parents {} = {:+} bytes",
-            sp.csr_bytes as isize - sf.csr_bytes as isize, bbox_bytes, parent_bytes, delta
+            sp.csr_bytes.cast_signed() - sf.csr_bytes.cast_signed(), bbox_bytes, parent_bytes, delta
         );
 
         // grid-only-exact scaling: how fast do border cells shrink?

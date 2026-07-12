@@ -33,7 +33,7 @@ fn write_varint(mut v: u64, out: &mut Vec<u8>) {
 }
 
 fn write_fixed(v: i32, fb: usize, out: &mut Vec<u8>) {
-    out.extend_from_slice(&(v as u32).to_le_bytes()[..fb]);
+    out.extend_from_slice(&v.cast_unsigned().to_le_bytes()[..fb]);
 }
 
 /// Decode one arc (forward orientation) into (i32, i32) coords.

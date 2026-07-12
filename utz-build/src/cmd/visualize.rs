@@ -98,7 +98,7 @@ fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> utz_build::Result<Vec<u8>> 
     let idx: std::collections::HashMap<&str, u16> =
         names.iter().enumerate().map(|(i, &n)| (n, u16::try_from(i).expect("zone count fits u16"))).collect();
 
-    #[expect(clippy::cast_possible_truncation, reason = "360/0.1 and 180/0.1 are small exact integers")]
+    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "360/0.1 and 180/0.1 are small exact integers")]
     let (w, h) = ((360.0 / STEP) as usize, (180.0 / STEP) as usize);
     let mut o = Vec::with_capacity(16 + w * h * 2);
     o.extend_from_slice(b"uTZz");

@@ -45,7 +45,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             let csr = grid::intern_csr(&g, order, &areas);
             let hit = early_exit(&g, &csr);
             if order == Order::IdSorted { base_bytes = csr.bytes(); }
-            let delta = csr.bytes() as isize - base_bytes as isize;
+            let delta = csr.bytes().cast_signed() - base_bytes.cast_signed();
             println!("{:<22}{:>12}{:>10}{:>12}{:>13.1}%  ({:+} B)",
                 name, csr.uniq_lists, csr.list_ids.len(), csr.bytes(), 100.0 * hit, delta);
         }

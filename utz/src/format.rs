@@ -78,12 +78,12 @@ pub fn read_u32(b: &[u8], pos: usize) -> u32 {
 #[must_use]
 pub fn read_fixed(b: &[u8], pos: usize, qbits: u8) -> i32 {
     match qbits {
-        16 => i32::from(read_u16(b, pos) as i16),
+        16 => i32::from(read_u16(b, pos).cast_signed()),
         24 => {
             let v = i32::from(b[pos]) | (i32::from(b[pos + 1]) << 8) | (i32::from(b[pos + 2]) << 16);
             if v & 0x0080_0000 != 0 { v | !0x00FF_FFFF } else { v }
         }
-        _ => read_u32(b, pos) as i32,
+        _ => read_u32(b, pos).cast_signed(),
     }
 }
 #[must_use]
@@ -107,7 +107,7 @@ pub fn read_varint(b: &[u8], mut pos: usize) -> (u64, usize) {
 }
 #[must_use]
 pub fn unzigzag(v: u64) -> i64 {
-    ((v >> 1) as i64) ^ -((v & 1) as i64)
+    (v >> 1).cast_signed() ^ -((v & 1).cast_signed())
 }
 
 /// Validate the outer header; returns (codec, `raw_len`, `payload_start`).

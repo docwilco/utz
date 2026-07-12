@@ -115,7 +115,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
                 blob.len() as f64 / 1024.0,
                 blob.len() as f64 / raw as f64 * 100.0,
                 peak as f64 / 1024.0,
-                (peak as isize - raw as isize - win_eff as isize) as f64 / 1024.0,
+                (peak.cast_signed() - raw.cast_signed() - win_eff.cast_signed()) as f64 / 1024.0,
             );
             println!(
                 "{:>8}{:>9}{comp_kb:>9.1}K{ratio:>7.1}%{:>9.1}{peak_kb:>9.1}K{state_kb:>8.1}K",
@@ -145,7 +145,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
             let mut out = Vec::new();
             let params = brotli::enc::BrotliEncoderParams {
                 quality: 11,
-                lgwin: wlog as i32,
+                lgwin: wlog.cast_signed(),
                 ..Default::default()
             };
             brotli::BrotliCompress(&mut &payload[..], &mut out, &params)?;

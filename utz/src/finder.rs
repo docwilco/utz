@@ -472,7 +472,7 @@ impl Finder {
         (r(pos.lon / 180.0 * q), r(pos.lat / 90.0 * q))
     }
 
-    #[expect(clippy::cast_possible_truncation, reason = "cast saturates then clamped to grid range")]
+    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "cast saturates then clamped to grid range")]
     fn cell_value(&self, px: i32, py: i32) -> u16 {
         let (h, q) = (&self.hdr, self.qmax());
         let d = f64::from(h.grid_deg);
@@ -616,10 +616,10 @@ impl Finder {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let pe = h.img_polys + pid as usize * 20;
         let bb = [
-            read_u32(b, pe) as i32,
-            read_u32(b, pe + 4) as i32,
-            read_u32(b, pe + 8) as i32,
-            read_u32(b, pe + 12) as i32,
+            read_u32(b, pe).cast_signed(),
+            read_u32(b, pe + 4).cast_signed(),
+            read_u32(b, pe + 8).cast_signed(),
+            read_u32(b, pe + 12).cast_signed(),
         ];
         if !(px >= bb[0] && py >= bb[1] && px <= bb[2] && py <= bb[3]) {
             return false;
