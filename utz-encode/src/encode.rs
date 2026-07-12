@@ -238,10 +238,10 @@ pub fn payload_from_topology(
     // rings touch the cell instead of bbox-scanning every poly of every
     // candidate feature (§10/§15 polygrid_probe: 20-24 polys parsed → 2.1,
     // per-poly bboxes redundant, CSR growth ≈ dropped bbox bytes).
-    let arcs_dq: Vec<Arc> = arcs_q.iter()
+    let arcs_snapped: Vec<Arc> = arcs_q.iter()
         .map(|a| a.iter().map(|&(x, y)| (dq(x, 180.0), dq(y, 90.0))).collect())
         .collect();
-    let quantized = t.reconstruct(feats, &arcs_dq);
+    let quantized = t.reconstruct(feats, &arcs_snapped);
     let mut poly_feats: Vec<Feat> = Vec::new();
     let mut parent: Vec<u16> = Vec::new(); // poly id -> feature id
     for (fi, qf) in quantized.iter().enumerate() {

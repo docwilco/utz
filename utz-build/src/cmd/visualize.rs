@@ -55,16 +55,16 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         let verts: usize = topo0.arc_coords.iter().map(std::vec::Vec::len).sum();
         let code = utz_build::dataset(ds)?.code();
         let bin = viz::dataset_bin(&topo0, &feats, code, "webdist", dens.as_ref());
-        let z = write_z(&out.join(format!("{ds}.bin.z")), &bin)?;
-        let zn = write_z(&out.join(format!("zones-{ds}.bin.z")), &zones_bin(&feats, ds)?)?;
+        let bin_z = write_z(&out.join(format!("{ds}.bin.z")), &bin)?;
+        let zones_z = write_z(&out.join(format!("zones-{ds}.bin.z")), &zones_bin(&feats, ds)?)?;
         #[expect(clippy::cast_precision_loss, reason = "raw/deflated bin sizes ≪ 2^53; MiB display")]
-        let (raw_mib, z_mib, zn_mib) = (
+        let (raw_mib, bin_z_mib, zones_z_mib) = (
             bin.len() as f64 / f64::from(1 << 20),
-            z as f64 / f64::from(1 << 20),
-            zn as f64 / f64::from(1 << 20),
+            bin_z as f64 / f64::from(1 << 20),
+            zones_z as f64 / f64::from(1 << 20),
         );
         println!(
-            "{ds}: {} arcs, {verts} verts, {raw_mib:.1} MiB -> {z_mib:.1} MiB (+ zones {zn_mib:.1} MiB)",
+            "{ds}: {} arcs, {verts} verts, {raw_mib:.1} MiB -> {bin_z_mib:.1} MiB (+ zones {zones_z_mib:.1} MiB)",
             topo0.arc_coords.len()
         );
     }

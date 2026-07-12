@@ -264,8 +264,8 @@ pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: b
         for (i, &(x, y)) in a.iter().enumerate() {
             let (cx, cy) = (i64::from(qxb(x, qmax)), i64::from(qyb(y, qmax)));
             if abs_fixed || i == 0 {
-                let (cx32, cy32) = (i32::try_from(cx).expect("quantized coord fits i32"), i32::try_from(cy).expect("quantized coord fits i32"));
-                pushb(&mut o, cx32, qbits); pushb(&mut o, cy32, qbits);
+                pushb(&mut o, i32::try_from(cx).expect("quantized coord fits i32"), qbits);
+                pushb(&mut o, i32::try_from(cy).expect("quantized coord fits i32"), qbits);
             } else {
                 put_varint(&mut o, zigzag(cx - px)); put_varint(&mut o, zigzag(cy - py));
             }
