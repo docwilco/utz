@@ -67,68 +67,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             P { fi, bbox: bb, rings }
         }))
         .collect();
-    // untimed warmup: first touch of `polys`/`pts` — without it the first
-    // timed contender eats every cold miss and the shared-structure rows
-    // (f64/i128) look spuriously fast
-    let warm = pts.iter()
-        .filter(|&&(px, py)| polys.iter()
-            .any(|p| px >= p.bbox.0 && py >= p.bbox.1 && px <= p.bbox.2 && py <= p.bbox.3
-                && utz::pip::contains_i64(&p.rings, px, py)))
-        .count();
-    assert!(warm > 0);
-
-    let t = Instant::now();
-    let mut ours: Vec<Option<usize>> = Vec::with_capacity(npts);
-    for &(px, py) in &pts {
-        ours.push(polys.iter()
-            .find(|p| px >= p.bbox.0 && py >= p.bbox.1 && px <= p.bbox.2 && py <= p.bbox.3
-                && utz::pip::contains_i64(&p.rings, px, py))
-            .map(|p| p.fi));
-    }
-    let t_ours = t.elapsed();
-
-    // ---- ours-f64: same kernel shape, f64 arithmetic (test/bench-only
-    // instantiation, bit-exact at this i24 quant — pip.rs module docs) ----
-    let t = Instant::now();
-    let mut ours_f64: Vec<Option<usize>> = Vec::with_capacity(npts);
-    for &(px, py) in &pts {
-        ours_f64.push(polys.iter()
-            .find(|p| px >= p.bbox.0 && py >= p.bbox.1 && px <= p.bbox.2 && py <= p.bbox.3
-                && utz::pip::contains_f64(&p.rings, px, py))
-            .map(|p| p.fi));
-    }
-    let t_f64 = t.elapsed();
-
-    // ---- ours-i128: the i32-quant width on i24 data (wider is always
-    // exact) — what an i32-quant asset would pay on this host ----
-    let t = Instant::now();
-    let mut ours_i128: Vec<Option<usize>> = Vec::with_capacity(npts);
-    for &(px, py) in &pts {
-        ours_i128.push(polys.iter()
-            .find(|p| px >= p.bbox.0 && py >= p.bbox.1 && px <= p.bbox.2 && py <= p.bbox.3
-                && utz::pip::contains_i128(&p.rings, px, py))
-            .map(|p| p.fi));
-    }
-    let t_i128 = t.elapsed();
-
-    // ---- geo oracle, same scan order, same hoisted bbox precheck ----
-    // (geo 0.32 Polygon::contains has NO internal bounding-rect precheck —
-    // coordinate_position walks the exterior ring directly — so hoist the same
-    // bbox test ours gets, keeping the comparison pure per-edge PIP)
-    let t = Instant::now();
-    let mut oracle: Vec<Option<usize>> = Vec::with_capacity(npts);
-    for &(px, py) in &pts {
-        let pt = geo::Point::new(i64::from(px), i64::from(py));
-        oracle.push(gpolys.iter().zip(&polys)
-            .find(|((_, p), b)| px >= b.bbox.0 && py >= b.bbox.1 && px <= b.bbox.2 && py <= b.bbox.3
-                && p.contains(&pt))
-            .map(|(&(fi, _), _)| fi));
-    }
-    let t_geo = t.elapsed();
-
-    // ---- geometry-rs, same scan order, same hoisted bbox precheck ----
-    // (contains_point also runs its own internal rect precheck — inherent to
-    // its API, tzf-rs pays it too, and it's noise next to the ring walk)
+    // geometry-rs polygons (expects closed GeoJSON-style rings)
     let gm_polys: Vec<(usize, geometry_rs::Polygon)> = quant.iter().enumerate()
         .flat_map(|(fi, (_, polys))| polys.iter().map(move |p| {
             let ring = |r: &Vec<(i32, i32)>| -> Vec<geometry_rs::Point> {
@@ -136,22 +75,41 @@ pub fn run(a: Args) -> utz_build::Result<()> {
                     .map(|&(x, y)| geometry_rs::Point { x: f64::from(x), y: f64::from(y) })
                     .collect();
                 let first = v[0];
-                v.push(first); // expects closed GeoJSON-style rings
+                v.push(first);
                 v
             };
             (fi, geometry_rs::Polygon::new(ring(&p[0]), p[1..].iter().map(ring).collect()))
         }))
         .collect();
-    let t = Instant::now();
-    let mut gm: Vec<Option<usize>> = Vec::with_capacity(npts);
-    for &(px, py) in &pts {
-        let pt = geometry_rs::Point { x: f64::from(px), y: f64::from(py) };
-        gm.push(gm_polys.iter().zip(&polys)
-            .find(|((_, p), b)| px >= b.bbox.0 && py >= b.bbox.1 && px <= b.bbox.2 && py <= b.bbox.3
-                && p.contains_point(pt))
-            .map(|(&(fi, _), _)| fi));
-    }
-    let t_gm = t.elapsed();
+
+    // untimed warmup: first touch of `polys`/`pts` — without it the first
+    // timed contender eats every cold miss and the shared-structure rows
+    // (f64/i128) look spuriously fast
+    let (warm, _) = timed_scan(&pts, &polys, |i, px, py| utz::pip::contains_i64(&polys[i].rings, px, py));
+    assert!(warm.iter().flatten().count() > 0);
+
+    // ---- the contenders, all through the same scan shell ----
+    // ours-f64: same kernel shape, f64 arithmetic (test/bench-only
+    // instantiation, bit-exact at this i24 quant — pip.rs module docs).
+    // ours-i128: the i32-quant width on i24 data (wider is always exact) —
+    // what an i32-quant asset would pay on this host.
+    // geo 0.32 Polygon::contains has NO internal bounding-rect precheck
+    // (coordinate_position walks the exterior ring directly), so the shared
+    // hoisted bbox test keeps the comparison pure per-edge PIP.
+    // geometry-rs contains_point runs its own internal rect precheck on top —
+    // inherent to its API, tzf-rs pays it too, noise next to the ring walk.
+    let (ours, t_ours) =
+        timed_scan(&pts, &polys, |i, px, py| utz::pip::contains_i64(&polys[i].rings, px, py));
+    let (ours_f64, t_f64) =
+        timed_scan(&pts, &polys, |i, px, py| utz::pip::contains_f64(&polys[i].rings, px, py));
+    let (ours_i128, t_i128) =
+        timed_scan(&pts, &polys, |i, px, py| utz::pip::contains_i128(&polys[i].rings, px, py));
+    let (oracle, t_geo) = timed_scan(&pts, &polys, |i, px, py| {
+        gpolys[i].1.contains(&geo::Point::new(i64::from(px), i64::from(py)))
+    });
+    let (gm, t_gm) = timed_scan(&pts, &polys, |i, px, py| {
+        gm_polys[i].1.contains_point(geometry_rs::Point { x: f64::from(px), y: f64::from(py) })
+    });
 
     let mut diff = 0usize;
     for (i, (a, b)) in ours.iter().zip(&oracle).enumerate() {
@@ -186,6 +144,29 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         t_gm, us(t_gm),
         t_gm.as_secs_f64() / t_ours.as_secs_f64());
     Ok(())
+}
+
+
+/// Linear first-hit scan of every contender poly with the shared hoisted
+/// bbox precheck — the scan shell every contender pays identically; `hit`
+/// is the per-candidate containment kernel. Returns per-point first hit
+/// (as feature index) + wall time.
+fn timed_scan(
+    pts: &[(i32, i32)],
+    polys: &[P],
+    hit: impl Fn(usize, i32, i32) -> bool,
+) -> (Vec<Option<usize>>, std::time::Duration) {
+    let t = Instant::now();
+    let got = pts.iter().map(|&(px, py)| {
+        (0..polys.len())
+            .find(|&i| {
+                let b = &polys[i];
+                px >= b.bbox.0 && py >= b.bbox.1 && px <= b.bbox.2 && py <= b.bbox.3
+                    && hit(i, px, py)
+            })
+            .map(|i| polys[i].fi)
+    }).collect();
+    (got, t.elapsed())
 }
 
 /// tzid + polygon → ring → quantized vertices
