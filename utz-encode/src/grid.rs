@@ -37,8 +37,55 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
     let (ncols, nrows) = ((360.0 / deg).ceil() as usize, (180.0 / deg).ceil() as usize);
     let total = ncols * nrows;
 
-    // ---- pass 1: edge walk -> candidate sets ----
-    let mut sets: Vec<HashSet<u16>> = vec![HashSet::new(); total];
+    let sets = edge_walk(feats, deg, ncols, nrows);
+    let (fcols, frows) = (ncols * sub, nrows * sub);
+    let owner = subcell_owners(feats, deg, sub, fcols, frows);
+
+    // ---- aggregate subcell owners to per-cell tallies + dominant ----
+    let mut tallies: Vec<HashMap<u16, u32>> = vec![HashMap::new(); total];
+    for fj in 0..frows {
+        let cj = fj / sub;
+        for fi in 0..fcols {
+            let o = owner[fj * fcols + fi];
+            if o != NO_ZONE {
+                *tallies[cj * ncols + fi / sub].entry(o).or_insert(0) += 1;
+            }
+        }
+    }
+    // tie-break by smallest id: HashMap iteration order is seeded per process,
+    // and a tie decided by it made the whole container nondeterministic
+    let dominant: Vec<u16> = tallies.iter()
+        .map(|t| {
+            t.iter()
+                .max_by_key(|&(&z, &c)| (c, core::cmp::Reverse(z)))
+                .map_or(NO_ZONE, |(&z, _)| z)
+        })
+        .collect();
+    let tallies: Vec<Vec<(u16, u32)>> = tallies.into_iter().map(|t| {
+        let mut v: Vec<(u16, u32)> = t.into_iter().collect();
+        v.sort_unstable();
+        v
+    }).collect();
+    // candidate set = edge walk ∪ subcell owners. The union matters where TZBB
+    // zones deliberately OVERLAP (e.g. Asia/Shanghai + Asia/Urumqi over
+    // Xinjiang): a zone covering a whole cell leaves no ring in it, so the edge
+    // walk alone misses it and would mislabel the cell interior.
+    let sets: Vec<Vec<u16>> = sets.into_iter().enumerate().map(|(c, mut s)| {
+        s.extend(tallies[c].iter().map(|&(z, _)| z));
+        let mut v: Vec<u16> = s.into_iter().collect();
+        v.sort_unstable();
+        v
+    }).collect();
+
+    CellGrid { deg, ncols, nrows, sets, dominant, tallies }
+}
+
+
+/// Pass 1: walk every ring edge in `deg`-sized steps — every cell an edge
+/// passes through collects that feature id (candidate sets; ≥2 candidates =
+/// border cell needing PIP).
+fn edge_walk(feats: &[Feat], deg: f64, ncols: usize, nrows: usize) -> Vec<HashSet<u16>> {
+    let mut sets: Vec<HashSet<u16>> = vec![HashSet::new(); ncols * nrows];
     #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, reason = "cast saturates then clamped to grid range")]
     let cell = |lon: f64, lat: f64| -> usize {
         let c = (((lon + 180.0) / deg) as isize).clamp(0, ncols as isize - 1) as usize;
@@ -53,7 +100,7 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
                     let (x0, y0) = ring[i];
                     let (x1, y1) = ring[(i + 1) % n];
                     #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "span/deg bounded by world size; float as saturates")]
-                let steps = ((((x1 - x0).abs()).max((y1 - y0).abs()) / deg * 2.0).ceil() as usize).max(1);
+                    let steps = ((((x1 - x0).abs()).max((y1 - y0).abs()) / deg * 2.0).ceil() as usize).max(1);
                     for s in 0..=steps {
                         #[expect(clippy::cast_precision_loss, reason = "s ≤ steps ≤ 2·360/deg ≪ 2^53; interpolation parameter")]
                         let t = s as f64 / steps as f64;
@@ -63,10 +110,15 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
             }
         }
     }
+    sets
+}
 
-    // ---- pass 2: scanline fill on the fine grid -> subcell owners ----
-    let fcols = ncols * sub;
-    let frows = nrows * sub;
+/// Pass 2: even-odd scanline fill per polygon on the `sub`×-finer grid —
+/// per-subcell ownership (later aggregated to a dominant zone per cell).
+///
+/// # Panics
+/// If any coordinate is NaN (crossing xs become unsortable).
+fn subcell_owners(feats: &[Feat], deg: f64, sub: usize, fcols: usize, frows: usize) -> Vec<u16> {
     #[expect(clippy::cast_precision_loss, reason = "subdivision factor sub = 8 in practice, ≪ 2^53; exact in f64")]
     let r = deg / sub as f64;
     let mut owner: Vec<u16> = vec![NO_ZONE; fcols * frows];
@@ -125,44 +177,7 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
             }
         }
     }
-
-    // ---- aggregate subcell owners to per-cell tallies + dominant ----
-    let mut tallies: Vec<HashMap<u16, u32>> = vec![HashMap::new(); total];
-    for fj in 0..frows {
-        let cj = fj / sub;
-        for fi in 0..fcols {
-            let o = owner[fj * fcols + fi];
-            if o != NO_ZONE {
-                *tallies[cj * ncols + fi / sub].entry(o).or_insert(0) += 1;
-            }
-        }
-    }
-    // tie-break by smallest id: HashMap iteration order is seeded per process,
-    // and a tie decided by it made the whole container nondeterministic
-    let dominant: Vec<u16> = tallies.iter()
-        .map(|t| {
-            t.iter()
-                .max_by_key(|&(&z, &c)| (c, core::cmp::Reverse(z)))
-                .map_or(NO_ZONE, |(&z, _)| z)
-        })
-        .collect();
-    let tallies: Vec<Vec<(u16, u32)>> = tallies.into_iter().map(|t| {
-        let mut v: Vec<(u16, u32)> = t.into_iter().collect();
-        v.sort_unstable();
-        v
-    }).collect();
-    // candidate set = edge walk ∪ subcell owners. The union matters where TZBB
-    // zones deliberately OVERLAP (e.g. Asia/Shanghai + Asia/Urumqi over
-    // Xinjiang): a zone covering a whole cell leaves no ring in it, so the edge
-    // walk alone misses it and would mislabel the cell interior.
-    let sets: Vec<Vec<u16>> = sets.into_iter().enumerate().map(|(c, mut s)| {
-        s.extend(tallies[c].iter().map(|&(z, _)| z));
-        let mut v: Vec<u16> = s.into_iter().collect();
-        v.sort_unstable();
-        v
-    }).collect();
-
-    CellGrid { deg, ncols, nrows, sets, dominant, tallies }
+    owner
 }
 
 /// Candidate-list ordering inside the interned CSR (PLAN.md §10 dominant-first).

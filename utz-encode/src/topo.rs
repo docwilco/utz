@@ -12,12 +12,7 @@ use crate::{Arc, Feat};
 pub use utz_simplify::{simplify, Simplify};
 
 // quantization parameterized by bit-width (i16 abs, i24 abs, i32 abs, ...)
-#[expect(clippy::cast_precision_loss, reason = "qmax = 2^(bits-1)-1 < 2^31, exact in f64")]
-fn qmax_of(bits: u32) -> f64 { ((1u64 << (bits - 1)) - 1) as f64 }
-#[expect(clippy::cast_possible_truncation, reason = "lon bounded, |lon/180*qmax| < i32::MAX; float as saturates")]
-fn qxb(lon: f64, qmax: f64) -> i32 { (lon / 180.0 * qmax).round() as i32 }
-#[expect(clippy::cast_possible_truncation, reason = "lat bounded, |lat/90*qmax| < i32::MAX; float as saturates")]
-fn qyb(lat: f64, qmax: f64) -> i32 { (lat / 90.0 * qmax).round() as i32 }
+use crate::{q_lat, q_lon, qmax_for};
 fn pushb(out: &mut Vec<u8>, v: i32, bits: u32) {
     let n = bits.div_ceil(8) as usize; // bytes per axis (i16->2, i24->3, i32->4)
     out.extend_from_slice(&v.to_le_bytes()[0..n]);
@@ -239,7 +234,7 @@ fn build_topology_impl(feats: &[Feat], algo: Simplify, edge_weight: Option<&Edge
 /// If a count or quantized coordinate exceeds its serialized width
 /// (u16 pool/poly counts, u32 arc ids, i32 coords).
 pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: bool) -> TopoOut {
-    let qmax = qmax_of(qbits);
+    let qmax = qmax_for(qbits);
     let topo = build_topology(feats, eps_deg);
     let Topology { arc_coords, ring_refs, structure } = &topo;
     let verts: usize = arc_coords.iter().map(std::vec::Vec::len).sum();
@@ -261,8 +256,8 @@ pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: b
     for a in arc_coords {
         put_varint(&mut o, a.len() as u64);
         let (mut px, mut py) = (0i64, 0i64);
-        for (i, &(x, y)) in a.iter().enumerate() {
-            let (cx, cy) = (i64::from(qxb(x, qmax)), i64::from(qyb(y, qmax)));
+        for (i, &(lon, lat)) in a.iter().enumerate() {
+            let (cx, cy) = (i64::from(q_lon(lon, qmax)), i64::from(q_lat(lat, qmax)));
             if abs_fixed || i == 0 {
                 pushb(&mut o, i32::try_from(cx).expect("quantized coord fits i32"), qbits);
                 pushb(&mut o, i32::try_from(cy).expect("quantized coord fits i32"), qbits);
@@ -279,7 +274,7 @@ pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: b
         let ti = f.tzid.as_ref().map_or(0xFFFF, |t| sidx[t]);
         o.extend_from_slice(&ti.to_le_bytes());
         let (mut nx, mut ny, mut xx, mut xy) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
-        for p in &f.polys { for r in p { for &(x, y) in r { let (a, b) = (qxb(x, qmax), qyb(y, qmax)); nx = nx.min(a); ny = ny.min(b); xx = xx.max(a); xy = xy.max(b); }}}
+        for p in &f.polys { for r in p { for &(lon, lat) in r { let (a, b) = (q_lon(lon, qmax), q_lat(lat, qmax)); nx = nx.min(a); ny = ny.min(b); xx = xx.max(a); xy = xy.max(b); }}}
         for v in [nx, ny, xx, xy] { pushb(&mut o, v, qbits); }
         o.extend_from_slice(&u16::try_from(structure[fi].len()).expect("poly count fits u16").to_le_bytes());
         for poly in &structure[fi] {
