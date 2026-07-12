@@ -141,6 +141,7 @@ pub trait CoordPair: Copy {
 }
 #[cfg(feature = "geom-image")]
 impl CoordPair for (i32, i32) {
+    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; keep codegen deterministic on Xtensa")]
     #[inline(always)]
     fn xy(&self) -> (i32, i32) {
         *self
@@ -148,6 +149,7 @@ impl CoordPair for (i32, i32) {
 }
 #[cfg(feature = "geom-image")]
 impl CoordPair for (i16, i16) {
+    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; keep codegen deterministic on Xtensa")]
     #[inline(always)]
     fn xy(&self) -> (i32, i32) {
         (i32::from(self.0), i32::from(self.1))
@@ -192,6 +194,7 @@ pub struct Pack24(pub [u8; 6]);
 
 #[cfg(feature = "geom-image")]
 impl CoordPair for Pack24 {
+    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; keep codegen deterministic on Xtensa")]
     #[inline(always)]
     fn xy(&self) -> (i32, i32) {
         // two overlapping in-struct word reads (x = low 3 bytes of the first,

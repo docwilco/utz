@@ -746,6 +746,18 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
     core) — but that is a memory-layout project (decode paths, eager cache,
     `Ring<T>` plumbing), not a kernel signature tweak; no call site exists
     until then.
+12. **TODO: audit every `unsafe` site.** Current inventory (2026-07):
+    `utz/src/pip.rs` Pack24 `read_unaligned` word reads (SAFETY comment
+    present); `utz/src/finder.rs` `image_poly_contains` zero-copy
+    `from_raw_parts` kernel dispatch (alignment parse-validated via
+    `Error::Misaligned`, `cast_ptr_alignment` #[expect]ed); `utz-encode`
+    wasm.rs static `STATE` accessors (~10 sites, single-threaded wasm
+    assumption); `utz-build` window_sweep `GlobalAlloc` tracking shim.
+    The audit: per site, check the stated invariant actually covers all
+    callers (esp. adversarial container bytes for the decoder sites —
+    `from_slice` accepts arbitrary input even if embedded assets are
+    trusted), make every block carry a SAFETY comment, and consider
+    `#[deny(unsafe_op_in_unsafe_fn)]`/Miri coverage for the testable ones.
 
 ---
 

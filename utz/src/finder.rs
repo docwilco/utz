@@ -612,6 +612,7 @@ impl Finder {
     /// i32 as typed pairs, i24 as [`pip::Pack24`] (align 1 — no alignment
     /// requirement). Works on the bare `core` rung.
     #[cfg(feature = "geom-image")]
+    #[expect(clippy::cast_ptr_alignment, reason = "img_coords 4-alignment validated at parse (Error::Misaligned exists for exactly these casts)")]
     fn image_poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let pe = h.img_polys + pid as usize * 20;

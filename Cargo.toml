@@ -34,12 +34,10 @@ derive_more = { version = "2", default-features = false, features = ["display", 
 include_bytes_aligned = "0.2.0"
 
 [workspace.lints.clippy]
+# Pedantic is enforced with NO blanket allows: every finding is either fixed
+# or carries a site-level #[expect(..., reason = "...")] naming the invariant
+# that makes it safe (2026-07 campaign).
 pedantic = { level = "warn", priority = -1 }
-# TODO(pedantic): each allow below is pending its one-at-a-time discussion;
-# remove the entry as each lint gets resolved (see the truncation precedent:
-# cast_possible_truncation is fully fixed/#[expect]ed, so it is NOT listed).
-inline_always = "allow"           # lint 8/9 (~3)
-cast_ptr_alignment = "allow"      # lint 9/9 (~2)
 
 # utz-bench-common's build.rs runs the encoder (codec-none twins via the
 # utz-build builder API) — at the default build-override opt-level 0 the
