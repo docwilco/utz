@@ -292,14 +292,8 @@ mod tests {
     #[expect(clippy::cast_possible_truncation, clippy::cast_possible_wrap, reason = "test PRNG: values constructed within i24/i32 range")]
     fn f64_matches_i64_at_i24_range() {
         const M: i64 = 1 << 23; // i24 coordinate range
-        let mut lcg = 0x0dd_ba11u64;
-        let mut next = |m: i64| -> i32 {
-            // TODO: These two numbers are used in many places in the workspace:
-            // 1. They should be constants defined in one place.
-            // 2. Can't really read them, so why not make them hexadecimal for space?
-            lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
-            (((lcg >> 33) as i64 % m) - m / 2) as i32
-        };
+        let mut lcg = utz_common::Lcg::new(0x0dd_ba11);
+        let mut next = |m: i64| -> i32 { (((lcg.next_u64() >> 33) as i64 % m) - m / 2) as i32 };
         for _ in 0..200 {
             let (cx, cy) = (next(M), next(M));
             let n = 5 + (next(12).unsigned_abs() as usize);
@@ -338,11 +332,8 @@ mod tests {
     #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, reason = "test PRNG: values constructed within i24/i32 range")]
     fn geo_oracle_agreement() {
         use geo::Contains;
-        let mut lcg = 0xdead_beefu64;
-        let mut next = |m: i64| -> i32 {
-            lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
-            ((lcg >> 33) as i64 % m) as i32
-        };
+        let mut lcg = utz_common::Lcg::new(0xdead_beef);
+        let mut next = |m: i64| -> i32 { ((lcg.next_u64() >> 33) as i64 % m) as i32 };
         for _ in 0..200 {
             // random star-shaped polygon (guaranteed simple) around a center
             let (cx, cy) = (next(1000) - 500, next(1000) - 500);

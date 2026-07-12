@@ -481,13 +481,8 @@ mod tests {
 
     /// deterministic pseudo-random polyline (LCG, same recipe as pip tests)
     fn wiggle(n: usize, seed: u64) -> Vec<(f64, f64)> {
-        let mut lcg = seed;
-        #[expect(clippy::cast_precision_loss, reason = "53-bit mantissa construction: lcg>>11 and 2^53 are both exact in f64")]
-        let mut next = || {
-            lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
-            (lcg >> 11) as f64 / (1u64 << 53) as f64
-        };
-        (0..n).map(#[expect(clippy::cast_precision_loss, reason = "i < n ≤ II_MAX+2000 ≪ 2^53; test x-spacing")] |i| (i as f64 * 0.1, next() * 2.0 - 1.0)).collect()
+        let mut lcg = utz_common::Lcg::new(seed);
+        (0..n).map(#[expect(clippy::cast_precision_loss, reason = "i < n ≤ II_MAX+2000 ≪ 2^53; test x-spacing")] |i| (i as f64 * 0.1, lcg.unit_f64() * 2.0 - 1.0)).collect()
     }
 
     fn max_deviation(orig: &[(f64, f64)], simp: &[(f64, f64)]) -> f64 {
@@ -691,13 +686,8 @@ mod tests {
 
     /// deterministic pseudo-random weights in [lo, 1]
     fn rand_weights(n: usize, lo: f64, seed: u64) -> Vec<f64> {
-        let mut lcg = seed;
-        (0..n)
-            .map(#[expect(clippy::cast_precision_loss, reason = "53-bit mantissa construction: lcg>>11 and 2^53 are both exact in f64")] |_| {
-                lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
-                lo + (1.0 - lo) * ((lcg >> 11) as f64 / (1u64 << 53) as f64)
-            })
-            .collect()
+        let mut lcg = utz_common::Lcg::new(seed);
+        (0..n).map(|_| lo + (1.0 - lo) * lcg.unit_f64()).collect()
     }
 
     #[test]

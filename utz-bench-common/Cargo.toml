@@ -10,6 +10,7 @@ publish = false
 # Also home of the build.rs-generated custom shapes both benches embed
 # (`assets`) — the geom features cover every encoding those assets span.
 [dependencies]
+utz-common = { path = "../utz-common" }
 utz = { path = "../utz", default-features = false, features = [
     "alloc", "custom",
     "geom-varint", "geom-fixed", "geom-image", "geom-coarse",

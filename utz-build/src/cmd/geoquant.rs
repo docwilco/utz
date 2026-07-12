@@ -34,9 +34,8 @@ pub fn run(_a: Args) -> utz_build::Result<()> {
     let look_i32 = |lo: f64, la: f64| -> String { let pt = Point::new((lo * 1e6).round() as i32, (la * 1e6).round() as i32);
         for (tz, p) in &i32p { if p.contains(&pt) { return tz.clone(); } } String::new() };
 
-    let mut lcg = 0x9e37_79b9_7f4a_7c15u64;
-    #[expect(clippy::cast_precision_loss, reason = "53-bit mantissa construction: lcg>>11 < 2^53 and 2^53 are both exact")]
-    let mut next = || { lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407); (lcg >> 11) as f64 / (1u64 << 53) as f64 };
+    let mut lcg = utz_common::Lcg::new(0x9e37_79b9_7f4a_7c15);
+    let mut next = || lcg.unit_f64();
     let (mut n, mut d64, mut d32) = (0u64, 0u64, 0u64);
     while n < 8000 {
         let lo = next() * 360.0 - 180.0; let la = next() * 180.0 - 90.0; n += 1;

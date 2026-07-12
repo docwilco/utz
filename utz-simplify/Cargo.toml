@@ -17,3 +17,6 @@ crate-type = ["lib"]
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+utz-common = { path = "../utz-common" }

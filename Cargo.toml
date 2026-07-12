@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "utz",
+    "utz-common",
     "utz-build",
     "utz-data-tiny",
     "utz-data-tiny-static",

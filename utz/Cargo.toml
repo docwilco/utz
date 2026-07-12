@@ -83,6 +83,7 @@ utz-data-accurate = { path = "../utz-data-accurate", optional = true }
 include_bytes_aligned = { workspace = true }
 
 [dev-dependencies]
+utz-common = { path = "../utz-common" }
 geo = { workspace = true }
 geo-types = { workspace = true }
 

@@ -1938,6 +1938,7 @@ dependencies = [
  "lzma-rust2",
  "miniz_oxide",
  "ruzstd",
+ "utz-common",
  "utz-data-accurate",
  "utz-data-balanced",
  "utz-data-compact",
@@ -1962,6 +1963,7 @@ version = "0.0.0"
 dependencies = [
  "utz",
  "utz-build",
+ "utz-common",
 ]
 
 [[package]]
@@ -1983,11 +1985,16 @@ dependencies = [
  "tiff",
  "ureq",
  "utz",
+ "utz-common",
  "utz-encode",
  "utz-simplify",
  "zip",
  "zstd",
 ]
+
+[[package]]
+name = "utz-common"
+version = "0.0.0"
 
 [[package]]
 name = "utz-data-accurate"
@@ -2027,6 +2034,9 @@ dependencies = [
 [[package]]
 name = "utz-simplify"
 version = "0.0.0"
+dependencies = [
+ "utz-common",
+]
 
 [[package]]
 name = "vcpkg"
