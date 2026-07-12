@@ -375,6 +375,7 @@ fn main() -> ! {
     eager_slice_leg("tiny eager-slice", TINY_GZ, &pts);
 
     kernel_bench();
+    kernel_bench_i16();
 
     println!("DONE");
     loop {}
@@ -430,4 +431,136 @@ fn kernel_bench() {
         tf64,
         tf64 as f64 / t64 as f64
     );
+}
+
+/// §14.11 follow-up experiment: at i16 quant, can the kernel drop below
+/// i64? Sign-magnitude comparison of the two cross products fits u32
+/// EXACTLY (|diff| ≤ 65535, and 65535² < 2^32 — the compare form needs 2b
+/// bits where the subtract form needs 2b+2), so this races the shipped
+/// `ring_hit::<i64, (i16,i16)>` against a u32 sign-split kernel on the
+/// identical slice, plus the same geometry widened to `(i32, i32)` pairs
+/// for the load-width effect. Full-range i16 ring so worst-case products
+/// are exercised; ring-level verdicts must agree exactly (the sign-split
+/// kernel may flag Boundary via a different edge of the same vertex, but
+/// Boundary short-circuits the ring either way).
+fn kernel_bench_i16() {
+    use utz::pip::{ring_hit, RingHit};
+    const N: usize = 8192;
+    const PROBES: usize = 200;
+    let mut lcg = 0x0dd_ba11u64;
+    let mut next = || {
+        lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        ((lcg >> 48) as u16) as i16 // full i16 range
+    };
+    let ring16: Vec<(i16, i16)> = (0..N).map(|_| (next(), next())).collect();
+    let pts16: Vec<(i16, i16)> = (0..PROBES).map(|_| (next(), next())).collect();
+    let ring32: Vec<(i32, i32)> = ring16.iter().map(|&(x, y)| (i32::from(x), i32::from(y))).collect();
+
+    let code = |h: RingHit| -> u64 {
+        match h {
+            RingHit::Outside => 0,
+            RingHit::Inside => 1,
+            RingHit::Boundary => 2,
+        }
+    };
+    let run16 = |f: fn(&[(i16, i16)], i16, i16) -> RingHit| -> (u64, u64) {
+        let t0 = now_us();
+        let mut acc = 0u64;
+        for &(px, py) in &pts16 {
+            acc = acc.wrapping_mul(3).wrapping_add(code(f(&ring16, px, py)));
+        }
+        (now_us() - t0, acc)
+    };
+    let run32 = |f: fn(&[(i32, i32)], i32, i32) -> RingHit| -> (u64, u64) {
+        let t0 = now_us();
+        let mut acc = 0u64;
+        for &(px, py) in &pts16 {
+            acc = acc.wrapping_mul(3).wrapping_add(code(f(&ring32, i32::from(px), i32::from(py))));
+        }
+        (now_us() - t0, acc)
+    };
+    let (t_w32, a_w32) = run32(ring_hit::<i64, (i32, i32)>);
+    let (t_n64, a_n64) = run16(ring_hit::<i64, (i16, i16)>);
+    let (t_u32, a_u32) = run16(ring_hit16_u32);
+    assert!(a_n64 == a_w32 && a_n64 == a_u32, "i16 kernel verdicts disagree");
+    let edges = (N * PROBES) as u64;
+    println!(
+        "KERNEL16 {} edges: i64/i16-pairs {} us ({} ns/edge) · u32-signsplit/i16-pairs {} us ({:.2}x) · i64/i32-pairs {} us ({:.2}x) · verdicts agree",
+        edges,
+        t_n64,
+        t_n64 * 1000 / edges,
+        t_u32,
+        t_u32 as f64 / t_n64 as f64,
+        t_w32,
+        t_w32 as f64 / t_n64 as f64
+    );
+}
+
+/// [`utz::pip::ring_hit`] fold shape over the experimental u32 edge kernel.
+fn ring_hit16_u32(ring: &[(i16, i16)], px: i16, py: i16) -> utz::pip::RingHit {
+    use utz::pip::{EdgeHit, RingHit};
+    let n = ring.len();
+    if n < 3 {
+        return RingHit::Outside;
+    }
+    let mut inside = false;
+    let (mut x0, mut y0) = ring[n - 1];
+    for &(x1, y1) in ring {
+        match edge16_u32((x0, y0), (x1, y1), px, py) {
+            EdgeHit::Boundary => return RingHit::Boundary,
+            EdgeHit::Cross => inside = !inside,
+            EdgeHit::Miss => {}
+        }
+        (x0, y0) = (x1, y1);
+    }
+    if inside {
+        RingHit::Inside
+    } else {
+        RingHit::Outside
+    }
+}
+
+/// Experimental 32-bit edge kernel for i16 coords (see `kernel_bench_i16`).
+///
+/// Normalizes the edge upward first: swapping endpoints negates the cross
+/// product, which folds `pip::edge`'s up/down branches into one, and the
+/// upward `y1 != py` endpoint-exclusion guard is vacuously true for swapped
+/// (originally downward) edges — per-edge Cross verdicts match `pip::edge`
+/// exactly; Boundary may fire from a different edge of the same vertex.
+/// Then sign(cross) = compare of |dx|·t vs dy·|v| as exact u32 magnitudes
+/// plus the operand signs (t, dy ≥ 0 after normalization).
+#[inline(always)]
+fn edge16_u32(a: (i16, i16), b: (i16, i16), px: i16, py: i16) -> utz::pip::EdgeHit {
+    use utz::pip::EdgeHit;
+    let ((mut x0, mut y0), (mut x1, mut y1)) = (a, b);
+    if y0 > y1 {
+        core::mem::swap(&mut x0, &mut x1);
+        core::mem::swap(&mut y0, &mut y1);
+    }
+    if py < y0 || py > y1 {
+        return EdgeHit::Miss;
+    }
+    let dx = i32::from(x1) - i32::from(x0);
+    let dy = i32::from(y1) - i32::from(y0); // ≥ 0
+    let t = i32::from(py) - i32::from(y0); // 0..=dy
+    let v = i32::from(px) - i32::from(x0);
+    // cross = dx·t − dy·v; both magnitudes ≤ 65535² < 2^32, exact in u32
+    let mag_l = dx.unsigned_abs() * t.unsigned_abs();
+    let mag_r = dy.unsigned_abs() * v.unsigned_abs();
+    let l_neg = dx < 0 && mag_l != 0;
+    let r_neg = v < 0 && mag_r != 0;
+    let (gt, eq) = match (l_neg, r_neg) {
+        (false, false) => (mag_l > mag_r, mag_l == mag_r),
+        (true, true) => (mag_l < mag_r, mag_l == mag_r),
+        (true, false) => (false, false), // lhs < 0 ≤ rhs
+        (false, true) => (true, false),  // lhs ≥ 0 > rhs
+    };
+    if eq {
+        if x0.min(x1) <= px && px <= x0.max(x1) {
+            return EdgeHit::Boundary;
+        }
+    } else if gt && y1 != py {
+        return EdgeHit::Cross; // point strictly left of the upward edge
+    }
+    EdgeHit::Miss
 }

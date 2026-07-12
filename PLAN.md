@@ -755,6 +755,11 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
     Coverage: pip unit test (full-range i16 vs widened i32 agreement) +
     `utz-bench-common/tests/encodings_agree.rs` (fixed/preload/image twins
     agree, both quant widths) + accurate-preset preload test (i128 arm).
+    Measured on the S3 (§15, 2026-07-12): narrow pairs are 1.15× at the
+    kernel and **tiny eager dropped 108 → 66 µs/lookup**, overtaking the
+    i16-image XIP as the fastest mode; a u32 sign-split kernel (exact at
+    i16 via compare-form) would buy a further 25% at the kernel — benched,
+    not shipped (§15).
 12. **TODO: audit every `unsafe` site.** Current inventory (2026-07):
     `utz/src/pip.rs` Pack24 `read_unaligned` word reads (SAFETY comment
     present); `utz/src/finder.rs` `image_rings` zero-copy
@@ -1034,6 +1039,29 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   on x86 (1.26 µs); `&self` + `read_unaligned` does (0.699 vs the old
   kernel's 0.748). S3 re-confirmed: tiny-eager 89, compact-eager 485
   (best yet); flags byte stays reserved-zero.
+- [x] **i16 narrow coords + u32 sign-split kernel** (2026-07-12, S3 opt-z,
+  after §14.11 landed; `kernel_bench_i16` in the firmware — synthetic
+  full-range i16 ring, 1.64 M edges/kernel, ring verdicts identical):
+  **i64 kernel over `(i16, i16)` pairs 287 ns/edge vs 331 over the same
+  geometry as `(i32, i32)` — the narrow load width alone is 1.15×.** The
+  experimental **u32 sign-split kernel** (sign-magnitude compare of the two
+  cross products: the compare form fits 2b bits exactly since
+  `(2^b−2)² < 2^2b−1`, where the subtract form needs 2b+2 — §14.11
+  discussion) runs **215 ns/edge — 0.75× of i64/i16, 1.54× over the old
+  i32-pairs+i64 shape** — exact, branchier but the 32-bit MULLs win on this
+  core. Not shipped: lives in `utz-bench-firmware` only; promoting it into
+  `pip` would add a per-width specialization to an otherwise single generic
+  kernel for a ~25% kernel-level win that reaches maybe ~10% of an eager
+  lookup — revisit if embedded i16 lookup speed ever matters. Same run,
+  the §14.11 narrow eager cache paid off beyond RAM: **tiny eager 108 → 66
+  µs/lookup (−39%; halved cache + bounds-elided generic loop), now the
+  fastest full-accuracy mode on the S3, beating the i16-image XIP (89)**;
+  eager-slice 103 → 78; compact eager 410 → 371 and balanced 745 → 641
+  (−10/14% with unchanged i32 caches — the generic `ring_hit` iterator
+  fold elides bounds checks the old indexed loop paid). Streaming/XIP legs
+  unchanged (±3%, e.g. tiny XIP 293 → 307 with kernel i64 317 → 327
+  ns/edge — run-to-run codegen noise at opt-z). Checksums consistent per
+  asset across all legs, host-matching.
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
   reads vs streaming's sequential prefetch); `geometry-rs` comparison.
