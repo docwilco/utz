@@ -85,7 +85,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     // untimed warmup: first touch of `polys`/`pts` — without it the first
     // timed contender eats every cold miss and the shared-structure rows
     // (f64/i128) look spuriously fast
-    let (warm, _) = timed_scan(&pts, &polys, |i, px, py| utz::pip::contains_i64(&polys[i].rings, px, py));
+    let (warm, _) = timed_scan(&pts, &polys, |i, px, py| utz::pip::contains::<i64, _>(&polys[i].rings, px, py));
     assert!(warm.iter().flatten().count() > 0);
 
     // ---- the contenders, all through the same scan shell ----
@@ -99,11 +99,11 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     // geometry-rs contains_point runs its own internal rect precheck on top —
     // inherent to its API, tzf-rs pays it too, noise next to the ring walk.
     let (ours, t_ours) =
-        timed_scan(&pts, &polys, |i, px, py| utz::pip::contains_i64(&polys[i].rings, px, py));
+        timed_scan(&pts, &polys, |i, px, py| utz::pip::contains::<i64, _>(&polys[i].rings, px, py));
     let (ours_f64, t_f64) =
-        timed_scan(&pts, &polys, |i, px, py| utz::pip::contains_f64(&polys[i].rings, px, py));
+        timed_scan(&pts, &polys, |i, px, py| utz::pip::contains::<f64, _>(&polys[i].rings, px, py));
     let (ours_i128, t_i128) =
-        timed_scan(&pts, &polys, |i, px, py| utz::pip::contains_i128(&polys[i].rings, px, py));
+        timed_scan(&pts, &polys, |i, px, py| utz::pip::contains::<i128, _>(&polys[i].rings, px, py));
     let (oracle, t_geo) = timed_scan(&pts, &polys, |i, px, py| {
         gpolys[i].1.contains(&geo::Point::new(i64::from(px), i64::from(py)))
     });

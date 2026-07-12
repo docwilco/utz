@@ -297,9 +297,10 @@ decode RAM unchanged (§11, §14.5). Only `zstd-sys` stays std.
 - **Why i64 over f64:** exact on gridded data (no rounding to be robust against),
   **deterministic** across platforms/compilers (integer math), faster (SimpleKernel-
   style predicate), fewer deps. f64 only re-introduces rounding we quantized away.
-- **f64 kernel exists, test/bench-only (2026-07).** The `pip_impl!` macro is
-  width-generic, so `contains_f64`/`ring_hit_f64`/`edge_f64` are one
-  instantiation — never dispatched by `lookup`. Sharpens the "why integer"
+- **f64 kernel exists, test/bench-only (2026-07).** The kernel is
+  width-generic (plain generics since §14.11; originally the `pip_impl!`
+  macro), so `contains::<f64, _>` is one instantiation — never dispatched
+  by `lookup`. Sharpens the "why integer"
   answer: at i16/i24, f64 is **bit-exact** (products ≤ 2^48 < 2^53 — verified
   0/20 000 vs i64 on real geometry in `pip_bench`, plus a 40 000-probe
   property test), so exactness only rules f64 out at i32 quant (products
@@ -730,27 +731,36 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
     doesn't fit. Not built yet: for uncompressed assets `from_static` +
     `preload` already leaves the payload in flash, which covered every case
     measured so far (§15).
-11. **TODO: generic PIP kernel (+ future narrow type).** `pip_impl!` currently
-    stamps `contains_/ring_hit_/edge_{i64,i128,f64}` via pastey with the wide
-    type as the one macro parameter. Convert to plain generics — the
-    `$wide::from(x)` refactor already made the bounds pure core traits:
-    `fn edge<W: Copy + PartialOrd + From<i32> + Sub<Output = W> + Mul<Output = W>>`.
-    Monomorphizes to identical code (`#[inline(always)]` unaffected, ESP32 hot
-    path unchanged); drops the pastey dep; the f64 `float_cmp` `#[expect]`
-    dissolves (lints run pre-monomorphization on the opaque `W`); call sites
-    become `pip::contains::<i64>(…)` turbofish (~15 sites in finder.rs, bench
-    tools, tests). Second step, deliberately deferred: a narrow input
-    parameter `N: Into<W>` over the hardcoded `(i32, i32)`. Only worth it with
-    i16 in-memory coord storage for i16-quant assets — halves the eager cache
-    on ESP32 and lets PIP run i32-wide math (cheaper than i64 on a 32-bit
-    core) — but that is a memory-layout project (decode paths, eager cache,
-    `Ring<T>` plumbing), not a kernel signature tweak; no call site exists
-    until then.
+11. ~~**Generic PIP kernel (+ narrow type)**~~ — **built (2026-07), both
+    steps at once.** The `pip_impl!`/pastey macro is gone: one generic
+    kernel `edge<W, N>` / `ring_hit<W, P>` / `contains<W, P>` with
+    `W: Wide<N>` (a blanket trait alias over the pure-core bounds) and the
+    coordinate storage generic over `CoordPair` (assoc type `Narrow`):
+    `(i32, i32)`, `(i16, i16)`, and `Pack24` (Narrow = i32). Call sites are
+    `pip::contains::<i64, _>(…)` turbofish. The f64 `float_cmp` `#[expect]`
+    dissolved as predicted, and so did finder.rs's `cast_ptr_alignment` one
+    (the image slice cast now targets the opaque `P`). The zero constant
+    dissolved too: sign(cross) is decided by comparing the two products.
+    Narrow storage: i16-quant assets now keep **i16 pairs in memory in both
+    eager forms** — the preload cache (`EagerCoords::Narrow`; tiny's cache
+    466 K → 239 K, −49%, `preload_bytes` reflects it) and the EagerImage
+    section (already i16 on flash, now PIP-tested at i16 without a widening
+    copy; `size_of::<P>()` is the image stride). Lookup narrows the query
+    point once per candidate poly (`i16::try_from` after the bbox gate; out
+    of range ⇒ outside, which also covers adversarial bboxes). One
+    correction to this entry's old claim: i16 coords do NOT allow i32-wide
+    math — differences reach 2^16, so a cross reaches 2^33; the kernel
+    stays `W = i64` for i16/i24 (per §pip's own `4·coord_max²` bound). The
+    win is the halved cache + halved load traffic, not the product width.
+    Coverage: pip unit test (full-range i16 vs widened i32 agreement) +
+    `utz-bench-common/tests/encodings_agree.rs` (fixed/preload/image twins
+    agree, both quant widths) + accurate-preset preload test (i128 arm).
 12. **TODO: audit every `unsafe` site.** Current inventory (2026-07):
     `utz/src/pip.rs` Pack24 `read_unaligned` word reads (SAFETY comment
-    present); `utz/src/finder.rs` `image_poly_contains` zero-copy
-    `from_raw_parts` kernel dispatch (alignment parse-validated via
-    `Error::Misaligned`, `cast_ptr_alignment` #[expect]ed); `utz-encode`
+    present); `utz/src/finder.rs` `image_rings` zero-copy
+    `from_raw_parts` slice cast (alignment parse-validated via
+    `Error::Misaligned`; the cast target is the generic `P`, so no
+    `cast_ptr_alignment` expect anymore — §14.11); `utz-encode`
     wasm.rs static `STATE` accessors (~10 sites, single-threaded wasm
     assumption); `utz-build` window_sweep `GlobalAlloc` tracking shim.
     The audit: per site, check the stated invariant actually covers all

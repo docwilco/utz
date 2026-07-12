@@ -388,7 +388,7 @@ fn main() -> ! {
 /// differs from real geometry (~50% y-span hits), so read it as a kernel
 /// ratio, not an absolute lookup cost.
 fn kernel_bench() {
-    use utz::pip::{ring_hit_f64, ring_hit_i64, ring_hit_i128, RingHit};
+    use utz::pip::{ring_hit, RingHit};
     const N: usize = 8192;
     const PROBES: usize = 200;
     const M: i64 = 1 << 23;
@@ -415,9 +415,9 @@ fn kernel_bench() {
         }
         (now_us() - t0, acc)
     };
-    let (t64, a64) = run(ring_hit_i64);
-    let (t128, a128) = run(ring_hit_i128);
-    let (tf64, af64) = run(ring_hit_f64);
+    let (t64, a64) = run(ring_hit::<i64, (i32, i32)>);
+    let (t128, a128) = run(ring_hit::<i128, (i32, i32)>);
+    let (tf64, af64) = run(ring_hit::<f64, (i32, i32)>);
     assert!(a64 == a128 && a64 == af64, "kernel verdicts disagree");
     let edges = (N * PROBES) as u64;
     println!(

@@ -59,7 +59,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         fpolys[fid as usize].iter().any(|p|
             px >= p.bbox.0 && py >= p.bbox.1 && px <= p.bbox.2 && py <= p.bbox.3 && {
                 let rings: Vec<&[(i32, i32)]> = p.rings.iter().map(std::vec::Vec::as_slice).collect();
-                utz::pip::contains_i64(&rings, px, py)
+                utz::pip::contains::<i64, _>(&rings, px, py)
             })
     };
 

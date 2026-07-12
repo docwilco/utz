@@ -156,7 +156,7 @@ fn build_refs(feats: &[Feat], qmax: f64) -> Vec<Ref> {
 }
 fn contains(rings: &[Vec<(i32, i32)>], px: i32, py: i32) -> bool {
     let slices: Vec<&[(i32, i32)]> = rings.iter().map(std::vec::Vec::as_slice).collect();
-    utz::pip::contains_i64(&slices, px, py)
+    utz::pip::contains::<i64, _>(&slices, px, py)
 }
 fn lookup_linear(refs: &[Ref], px: i32, py: i32) -> Option<String> {
     refs.iter()

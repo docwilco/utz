@@ -87,13 +87,49 @@ fn check_image(payload: &[u8], hdr: &Header) -> Result<(), Error> {
 /// features, so no per-item start field).
 #[cfg(feature = "alloc")]
 struct Eager {
-    coords: Vec<(i32, i32)>,
+    coords: EagerCoords,
     /// exclusive end into `coords` per ring
     ring_ends: Vec<u32>,
     /// per polygon (indexed by poly id): bbox (read from the v5 record) +
     /// exclusive end into `ring_ends`. The bbox skips whole-ring folds for
     /// candidates that touch the cell but not the point.
     polys: Vec<([i32; 4], u32)>,
+}
+
+/// Per-polygon eager records: bbox + exclusive `ring_ends` end (see
+/// [`Eager::polys`]).
+#[cfg(feature = "alloc")]
+type Polys = Vec<([i32; 4], u32)>;
+
+/// The eager cache's coordinate store, at quant-nearest width (§14.11):
+/// i16-quant assets keep i16 pairs — half the cache RAM — and PIP widens
+/// per edge inside the kernel (still to i64: crosses of i16 coords reach
+/// 2^33, see the pip module docs).
+#[cfg(feature = "alloc")]
+enum EagerCoords {
+    Narrow(Vec<(i16, i16)>),
+    Wide(Vec<(i32, i32)>),
+}
+
+/// Eager-cache element construction: narrow a decoded (i32-accumulated)
+/// quant coordinate to the storage width. `PartialEq` powers the arc-join
+/// and ring-closure vertex dedup during decode.
+#[cfg(feature = "alloc")]
+trait EagerCoord: pip::CoordPair + PartialEq {
+    fn from_q(x: i32, y: i32) -> Self;
+}
+#[cfg(feature = "alloc")]
+impl EagerCoord for (i32, i32) {
+    fn from_q(x: i32, y: i32) -> Self {
+        (x, y)
+    }
+}
+#[cfg(feature = "alloc")]
+impl EagerCoord for (i16, i16) {
+    #[expect(clippy::cast_possible_truncation, reason = "dispatched only for quant_bits==16 assets, whose coords fit i16 by format")]
+    fn from_q(x: i32, y: i32) -> Self {
+        (x as i16, y as i16)
+    }
 }
 
 /// A loaded timezone index. Build once, query many.
@@ -352,30 +388,48 @@ impl Finder {
             return 0; // EagerImage / coarse: nothing to decode
         }
         let h = &self.hdr;
-        h.eager_coords as usize * core::mem::size_of::<(i32, i32)>()
+        // coords are cached at quant-nearest width (§14.11)
+        let pair = if h.quant_bits == 16 {
+            core::mem::size_of::<(i16, i16)>()
+        } else {
+            core::mem::size_of::<(i32, i32)>()
+        };
+        h.eager_coords as usize * pair
             + h.eager_rings as usize * core::mem::size_of::<u32>()
             + h.eager_polys as usize * core::mem::size_of::<([i32; 4], u32)>()
     }
 
     /// Decode all polygons into RAM once (eager mode, §9): repeat lookups
     /// then skip the per-arc varint decode. Costs [`preload_bytes`]
-    /// (≈ uncompressed geometry re-widened to i32) in heap, reserved exactly
-    /// up front from the v2 header counts — peak = final, no growth
-    /// doubling. A no-op if already preloaded.
+    /// (≈ uncompressed geometry at quant-nearest width: i16 pairs for
+    /// i16-quant assets — half the cache — i32 otherwise, §14.11) in heap,
+    /// reserved exactly up front from the v2 header counts — peak = final,
+    /// no growth doubling. A no-op if already preloaded.
     #[cfg(feature = "alloc")]
-    #[expect(clippy::cast_possible_truncation, reason = "counts bounded by the parse-validated u32 header reservations")]
     pub fn preload(&mut self) {
         if self.eager.is_some() || self.hdr.geom >= 2 {
             // geom=2 (EagerImage): the payload already IS the cache;
             // geom=3 (coarse): nothing to decode
             return;
         }
+        self.eager = Some(if self.hdr.quant_bits == 16 {
+            let (coords, ring_ends, polys) = self.decode_rings::<(i16, i16)>();
+            Eager { coords: EagerCoords::Narrow(coords), ring_ends, polys }
+        } else {
+            let (coords, ring_ends, polys) = self.decode_rings::<(i32, i32)>();
+            Eager { coords: EagerCoords::Wide(coords), ring_ends, polys }
+        });
+    }
+
+    /// [`preload`](Finder::preload)'s decode pass, generic over the cache's
+    /// coordinate width.
+    #[cfg(feature = "alloc")]
+    #[expect(clippy::cast_possible_truncation, reason = "counts bounded by the parse-validated u32 header reservations")]
+    fn decode_rings<C: EagerCoord>(&self) -> (Vec<C>, Vec<u32>, Polys) {
         let (h, b) = (&self.hdr, &self.payload[..]);
-        let mut e = Eager {
-            coords: Vec::with_capacity(h.eager_coords as usize),
-            ring_ends: Vec::with_capacity(h.eager_rings as usize),
-            polys: Vec::with_capacity(h.eager_polys as usize),
-        };
+        let mut coords = Vec::with_capacity(h.eager_coords as usize);
+        let mut ring_ends = Vec::with_capacity(h.eager_rings as usize);
+        let mut polys = Vec::with_capacity(h.eager_polys as usize);
         let fb = fixed_bytes(h.quant_bits);
         for pid in 0..h.eager_polys {
             let mut pos = h.ring_data + read_u32(b, h.poly_offsets + pid as usize * 4) as usize;
@@ -390,22 +444,22 @@ impl Finder {
             pos += 2;
             for _ in 0..nrings {
                 let (nrefs, mut p2) = read_varint(b, pos);
-                let start = e.coords.len();
+                let start = coords.len();
                 for _ in 0..nrefs {
                     let (r, p3) = read_varint(b, p2);
                     p2 = p3;
-                    self.append_arc(r as u32, &mut e.coords);
+                    self.append_arc(r as u32, &mut coords);
                 }
                 pos = p2;
                 // drop the duplicated ring-closure vertex (ring_hit wraps)
-                if e.coords.len() > start + 1 && e.coords.last() == e.coords.get(start) {
-                    e.coords.pop();
+                if coords.len() > start + 1 && coords.last() == coords.get(start) {
+                    coords.pop();
                 }
-                e.ring_ends.push(e.coords.len() as u32);
+                ring_ends.push(coords.len() as u32);
             }
-            e.polys.push((bb, e.ring_ends.len() as u32));
+            polys.push((bb, ring_ends.len() as u32));
         }
-        self.eager = Some(e);
+        (coords, ring_ends, polys)
     }
 
     /// Accurate lookup: grid cell → interior zone (O(1)) or candidates → PIP.
@@ -588,9 +642,9 @@ impl Finder {
                 (x as i32, y as i32)
             };
             let hit = if wide {
-                pip::edge_i128((x0, y0), (x1, y1), px, py)
+                pip::edge::<i128, _>((x0, y0), (x1, y1), px, py)
             } else {
-                pip::edge_i64((x0, y0), (x1, y1), px, py)
+                pip::edge::<i64, _>((x0, y0), (x1, y1), px, py)
             };
             match hit {
                 pip::EdgeHit::Boundary => return pip::RingHit::Boundary,
@@ -612,7 +666,6 @@ impl Finder {
     /// i32 as typed pairs, i24 as [`pip::Pack24`] (align 1 — no alignment
     /// requirement). Works on the bare `core` rung.
     #[cfg(feature = "geom-image")]
-    #[expect(clippy::cast_ptr_alignment, reason = "img_coords 4-alignment validated at parse (Error::Misaligned exists for exactly these casts)")]
     fn image_poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let pe = h.img_polys + pid as usize * 20;
@@ -627,41 +680,51 @@ impl Finder {
         }
         let rend = read_u32(b, pe + 16) as usize;
         let rstart = if pid == 0 { 0 } else { read_u32(b, pe - 4) as usize };
-        // SAFETY (slice casts): pair layouts are asserted at the top of this
-        // file (Pack24 is align 1; i16/i32 pairs land aligned because
-        // img_coords is 4-aligned — checked at load — and their strides are
-        // multiples of the element alignment); parse bounds the image
-        // sections against the header counts.
-        let ring = |cs: usize, vb: usize| -> *const u8 {
-            b[h.img_coords + cs * vb..].as_ptr()
-        };
+        match h.quant_bits {
+            16 => {
+                // an in-bbox point of a valid i16-quant asset always fits
+                // i16; the fallthrough covers adversarial bboxes
+                let (Ok(px), Ok(py)) = (i16::try_from(px), i16::try_from(py)) else {
+                    return false;
+                };
+                self.image_rings::<i64, (i16, i16)>(rstart, rend, px, py)
+            }
+            24 => self.image_rings::<i64, pip::Pack24>(rstart, rend, px, py),
+            _ => self.image_rings::<i128, (i32, i32)>(rstart, rend, px, py),
+        }
+    }
+
+    /// Even-odd fold over one image poly's rings `[rstart, rend)` at pair
+    /// type `P` — `size_of::<P>()` IS the on-image coordinate stride.
+    /// (No `cast_ptr_alignment` expect needed anymore: the cast target is
+    /// the opaque `P`, so the lint can't see a concrete alignment — the
+    /// invariant itself is stated in the SAFETY comment below.)
+    #[cfg(feature = "geom-image")]
+    fn image_rings<W, P>(&self, rstart: usize, rend: usize, px: P::Narrow, py: P::Narrow) -> bool
+    where
+        P: pip::CoordPair,
+        W: pip::Wide<P::Narrow>,
+    {
+        let (h, b) = (&self.hdr, &self.payload[..]);
         let mut inside = false;
         let mut cstart =
             if rstart == 0 { 0 } else { read_u32(b, h.img_ring_ends + (rstart - 1) * 4) as usize };
         for ri in rstart..rend {
             let cend = read_u32(b, h.img_ring_ends + ri * 4) as usize;
             let n = cend - cstart;
-            let hit = unsafe {
-                match h.quant_bits {
-                    16 => pip::ring_hit_pairs(
-                        core::slice::from_raw_parts(ring(cstart, 4).cast::<(i16, i16)>(), n),
-                        px,
-                        py,
-                    ),
-                    24 => pip::ring_hit_pairs(
-                        core::slice::from_raw_parts(ring(cstart, 6).cast::<pip::Pack24>(), n),
-                        px,
-                        py,
-                    ),
-                    _ => pip::ring_hit_pairs_wide(
-                        core::slice::from_raw_parts(ring(cstart, 8).cast::<(i32, i32)>(), n),
-                        px,
-                        py,
-                    ),
-                }
+            // SAFETY (slice cast): pair layouts are asserted at the top of
+            // this file (Pack24 is align 1; i16/i32 pairs land aligned
+            // because img_coords is 4-aligned — checked at load — and their
+            // strides are multiples of the element alignment); parse bounds
+            // the image sections against the header counts.
+            let ring = unsafe {
+                core::slice::from_raw_parts(
+                    b[h.img_coords + cstart * core::mem::size_of::<P>()..].as_ptr().cast::<P>(),
+                    n,
+                )
             };
             cstart = cend;
-            match hit {
+            match pip::ring_hit::<W, _>(ring, px, py) {
                 pip::RingHit::Boundary => return true,
                 pip::RingHit::Inside => inside = !inside,
                 pip::RingHit::Outside => {}
@@ -675,38 +738,35 @@ impl Finder {
     /// folds for candidates that touch the cell but not the point.
     #[cfg(feature = "alloc")]
     fn eager_poly_contains(&self, e: &Eager, pid: u16, px: i32, py: i32) -> bool {
-        let wide = self.hdr.quant_bits == 32;
         let pi = pid as usize;
         let (bb, rend) = e.polys[pi];
         if !(px >= bb[0] && py >= bb[1] && px <= bb[2] && py <= bb[3]) {
             return false;
         }
         let rstart = if pi == 0 { 0 } else { e.polys[pi - 1].1 as usize };
-        let mut inside = false;
-        let mut cstart = if rstart == 0 { 0 } else { e.ring_ends[rstart - 1] as usize };
-        for ri in rstart..rend as usize {
-            let cend = e.ring_ends[ri] as usize;
-            let ring = &e.coords[cstart..cend];
-            cstart = cend;
-            let hit = if wide {
-                pip::ring_hit_i128(ring, px, py)
-            } else {
-                pip::ring_hit_i64(ring, px, py)
-            };
-            match hit {
-                pip::RingHit::Boundary => return true,
-                pip::RingHit::Inside => inside = !inside,
-                pip::RingHit::Outside => {}
+        match &e.coords {
+            EagerCoords::Narrow(coords) => {
+                // an in-bbox point of a valid i16-quant asset always fits
+                // i16; the fallthrough covers adversarial bboxes
+                let (Ok(px), Ok(py)) = (i16::try_from(px), i16::try_from(py)) else {
+                    return false;
+                };
+                rings_hit::<i64, _>(coords, &e.ring_ends, rstart, rend as usize, px, py)
+            }
+            EagerCoords::Wide(coords) if self.hdr.quant_bits == 32 => {
+                rings_hit::<i128, _>(coords, &e.ring_ends, rstart, rend as usize, px, py)
+            }
+            EagerCoords::Wide(coords) => {
+                rings_hit::<i64, _>(coords, &e.ring_ends, rstart, rend as usize, px, py)
             }
         }
-        inside
     }
 
     /// Decode one signed arc ref onto the end of `coords` (join-deduplicated).
     /// Eager-mode decode only; the lazy path streams via `scan_arc` instead.
     #[cfg(feature = "alloc")]
     #[expect(clippy::cast_possible_truncation, reason = "coords accumulate i16/i24/i32-width deltas; sums fit i32 by format")]
-    fn append_arc(&self, arc_ref: u32, coords: &mut Vec<(i32, i32)>) {
+    fn append_arc<C: EagerCoord>(&self, arc_ref: u32, coords: &mut Vec<C>) {
         let (header, payload) = (&self.hdr, &self.payload[..]);
         let (id, rev) = ((arc_ref >> 1) as usize, (arc_ref & 1) == 1);
         let mut pos = header.arc_data + read_u32(payload, header.arc_offsets + id * 4) as usize;
@@ -717,10 +777,10 @@ impl Finder {
         let mut qlat = i64::from(read_fixed(payload, pos + coord_bytes, header.quant_bits));
         pos += 2 * coord_bytes;
         let start = coords.len();
-        coords.push((qlon as i32, qlat as i32));
+        coords.push(C::from_q(qlon as i32, qlat as i32));
         for _ in 1..vcount {
             if cfg!(feature = "geom-fixed") && header.geom == 1 {
-                coords.push((
+                coords.push(C::from_q(
                     read_fixed(payload, pos, header.quant_bits),
                     read_fixed(payload, pos + coord_bytes, header.quant_bits),
                 ));
@@ -731,7 +791,7 @@ impl Finder {
                 pos = after_dlat;
                 qlon += unzigzag(dlon);
                 qlat += unzigzag(dlat);
-                coords.push((qlon as i32, qlat as i32));
+                coords.push(C::from_q(qlon as i32, qlat as i32));
             }
         }
         if rev {
@@ -742,4 +802,33 @@ impl Finder {
             coords.remove(start);
         }
     }
+}
+
+/// Even-odd fold over consecutive rings `[rstart, rend)` of a flat eager
+/// cache — shared by both cache widths ([`EagerCoords`]).
+#[cfg(feature = "alloc")]
+fn rings_hit<W, P>(
+    coords: &[P],
+    ring_ends: &[u32],
+    rstart: usize,
+    rend: usize,
+    px: P::Narrow,
+    py: P::Narrow,
+) -> bool
+where
+    P: pip::CoordPair,
+    W: pip::Wide<P::Narrow>,
+{
+    let mut inside = false;
+    let mut cstart = if rstart == 0 { 0 } else { ring_ends[rstart - 1] as usize };
+    for cend in &ring_ends[rstart..rend] {
+        let cend = *cend as usize;
+        match pip::ring_hit::<W, _>(&coords[cstart..cend], px, py) {
+            pip::RingHit::Boundary => return true,
+            pip::RingHit::Inside => inside = !inside,
+            pip::RingHit::Outside => {}
+        }
+        cstart = cend;
+    }
+    inside
 }

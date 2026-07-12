@@ -6,10 +6,15 @@
 //! product `(b-a)×(p-a)` in a wide type decides crossing direction AND
 //! boundary (collinear) for each edge whose y-span touches the scanline.
 //!
-//! Width follows the quantization grid (overflow bound: product ≤ `4·coord_max²)`:
-//! - `contains_i64`  — safe for i16/i24 grids (|coord| ≤ 2^23 → products ≤ 2^48)
-//! - `contains_i128` — for i32-fine grids (deg×1e7 overflows i64)
-//! - `contains_f64`  — **test/bench only**, never dispatched by lookup.
+//! One generic kernel (§14.11), two type axes:
+//!
+//! `W` is the wide product type (overflow bound: product ≤ `4·coord_max²`):
+//! - `i64` — safe for i16/i24 grids (|coord| ≤ 2^23 → products ≤ 2^48).
+//!   Note i16-narrow storage does NOT relax this to i32: |coord| ≤ 2^15
+//!   still means differences up to 2^16 and a cross up to 2^33 — the narrow
+//!   win is memory and load width, not product width.
+//! - `i128` — for i32-fine grids (deg×1e7 overflows i64)
+//! - `f64` — **test/bench only**, never dispatched by lookup.
 //!   Bit-exact for i16/i24 (products ≤ 2^48 < 2^53 — every product and
 //!   difference representable), silently inexact near boundaries at i32
 //!   (products ~2^62; the same failure mode as geometry-rs's float tests,
@@ -20,97 +25,55 @@
 //!   quant width — and on FPU-less cores it is the slow path (measured on
 //!   ESP32-S3, §15).
 //!
+//! The coordinate storage is a [`CoordPair`]: decoded `(i32, i32)` pairs,
+//! `(i16, i16)` pairs at quant width (i16-quant eager cache and image
+//! sections — §14.11, half the RAM/flash traffic), or packed [`Pack24`]
+//! straight over image bytes. The kernel widens each vertex as it loads it;
+//! coordinate comparisons run at the narrow width.
+//!
 //! Points exactly ON any edge (exterior or hole) report `true`: border points
 //! are ambiguous between adjacent zones, and claiming them keeps lookup
 //! deterministic (first candidate polygon wins).
 //!
 //! Three granularities, one kernel (§9 memory modes):
-//! - [`contains_i64`]/[`contains_i128`] — whole polygon from ring slices.
-//! - [`ring_hit_i64`]/[`ring_hit_i128`] — one decoded ring (eager mode).
-//! - [`edge_i64`]/[`edge_i128`] — one edge, the streaming unit (§14.7): the
-//!   test is per-segment, endpoint-symmetric, and parity accumulation is
+//! - [`contains`] — whole polygon from ring slices.
+//! - [`ring_hit`] — one ring (eager cache / image sections).
+//! - [`edge`] — one edge, the streaming unit (§14.7): the test is
+//!   per-segment, endpoint-symmetric, and parity accumulation is
 //!   order-independent, so lazy/static lookups fold arcs through it straight
 //!   off the container bytes with O(1) state and no decode buffer.
 
-macro_rules! pip_impl {
-    ($wide:ident $(, #[$edge_attr:meta])?) => { pastey::paste! {
-        /// `rings[0]` = exterior, rest = holes; no duplicated closing vertex.
-        pub fn [<contains_ $wide>](rings: &[&[(i32, i32)]], px: i32, py: i32) -> bool {
-            let mut inside = false;
-            for ring in rings {
-                match [<ring_hit_ $wide>](ring, px, py) {
-                    RingHit::Boundary => return true,
-                    RingHit::Inside => inside = !inside,
-                    RingHit::Outside => {}
-                }
-            }
-            inside
-        }
+use core::ops::{Mul, Sub};
 
-        /// Even-odd scan of one OPEN ring (the closing edge `last→first` is
-        /// implied). `Inside` = odd crossings of the +x ray from `(px, py)`.
-        pub fn [<ring_hit_ $wide>](ring: &[(i32, i32)], px: i32, py: i32) -> RingHit {
-            let n = ring.len();
-            if n < 3 {
-                return RingHit::Outside;
-            }
-            let mut inside = false;
-            let (mut x0, mut y0) = ring[n - 1];
-            for i in 0..n {
-                let (x1, y1) = ring[i];
-                match [<edge_ $wide>]((x0, y0), (x1, y1), px, py) {
-                    EdgeHit::Boundary => return RingHit::Boundary,
-                    EdgeHit::Cross => inside = !inside,
-                    EdgeHit::Miss => {}
-                }
-                (x0, y0) = (x1, y1);
-            }
-            if inside {
-                RingHit::Inside
-            } else {
-                RingHit::Outside
-            }
-        }
+/// Trait alias for the kernel's wide product type — all pure core traits
+/// (§14.11), blanket-implemented, so `i64`/`i128`/`f64` qualify wherever the
+/// narrow coordinate type `N` converts in losslessly.
+pub trait Wide<N>: Copy + PartialOrd + From<N> + Sub<Output = Self> + Mul<Output = Self> {}
+impl<N, W: Copy + PartialOrd + From<N> + Sub<Output = W> + Mul<Output = W>> Wide<N> for W {}
 
-        /// One edge vs the +x ray through `(px, py)`.
-        ///
-        /// Compute the cross product for any edge whose y-span touches the
-        /// scanline; collinear + x-in-span = exactly on the edge (covers
-        /// interior points, vertices, and horizontal edges — every vertex is
-        /// the endpoint of some touching edge). Crossing rules (each crossing
-        /// vertex counted once): an upward edge excludes its final endpoint,
-        /// a downward edge excludes its starting endpoint, horizontal edges
-        /// never cross. Direction-symmetric in `a`/`b` by construction.
-        #[inline(always)]
-        $(#[$edge_attr])?
-        pub fn [<edge_ $wide>](a: (i32, i32), b: (i32, i32), px: i32, py: i32) -> EdgeHit {
-            let ((x0, y0), (x1, y1)) = (a, b);
-            if y0 <= py {
-                if y1 >= py {
-                    let cross = ($wide::from(x1) - $wide::from(x0)) * ($wide::from(py) - $wide::from(y0))
-                        - ($wide::from(y1) - $wide::from(y0)) * ($wide::from(px) - $wide::from(x0));
-                    if cross == $wide::from(0) {
-                        if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
-                            return EdgeHit::Boundary;
-                        }
-                    } else if cross > $wide::from(0) && y1 != py {
-                        return EdgeHit::Cross; // point strictly left of an upward edge
-                    }
-                }
-            } else if y1 <= py {
-                let cross = ($wide::from(x1) - $wide::from(x0)) * ($wide::from(py) - $wide::from(y0))
-                    - ($wide::from(y1) - $wide::from(y0)) * ($wide::from(px) - $wide::from(x0));
-                if cross == $wide::from(0) {
-                    if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
-                        return EdgeHit::Boundary;
-                    }
-                } else if cross < $wide::from(0) {
-                    return EdgeHit::Cross; // point strictly right of a downward edge
-                }
-            }
-            EdgeHit::Miss
-        }
-    } };
+/// Coordinate-pair storage the kernels widen from: pairs are stored at quant
+/// width (§14.11) — i16/i32 as typed tuples, i24 packed ([`Pack24`]).
+pub trait CoordPair: Copy {
+    /// The narrow in-memory coordinate type; widened to `W` per edge.
+    type Narrow: Copy + Ord;
+    fn xy(&self) -> (Self::Narrow, Self::Narrow);
+}
+
+impl CoordPair for (i32, i32) {
+    type Narrow = i32;
+    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; keep codegen deterministic on Xtensa")]
+    #[inline(always)]
+    fn xy(&self) -> (i32, i32) {
+        *self
+    }
+}
+impl CoordPair for (i16, i16) {
+    type Narrow = i16;
+    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; keep codegen deterministic on Xtensa")]
+    #[inline(always)]
+    fn xy(&self) -> (i16, i16) {
+        *self
+    }
 }
 
 /// Ring-level verdict: `Inside` toggles polygon parity, `Boundary` claims.
@@ -127,39 +90,30 @@ pub enum EdgeHit {
     Boundary,
 }
 
-pip_impl!(i64);
-pip_impl!(i128);
-// test/bench-only instantiation (see module docs); same &[(i32,i32)] slices,
-// per-edge i32->f64 casts included in its cost, as any real f64 path would pay
-pip_impl!(f64, #[expect(clippy::float_cmp, reason = "cross products are exact in f64 at i24 quant (bit-exact vs i64, tested); zero means on-edge")]);
-
-/// Coordinate-pair storage the `EagerImage` kernels widen from (v7: image
-/// coords are stored at quant width — i16/i32 as typed slices, i24 packed).
-#[cfg(feature = "geom-image")]
-pub trait CoordPair: Copy {
-    fn xy(&self) -> (i32, i32);
-}
-#[cfg(feature = "geom-image")]
-impl CoordPair for (i32, i32) {
-    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; keep codegen deterministic on Xtensa")]
-    #[inline(always)]
-    fn xy(&self) -> (i32, i32) {
-        *self
+/// `rings[0]` = exterior, rest = holes; no duplicated closing vertex.
+pub fn contains<W, P>(rings: &[&[P]], px: P::Narrow, py: P::Narrow) -> bool
+where
+    P: CoordPair,
+    W: Wide<P::Narrow>,
+{
+    let mut inside = false;
+    for ring in rings {
+        match ring_hit::<W, P>(ring, px, py) {
+            RingHit::Boundary => return true,
+            RingHit::Inside => inside = !inside,
+            RingHit::Outside => {}
+        }
     }
-}
-#[cfg(feature = "geom-image")]
-impl CoordPair for (i16, i16) {
-    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; keep codegen deterministic on Xtensa")]
-    #[inline(always)]
-    fn xy(&self) -> (i32, i32) {
-        (i32::from(self.0), i32::from(self.1))
-    }
+    inside
 }
 
-/// [`ring_hit_i64`] generalized over the pair width (monomorphizes to the
-/// same loop; i16 pairs widen in the load).
-#[cfg(feature = "geom-image")]
-pub fn ring_hit_pairs<P: CoordPair>(ring: &[P], px: i32, py: i32) -> RingHit {
+/// Even-odd scan of one OPEN ring (the closing edge `last→first` is
+/// implied). `Inside` = odd crossings of the +x ray from `(px, py)`.
+pub fn ring_hit<W, P>(ring: &[P], px: P::Narrow, py: P::Narrow) -> RingHit
+where
+    P: CoordPair,
+    W: Wide<P::Narrow>,
+{
     let n = ring.len();
     if n < 3 {
         return RingHit::Outside;
@@ -168,7 +122,7 @@ pub fn ring_hit_pairs<P: CoordPair>(ring: &[P], px: i32, py: i32) -> RingHit {
     let (mut x0, mut y0) = ring[n - 1].xy();
     for p in ring {
         let (x1, y1) = p.xy();
-        match edge_i64((x0, y0), (x1, y1), px, py) {
+        match edge::<W, _>((x0, y0), (x1, y1), px, py) {
             EdgeHit::Boundary => return RingHit::Boundary,
             EdgeHit::Cross => inside = !inside,
             EdgeHit::Miss => {}
@@ -180,6 +134,55 @@ pub fn ring_hit_pairs<P: CoordPair>(ring: &[P], px: i32, py: i32) -> RingHit {
     } else {
         RingHit::Outside
     }
+}
+
+/// One edge vs the +x ray through `(px, py)`.
+///
+/// Compute the cross product for any edge whose y-span touches the
+/// scanline; collinear + x-in-span = exactly on the edge (covers
+/// interior points, vertices, and horizontal edges — every vertex is
+/// the endpoint of some touching edge). Crossing rules (each crossing
+/// vertex counted once): an upward edge excludes its final endpoint,
+/// a downward edge excludes its starting endpoint, horizontal edges
+/// never cross. Direction-symmetric in `a`/`b` by construction.
+#[expect(clippy::inline_always, reason = "the per-edge kernel every PIP loop folds through; keep codegen deterministic on Xtensa")]
+#[inline(always)]
+pub fn edge<W, N>(a: (N, N), b: (N, N), px: N, py: N) -> EdgeHit
+where
+    N: Copy + Ord,
+    W: Wide<N>,
+{
+    let ((x0, y0), (x1, y1)) = (a, b);
+    // sign(cross) by comparing the two products of `(b-a)×(p-a)` instead of
+    // subtracting: needs no zero constant in `W`
+    let cross = || {
+        (
+            (W::from(x1) - W::from(x0)) * (W::from(py) - W::from(y0)),
+            (W::from(y1) - W::from(y0)) * (W::from(px) - W::from(x0)),
+        )
+    };
+    if y0 <= py {
+        if y1 >= py {
+            let (lhs, rhs) = cross();
+            if lhs == rhs {
+                if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
+                    return EdgeHit::Boundary;
+                }
+            } else if lhs > rhs && y1 != py {
+                return EdgeHit::Cross; // point strictly left of an upward edge
+            }
+        }
+    } else if y1 <= py {
+        let (lhs, rhs) = cross();
+        if lhs == rhs {
+            if (x0.min(x1) <= px) && (px <= x0.max(x1)) {
+                return EdgeHit::Boundary;
+            }
+        } else if lhs < rhs {
+            return EdgeHit::Cross; // point strictly right of a downward edge
+        }
+    }
+    EdgeHit::Miss
 }
 
 /// Packed little-endian i24 pair (6 bytes, align 1): `&[Pack24]` is a valid
@@ -194,6 +197,7 @@ pub struct Pack24(pub [u8; 6]);
 
 #[cfg(feature = "geom-image")]
 impl CoordPair for Pack24 {
+    type Narrow = i32;
     #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; keep codegen deterministic on Xtensa")]
     #[inline(always)]
     fn xy(&self) -> (i32, i32) {
@@ -214,31 +218,6 @@ impl CoordPair for Pack24 {
     }
 }
 
-/// [`ring_hit_pairs`] at i128 edge width — the i32-quant image path.
-#[cfg(feature = "geom-image")]
-pub fn ring_hit_pairs_wide<P: CoordPair>(ring: &[P], px: i32, py: i32) -> RingHit {
-    let n = ring.len();
-    if n < 3 {
-        return RingHit::Outside;
-    }
-    let mut inside = false;
-    let (mut x0, mut y0) = ring[n - 1].xy();
-    for p in ring {
-        let (x1, y1) = p.xy();
-        match edge_i128((x0, y0), (x1, y1), px, py) {
-            EdgeHit::Boundary => return RingHit::Boundary,
-            EdgeHit::Cross => inside = !inside,
-            EdgeHit::Miss => {}
-        }
-        (x0, y0) = (x1, y1);
-    }
-    if inside {
-        RingHit::Inside
-    } else {
-        RingHit::Outside
-    }
-}
-
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -252,21 +231,21 @@ mod tests {
 
     #[test]
     fn square_basics() {
-        assert!(contains_i64(&[SQUARE], 5, 5));
-        assert!(!contains_i64(&[SQUARE], 15, 5));
-        assert!(!contains_i64(&[SQUARE], -1, -1));
+        assert!(contains::<i64, _>(&[SQUARE], 5, 5));
+        assert!(!contains::<i64, _>(&[SQUARE], 15, 5));
+        assert!(!contains::<i64, _>(&[SQUARE], -1, -1));
         // boundary claims: edges + vertices
-        assert!(contains_i64(&[SQUARE], 0, 5));
-        assert!(contains_i64(&[SQUARE], 5, 0));
-        assert!(contains_i64(&[SQUARE], 10, 10));
+        assert!(contains::<i64, _>(&[SQUARE], 0, 5));
+        assert!(contains::<i64, _>(&[SQUARE], 5, 0));
+        assert!(contains::<i64, _>(&[SQUARE], 10, 10));
     }
 
     #[test]
     fn hole_excludes() {
         let poly: &[&[(i32, i32)]] = &[SQUARE, HOLE];
-        assert!(contains_i64(poly, 1, 1)); // in exterior, outside hole
-        assert!(!contains_i64(poly, 5, 5)); // inside hole
-        assert!(contains_i64(poly, 3, 5)); // on hole edge -> claimed
+        assert!(contains::<i64, _>(poly, 1, 1)); // in exterior, outside hole
+        assert!(!contains::<i64, _>(poly, 5, 5)); // inside hole
+        assert!(contains::<i64, _>(poly, 3, 5)); // on hole edge -> claimed
     }
 
     #[test]
@@ -274,7 +253,7 @@ mod tests {
         let poly: &[&[(i32, i32)]] = &[SQUARE, HOLE];
         for x in -2..13 {
             for y in -2..13 {
-                assert_eq!(contains_i64(poly, x, y), contains_i128(poly, x, y), "at ({x},{y})");
+                assert_eq!(contains::<i64, _>(poly, x, y), contains::<i128, _>(poly, x, y), "at ({x},{y})");
             }
         }
     }
@@ -284,7 +263,36 @@ mod tests {
         let poly: &[&[(i32, i32)]] = &[SQUARE, HOLE];
         for x in -2..13 {
             for y in -2..13 {
-                assert_eq!(contains_i64(poly, x, y), contains_f64(poly, x, y), "at ({x},{y})");
+                assert_eq!(contains::<i64, _>(poly, x, y), contains::<f64, _>(poly, x, y), "at ({x},{y})");
+            }
+        }
+    }
+
+    /// i16-narrow pairs through the i64 kernel must agree with the identical
+    /// geometry widened to i32 pairs — full i16 range, so the worst-case
+    /// cross (2^33 — module docs: why the wide type stays i64) is exercised.
+    #[test]
+    fn narrow_i16_matches_i32_pairs() {
+        let mut lcg = utz_common::Lcg::new(0x1616_1616);
+        // top 16 LCG bits, reinterpreted over the full i16 range
+        let mut next = || ((lcg.next_u64() >> 48) as u16).cast_signed();
+        for _ in 0..200 {
+            let n = 3 + (next().unsigned_abs() as usize % 14);
+            let ring16: Vec<(i16, i16)> = (0..n).map(|_| (next(), next())).collect();
+            let ring32: Vec<(i32, i32)> =
+                ring16.iter().map(|&(x, y)| (i32::from(x), i32::from(y))).collect();
+            let code = |h: RingHit| match h {
+                RingHit::Outside => 0,
+                RingHit::Inside => 1,
+                RingHit::Boundary => 2,
+            };
+            for _ in 0..200 {
+                let (px, py) = (next(), next());
+                assert_eq!(
+                    code(ring_hit::<i64, _>(&ring16, px, py)),
+                    code(ring_hit::<i64, _>(&ring32, i32::from(px), i32::from(py))),
+                    "i16/i32 verdicts disagree at ({px},{py})"
+                );
             }
         }
     }
@@ -322,8 +330,8 @@ mod tests {
             for _ in 0..200 {
                 let (px, py) = (cx.saturating_add(next(1 << 21)), cy.saturating_add(next(1 << 21)));
                 assert_eq!(
-                    contains_i64(rings, px, py),
-                    contains_f64(rings, px, py),
+                    contains::<i64, _>(rings, px, py),
+                    contains::<f64, _>(rings, px, py),
                     "f64/i64 disagree at ({px},{py})"
                 );
             }
@@ -358,7 +366,7 @@ mod tests {
             let rings: &[&[(i32, i32)]] = &[&pts];
             for _ in 0..200 {
                 let (px, py) = (cx + next(1200) - 600, cy + next(1200) - 600);
-                let ours = contains_i64(rings, px, py);
+                let ours = contains::<i64, _>(rings, px, py);
                 let geo_says = gpoly.contains(&geo::Point::new(i64::from(px), i64::from(py)));
                 if ours != geo_says {
                     // geo::Contains excludes the boundary; we claim it. Only
