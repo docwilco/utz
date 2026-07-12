@@ -2,7 +2,6 @@
 
 pub mod accuracy;
 pub mod amscan;
-pub mod bench;
 pub mod csr_sweep;
 pub mod density_compare;
 pub mod density_probe;

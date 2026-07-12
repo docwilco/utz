@@ -48,8 +48,6 @@ enum Cmd {
     Geoquant(cmd::geoquant::Args),
     /// Antimeridian scan: is TZBB already split at ±180°?
     Amscan(cmd::amscan::Args),
-    /// Legacy fgb lookup benchmark (R-tree vs full scan vs custom)
-    Bench(cmd::bench::Args),
 }
 
 fn main() -> std::process::ExitCode {
@@ -83,6 +81,5 @@ fn run() -> utz_build::Result<()> {
         Cmd::PipBench(a) => cmd::pip_bench::run(a),
         Cmd::Geoquant(a) => cmd::geoquant::run(a),
         Cmd::Amscan(a) => cmd::amscan::run(a),
-        Cmd::Bench(a) => cmd::bench::run(a),
     }
 }

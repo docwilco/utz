@@ -61,7 +61,7 @@ utz/                 workspace root
     src/             + dev/exploration + viz tool
       lib.rs         re-exports encoder + measurement helpers
       types.rs       Feat/Ring/Poly, quantization helpers
-      loader.rs      source → Vec<Feat>  (geojson; fgb reader kept for now)
+      loader.rs      source → Vec<Feat>  (geojson; legacy fgb reader removed 2026-07)
       topo.rs        shared-arc topology + topology-aware per-arc simplification
       grid.rs        grid + interned-CSR builder
       encode.rs      container serializer (header + sections + compress)

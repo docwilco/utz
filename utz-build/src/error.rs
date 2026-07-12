@@ -15,16 +15,11 @@ pub enum Error {
     /// boxed: `ureq::Error` is large
     Http(Box<ureq::Error>),
     Tiff(tiff::TiffError),
-    Fgb(flatgeobuf::Error),
-    Geozero(flatgeobuf::geozero::error::GeozeroError),
     Encode(utz_encode::Error),
     Utz(utz::Error),
     #[from(skip)]
     #[display("unknown dataset {ds:?}: use [land-]now|1970|all")]
     UnknownDataset { ds: String },
-    #[from(skip)]
-    #[display("no legacy .fgb for dataset {ds}")]
-    NoLegacyFgb { ds: String },
     #[from(skip)]
     #[display("no /releases/tag/ redirect (status {status})")]
     NoReleaseRedirect { status: u16 },

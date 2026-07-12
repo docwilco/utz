@@ -23,12 +23,8 @@ pub mod viz;
 
 pub use config::Config;
 
-use std::io::BufReader;
 use std::path::PathBuf;
 
-use flatgeobuf::{FallibleStreamingIterator, FeatureProperties, FgbReader};
-use geo_types::Geometry;
-use geozero::ToGeo;
 
 /// The two dataset knobs (PLAN.md §6): merge vintage × ocean coverage.
 /// TZBB's terminology: `now` = "Same since now", `1970` = "Same since 1970",
@@ -74,10 +70,8 @@ pub fn dataset(ds: &str) -> crate::Result<Dataset> {
     Ok(Dataset { vintage, oceans: !land })
 }
 
-/// Load a dataset. `UTZ_SOURCE=tzbb` forces the download+GeoJSON pipeline,
-/// `UTZ_SOURCE=fgb` forces the legacy prebuilt `.fgb`; default prefers the
-/// `.fgb` when it exists (no network, with-oceans now/1970 only) and falls
-/// back to downloading.
+/// Load a dataset via the download+`GeoJSON` pipeline (conditional-GET
+/// cached).
 ///
 /// # Errors
 /// See [`load_with_release`].
@@ -87,23 +81,12 @@ pub fn load(ds: &str) -> crate::Result<Vec<Feat>> {
 
 /// [`load`] plus the TZBB release tag the features came from — for stamping
 /// container headers (provenance, §11). `"dev"` when the source isn't a
-/// pinned release (legacy `.fgb`, offline fallback).
+/// pinned release (offline fallback).
 ///
 /// # Errors
-/// Invalid dataset name, `UTZ_SOURCE=fgb` for a dataset with no legacy
-/// `.fgb`, `.fgb` read/parse failure, or TZBB download/parse failure.
+/// Invalid dataset name, or TZBB download/parse failure.
 pub fn load_with_release(ds: &str) -> crate::Result<(Vec<Feat>, String)> {
-    let d = dataset(ds)?;
-    let fgb = fgb_path(&d);
-    let legacy = |p: &str| Ok((load_fgb(p)?, "dev".to_string()));
-    match std::env::var("UTZ_SOURCE").as_deref() {
-        Ok("fgb") => legacy(&fgb.ok_or_else(|| Error::NoLegacyFgb { ds: d.name() })?),
-        Ok("tzbb") => loader::load_tzbb(d, &cache_dir()),
-        _ => match fgb {
-            Some(p) if std::path::Path::new(&p).exists() => legacy(&p),
-            _ => loader::load_tzbb(d, &cache_dir()),
-        },
-    }
+    loader::load_tzbb(dataset(ds)?, &cache_dir())
 }
 
 /// `encode::encode` with population-density-weighted simplification: the
@@ -132,48 +115,4 @@ pub fn encode_weighted(
 #[must_use]
 pub fn cache_dir() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../cache"))
-}
-
-/// Legacy prebuilt `.fgb` location (old spatialtime workspace; with-oceans
-/// now/1970 only). Override the directory with `UTZ_ASSETS`.
-#[must_use]
-pub fn fgb_path(d: &Dataset) -> Option<String> {
-    if !d.oceans {
-        return None;
-    }
-    let dir = std::env::var("UTZ_ASSETS")
-        .unwrap_or_else(|_| "/home/drwilco/spatialtime/assets".to_string());
-    match d.vintage {
-        "now" => Some(format!("{dir}/timezones_osm.fgb")),
-        "1970" => Some(format!("{dir}/timezones_osm1970.fgb")),
-        _ => None,
-    }
-}
-
-fn load_fgb(path: &str) -> crate::Result<Vec<Feat>> {
-    let bytes = std::fs::read(path)?;
-    let mut reader = BufReader::new(&bytes[..]);
-    let fgb = FgbReader::open(&mut reader)?;
-    let mut seq = fgb.select_all_seq()?;
-    let mut feats = Vec::new();
-    while let Some(f) = seq.next()? {
-        let props = f.properties()?;
-        let offset: f64 = props.get("offset").and_then(|s| s.parse().ok()).unwrap_or(0.0);
-        let tzid = props.get("tzid").filter(|s| !s.is_empty()).cloned();
-        let mut polys: Vec<Poly> = Vec::new();
-        if let Ok(Geometry::MultiPolygon(mp)) = f.to_geo() {
-            for p in mp {
-                let mut poly: Poly = vec![strip_close(p.exterior().coords().map(|c| (c.x, c.y)).collect())];
-                for r in p.interiors() { poly.push(strip_close(r.coords().map(|c| (c.x, c.y)).collect())); }
-                polys.push(poly);
-            }
-        }
-        feats.push(Feat { offset, tzid, polys });
-    }
-    Ok(feats)
-}
-
-fn strip_close(mut r: Ring) -> Ring {
-    if r.len() > 1 && r.first() == r.last() { r.pop(); }
-    r
 }

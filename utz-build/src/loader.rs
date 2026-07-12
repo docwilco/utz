@@ -2,9 +2,7 @@
 //! timezone-boundary-builder **with-oceans**; the only choice is the merge
 //! vintage: `now` (65 zones, default) or `1970` (304 zones).
 //!
-//! Preferred path: download the `GeoJSON` zip (conditional GET) → parse.
-//! Legacy path: prebuilt `.fgb` from the old spatialtime workspace (kept until
-//! the `GeoJSON` pipeline is the default everywhere).
+//! Download the `GeoJSON` zip (conditional GET) → parse.
 
 use std::io::{BufReader, Read as _};
 use std::path::Path;

@@ -21,8 +21,6 @@ utz-simplify = { path = "../utz-simplify" }
 utz-encode = { path = "../utz-encode", features = ["zstd"] }
 # temporary: reading the prebuilt .fgb during exploration (to be replaced by a
 # GeoJSON parser + downloader per PLAN.md).
-flatgeobuf = "5.0"
-geozero = "0.14"
 # codecs for the size measurements
 zstd = "0.13"
 brotli = "8.0"
