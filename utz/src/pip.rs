@@ -31,6 +31,14 @@
 //! straight over image bytes. The kernel widens each vertex as it loads it;
 //! coordinate comparisons run at the narrow width.
 //!
+//! i16 pairs additionally get a dedicated 32-bit kernel ([`edge_i16`] /
+//! [`ring_hit_i16`]): the wide type disappears into an exact u32
+//! sign-magnitude compare. Strictly a 32-bit-core kernel — 0.75× the i64
+//! kernel on the ESP32-S3 but 2.3× on `x86_64`, where a wide multiply is one
+//! instruction and the extra branches only cost (§15) — so the finder
+//! dispatches i16-quant lookups to it on `target_pointer_width = "32"`
+//! only; verdicts are identical either way.
+//!
 //! Points exactly ON any edge (exterior or hole) report `true`: border points
 //! are ambiguous between adjacent zones, and claiming them keeps lookup
 //! deterministic (first candidate polygon wins).
@@ -114,6 +122,7 @@ where
     P: CoordPair,
     W: Wide<P::Narrow>,
 {
+    // TODO: Are we actually allowing 2 vertex rings in the data? This seems like a useless extra check.
     let n = ring.len();
     if n < 3 {
         return RingHit::Outside;
@@ -181,6 +190,84 @@ where
         } else if lhs < rhs {
             return EdgeHit::Cross; // point strictly right of a downward edge
         }
+    }
+    EdgeHit::Miss
+}
+
+/// [`ring_hit`] fold over the 32-bit [`edge_i16`] kernel — what i16-quant
+/// eager/image lookups dispatch on 32-bit targets (module docs; the finder
+/// keeps the per-target policy).
+#[must_use]
+pub fn ring_hit_i16(ring: &[(i16, i16)], px: i16, py: i16) -> RingHit {
+    let n = ring.len();
+    if n < 3 {
+        return RingHit::Outside;
+    }
+    let mut inside = false;
+    let (mut x0, mut y0) = ring[n - 1];
+    for &(x1, y1) in ring {
+        match edge_i16((x0, y0), (x1, y1), px, py) {
+            EdgeHit::Boundary => return RingHit::Boundary,
+            EdgeHit::Cross => inside = !inside,
+            EdgeHit::Miss => {}
+        }
+        (x0, y0) = (x1, y1);
+    }
+    if inside {
+        RingHit::Inside
+    } else {
+        RingHit::Outside
+    }
+}
+
+/// 32-bit exact edge kernel for i16 coordinates — [`edge`] without the wide
+/// type (§14.11/§15): sign-magnitude comparison of the cross product's two
+/// halves fits u32 EXACTLY (|diff| ≤ 65535 and 65535² < 2^32 — the compare
+/// form needs 2b bits where the subtract form needs 2b+2). Measured 0.75×
+/// the i64 kernel on the ESP32-S3, 2.3× (slower) on `x86_64` — the 32-bit
+/// MULLs beat the extra branches only where a wide multiply isn't a single
+/// instruction, which is why lookups use it on 32-bit targets alone (§15).
+///
+/// Normalizes the edge upward first: swapping endpoints negates the cross
+/// product, folding [`edge`]'s up/down branches into one, and the upward
+/// `y1 != py` endpoint-exclusion guard is vacuously true for swapped
+/// (originally downward) edges. Per-edge `Cross` verdicts match [`edge`]
+/// exactly; `Boundary` may fire from a different edge of the same shared
+/// vertex, which ring-level verdicts can't observe (`Boundary`
+/// short-circuits the ring).
+#[expect(clippy::inline_always, reason = "the per-edge kernel every PIP loop folds through; keep codegen deterministic on Xtensa")]
+#[inline(always)]
+#[must_use]
+pub fn edge_i16(a: (i16, i16), b: (i16, i16), px: i16, py: i16) -> EdgeHit {
+    let ((mut x0, mut y0), (mut x1, mut y1)) = (a, b);
+    if y0 > y1 {
+        core::mem::swap(&mut x0, &mut x1);
+        core::mem::swap(&mut y0, &mut y1);
+    }
+    if py < y0 || py > y1 {
+        return EdgeHit::Miss;
+    }
+    let dx = i32::from(x1) - i32::from(x0);
+    let dy = i32::from(y1) - i32::from(y0); // ≥ 0
+    let t = i32::from(py) - i32::from(y0); // 0..=dy
+    let v = i32::from(px) - i32::from(x0);
+    // cross = dx·t − dy·v; both magnitudes ≤ 65535² < 2^32, exact in u32
+    let mag_l = dx.unsigned_abs() * t.unsigned_abs();
+    let mag_r = dy.unsigned_abs() * v.unsigned_abs();
+    let l_neg = dx < 0 && mag_l != 0;
+    let r_neg = v < 0 && mag_r != 0;
+    let (gt, eq) = match (l_neg, r_neg) {
+        (false, false) => (mag_l > mag_r, mag_l == mag_r),
+        (true, true) => (mag_l < mag_r, mag_l == mag_r),
+        (true, false) => (false, false), // lhs < 0 ≤ rhs
+        (false, true) => (true, false),  // lhs ≥ 0 > rhs
+    };
+    if eq {
+        if x0.min(x1) <= px && px <= x0.max(x1) {
+            return EdgeHit::Boundary;
+        }
+    } else if gt && y1 != py {
+        return EdgeHit::Cross; // point strictly left of the upward edge
     }
     EdgeHit::Miss
 }
@@ -268,9 +355,10 @@ mod tests {
         }
     }
 
-    /// i16-narrow pairs through the i64 kernel must agree with the identical
-    /// geometry widened to i32 pairs — full i16 range, so the worst-case
-    /// cross (2^33 — module docs: why the wide type stays i64) is exercised.
+    /// i16-narrow pairs through the i64 kernel AND the 32-bit sign-split
+    /// kernel must agree with the identical geometry widened to i32 pairs —
+    /// full i16 range, so the worst-case cross (2^33 in the subtract form,
+    /// 65535² in [`edge_i16`]'s compare form) is exercised.
     #[test]
     fn narrow_i16_matches_i32_pairs() {
         let mut lcg = utz_common::Lcg::new(0x1616_1616);
@@ -288,10 +376,16 @@ mod tests {
             };
             for _ in 0..200 {
                 let (px, py) = (next(), next());
+                let wide = code(ring_hit::<i64, _>(&ring32, i32::from(px), i32::from(py)));
                 assert_eq!(
                     code(ring_hit::<i64, _>(&ring16, px, py)),
-                    code(ring_hit::<i64, _>(&ring32, i32::from(px), i32::from(py))),
+                    wide,
                     "i16/i32 verdicts disagree at ({px},{py})"
+                );
+                assert_eq!(
+                    code(ring_hit_i16(&ring16, px, py)),
+                    wide,
+                    "sign-split verdict disagrees at ({px},{py})"
                 );
             }
         }

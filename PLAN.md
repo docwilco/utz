@@ -757,9 +757,10 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
     agree, both quant widths) + accurate-preset preload test (i128 arm).
     Measured on the S3 (§15, 2026-07-12): narrow pairs are 1.15× at the
     kernel and **tiny eager dropped 108 → 66 µs/lookup**, overtaking the
-    i16-image XIP as the fastest mode; a u32 sign-split kernel (exact at
-    i16 via compare-form) would buy a further 25% at the kernel — benched,
-    not shipped (§15).
+    i16-image XIP as the fastest mode. The u32 sign-split kernel (exact at
+    i16 via compare-form, another 25%) shipped the same day as
+    `pip::edge_i16`/`ring_hit_i16`, dispatched on 32-bit targets only —
+    it's 2.3× slower on `x86_64` — taking **tiny eager to 56 µs** (§15).
 12. **TODO: audit every `unsafe` site.** Current inventory (2026-07):
     `utz/src/pip.rs` Pack24 `read_unaligned` word reads (SAFETY comment
     present); `utz/src/finder.rs` `image_rings` zero-copy
@@ -1049,10 +1050,20 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   `(2^b−2)² < 2^2b−1`, where the subtract form needs 2b+2 — §14.11
   discussion) runs **215 ns/edge — 0.75× of i64/i16, 1.54× over the old
   i32-pairs+i64 shape** — exact, branchier but the 32-bit MULLs win on this
-  core. Not shipped: lives in `utz-bench-firmware` only; promoting it into
-  `pip` would add a per-width specialization to an otherwise single generic
-  kernel for a ~25% kernel-level win that reaches maybe ~10% of an eager
-  lookup — revisit if embedded i16 lookup speed ever matters. Same run,
+  core. **Shipped same day** as `pip::edge_i16`/`ring_hit_i16` with
+  per-target dispatch (`finder::ring_hit_narrow`,
+  `target_pointer_width = "32"` only): forcing it on the host measured
+  **2.3× SLOWER** (`bench-cli tiny-eager-static` 0.212 → 0.485 µs/lookup,
+  x86_64's single-instruction wide multiply beats the sign branches), so
+  64-bit targets keep the i64 kernel — ring verdicts identical either way,
+  checksums unchanged on both platforms. S3 re-run with the shipped
+  dispatch: **tiny eager 66 → 56 µs/lookup** (48% below the pre-§14.11
+  108), eager-slice 69, i16-image XIP 89 → 86 (flash-fetch-bound, as the
+  v7 analysis predicted). A concrete fn, not generics-over-widths, on
+  purpose: only this instantiation has a user, and the W-kernel family
+  must coexist anyway (64-bit hosts, f64 oracle) — the `(i32, u32, u64)`
+  instantiation would retire the i128 kernel on 32-bit cores (the 3.9×
+  arm) if the accurate tier ever lands on an MCU; genericize then. Same run,
   the §14.11 narrow eager cache paid off beyond RAM: **tiny eager 108 → 66
   µs/lookup (−39%; halved cache + bounds-elided generic loop), now the
   fastest full-accuracy mode on the S3, beating the i16-image XIP (89)**;

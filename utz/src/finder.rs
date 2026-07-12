@@ -687,24 +687,29 @@ impl Finder {
                 let (Ok(px), Ok(py)) = (i16::try_from(px), i16::try_from(py)) else {
                     return false;
                 };
-                self.image_rings::<i64, (i16, i16)>(rstart, rend, px, py)
+                self.image_rings(rstart, rend, px, py, ring_hit_narrow)
             }
-            24 => self.image_rings::<i64, pip::Pack24>(rstart, rend, px, py),
-            _ => self.image_rings::<i128, (i32, i32)>(rstart, rend, px, py),
+            24 => self.image_rings(rstart, rend, px, py, pip::ring_hit::<i64, pip::Pack24>),
+            _ => self.image_rings(rstart, rend, px, py, pip::ring_hit::<i128, (i32, i32)>),
         }
     }
 
     /// Even-odd fold over one image poly's rings `[rstart, rend)` at pair
-    /// type `P` — `size_of::<P>()` IS the on-image coordinate stride.
+    /// type `P` — `size_of::<P>()` IS the on-image coordinate stride; `scan`
+    /// is the width-matched ring kernel ([`pip::ring_hit`] at the right wide
+    /// type, or [`pip::ring_hit_i16`]).
     /// (No `cast_ptr_alignment` expect needed anymore: the cast target is
     /// the opaque `P`, so the lint can't see a concrete alignment — the
     /// invariant itself is stated in the SAFETY comment below.)
     #[cfg(feature = "geom-image")]
-    fn image_rings<W, P>(&self, rstart: usize, rend: usize, px: P::Narrow, py: P::Narrow) -> bool
-    where
-        P: pip::CoordPair,
-        W: pip::Wide<P::Narrow>,
-    {
+    fn image_rings<P: pip::CoordPair>(
+        &self,
+        rstart: usize,
+        rend: usize,
+        px: P::Narrow,
+        py: P::Narrow,
+        scan: impl Fn(&[P], P::Narrow, P::Narrow) -> pip::RingHit,
+    ) -> bool {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let mut inside = false;
         let mut cstart =
@@ -724,7 +729,7 @@ impl Finder {
                 )
             };
             cstart = cend;
-            match pip::ring_hit::<W, _>(ring, px, py) {
+            match scan(ring, px, py) {
                 pip::RingHit::Boundary => return true,
                 pip::RingHit::Inside => inside = !inside,
                 pip::RingHit::Outside => {}
@@ -751,14 +756,26 @@ impl Finder {
                 let (Ok(px), Ok(py)) = (i16::try_from(px), i16::try_from(py)) else {
                     return false;
                 };
-                rings_hit::<i64, _>(coords, &e.ring_ends, rstart, rend as usize, px, py)
+                rings_hit(coords, &e.ring_ends, rstart, rend as usize, px, py, ring_hit_narrow)
             }
-            EagerCoords::Wide(coords) if self.hdr.quant_bits == 32 => {
-                rings_hit::<i128, _>(coords, &e.ring_ends, rstart, rend as usize, px, py)
-            }
-            EagerCoords::Wide(coords) => {
-                rings_hit::<i64, _>(coords, &e.ring_ends, rstart, rend as usize, px, py)
-            }
+            EagerCoords::Wide(coords) if self.hdr.quant_bits == 32 => rings_hit(
+                coords,
+                &e.ring_ends,
+                rstart,
+                rend as usize,
+                px,
+                py,
+                pip::ring_hit::<i128, (i32, i32)>,
+            ),
+            EagerCoords::Wide(coords) => rings_hit(
+                coords,
+                &e.ring_ends,
+                rstart,
+                rend as usize,
+                px,
+                py,
+                pip::ring_hit::<i64, (i32, i32)>,
+            ),
         }
     }
 
@@ -804,26 +821,39 @@ impl Finder {
     }
 }
 
+/// The scan kernel for i16-quant rings (§14.11/§15): the u32 sign-split
+/// kernel on 32-bit targets (0.75× the i64 kernel on the ESP32-S3 — wide
+/// multiplies are instruction pairs there), the generic i64 kernel on
+/// 64-bit ones (single-instruction wide multiplies; the sign-split
+/// branches measured 2.3× SLOWER on `x86_64`). Ring verdicts are identical
+/// either way, so answers stay platform-independent.
+#[cfg(any(feature = "alloc", feature = "geom-image"))]
+fn ring_hit_narrow(ring: &[(i16, i16)], px: i16, py: i16) -> pip::RingHit {
+    #[cfg(target_pointer_width = "32")]
+    return pip::ring_hit_i16(ring, px, py);
+    #[cfg(not(target_pointer_width = "32"))]
+    pip::ring_hit::<i64, _>(ring, px, py)
+}
+
 /// Even-odd fold over consecutive rings `[rstart, rend)` of a flat eager
-/// cache — shared by both cache widths ([`EagerCoords`]).
+/// cache — shared by both cache widths ([`EagerCoords`]); `scan` is the
+/// width-matched ring kernel ([`pip::ring_hit`] at the right wide type, or
+/// [`ring_hit_narrow`]).
 #[cfg(feature = "alloc")]
-fn rings_hit<W, P>(
+fn rings_hit<P: pip::CoordPair>(
     coords: &[P],
     ring_ends: &[u32],
     rstart: usize,
     rend: usize,
     px: P::Narrow,
     py: P::Narrow,
-) -> bool
-where
-    P: pip::CoordPair,
-    W: pip::Wide<P::Narrow>,
-{
+    scan: impl Fn(&[P], P::Narrow, P::Narrow) -> pip::RingHit,
+) -> bool {
     let mut inside = false;
     let mut cstart = if rstart == 0 { 0 } else { ring_ends[rstart - 1] as usize };
     for cend in &ring_ends[rstart..rend] {
         let cend = *cend as usize;
-        match pip::ring_hit::<W, _>(&coords[cstart..cend], px, py) {
+        match scan(&coords[cstart..cend], px, py) {
             pip::RingHit::Boundary => return true,
             pip::RingHit::Inside => inside = !inside,
             pip::RingHit::Outside => {}
