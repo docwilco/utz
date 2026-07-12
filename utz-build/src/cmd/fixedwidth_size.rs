@@ -77,87 +77,13 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         assert_eq!(codec, 0, "{path}: need a codec-none container");
         let p = &bytes[start..];
         let h = format::parse(p).unwrap();
-    assert!(h.geom <= 1, "arc-store containers only (geom 0/1)");
+        assert!(h.geom <= 1, "arc-store containers only (geom 0/1)");
         let fb = fixed_bytes(h.quant_bits);
         let arcs_off = h.arc_offsets - 4; // n_arcs u32 sits before the table
         let grid_block = h.primary - 4; // ncols/nrows u16s before primary
 
-        // --- A: arc store as absolute fixed-width coords, rest unchanged ---
-        let mut a_offsets: Vec<u32> = Vec::with_capacity(h.n_arcs as usize + 1);
-        let mut a_data: Vec<u8> = Vec::new();
-        for id in 0..h.n_arcs as usize {
-            a_offsets.push(u32::try_from(a_data.len()).expect("arc data fits u32"));
-            let coords = arc_coords(p, &h, id);
-            write_varint(coords.len() as u64, &mut a_data);
-            for (x, y) in coords {
-                write_fixed(x, fb, &mut a_data);
-                write_fixed(y, fb, &mut a_data);
-            }
-        }
-        a_offsets.push(u32::try_from(a_data.len()).expect("arc data fits u32"));
-        let mut pa = p[..arcs_off].to_vec();
-        pa.extend_from_slice(&h.n_arcs.to_le_bytes());
-        for o in &a_offsets {
-            pa.extend_from_slice(&o.to_le_bytes());
-        }
-        pa.extend_from_slice(&a_data);
-        pa.extend_from_slice(&p[h.parent..]);
-
-        // --- B: per-ring flattened i32 pairs (the preload() cache image) ---
-        let n_polys = h.eager_polys as usize;
-        let mut coords: Vec<u8> = Vec::new(); // (i32, i32) pairs
-        let mut ring_ends: Vec<u8> = Vec::new(); // u32
-        let mut polys: Vec<u8> = Vec::new(); // [i32; 4] bbox + u32 ring_end
-        let (mut ncoords, mut nrings) = (0u32, 0u32);
-        for pid in 0..n_polys {
-            let mut pos = h.ring_data + read_u32(p, h.poly_offsets + pid * 4) as usize;
-            let bb: Vec<i32> =
-                (0..4).map(|i| read_fixed(p, pos + i * fb, h.quant_bits)).collect();
-            pos += 4 * fb;
-            let nr = read_u16(p, pos);
-            pos += 2;
-            for _ in 0..nr {
-                let (nrefs, mut p2) = read_varint(p, pos);
-                let start_n = ncoords;
-                let mut ring: Vec<(i32, i32)> = Vec::new();
-                for _ in 0..nrefs {
-                    let (r, p3) = read_varint(p, p2);
-                    p2 = p3;
-                    let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
-                    let mut c = arc_coords(p, &h, id);
-                    if rev {
-                        c.reverse();
-                    }
-                    ring.extend_from_slice(&c);
-                }
-                pos = p2;
-                if ring.len() > 1 && ring.first() == ring.last() {
-                    ring.pop();
-                }
-                for &(x, y) in &ring {
-                    coords.extend_from_slice(&x.to_le_bytes());
-                    coords.extend_from_slice(&y.to_le_bytes());
-                }
-                ncoords = start_n + u32::try_from(ring.len()).expect("ring len fits u32");
-                nrings += 1;
-                ring_ends.extend_from_slice(&ncoords.to_le_bytes());
-            }
-            for v in bb {
-                polys.extend_from_slice(&v.to_le_bytes());
-            }
-            polys.extend_from_slice(&nrings.to_le_bytes());
-        }
-        // header eager_coords counts the ring-closure vertex preload() pops
-        // (one per closed ring), so it may exceed the flattened image
-        assert!(ncoords <= h.eager_coords, "{path}: coord count mismatch");
-        assert!(ncoords + nrings >= h.eager_coords, "{path}: coord count mismatch");
-        assert_eq!(nrings, h.eager_rings);
-        let mut pb = p[..arcs_off].to_vec(); // header + zone strings
-        pb.extend_from_slice(&p[h.parent..h.parent + n_polys * 2]); // parent table
-        pb.extend_from_slice(&coords);
-        pb.extend_from_slice(&ring_ends);
-        pb.extend_from_slice(&polys);
-        pb.extend_from_slice(&p[grid_block..]); // grid unchanged
+        let pa = variant_fixed_arcs(p, &h, fb, arcs_off);
+        let pb = variant_eager_image(p, &h, fb, arcs_off, grid_block, path);
 
         let name = std::path::Path::new(&path)
             .file_stem()
@@ -182,4 +108,95 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Variant A: the arc store rewritten as absolute fixed-width coords,
+/// everything else unchanged.
+fn variant_fixed_arcs(p: &[u8], h: &format::Header, fb: usize, arcs_off: usize) -> Vec<u8> {
+    let mut a_offsets: Vec<u32> = Vec::with_capacity(h.n_arcs as usize + 1);
+    let mut a_data: Vec<u8> = Vec::new();
+    for id in 0..h.n_arcs as usize {
+        a_offsets.push(u32::try_from(a_data.len()).expect("arc data fits u32"));
+        let coords = arc_coords(p, h, id);
+        write_varint(coords.len() as u64, &mut a_data);
+        for (x, y) in coords {
+            write_fixed(x, fb, &mut a_data);
+            write_fixed(y, fb, &mut a_data);
+        }
+    }
+    a_offsets.push(u32::try_from(a_data.len()).expect("arc data fits u32"));
+    let mut pa = p[..arcs_off].to_vec();
+    pa.extend_from_slice(&h.n_arcs.to_le_bytes());
+    for o in &a_offsets {
+        pa.extend_from_slice(&o.to_le_bytes());
+    }
+    pa.extend_from_slice(&a_data);
+    pa.extend_from_slice(&p[h.parent..]);
+    pa
+}
+
+/// Variant B: geometry replaced by per-ring flattened i32 pairs (the
+/// `preload()` cache image), grid unchanged.
+fn variant_eager_image(
+    p: &[u8],
+    h: &format::Header,
+    fb: usize,
+    arcs_off: usize,
+    grid_block: usize,
+    path: &str,
+) -> Vec<u8> {
+    let n_polys = h.eager_polys as usize;
+    let mut coords: Vec<u8> = Vec::new(); // (i32, i32) pairs
+    let mut ring_ends: Vec<u8> = Vec::new(); // u32
+    let mut polys: Vec<u8> = Vec::new(); // [i32; 4] bbox + u32 ring_end
+    let (mut ncoords, mut nrings) = (0u32, 0u32);
+    for pid in 0..n_polys {
+        let mut pos = h.ring_data + read_u32(p, h.poly_offsets + pid * 4) as usize;
+        let bb: Vec<i32> = (0..4).map(|i| read_fixed(p, pos + i * fb, h.quant_bits)).collect();
+        pos += 4 * fb;
+        let nr = read_u16(p, pos);
+        pos += 2;
+        for _ in 0..nr {
+            let (nrefs, mut p2) = read_varint(p, pos);
+            let start_n = ncoords;
+            let mut ring: Vec<(i32, i32)> = Vec::new();
+            for _ in 0..nrefs {
+                let (r, p3) = read_varint(p, p2);
+                p2 = p3;
+                let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
+                let mut c = arc_coords(p, h, id);
+                if rev {
+                    c.reverse();
+                }
+                ring.extend_from_slice(&c);
+            }
+            pos = p2;
+            if ring.len() > 1 && ring.first() == ring.last() {
+                ring.pop();
+            }
+            for &(x, y) in &ring {
+                coords.extend_from_slice(&x.to_le_bytes());
+                coords.extend_from_slice(&y.to_le_bytes());
+            }
+            ncoords = start_n + u32::try_from(ring.len()).expect("ring len fits u32");
+            nrings += 1;
+            ring_ends.extend_from_slice(&ncoords.to_le_bytes());
+        }
+        for v in bb {
+            polys.extend_from_slice(&v.to_le_bytes());
+        }
+        polys.extend_from_slice(&nrings.to_le_bytes());
+    }
+    // header eager_coords counts the ring-closure vertex preload() pops
+    // (one per closed ring), so it may exceed the flattened image
+    assert!(ncoords <= h.eager_coords, "{path}: coord count mismatch");
+    assert!(ncoords + nrings >= h.eager_coords, "{path}: coord count mismatch");
+    assert_eq!(nrings, h.eager_rings);
+    let mut pb = p[..arcs_off].to_vec(); // header + zone strings
+    pb.extend_from_slice(&p[h.parent..h.parent + n_polys * 2]); // parent table
+    pb.extend_from_slice(&coords);
+    pb.extend_from_slice(&ring_ends);
+    pb.extend_from_slice(&polys);
+    pb.extend_from_slice(&p[grid_block..]); // grid unchanged
+    pb
 }
