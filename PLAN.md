@@ -1101,6 +1101,20 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   Effectively the S3's lookup kernel is now 32-bit end to end; i64/i128
   survive only on 64-bit hosts (where they win) and in the f64/geo test
   oracles.
+  **15-bit-quant probe (2026-07-14, same-day follow-up): negative.** At
+  15-bit quant (|coord| ≤ 2^14, ~1.2 km — would fit tiny's ε = 10 km) the
+  plain compare-form kernel becomes exact at `W = i32` (differences fit 15
+  bits, product halves fit 2^30) — the branch-lean subtract-free form with
+  zero sign handling. Measured (`KERNEL15`, identical 15-bit-range i16
+  slice, verdicts agree): i64 285 ns/edge · **i32 0.87×** (~247) ·
+  **sign-split 0.72×** (~205) — the sign-split kernel STILL wins, and it
+  needs no precision sacrifice (exact at full i16). The plain kernel's
+  up/down duplicated product paths appear to cost more in branches than
+  sign-split's normalize-then-classify, despite fewer arithmetic ops. So:
+  no 15-bit tier — full i16 quant + sign-split is both more precise and
+  faster. The `KERNEL15` firmware leg and the
+  `wide_i32_matches_i64_at_15_bit_quant` pip test stay as documentation of
+  the bound and the answer.
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
   reads vs streaming's sequential prefetch); `geometry-rs` comparison.
