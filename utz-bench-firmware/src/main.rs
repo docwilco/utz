@@ -377,6 +377,7 @@ fn main() -> ! {
     kernel_bench();
     kernel_bench_i16();
     kernel_bench_i32();
+    kernel_bench_15_bit_quant();
 
     println!("DONE");
     loop {}
@@ -540,5 +541,56 @@ fn kernel_bench_i16() {
         t_u32 as f64 / t_n64 as f64,
         t_w32,
         t_w32 as f64 / t_n64 as f64
+    );
+}
+
+/// The 15-bit-quant question (§15): quantizing one bit shy of the storage
+/// width (|coord| ≤ 2^14) makes the plain compare-form kernel exact at
+/// `W = i32` — differences fit 15 bits, each cross-product half fits 2^30 —
+/// with no swap and no sign classification. Races it against the i64 kernel
+/// and the sign-split kernel on the identical 15-bit-range `(i16, i16)`
+/// slice; all three are exact here, so verdicts must agree.
+fn kernel_bench_15_bit_quant() {
+    use utz::pip::{ring_hit, ring_hit_split, RingHit};
+    const N: usize = 8192;
+    const PROBES: usize = 200;
+    const M: i64 = 1 << 15; // draws in [−2^14, 2^14−1]
+    let mut lcg = 0x0dd_ba11u64;
+    let mut next = || {
+        lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        (((lcg >> 33) as i64 % M) - M / 2) as i16
+    };
+    let ring: Vec<(i16, i16)> = (0..N).map(|_| (next(), next())).collect();
+    let pts: Vec<(i16, i16)> = (0..PROBES).map(|_| (next(), next())).collect();
+
+    let code = |h: RingHit| -> u64 {
+        match h {
+            RingHit::Outside => 0,
+            RingHit::Inside => 1,
+            RingHit::Boundary => 2,
+        }
+    };
+    let run = |f: fn(&[(i16, i16)], i16, i16) -> RingHit| -> (u64, u64) {
+        let t0 = now_us();
+        let mut acc = 0u64;
+        for &(px, py) in &pts {
+            acc = acc.wrapping_mul(3).wrapping_add(code(f(&ring, px, py)));
+        }
+        (now_us() - t0, acc)
+    };
+    let (t64, a64) = run(ring_hit::<i64, (i16, i16)>);
+    let (t32, a32) = run(ring_hit::<i32, (i16, i16)>);
+    let (tsplit, asplit) = run(ring_hit_split::<(i16, i16)>);
+    assert!(a64 == a32 && a64 == asplit, "15-bit kernel verdicts disagree");
+    let edges = (N * PROBES) as u64;
+    println!(
+        "KERNEL15 {} edges: i64 {} us ({} ns/edge) · i32 {} us ({:.2}x) · split-u32 {} us ({:.2}x) · verdicts agree",
+        edges,
+        t64,
+        t64 * 1000 / edges,
+        t32,
+        t32 as f64 / t64 as f64,
+        tsplit,
+        tsplit as f64 / t64 as f64
     );
 }

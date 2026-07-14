@@ -432,6 +432,36 @@ mod tests {
         }
     }
 
+    /// At 15-bit quantization (|coord| ≤ 2^14) the plain kernel is exact at
+    /// `W = i32`: differences fit 15 bits, each cross-product half fits
+    /// 2^30. Agreement with the i64 kernel over that range is the proof —
+    /// and this test runs in debug, where an overflow would panic rather
+    /// than wrap, so it also guards the bound itself.
+    #[test]
+    #[expect(clippy::cast_possible_truncation, reason = "test PRNG: values constructed within the 15-bit quant range")]
+    fn wide_i32_matches_i64_at_15_bit_quant() {
+        const M: i64 = 1 << 15; // draws in [−2^14, 2^14−1]
+        let mut lcg = utz_common::Lcg::new(0x1515_1515);
+        let mut next = || (((lcg.next_u64() >> 33).cast_signed() % M) - M / 2) as i16;
+        let code = |h: RingHit| match h {
+            RingHit::Outside => 0,
+            RingHit::Inside => 1,
+            RingHit::Boundary => 2,
+        };
+        for _ in 0..200 {
+            let n = 3 + (next().unsigned_abs() as usize % 14);
+            let ring: Vec<(i16, i16)> = (0..n).map(|_| (next(), next())).collect();
+            for _ in 0..200 {
+                let (px, py) = (next(), next());
+                assert_eq!(
+                    code(ring_hit::<i32, _>(&ring, px, py)),
+                    code(ring_hit::<i64, _>(&ring, px, py)),
+                    "i32/i64 verdicts disagree at ({px},{py})"
+                );
+            }
+        }
+    }
+
     /// The i32 sign-split instantiation vs the i128 kernel over the FULL
     /// i32 range — products up to `(2^32−1)²`, the u64 exactness bound at
     /// its edge.
