@@ -376,6 +376,7 @@ fn main() -> ! {
 
     kernel_bench();
     kernel_bench_i16();
+    kernel_bench_i32();
 
     println!("DONE");
     loop {}
@@ -419,30 +420,78 @@ fn kernel_bench() {
     let (t64, a64) = run(ring_hit::<i64, (i32, i32)>);
     let (t128, a128) = run(ring_hit::<i128, (i32, i32)>);
     let (tf64, af64) = run(ring_hit::<f64, (i32, i32)>);
-    assert!(a64 == a128 && a64 == af64, "kernel verdicts disagree");
+    let (tsplit, asplit) = run(utz::pip::ring_hit_split::<(i32, i32)>);
+    assert!(a64 == a128 && a64 == af64 && a64 == asplit, "kernel verdicts disagree");
     let edges = (N * PROBES) as u64;
     println!(
-        "KERNEL {} edges: i64 {} us ({} ns/edge) · i128 {} us ({:.2}x) · f64 {} us ({:.2}x) · verdicts agree",
+        "KERNEL {} edges: i64 {} us ({} ns/edge) · i128 {} us ({:.2}x) · f64 {} us ({:.2}x) · split-u64 {} us ({:.2}x) · verdicts agree",
         edges,
         t64,
         t64 * 1000 / edges,
         t128,
         t128 as f64 / t64 as f64,
         tf64,
-        tf64 as f64 / t64 as f64
+        tf64 as f64 / t64 as f64,
+        tsplit,
+        tsplit as f64 / t64 as f64
     );
 }
 
-/// The i16 kernel matrix (§14.11/§15): the shipped u32 sign-split kernel
-/// (`pip::ring_hit_i16` — what i16-quant eager/image lookups dispatch)
+/// The i32-quant kernel matrix: sign-split u64 vs the i128 kernel over a
+/// FULL-i32-range ring — the only two exact kernels at this width (i64
+/// overflows, f64 is inexact), so the pair must agree and their ratio is
+/// the §14.11 "retire i128 on 32-bit cores" answer.
+fn kernel_bench_i32() {
+    use utz::pip::{ring_hit, ring_hit_split, RingHit};
+    const N: usize = 8192;
+    const PROBES: usize = 200;
+    let mut lcg = 0x0dd_ba11u64;
+    let mut next = || {
+        lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        ((lcg >> 32) as u32) as i32 // full i32 range
+    };
+    let ring: Vec<(i32, i32)> = (0..N).map(|_| (next(), next())).collect();
+    let pts: Vec<(i32, i32)> = (0..PROBES).map(|_| (next(), next())).collect();
+
+    let code = |h: RingHit| -> u64 {
+        match h {
+            RingHit::Outside => 0,
+            RingHit::Inside => 1,
+            RingHit::Boundary => 2,
+        }
+    };
+    let run = |f: fn(&[(i32, i32)], i32, i32) -> RingHit| -> (u64, u64) {
+        let t0 = now_us();
+        let mut acc = 0u64;
+        for &(px, py) in &pts {
+            acc = acc.wrapping_mul(3).wrapping_add(code(f(&ring, px, py)));
+        }
+        (now_us() - t0, acc)
+    };
+    let (t128, a128) = run(ring_hit::<i128, (i32, i32)>);
+    let (tsplit, asplit) = run(ring_hit_split::<(i32, i32)>);
+    assert!(a128 == asplit, "i32 kernel verdicts disagree");
+    let edges = (N * PROBES) as u64;
+    println!(
+        "KERNEL32 {} edges: i128 {} us ({} ns/edge) · split-u64 {} us ({:.2}x) · verdicts agree",
+        edges,
+        t128,
+        t128 * 1000 / edges,
+        tsplit,
+        tsplit as f64 / t128 as f64
+    );
+}
+
+/// The i16 kernel matrix (§14.11/§15): the shipped sign-split kernel
+/// (`pip::ring_hit_split` — what i16-quant eager/image lookups dispatch)
 /// vs the generic i64 kernel on the identical `(i16, i16)` slice, plus the
 /// same geometry widened to `(i32, i32)` pairs for the load-width effect.
 /// Full-range i16 ring so worst-case products are exercised (65535² just
-/// fits u32 — see `pip::edge_i16`); ring-level verdicts must agree exactly
-/// (the sign-split kernel may flag Boundary via a different edge of the
-/// same vertex, but Boundary short-circuits the ring either way).
+/// fits u32 — see `pip::edge_split`); ring-level verdicts must agree
+/// exactly (the sign-split kernel may flag Boundary via a different edge of
+/// the same vertex, but Boundary short-circuits the ring either way).
 fn kernel_bench_i16() {
-    use utz::pip::{ring_hit, ring_hit_i16, RingHit};
+    use utz::pip::{ring_hit, ring_hit_split, RingHit};
     const N: usize = 8192;
     const PROBES: usize = 200;
     let mut lcg = 0x0dd_ba11u64;
@@ -479,7 +528,7 @@ fn kernel_bench_i16() {
     };
     let (t_w32, a_w32) = run32(ring_hit::<i64, (i32, i32)>);
     let (t_n64, a_n64) = run16(ring_hit::<i64, (i16, i16)>);
-    let (t_u32, a_u32) = run16(ring_hit_i16);
+    let (t_u32, a_u32) = run16(ring_hit_split::<(i16, i16)>);
     assert!(a_n64 == a_w32 && a_n64 == a_u32, "i16 kernel verdicts disagree");
     let edges = (N * PROBES) as u64;
     println!(

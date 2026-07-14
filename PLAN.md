@@ -757,10 +757,12 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
     agree, both quant widths) + accurate-preset preload test (i128 arm).
     Measured on the S3 (§15, 2026-07-12): narrow pairs are 1.15× at the
     kernel and **tiny eager dropped 108 → 66 µs/lookup**, overtaking the
-    i16-image XIP as the fastest mode. The u32 sign-split kernel (exact at
-    i16 via compare-form, another 25%) shipped the same day as
-    `pip::edge_i16`/`ring_hit_i16`, dispatched on 32-bit targets only —
-    it's 2.3× slower on `x86_64` — taking **tiny eager to 56 µs** (§15).
+    i16-image XIP as the fastest mode. The sign-split kernel (exact at 2b
+    bits via compare-form) shipped the same day dispatched on 32-bit
+    targets only — it's 2.3× slower on `x86_64` — and was generalized to
+    every width 2026-07-14 (`pip::edge_split<N: Narrow>`, streaming
+    included): **tiny eager 54 µs, compact 324, balanced 556; i128 retired
+    from 32-bit lookups (0.24×)** — §15.
 12. **TODO: audit every `unsafe` site.** Current inventory (2026-07):
     `utz/src/pip.rs` Pack24 `read_unaligned` word reads (SAFETY comment
     present); `utz/src/finder.rs` `image_rings` zero-copy
@@ -1073,6 +1075,32 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   unchanged (±3%, e.g. tiny XIP 293 → 307 with kernel i64 317 → 327
   ns/edge — run-to-run codegen noise at opt-z). Checksums consistent per
   asset across all legs, host-matching.
+- [x] **Sign-split generalized to every width (2026-07-14)** — the
+  "genericize when a second user shows up" call above lasted two days: the
+  concrete i16 fn became `pip::edge_split<N: Narrow>`/`ring_hit_split<P>`
+  (trait `Narrow`: i16→u32 products, i32→u64; both instantiations
+  exactness-tested against the W kernels at full range). The key
+  realization: sign-split magnitudes are true b-bit `abs_diff`s, so each
+  product is ONE widening multiply on a 32-bit core, while the W kernels'
+  (b+1)-bit differences force full wide multiplies — so it doesn't just
+  retire i128, it beats the i64 kernel too. S3 kernel matrix (opt-z,
+  verdicts agree): i24-range **split-u64 0.61× i64** (327 → 200 ns/edge);
+  full-i32-range **split-u64 0.24× i128** (844 → 201 ns/edge — the 3.9×
+  arm is gone); i16 0.72× (the `abs_diff` form beat the first concrete
+  kernel's i32-subtract form by ~5%). Dispatch: ALL 32-bit-target lookup
+  arms — eager both widths, image ×3 (Pack24 included via `Narrow = i32`),
+  and streaming `scan_arc` (`finder::{ring_hit,edge}_{narrow,wide}`
+  cfg dispatchers); 64-bit targets keep the W kernels (sign-split is 2.3×
+  slower on `x86_64`; host re-measured unchanged-to-better, tiny image
+  0.185 µs, checksums identical). End-to-end S3 (all checksums
+  unchanged): streaming XIP tiny 307 → 282, tiny-fixed 242 → 214, compact
+  1426 → 1311, compact-fixed 1015 → 886, balanced 2515 → 2304 (−8–13%);
+  eager tiny 56 → **54**, compact 371 → **324**, balanced 641 → **556**
+  (−13%); image XIP tiny 85, compact 510 → 475. Cumulative since
+  §14.11 landed: tiny eager 108 → 54 (2×), balanced eager 745 → 556.
+  Effectively the S3's lookup kernel is now 32-bit end to end; i64/i128
+  survive only on 64-bit hosts (where they win) and in the f64/geo test
+  oracles.
 - [ ] (later) hierarchical grid; YStripe PIP index (eager-mode RAM build, or
   flash-resident via the fixed-width arc encoding — §13; bench scattered flash
   reads vs streaming's sequential prefetch); `geometry-rs` comparison.

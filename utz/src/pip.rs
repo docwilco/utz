@@ -31,13 +31,16 @@
 //! straight over image bytes. The kernel widens each vertex as it loads it;
 //! coordinate comparisons run at the narrow width.
 //!
-//! i16 pairs additionally get a dedicated 32-bit kernel ([`edge_i16`] /
-//! [`ring_hit_i16`]): the wide type disappears into an exact u32
-//! sign-magnitude compare. Strictly a 32-bit-core kernel — 0.75× the i64
-//! kernel on the ESP32-S3 but 2.3× on `x86_64`, where a wide multiply is one
-//! instruction and the extra branches only cost (§15) — so the finder
-//! dispatches i16-quant lookups to it on `target_pointer_width = "32"`
-//! only; verdicts are identical either way.
+//! There is also a second kernel family, sign-split ([`edge_split`] /
+//! [`ring_hit_split`], generic over [`Narrow`]): the wide type disappears
+//! into an exact unsigned magnitude compare at 2b bits (u32 products for
+//! i16 coords, u64 for i24/i32). Strictly for 32-bit cores — there a wide
+//! multiply isn't one instruction and the W kernels' (b+1)-bit differences
+//! force full-width multiplies, while sign-split magnitudes are true b-bit
+//! `abs_diff`s (one widening multiply each); on `x86_64` the same kernel
+//! measured 2.3× SLOWER than i64 (§15). The finder dispatches lookups to
+//! it on `target_pointer_width = "32"` only; verdicts are identical either
+//! way.
 //!
 //! Points exactly ON any edge (exterior or hole) report `true`: border points
 //! are ambiguous between adjacent zones, and claiming them keeps lookup
@@ -194,19 +197,54 @@ where
     EdgeHit::Miss
 }
 
-/// [`ring_hit`] fold over the 32-bit [`edge_i16`] kernel — what i16-quant
-/// eager/image lookups dispatch on 32-bit targets (module docs; the finder
-/// keeps the per-target policy).
+/// Sign-split arithmetic of a narrow coordinate type: the unsigned product
+/// type one cross-product half fits EXACTLY — `(2^b−1)² ≤ 2^2b − 1`, i.e.
+/// the compare form needs only 2b bits where [`edge`]'s subtract form needs
+/// 2b+2 (§14.11/§15). The magnitudes are true b-bit `abs_diff`s, so each
+/// product is one widening multiply even on cores whose word is b bits —
+/// unlike the W kernels, whose (b+1)-bit differences force full wide
+/// multiplies there.
+pub trait Narrow: Copy + Ord {
+    /// unsigned 2b-bit product type
+    type Prod: Copy + Ord;
+    /// exact `|a−b| · |c−d|`
+    fn mag_mul(a: Self, b: Self, c: Self, d: Self) -> Self::Prod;
+}
+impl Narrow for i16 {
+    type Prod = u32;
+    #[expect(clippy::inline_always, reason = "per-edge product in the PIP hot loop; keep codegen deterministic on Xtensa")]
+    #[inline(always)]
+    fn mag_mul(a: Self, b: Self, c: Self, d: Self) -> u32 {
+        u32::from(a.abs_diff(b)) * u32::from(c.abs_diff(d))
+    }
+}
+impl Narrow for i32 {
+    type Prod = u64;
+    #[expect(clippy::inline_always, reason = "per-edge product in the PIP hot loop; keep codegen deterministic on Xtensa")]
+    #[inline(always)]
+    fn mag_mul(a: Self, b: Self, c: Self, d: Self) -> u64 {
+        u64::from(a.abs_diff(b)) * u64::from(c.abs_diff(d))
+    }
+}
+
+/// [`ring_hit`] fold over the sign-split [`edge_split`] kernel — what
+/// lookups dispatch on 32-bit targets (module docs; the finder keeps the
+/// per-target policy).
 #[must_use]
-pub fn ring_hit_i16(ring: &[(i16, i16)], px: i16, py: i16) -> RingHit {
+pub fn ring_hit_split<P>(ring: &[P], px: P::Narrow, py: P::Narrow) -> RingHit
+where
+    P: CoordPair,
+    P::Narrow: Narrow,
+{
     let n = ring.len();
     if n < 3 {
         return RingHit::Outside;
     }
     let mut inside = false;
-    let (mut x0, mut y0) = ring[n - 1];
-    for &(x1, y1) in ring {
-        match edge_i16((x0, y0), (x1, y1), px, py) {
+    let (mut x0, mut y0) = ring[n - 1].xy();
+    for p in ring {
+        let (x1, y1) = p.xy();
+        match edge_split((x0, y0), (x1, y1), px, py) {
             EdgeHit::Boundary => return RingHit::Boundary,
             EdgeHit::Cross => inside = !inside,
             EdgeHit::Miss => {}
@@ -220,13 +258,13 @@ pub fn ring_hit_i16(ring: &[(i16, i16)], px: i16, py: i16) -> RingHit {
     }
 }
 
-/// 32-bit exact edge kernel for i16 coordinates — [`edge`] without the wide
-/// type (§14.11/§15): sign-magnitude comparison of the cross product's two
-/// halves fits u32 EXACTLY (|diff| ≤ 65535 and 65535² < 2^32 — the compare
-/// form needs 2b bits where the subtract form needs 2b+2). Measured 0.75×
-/// the i64 kernel on the ESP32-S3, 2.3× (slower) on `x86_64` — the 32-bit
-/// MULLs beat the extra branches only where a wide multiply isn't a single
-/// instruction, which is why lookups use it on 32-bit targets alone (§15).
+/// The sign-split edge kernel — [`edge`] without the wide type (§14.11/§15):
+/// each cross-product half becomes a sign (narrow comparisons) times an
+/// exact unsigned magnitude product ([`Narrow::mag_mul`]). Strictly a
+/// 32-bit-core kernel — the i16 instantiation measured 0.75× the i64 kernel
+/// on the ESP32-S3 but 2.3× (slower) on `x86_64`, where a wide multiply is
+/// one instruction and the extra branches only cost — which is why lookups
+/// use it on 32-bit targets alone (§15).
 ///
 /// Normalizes the edge upward first: swapping endpoints negates the cross
 /// product, folding [`edge`]'s up/down branches into one, and the upward
@@ -238,7 +276,7 @@ pub fn ring_hit_i16(ring: &[(i16, i16)], px: i16, py: i16) -> RingHit {
 #[expect(clippy::inline_always, reason = "the per-edge kernel every PIP loop folds through; keep codegen deterministic on Xtensa")]
 #[inline(always)]
 #[must_use]
-pub fn edge_i16(a: (i16, i16), b: (i16, i16), px: i16, py: i16) -> EdgeHit {
+pub fn edge_split<N: Narrow>(a: (N, N), b: (N, N), px: N, py: N) -> EdgeHit {
     let ((mut x0, mut y0), (mut x1, mut y1)) = (a, b);
     if y0 > y1 {
         core::mem::swap(&mut x0, &mut x1);
@@ -247,15 +285,13 @@ pub fn edge_i16(a: (i16, i16), b: (i16, i16), px: i16, py: i16) -> EdgeHit {
     if py < y0 || py > y1 {
         return EdgeHit::Miss;
     }
-    let dx = i32::from(x1) - i32::from(x0);
-    let dy = i32::from(y1) - i32::from(y0); // ≥ 0
-    let t = i32::from(py) - i32::from(y0); // 0..=dy
-    let v = i32::from(px) - i32::from(x0);
-    // cross = dx·t − dy·v; both magnitudes ≤ 65535² < 2^32, exact in u32
-    let mag_l = dx.unsigned_abs() * t.unsigned_abs();
-    let mag_r = dy.unsigned_abs() * v.unsigned_abs();
-    let l_neg = dx < 0 && mag_l != 0;
-    let r_neg = v < 0 && mag_r != 0;
+    // cross = dx·t − dy·v with dx = x1−x0, dy = y1−y0 ≥ 0, t = py−y0 in
+    // 0..=dy, v = px−x0. A product is strictly negative iff its signed
+    // factor is negative AND the other is nonzero — all narrow comparisons.
+    let mag_l = N::mag_mul(x1, x0, py, y0);
+    let mag_r = N::mag_mul(y1, y0, px, x0);
+    let l_neg = x1 < x0 && py != y0;
+    let r_neg = px < x0 && y1 != y0;
     let (gt, eq) = match (l_neg, r_neg) {
         (false, false) => (mag_l > mag_r, mag_l == mag_r),
         (true, true) => (mag_l < mag_r, mag_l == mag_r),
@@ -358,7 +394,7 @@ mod tests {
     /// i16-narrow pairs through the i64 kernel AND the 32-bit sign-split
     /// kernel must agree with the identical geometry widened to i32 pairs —
     /// full i16 range, so the worst-case cross (2^33 in the subtract form,
-    /// 65535² in [`edge_i16`]'s compare form) is exercised.
+    /// 65535² in [`edge_split`]'s compare form) is exercised.
     #[test]
     fn narrow_i16_matches_i32_pairs() {
         let mut lcg = utz_common::Lcg::new(0x1616_1616);
@@ -383,9 +419,40 @@ mod tests {
                     "i16/i32 verdicts disagree at ({px},{py})"
                 );
                 assert_eq!(
-                    code(ring_hit_i16(&ring16, px, py)),
+                    code(ring_hit_split(&ring16, px, py)),
                     wide,
                     "sign-split verdict disagrees at ({px},{py})"
+                );
+                assert_eq!(
+                    code(ring_hit_split(&ring32, i32::from(px), i32::from(py))),
+                    wide,
+                    "i32 sign-split verdict disagrees at ({px},{py})"
+                );
+            }
+        }
+    }
+
+    /// The i32 sign-split instantiation vs the i128 kernel over the FULL
+    /// i32 range — products up to `(2^32−1)²`, the u64 exactness bound at
+    /// its edge.
+    #[test]
+    fn split_i32_matches_i128() {
+        let mut lcg = utz_common::Lcg::new(0x3232_3232);
+        let mut next = || ((lcg.next_u64() >> 32) as u32).cast_signed();
+        let code = |h: RingHit| match h {
+            RingHit::Outside => 0,
+            RingHit::Inside => 1,
+            RingHit::Boundary => 2,
+        };
+        for _ in 0..200 {
+            let n = 3 + (next().unsigned_abs() as usize % 14);
+            let ring: Vec<(i32, i32)> = (0..n).map(|_| (next(), next())).collect();
+            for _ in 0..200 {
+                let (px, py) = (next(), next());
+                assert_eq!(
+                    code(ring_hit_split(&ring, px, py)),
+                    code(ring_hit::<i128, _>(&ring, px, py)),
+                    "i32 sign-split/i128 verdicts disagree at ({px},{py})"
                 );
             }
         }
