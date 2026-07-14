@@ -206,23 +206,23 @@ where
 /// multiplies there.
 pub trait Narrow: Copy + Ord {
     /// unsigned 2b-bit product type
-    type Prod: Copy + Ord;
+    type Product: Copy + Ord;
     /// exact `|a−b| · |c−d|`
-    fn mag_mul(a: Self, b: Self, c: Self, d: Self) -> Self::Prod;
+    fn magnitude_product(a: Self, b: Self, c: Self, d: Self) -> Self::Product;
 }
 impl Narrow for i16 {
-    type Prod = u32;
+    type Product = u32;
     #[expect(clippy::inline_always, reason = "per-edge product in the PIP hot loop; keep codegen deterministic on Xtensa")]
     #[inline(always)]
-    fn mag_mul(a: Self, b: Self, c: Self, d: Self) -> u32 {
+    fn magnitude_product(a: Self, b: Self, c: Self, d: Self) -> u32 {
         u32::from(a.abs_diff(b)) * u32::from(c.abs_diff(d))
     }
 }
 impl Narrow for i32 {
-    type Prod = u64;
+    type Product = u64;
     #[expect(clippy::inline_always, reason = "per-edge product in the PIP hot loop; keep codegen deterministic on Xtensa")]
     #[inline(always)]
-    fn mag_mul(a: Self, b: Self, c: Self, d: Self) -> u64 {
+    fn magnitude_product(a: Self, b: Self, c: Self, d: Self) -> u64 {
         u64::from(a.abs_diff(b)) * u64::from(c.abs_diff(d))
     }
 }
@@ -260,7 +260,7 @@ where
 
 /// The sign-split edge kernel — [`edge`] without the wide type (§14.11/§15):
 /// each cross-product half becomes a sign (narrow comparisons) times an
-/// exact unsigned magnitude product ([`Narrow::mag_mul`]). Strictly a
+/// exact unsigned magnitude product ([`Narrow::magnitude_product`]). Strictly a
 /// 32-bit-core kernel — the i16 instantiation measured 0.75× the i64 kernel
 /// on the ESP32-S3 but 2.3× (slower) on `x86_64`, where a wide multiply is
 /// one instruction and the extra branches only cost — which is why lookups
@@ -288,21 +288,21 @@ pub fn edge_split<N: Narrow>(a: (N, N), b: (N, N), px: N, py: N) -> EdgeHit {
     // cross = dx·t − dy·v with dx = x1−x0, dy = y1−y0 ≥ 0, t = py−y0 in
     // 0..=dy, v = px−x0. A product is strictly negative iff its signed
     // factor is negative AND the other is nonzero — all narrow comparisons.
-    let mag_l = N::mag_mul(x1, x0, py, y0);
-    let mag_r = N::mag_mul(y1, y0, px, x0);
-    let l_neg = x1 < x0 && py != y0;
-    let r_neg = px < x0 && y1 != y0;
-    let (gt, eq) = match (l_neg, r_neg) {
-        (false, false) => (mag_l > mag_r, mag_l == mag_r),
-        (true, true) => (mag_l < mag_r, mag_l == mag_r),
+    let lhs_magnitude = N::magnitude_product(x1, x0, py, y0);
+    let rhs_magnitude = N::magnitude_product(y1, y0, px, x0);
+    let lhs_negative = x1 < x0 && py != y0;
+    let rhs_negative = px < x0 && y1 != y0;
+    let (greater, equal) = match (lhs_negative, rhs_negative) {
+        (false, false) => (lhs_magnitude > rhs_magnitude, lhs_magnitude == rhs_magnitude),
+        (true, true) => (lhs_magnitude < rhs_magnitude, lhs_magnitude == rhs_magnitude),
         (true, false) => (false, false), // lhs < 0 ≤ rhs
         (false, true) => (true, false),  // lhs ≥ 0 > rhs
     };
-    if eq {
+    if equal {
         if x0.min(x1) <= px && px <= x0.max(x1) {
             return EdgeHit::Boundary;
         }
-    } else if gt && y1 != py {
+    } else if greater && y1 != py {
         return EdgeHit::Cross; // point strictly left of the upward edge
     }
     EdgeHit::Miss
