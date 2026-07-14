@@ -22,8 +22,7 @@
 //!   width and zero FPU dependency (soft-float parts, f32-only FPUs) at the
 //!   cost of double-width products; f64 is IEEE-deterministic and
 //!   SIMD-friendly on hosts but needs this exactness bound *proven* per
-//!   quant width — and on FPU-less cores it is the slow path (measured on
-//!   ESP32-S3, §15).
+//!   quant width — and on FPU-less cores it is the slow path (§15).
 //!
 //! The coordinate storage is a [`CoordPair`]: decoded `(i32, i32)` pairs,
 //! `(i16, i16)` pairs at quant width (i16-quant eager cache and image
@@ -37,8 +36,8 @@
 //! i16 coords, u64 for i24/i32). Strictly for 32-bit cores — there a wide
 //! multiply isn't one instruction and the W kernels' (b+1)-bit differences
 //! force full-width multiplies, while sign-split magnitudes are true b-bit
-//! `abs_diff`s (one widening multiply each); on `x86_64` the same kernel
-//! measured 2.3× SLOWER than i64 (§15). The finder dispatches lookups to
+//! `abs_diff`s (one widening multiply each); on 64-bit hosts the same
+//! kernel measured 2.3× SLOWER than i64 (§15). The finder dispatches lookups to
 //! it on `target_pointer_width = "32"` only; verdicts are identical either
 //! way.
 //!
@@ -72,7 +71,7 @@ pub trait CoordPair: Copy {
 
 impl CoordPair for (i32, i32) {
     type Narrow = i32;
-    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; keep codegen deterministic on Xtensa")]
+    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; inlining must not depend on per-target heuristics")]
     #[inline(always)]
     fn xy(&self) -> (i32, i32) {
         *self
@@ -80,7 +79,7 @@ impl CoordPair for (i32, i32) {
 }
 impl CoordPair for (i16, i16) {
     type Narrow = i16;
-    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; keep codegen deterministic on Xtensa")]
+    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; inlining must not depend on per-target heuristics")]
     #[inline(always)]
     fn xy(&self) -> (i16, i16) {
         *self
@@ -157,7 +156,7 @@ where
 /// vertex counted once): an upward edge excludes its final endpoint,
 /// a downward edge excludes its starting endpoint, horizontal edges
 /// never cross. Direction-symmetric in `a`/`b` by construction.
-#[expect(clippy::inline_always, reason = "the per-edge kernel every PIP loop folds through; keep codegen deterministic on Xtensa")]
+#[expect(clippy::inline_always, reason = "the per-edge kernel every PIP loop folds through; inlining must not depend on per-target heuristics")]
 #[inline(always)]
 pub fn edge<W, N>(a: (N, N), b: (N, N), px: N, py: N) -> EdgeHit
 where
@@ -212,7 +211,7 @@ pub trait Narrow: Copy + Ord {
 }
 impl Narrow for i16 {
     type Product = u32;
-    #[expect(clippy::inline_always, reason = "per-edge product in the PIP hot loop; keep codegen deterministic on Xtensa")]
+    #[expect(clippy::inline_always, reason = "per-edge product in the PIP hot loop; inlining must not depend on per-target heuristics")]
     #[inline(always)]
     fn magnitude_product(a: Self, b: Self, c: Self, d: Self) -> u32 {
         u32::from(a.abs_diff(b)) * u32::from(c.abs_diff(d))
@@ -220,7 +219,7 @@ impl Narrow for i16 {
 }
 impl Narrow for i32 {
     type Product = u64;
-    #[expect(clippy::inline_always, reason = "per-edge product in the PIP hot loop; keep codegen deterministic on Xtensa")]
+    #[expect(clippy::inline_always, reason = "per-edge product in the PIP hot loop; inlining must not depend on per-target heuristics")]
     #[inline(always)]
     fn magnitude_product(a: Self, b: Self, c: Self, d: Self) -> u64 {
         u64::from(a.abs_diff(b)) * u64::from(c.abs_diff(d))
@@ -261,10 +260,10 @@ where
 /// The sign-split edge kernel — [`edge`] without the wide type (§14.11/§15):
 /// each cross-product half becomes a sign (narrow comparisons) times an
 /// exact unsigned magnitude product ([`Narrow::magnitude_product`]). Strictly a
-/// 32-bit-core kernel — the i16 instantiation measured 0.75× the i64 kernel
-/// on the ESP32-S3 but 2.3× (slower) on `x86_64`, where a wide multiply is
-/// one instruction and the extra branches only cost — which is why lookups
-/// use it on 32-bit targets alone (§15).
+/// 32-bit-core kernel — the i16 instantiation measured 0.75× the i64
+/// kernel on a 32-bit core but 2.3× (slower) on a 64-bit host, where a
+/// wide multiply is one instruction and the extra branches only cost —
+/// which is why lookups use it on 32-bit targets alone (§15).
 ///
 /// Normalizes the edge upward first: swapping endpoints negates the cross
 /// product, folding [`edge`]'s up/down branches into one, and the upward
@@ -273,7 +272,7 @@ where
 /// exactly; `Boundary` may fire from a different edge of the same shared
 /// vertex, which ring-level verdicts can't observe (`Boundary`
 /// short-circuits the ring).
-#[expect(clippy::inline_always, reason = "the per-edge kernel every PIP loop folds through; keep codegen deterministic on Xtensa")]
+#[expect(clippy::inline_always, reason = "the per-edge kernel every PIP loop folds through; inlining must not depend on per-target heuristics")]
 #[inline(always)]
 #[must_use]
 pub fn edge_split<N: Narrow>(a: (N, N), b: (N, N), px: N, py: N) -> EdgeHit {
@@ -311,8 +310,9 @@ pub fn edge_split<N: Narrow>(a: (N, N), b: (N, N), px: N, py: N) -> EdgeHit {
 /// Packed little-endian i24 pair (6 bytes, align 1): `&[Pack24]` is a valid
 /// slice over the image bytes at ANY address — i24 images have no alignment
 /// requirement. The unpack compiles to whatever the target does best
-/// (single unaligned-style loads on x86/ARMv7-M+, byte assembly on strict
-/// cores — measured a tie with hand-blocked aligned loads on Xtensa, §15).
+/// (single unaligned-style loads where hardware allows, byte assembly on
+/// strict-alignment cores — measured a tie with hand-blocked aligned
+/// loads there, §15).
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 #[cfg(feature = "geom-image")]
@@ -321,13 +321,13 @@ pub struct Pack24(pub [u8; 6]);
 #[cfg(feature = "geom-image")]
 impl CoordPair for Pack24 {
     type Narrow = i32;
-    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; keep codegen deterministic on Xtensa")]
+    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; inlining must not depend on per-target heuristics")]
     #[inline(always)]
     fn xy(&self) -> (i32, i32) {
         // two overlapping in-struct word reads (x = low 3 bytes of the first,
         // y = high 3 of the second); read_unaligned is a single load where
         // hardware allows, byte assembly on strict-alignment cores (measured
-        // a tie with hand-blocked aligned loads on Xtensa — §15). Arithmetic
+        // a tie with hand-blocked aligned loads there — §15). Arithmetic
         // shifts sign-extend.
         let p = self.0.as_ptr();
         // SAFETY: both 4-byte reads lie within this 6-byte struct

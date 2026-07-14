@@ -816,12 +816,12 @@ impl Finder {
 }
 
 /// The ring-scan kernel for i16/i24-quant geometry (§14.11/§15): the
-/// sign-split kernel on 32-bit targets (0.61–0.72× the i64 kernel on the
-/// ESP32-S3 — its magnitudes take single widening multiplies where the W
-/// kernels' (b+1)-bit differences force full wide ones), the generic i64
-/// kernel on 64-bit targets (one-instruction wide multiplies; sign-split
-/// measured 2.3× SLOWER on `x86_64`). Ring verdicts are identical either
-/// way, so answers stay platform-independent.
+/// sign-split kernel on 32-bit targets (0.61–0.72× the i64 kernel there —
+/// its magnitudes take single widening multiplies where the W kernels'
+/// (b+1)-bit differences force full wide ones), the generic i64 kernel on
+/// 64-bit targets (one-instruction wide multiplies; sign-split measured
+/// 2.3× SLOWER on a 64-bit host). Ring verdicts are identical either way,
+/// so answers stay platform-independent.
 #[cfg(any(feature = "alloc", feature = "geom-image"))]
 fn ring_hit_narrow<P>(ring: &[P], px: P::Narrow, py: P::Narrow) -> pip::RingHit
 where
@@ -836,8 +836,8 @@ where
 }
 
 /// [`ring_hit_narrow`]'s i32-quant sibling: sign-split on 32-bit targets
-/// (0.24× the i128 kernel on the ESP32-S3 — §15), i128 on 64-bit ones
-/// (where i128 measured 0.75× of even the i64 kernel).
+/// (0.24× the i128 kernel there — §15), i128 on 64-bit ones (where i128
+/// measured 0.75× of even the i64 kernel).
 #[cfg(any(feature = "alloc", feature = "geom-image"))]
 fn ring_hit_wide(ring: &[(i32, i32)], px: i32, py: i32) -> pip::RingHit {
     #[cfg(target_pointer_width = "32")]
