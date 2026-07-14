@@ -76,10 +76,10 @@ pub use finder::{Finder, Position};
 ))]
 pub mod data {
     /// tiny preset: dataset `now`, RDP ε=10 000 m (pop-density floor 1e-3),
-    /// i16, 2° grid, gzip — ~67 K flash, peak decode RAM 119 K (§14.5).
+    /// i16, 2° grid, gzip — ~71 K flash, peak decode RAM 125 K (§14.5).
     #[cfg(feature = "tiny")]
     pub use utz_data_tiny::TINY;
-    /// tiny-static preset: tiny's decoded container shipped flat — ~119 K
+    /// tiny-static preset: tiny's decoded container shipped flat — ~125 K
     /// flash, zero-copy via [`Finder::from_static`](crate::Finder::from_static),
     /// ~0 RAM, no decoder, bare-`core` capable (§14.5).
     #[cfg(feature = "tiny-static")]
@@ -92,8 +92,8 @@ pub mod data {
     /// i24, 2/3° grid, brotli (§14.5).
     #[cfg(feature = "balanced")]
     pub use utz_data_balanced::BALANCED;
-    /// accurate preset: dataset `now`, RDP ε=10 m (pop-density floor 1e-1),
-    /// i32, 0.5° grid, brotli (§14.5).
+    /// accurate preset: dataset `all` (every distinct tzid), RDP ε=10 m
+    /// (pop-density floor 1e-1), i32, 0.5° grid, brotli (§14.5).
     #[cfg(feature = "accurate")]
     pub use utz_data_accurate::ACCURATE;
 }

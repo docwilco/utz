@@ -102,11 +102,13 @@ impl Config {
             .codec(Codec::Brotli)
     }
 
-    /// The `accurate` preset recipe (§14.5): RDP ε=10 m with pop-density
-    /// floor 1e-1, i32, 0.5° grid, brotli.
+    /// The `accurate` preset recipe (§14.5): dataset `all` (the full
+    /// Comprehensive zone set — the other presets use `now`), RDP ε=10 m
+    /// with pop-density floor 1e-1, i32, 0.5° grid, brotli.
     #[must_use]
     pub fn accurate() -> Self {
         Config::new()
+            .dataset("all")
             .rdp_meters(10.0)
             .density_weight_floor(0.10)
             .quant_bits(32)

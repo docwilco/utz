@@ -1,6 +1,7 @@
 //! Source loading (PLAN.md §5 steps 1–2). The source is always OSM
 //! timezone-boundary-builder **with-oceans**; the only choice is the merge
-//! vintage: `now` (65 zones, default) or `1970` (304 zones).
+//! vintage: `now` (65 zones, default), `1970` (304 zones), or `all`
+//! (444 zones).
 //!
 //! Download the `GeoJSON` zip (conditional GET) → parse.
 

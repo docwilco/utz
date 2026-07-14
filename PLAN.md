@@ -522,7 +522,7 @@ deliberate bare-metal intent and satisfies choice 2:
   CI invocations silently miss it and build with default knobs. Rejected for that
   silent-misconfiguration mode; a builder API or committed asset can't be missed.
 - **Costs accepted:** data crates republished per TZBB release (CI-automated;
-  67 K–3.9 MB each, under crates.io's 10 MB limit); preset+tweak means going custom
+  71 K–8.3 MB each, under crates.io's 10 MB limit); preset+tweak means going custom
   (three lines of build.rs).
 - **Provenance note:** the `.utz` in a data crate is gitignored and published via
   `cargo publish --allow-dirty`, so the artifact isn't byte-reproducible from a
@@ -618,16 +618,16 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
    dual-use consumer code).
 4. ~~**Antimeridian**~~ — **verified pre-split** (see §15); no split pass.
 5. ~~**Preset values** (ε/quant/grid/codec/window)~~ — **pinned 2026-07**
-   (all dataset `now`, pop-density-weighted; measured sizes from the first
-   full gen):
+   (dataset `now` except `accurate` = `all`, pop-density-weighted; measured
+   sizes from the TZBB 2026c gen):
 
-   | tier | ε (RDP) | quant | pop floor | grid | codec | size |
-   |---|---|---|---|---|---|---|
-   | `tiny` | 10 000 m | i16 | 1e-3 | 2° | gzip | 66.7 K (decode RAM 119 K) |
-   | `tiny-static` | 10 000 m | i16 | 1e-3 | 2° | none | 118.9 K flash, ~0 RAM |
-   | `compact` | 1 000 m | i24 | 1e-3 | 4/3° | xz | 441.4 K |
-   | `balanced` | 50 m | i24 | 2e-2 | 2/3° | brotli | 1 259 K |
-   | `accurate` | 10 m | i32 | 1e-1 | 0.5° | brotli | 3 919.7 K |
+   | tier | dataset | ε (RDP) | quant | pop floor | grid | codec | size |
+   |---|---|---|---|---|---|---|---|
+   | `tiny` | now | 10 000 m | i16 | 1e-3 | 2° | gzip | 70.9 K (decode RAM 125 K) |
+   | `tiny-static` | now | 10 000 m | i16 | 1e-3 | 2° | none | 124.9 K flash, ~0 RAM |
+   | `compact` | now | 1 000 m | i24 | 1e-3 | 4/3° | xz | 445.1 K |
+   | `balanced` | now | 50 m | i24 | 2e-2 | 2/3° | brotli | 1 271 K |
+   | `accurate` | all | 10 m | i32 | 1e-1 | 0.5° | brotli | 8 256 K |
 
    `tiny-static` is `tiny`'s decoded container with codec *none* —
    `core`-rung-compatible, zero decode RAM, more flash (`-static` = the codec
@@ -639,9 +639,11 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
    Brotli beats xz at i24 on flash AND decode speed in the §15 sweep and both
    are window-insensitive — hence brotli for balanced/accurate (no-stdlib
    mode + allocator shim landed 2026-07). Non-`now` datasets: **decided
-   custom-only (2026-07)** — the five data crates are the whole preset
-   surface; `-1970`/`-all` users go through the custom tier (three lines of
-   build.rs or the CLI). Variants can be added later without breakage.
+   custom-only (2026-07)**, revised with the TZBB 2026c upgrade — the top
+   preset should resolve every distinct tzid, so `accurate` moved to `all`
+   (the Comprehensive set); the four smaller presets stay `now`, and `-1970`
+   users go through the custom tier (three lines of build.rs or the CLI).
+   Variants can be added later without breakage.
 6. ~~Crate/repo name + public naming of feature groups~~ — confirmed `utz`;
    tiers unified under trade-off adjectives (`tiny`/`compact`/`balanced`/
    `accurate` + the `-static` codec-axis suffix, 2026-07). The metric-prefix

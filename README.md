@@ -32,11 +32,11 @@ PLAN.md §14.5); `custom` instead generates your own asset with `utz-build`:
 
 | feature | simplification | size | notes |
 |---|---|---|---|
-| `tiny` | ε 10 km, i16 | ~67 KB | gzip — ~119 KB RAM to decode |
-| `tiny-static` | ε 10 km, i16 | ~119 KB | `tiny` uncompressed: zero-copy from flash, ~0 RAM, runs on bare-metal `core` |
-| `compact` | ε 1 km, i24 | ~441 KB | xz |
+| `tiny` | ε 10 km, i16 | ~71 KB | gzip — ~125 KB RAM to decode |
+| `tiny-static` | ε 10 km, i16 | ~125 KB | `tiny` uncompressed: zero-copy from flash, ~0 RAM, runs on bare-metal `core` |
+| `compact` | ε 1 km, i24 | ~445 KB | xz |
 | `balanced` | ε 50 m, i24 | ~1.3 MB | brotli |
-| `accurate` | ε 10 m, i32 | ~3.9 MB | brotli |
+| `accurate` | ε 10 m, i32 | ~8.3 MB | brotli — full zone set (every distinct tzid); the others merge zones identical since now |
 
 ## Inspirations & credits
 
