@@ -883,12 +883,14 @@ Layer.prototype.offsetPx = function () {
   return j < 0 || n < 2 ? 0 : (j - (n - 1) / 2) * 1.2;
 };
 
+// defaults = the shipped bundle recipes (PLAN.md §14.5); tiny-static shares
+// tiny's geometry so it has no slot of its own. The raw/f64 reference and
+// the other algorithms stay one select away.
 var layers = [
-  new Layer(0, '#ff2d78', layerDef(0, { on: true, dsi: 0, algo: 0, eps: 500, quant: 3 })),
-  new Layer(1, '#00c8ff', layerDef(1, { on: false, dsi: 0, algo: 2, eps: 500, quant: 3 })),
-  new Layer(2, '#ffd400', layerDef(2, { on: false, dsi: 0, algo: 1, eps: 1000, quant: 3 })),
-  // green raw layer: full-res reference (Raw algo, f64) — heavy to draw
-  new Layer(3, '#00d95f', layerDef(3, { on: false, dsi: 0, algo: 3, eps: 500, quant: 0 })),
+  new Layer(0, '#ff2d78', layerDef(0, { on: true, dsi: 0, algo: 0, eps: 10000, quant: 4, w: 0.001 })), // tiny
+  new Layer(1, '#00c8ff', layerDef(1, { on: false, dsi: 0, algo: 0, eps: 1000, quant: 3, w: 0.001 })), // compact
+  new Layer(2, '#ffd400', layerDef(2, { on: false, dsi: 0, algo: 0, eps: 50, quant: 3, w: 0.02 })), // balanced
+  new Layer(3, '#00d95f', layerDef(3, { on: false, dsi: 2, algo: 0, eps: 10, quant: 2, w: 0.1 })), // accurate (dataset all)
 ];
 
 // apply the current overlap mode: pane blending, per-rank stroke widths, the
@@ -1016,13 +1018,20 @@ var encSlots = layers.map(function (ly) {
   sw.style.background = ly.color;
   s.label = document.createElement('span');
   // grid° control mirrors the coarse pre-filter's slider+box, just smaller:
-  // detents on the slider, exact values typed into the box
-  s.gridDeg = 2;
+  // detents on the slider, exact values typed into the box. Defaults follow
+  // the bundle recipes (tiny 2°, compact 4/3°, balanced 2/3°, accurate 0.5°)
+  // to match the default layer slots; the slider snaps to the nearest
+  // detent, the box keeps the exact value.
+  s.gridDeg = [2, 4 / 3, 2 / 3, 0.5][ly.idx];
   s.gridSl = document.createElement('input');
   s.gridSl.type = 'range';
   s.gridSl.min = 0;
   s.gridSl.max = GRID_DEG.length - 1;
-  s.gridSl.value = GRID_DEG.indexOf(2);
+  var nearest = 0;
+  GRID_DEG.forEach(function (d, j) {
+    if (Math.abs(d - s.gridDeg) < Math.abs(GRID_DEG[nearest] - s.gridDeg)) nearest = j;
+  });
+  s.gridSl.value = nearest;
   s.gridSl.style.width = '64px';
   s.gridSl.style.flex = 'none';
   s.gridSl.style.marginLeft = 'auto';

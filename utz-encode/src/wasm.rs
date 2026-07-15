@@ -365,5 +365,5 @@ pub extern "C" fn utz_enc_compress(codec: u32) -> u32 {
         4 => Codec::Xz,
         _ => return 0,
     };
-    encode::compress(&st.payload, codec).len() as u32
+    encode::compress(&st.payload, codec).map_or(0, |z| z.len() as u32)
 }
