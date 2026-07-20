@@ -224,6 +224,9 @@ impl Config {
                 .ok_or_else(|| crate::Error::NoOutDir)?;
             PathBuf::from(dir).join("tz.utz")
         };
+        if let Some(parent) = out.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         std::fs::write(&out, &bytes)?;
         write_guard(&out, self.geom, self.codec)?;
         Ok(out)

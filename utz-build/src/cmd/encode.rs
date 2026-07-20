@@ -95,6 +95,9 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         let w = a.w_min.map(|w| format!("-w{w}")).unwrap_or_default();
         PathBuf::from(format!("{}-{}m{}-{}.utz", a.ds, a.eps_m, w, a.codec))
     });
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     std::fs::write(&out, &container)?;
     utz_build::config::write_guard(&out, geom, codec)?;
     #[expect(clippy::cast_precision_loss, reason = "container size ≪ 2^53; KiB display")]
