@@ -64,7 +64,7 @@ mod finder;
 pub use finder::{Finder, Position};
 
 /// Preset assets baked in by the data-tier features (§11). With exactly one
-/// preset enabled, [`Finder::new`] loads it; with several in the tree, pick
+/// preset enabled, `Finder::new` loads it; with several in the tree, pick
 /// explicitly: `Finder::from_slice(utz::data::TINY)` /
 /// `Finder::from_static(utz::data::TINY_STATIC)`.
 #[cfg(any(

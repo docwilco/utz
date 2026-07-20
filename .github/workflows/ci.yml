@@ -83,9 +83,11 @@ jobs:
       - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features alloc,compact
       - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features alloc,balanced
       - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features alloc,accurate
-      # bring-your-own-asset rungs
-      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features core,custom
-      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features alloc,custom,gzip,ruzstd
+      # bring-your-own-asset rungs: custom carries no decoder, so pick them
+      # here — between the two lines all four geometry decoders build on
+      # bare metal (presets only ever exercise geom-varint)
+      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features core,custom,geom-image,geom-coarse
+      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features alloc,custom,gzip,ruzstd,geom-varint,geom-fixed
       # the shared bench harness must stay no_std (the ESP32-S3 firmware uses it)
       - run: cargo build -p utz-bench-common --target riscv32imac-unknown-none-elf
 

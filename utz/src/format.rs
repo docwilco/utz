@@ -42,7 +42,7 @@ pub struct Header {
     pub arc_offsets: usize, // u32[n_arcs+1]
     pub arc_data: usize,
     // ring index (v4: per-poly records; grid candidates are polys)
-    /// poly id → feature id, u16[`eager_polys`]
+    /// poly id → feature id, `u16[eager_polys]`
     pub parent: usize,
     pub poly_offsets: usize, // u32[eager_polys+1]
     pub ring_data: usize,

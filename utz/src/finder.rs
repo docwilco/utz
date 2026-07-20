@@ -315,7 +315,8 @@ impl Finder {
 
     /// Decode straight to eager mode, then drop the geometry sections
     /// (PLAN §14.10): steady-state RAM is the eager cache plus only the
-    /// header/tzid/grid tables — less than `from_slice` + [`preload`]
+    /// header/tzid/grid tables — less than `from_slice` +
+    /// [`preload`](Finder::preload)
     /// keeping the full decoded payload (−17% on the compact preset), with
     /// no separate preload pass. Peak RAM during construction is unchanged
     /// (decoded payload and cache briefly coexist; the arc store must be
@@ -400,7 +401,8 @@ impl Finder {
     }
 
     /// Decode all polygons into RAM once (eager mode, §9): repeat lookups
-    /// then skip the per-arc varint decode. Costs [`preload_bytes`]
+    /// then skip the per-arc varint decode. Costs
+    /// [`preload_bytes`](Finder::preload_bytes)
     /// (≈ uncompressed geometry at quant-nearest width: i16 pairs for
     /// i16-quant assets — half the cache — i32 otherwise, §14.11) in heap,
     /// reserved exactly up front from the v2 header counts — peak = final,
