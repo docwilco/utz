@@ -41,6 +41,18 @@
   .qsec.clp .qtitle::before { content: '▸'; }
   .qsec.clp .qbody { display: none; }
   .qtitle span { color: #5a6472; text-transform: none; letter-spacing: 0; }
+  #pxhead { font-size: 11px; color: #8b98a8; cursor: pointer; user-select: none; margin-bottom: 3px; }
+  #pxhead::before { content: '▸'; color: #5a6472; margin-right: 5px; font-size: 9px; }
+  #pxhead.open::before { content: '▾'; }
+  #pxhead span { color: #5a6472; }
+  #pxbody { display: none; margin-bottom: 6px; padding: 2px 8px 3px; background: #0d1117;
+    border: 1px solid #2a3542; border-radius: 6px; }
+  #pxhead.open + #pxbody { display: block; }
+  .pname { flex: none; width: 58px; font-size: 11px; }
+  .psum { flex: 1; color: #5a6472; font-size: 10px; font-variant-numeric: tabular-nums; }
+  .psw { width: 18px; height: 10px; border-radius: 3px; border: 1px solid #2a3542;
+    cursor: pointer; flex: none; padding: 0; }
+  .psw:hover, .psw:focus-visible { outline: 1px solid #e6edf3; }
   .slot { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
   .slot input[type=checkbox] { accent-color: #ffb454; width: 14px; height: 14px; flex: none; }
   .sw { width: 14px; height: 4px; border-radius: 2px; flex: none; }
@@ -86,6 +98,8 @@
   <p class="sub">TZBB datasets · runs the builder's own code (utz-encode → WASM) in workers</p>
   <div class="qsec" data-sec="layers">
     <div class="qtitle">Layers <span>· dataset / algorithm / ε / quantization / order</span></div>
+    <div id="pxhead" title="the shipped bundle recipes (PLAN.md §14.5)">presets <span>· click a color to load a recipe into that layer</span></div>
+    <div id="pxbody"></div>
     <div id="slots"></div>
     <div class="slot" title="how coincident layer lines are drawn, so one color doesn't hide the others">
       <span class="raw-label" style="color:#8b98a8">overlap</span>
@@ -796,6 +810,37 @@ Layer.prototype.request = function () {
     updateStats();
   });
 };
+// load a recipe into this slot: update every control, re-init the worker if
+// the dataset changed, enable the layer if it's off, and recompute
+Layer.prototype.applyDef = function (def) {
+  if (this.dsi !== def.dsi) {
+    this.dsi = def.dsi;
+    this.data = null; this.result = null;
+    if (this.worker) { this.worker.terminate(); this.worker = null; this.ready = false; }
+    this.layer.setLatLngs([]);
+  }
+  this.selDs.selectedIndex = this.dsi;
+  this.algo = def.algo; this.selAlgo.selectedIndex = def.algo;
+  this.eps = def.eps;
+  var ei = EPS_M.indexOf(def.eps);
+  this.selEps.selectedIndex = ei >= 0 ? ei : EPS_M.length;
+  this.epsRow.style.display = ei >= 0 ? 'none' : '';
+  if (ei < 0) {
+    this.epsSl.value = Math.max(0, Math.min(100, Math.round(25 * Math.log10(Math.max(1, def.eps)))));
+    this.epsV.value = def.eps;
+  }
+  this.quant = def.quant; this.selQuant.selectedIndex = def.quant;
+  this.order = def.order || 0; this.selOrder.selectedIndex = this.order;
+  this.pwx = def.w || null;
+  this.pwv = this.pwx ? Math.max(1, Math.min(100, Math.round(-50 * Math.log10(this.pwx)))) : 0;
+  this.popSl.value = this.pwv;
+  this.popV.value = this.wmin() < 1 ? this.popLabel() : 'off';
+  if (!this.on) { this.on = true; this.cb.checked = true; this.layer.addTo(map); }
+  this.syncDisabled();
+  applyOverlapMode(); // enabled set may have changed
+  this.request();
+  updateStats();
+};
 Layer.prototype.redraw = function () {
   if (!this.result || !this.on) return;
   var m = QUANT[this.quant].key;
@@ -883,15 +928,63 @@ Layer.prototype.offsetPx = function () {
   return j < 0 || n < 2 ? 0 : (j - (n - 1) / 2) * 1.2;
 };
 
-// defaults = the shipped bundle recipes (PLAN.md §14.5); tiny-static shares
-// tiny's geometry so it has no slot of its own. The raw/f64 reference and
-// the other algorithms stay one select away.
-var layers = [
-  new Layer(0, '#ff2d78', layerDef(0, { on: true, dsi: 0, algo: 0, eps: 10000, quant: 4, w: 0.001 })), // tiny
-  new Layer(1, '#00c8ff', layerDef(1, { on: false, dsi: 0, algo: 0, eps: 1000, quant: 3, w: 0.001 })), // compact
-  new Layer(2, '#ffd400', layerDef(2, { on: false, dsi: 0, algo: 0, eps: 50, quant: 3, w: 0.02 })), // balanced
-  new Layer(3, '#00d95f', layerDef(3, { on: false, dsi: 2, algo: 0, eps: 10, quant: 2, w: 0.1 })), // accurate (dataset all)
+// the shipped bundle recipes (PLAN.md §14.5) — single source for the default
+// layer slots, the preset quick-load box, and the per-layer encode grid°.
+// tiny-static shares tiny's geometry so it has no entry of its own.
+var PRESETS = [
+  { name: 'tiny', note: 'tiny-static ships this same geometry uncompressed', def: { dsi: 0, algo: 0, eps: 10000, quant: 4, w: 0.001 }, grid: 2 },
+  { name: 'compact', def: { dsi: 0, algo: 0, eps: 1000, quant: 3, w: 0.001 }, grid: 4 / 3 },
+  { name: 'balanced', def: { dsi: 0, algo: 0, eps: 50, quant: 3, w: 0.02 }, grid: 2 / 3 },
+  { name: 'accurate', def: { dsi: 2, algo: 0, eps: 10, quant: 2, w: 0.1 }, grid: 0.5 }, // dataset all
 ];
+function presetDef(i, on) {
+  var d = PRESETS[i].def, o = { on: on };
+  for (var k in d) o[k] = d[k];
+  return o;
+}
+
+// defaults = the recipes, one per slot; the raw/f64 reference and the other
+// algorithms stay one select away.
+var layers = [
+  new Layer(0, '#ff2d78', layerDef(0, presetDef(0, true))),
+  new Layer(1, '#00c8ff', layerDef(1, presetDef(1, false))),
+  new Layer(2, '#ffd400', layerDef(2, presetDef(2, false))),
+  new Layer(3, '#00d95f', layerDef(3, presetDef(3, false))),
+];
+
+// preset quick-load box under the Layers header: one row per recipe, ending
+// in the four slot colors — click a swatch to load that recipe into that
+// layer (its encode grid° follows the recipe too)
+var pxhead = document.getElementById('pxhead');
+pxhead.addEventListener('click', function () { pxhead.classList.toggle('open'); });
+PRESETS.forEach(function (p) {
+  var row = document.createElement('div'); row.className = 'slot';
+  if (p.note) row.title = p.note;
+  var nm = document.createElement('span'); nm.className = 'pname'; nm.textContent = p.name;
+  var sum = document.createElement('span'); sum.className = 'psum';
+  var d = p.def;
+  sum.textContent = DS_LIST[d.dsi] + ' · ' + ALGO[d.algo].name + ' · ε ' +
+    (d.eps >= 1000 ? d.eps / 1000 + ' km' : d.eps + ' m') + ' · ' + QUANT[d.quant].label +
+    ' · ×' + d.w + ' · ' + fmtDeg(p.grid);
+  row.appendChild(nm); row.appendChild(sum);
+  layers.forEach(function (ly, li) {
+    var b = document.createElement('button'); b.className = 'psw';
+    b.style.background = ly.color;
+    b.title = 'load ' + p.name + ' into this layer';
+    b.addEventListener('click', function () {
+      var s = encSlots[li];
+      s.gridDeg = p.grid;
+      s.gridIn.value = fmtDeg(p.grid);
+      var best = 0;
+      GRID_DEG.forEach(function (g, i) { if (Math.abs(g - p.grid) < Math.abs(GRID_DEG[best] - p.grid)) best = i; });
+      s.gridSl.value = best;
+      ly.applyDef(d);
+      syncHash();
+    });
+    row.appendChild(b);
+  });
+  document.getElementById('pxbody').appendChild(row);
+});
 
 // apply the current overlap mode: pane blending, per-rank stroke widths, the
 // divergence neutral layers, and a geometry refresh (offset/divergence change
@@ -1019,10 +1112,9 @@ var encSlots = layers.map(function (ly) {
   s.label = document.createElement('span');
   // grid° control mirrors the coarse pre-filter's slider+box, just smaller:
   // detents on the slider, exact values typed into the box. Defaults follow
-  // the bundle recipes (tiny 2°, compact 4/3°, balanced 2/3°, accurate 0.5°)
-  // to match the default layer slots; the slider snaps to the nearest
-  // detent, the box keeps the exact value.
-  s.gridDeg = [2, 4 / 3, 2 / 3, 0.5][ly.idx];
+  // the bundle recipes to match the default layer slots; the slider snaps
+  // to the nearest detent, the box keeps the exact value.
+  s.gridDeg = PRESETS[ly.idx].grid;
   s.gridSl = document.createElement('input');
   s.gridSl.type = 'range';
   s.gridSl.min = 0;
