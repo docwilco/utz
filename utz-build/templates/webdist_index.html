@@ -41,13 +41,13 @@
   .qsec.clp .qtitle::before { content: '▸'; }
   .qsec.clp .qbody { display: none; }
   .qtitle span { color: #5a6472; text-transform: none; letter-spacing: 0; }
-  #pxhead { font-size: 11px; color: #8b98a8; cursor: pointer; user-select: none; margin-bottom: 3px; }
+  #pxhead { float: right; font-size: 11px; color: #ffb454; cursor: pointer; user-select: none;
+    text-transform: none; letter-spacing: 0; }
   #pxhead::before { content: '▸'; color: #5a6472; margin-right: 5px; font-size: 9px; }
   #pxhead.open::before { content: '▾'; }
-  #pxhead span { color: #5a6472; }
-  #pxbody { display: none; margin-bottom: 6px; padding: 2px 8px 3px; background: #0d1117;
+  #pxbody { display: none; margin: 2px 0 6px; padding: 2px 8px 3px; background: #0d1117;
     border: 1px solid #2a3542; border-radius: 6px; }
-  #pxhead.open + #pxbody { display: block; }
+  #pxbody.open { display: block; }
   .pname { flex: none; width: 58px; font-size: 11px; }
   .psum { flex: 1; color: #5a6472; font-size: 10px; font-variant-numeric: tabular-nums; }
   .psw { width: 18px; height: 10px; border-radius: 3px; border: 1px solid #2a3542;
@@ -97,8 +97,8 @@
   <div id="pbody">
   <p class="sub">TZBB datasets · runs the builder's own code (utz-encode → WASM) in workers</p>
   <div class="qsec" data-sec="layers">
-    <div class="qtitle">Layers <span>· dataset / algorithm / ε / quantization / order</span></div>
-    <div id="pxhead" title="the shipped bundle recipes (PLAN.md §14.5)">presets <span>· click a color to load a recipe into that layer</span></div>
+    <div class="qtitle">Layers <span>· dataset / algorithm / ε / quantization / order</span><span
+      id="pxhead" title="the shipped bundle recipes (PLAN.md §14.5) — click a color to load one into that layer">presets</span></div>
     <div id="pxbody"></div>
     <div id="slots"></div>
     <div class="slot" title="how coincident layer lines are drawn, so one color doesn't hide the others">
@@ -943,20 +943,26 @@ function presetDef(i, on) {
   return o;
 }
 
-// defaults = the recipes, one per slot; the raw/f64 reference and the other
-// algorithms stay one select away.
+// defaults = the recipes for the first three slots; green starts as the
+// raw/f64 reference (quant only — no ε, no order, no pop weight), with
+// accurate one preset-box click away.
 var layers = [
   new Layer(0, '#ff2d78', layerDef(0, presetDef(0, true))),
   new Layer(1, '#00c8ff', layerDef(1, presetDef(1, false))),
   new Layer(2, '#ffd400', layerDef(2, presetDef(2, false))),
-  new Layer(3, '#00d95f', layerDef(3, presetDef(3, false))),
+  new Layer(3, '#00d95f', layerDef(3, { on: false, dsi: 0, algo: 3, eps: 10, quant: 0 })),
 ];
 
-// preset quick-load box under the Layers header: one row per recipe, ending
-// in the four slot colors — click a swatch to load that recipe into that
-// layer (its encode grid° follows the recipe too)
+// preset quick-load box, toggled by the "presets" link in the Layers title:
+// one row per recipe, ending in the four slot colors — click a swatch to
+// load that recipe into that layer (its encode grid° follows the recipe too)
 var pxhead = document.getElementById('pxhead');
-pxhead.addEventListener('click', function () { pxhead.classList.toggle('open'); });
+var pxbody = document.getElementById('pxbody');
+pxhead.addEventListener('click', function (e) {
+  e.stopPropagation(); // the title's own click collapses the whole section
+  pxhead.classList.toggle('open');
+  pxbody.classList.toggle('open');
+});
 PRESETS.forEach(function (p) {
   var row = document.createElement('div'); row.className = 'slot';
   if (p.note) row.title = p.note;
@@ -983,7 +989,7 @@ PRESETS.forEach(function (p) {
     });
     row.appendChild(b);
   });
-  document.getElementById('pxbody').appendChild(row);
+  pxbody.appendChild(row);
 });
 
 // apply the current overlap mode: pane blending, per-rank stroke widths, the
