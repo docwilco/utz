@@ -58,7 +58,7 @@ jobs:
       - run: cargo test -p utz --no-default-features --features std,tiny,tiny-static
       # the C-backed zstd decoder feature is compile-checked separately
       # (workspace tests use the pure-Rust ruzstd backend)
-      - run: cargo check -p utz --features std,zstd-sys
+      - run: cargo check -p utz --features std,custom,geom-varint,zstd-sys
       # cdylib per-build, not via crate-type — see utz-simplify/Cargo.toml
       - run: cargo rustc -p utz-simplify --release --target wasm32-unknown-unknown --crate-type cdylib
 
