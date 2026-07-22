@@ -30,6 +30,13 @@ const DOWNSAMPLE: usize = 8;
 const SIDECAR_MAGIC: &[u8; 4] = b"uTZd";
 const SIDECAR_NAME: &str = "ghs_pop_e2020_4326_ds8.bin";
 
+/// Path of the decoded density sidecar inside `cache_dir` — lets callers
+/// fingerprint the density data without loading it (webdist blob cache).
+#[must_use]
+pub fn sidecar_path(cache_dir: &Path) -> PathBuf {
+    cache_dir.join(SIDECAR_NAME)
+}
+
 /// Population density (people/km²) on a coarse global lon/lat grid.
 /// Row 0 is the northernmost; `dlat` is positive.
 pub struct DensityGrid {
@@ -52,7 +59,7 @@ impl DensityGrid {
     /// Corrupt sidecar, or on first build: GHS-POP download failure, zip
     /// extraction/TIFF decode failure, or I/O writing the sidecar.
     pub fn load(cache_dir: &Path) -> crate::Result<Self> {
-        let sidecar = cache_dir.join(SIDECAR_NAME);
+        let sidecar = sidecar_path(cache_dir);
         if sidecar.exists() {
             return Self::read_sidecar(&sidecar);
         }

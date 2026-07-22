@@ -38,6 +38,15 @@ jobs:
           path: cache
           key: source-data-${{ github.run_id }}
           restore-keys: source-data-
+      # webdist blobs are stamped with their inputs (utz-build binary, TZBB
+      # zip validators, density sidecar) — restoring the previous run's
+      # output lets unchanged datasets skip the multi-minute re-encode
+      - name: Cache webdist blobs
+        uses: actions/cache@v4
+        with:
+          path: webdist
+          key: webdist-${{ github.run_id }}
+          restore-keys: webdist-
       - name: Build webdist (viewer + dataset blobs)
         run: cargo run --release -p utz-build -- visualize webdist
       # rustdoc compiles the utz-data-* crates, whose assets are gitignored
