@@ -1,4 +1,4 @@
-//! Open-polyline simplification algorithms (PLAN.md §14.8), shared between the
+//! Open-polyline simplification algorithms, shared between the
 //! builder (`utz-build`, per-arc topology-aware pass) and the tuning-viewer
 //! HTML (compiled to WASM so the browser preview runs the exact code the
 //! builder runs — no JS reimplementation drift).
@@ -19,7 +19,7 @@
 //!
 //! Corridor/streaming algorithms (Reumann–Witkam, Opheim, Lang, Zhao–Saalfeld)
 //! were considered and rejected: they trade quality-per-vertex for single-pass
-//! speed, which is worthless at build time (PLAN.md §14.8).
+//! speed, which is worthless at build time.
 //!
 //! Each algorithm also has a weighted variant ([`simplify_weighted`], `*_w`):
 //! a per-vertex tolerance multiplier `w[i]` makes the effective parameter

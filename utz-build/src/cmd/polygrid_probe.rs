@@ -1,4 +1,4 @@
-//! Would a poly-granular grid replace the per-poly bboxes? (PLAN §10)
+//! Would a poly-granular grid replace the per-poly bboxes?
 //!
 //! Rebuilds the grid from a codec-*none* container's geometry twice with the
 //! real builder (`grid::build` + `intern_csr`): once per feature (today's

@@ -1,4 +1,4 @@
-//! Hand-rolled per-polygon integer point-in-polygon (PLAN.md §8).
+//! Hand-rolled per-polygon integer point-in-polygon.
 //!
 //! Even-odd ray cast (ray toward +x) over ONE polygon's rings — exterior
 //! first, holes after; parity XORs across rings, so a point inside a hole
@@ -6,7 +6,7 @@
 //! product `(b-a)×(p-a)` in a wide type decides crossing direction AND
 //! boundary (collinear) for each edge whose y-span touches the scanline.
 //!
-//! One generic kernel (§14.11), two type axes:
+//! One generic kernel, two type axes:
 //!
 //! `W` is the wide product type (overflow bound: product ≤ `4·coord_max²`):
 //! - `i64` — safe for i16/i24 grids (|coord| ≤ 2^23 → products ≤ 2^48).
@@ -17,16 +17,16 @@
 //! - `f64` — **test/bench only**, never dispatched by lookup.
 //!   Bit-exact for i16/i24 (products ≤ 2^48 < 2^53 — every product and
 //!   difference representable), silently inexact near boundaries at i32
-//!   (products ~2^62; the same failure mode as geometry-rs's float tests,
-//!   §15). Trade-off in one line: integer buys exact sign decisions at every
+//!   (products ~2^62; the same failure mode as geometry-rs's float
+//!   tests). Trade-off in one line: integer buys exact sign decisions at every
 //!   width and zero FPU dependency (soft-float parts, f32-only FPUs) at the
 //!   cost of double-width products; f64 is IEEE-deterministic and
 //!   SIMD-friendly on hosts but needs this exactness bound *proven* per
-//!   quant width — and on FPU-less cores it is the slow path (§15).
+//!   quant width — and on FPU-less cores it is the slow path.
 //!
 //! The coordinate storage is a [`CoordPair`]: decoded `(i32, i32)` pairs,
 //! `(i16, i16)` pairs at quant width (i16-quant eager cache and image
-//! sections — §14.11, half the RAM/flash traffic), or packed [`Pack24`]
+//! sections — half the RAM/flash traffic), or packed [`Pack24`]
 //! straight over image bytes. The kernel widens each vertex as it loads it;
 //! coordinate comparisons run at the narrow width.
 //!
@@ -37,7 +37,7 @@
 //! multiply isn't one instruction and the W kernels' (b+1)-bit differences
 //! force full-width multiplies, while sign-split magnitudes are true b-bit
 //! `abs_diff`s (one widening multiply each); on 64-bit hosts the same
-//! kernel measured 2.3× SLOWER than i64 (§15). The finder dispatches lookups to
+//! kernel measured 2.3× SLOWER than i64. The finder dispatches lookups to
 //! it on `target_pointer_width = "32"` only; verdicts are identical either
 //! way.
 //!
@@ -45,24 +45,24 @@
 //! are ambiguous between adjacent zones, and claiming them keeps lookup
 //! deterministic (first candidate polygon wins).
 //!
-//! Three granularities, one kernel (§9 memory modes):
+//! Three granularities, one kernel — one per memory mode:
 //! - [`contains`] — whole polygon from ring slices.
 //! - [`ring_hit`] — one ring (eager cache / image sections).
-//! - [`edge`] — one edge, the streaming unit (§14.7): the test is
+//! - [`edge`] — one edge, the streaming unit: the test is
 //!   per-segment, endpoint-symmetric, and parity accumulation is
 //!   order-independent, so lazy/static lookups fold arcs through it straight
 //!   off the container bytes with O(1) state and no decode buffer.
 
 use core::ops::{Mul, Sub};
 
-/// Trait alias for the kernel's wide product type — all pure core traits
-/// (§14.11), blanket-implemented, so `i64`/`i128`/`f64` qualify wherever the
+/// Trait alias for the kernel's wide product type — all pure core traits,
+/// blanket-implemented, so `i64`/`i128`/`f64` qualify wherever the
 /// narrow coordinate type `N` converts in losslessly.
 pub trait Wide<N>: Copy + PartialOrd + From<N> + Sub<Output = Self> + Mul<Output = Self> {}
 impl<N, W: Copy + PartialOrd + From<N> + Sub<Output = W> + Mul<Output = W>> Wide<N> for W {}
 
 /// Coordinate-pair storage the kernels widen from: pairs are stored at quant
-/// width (§14.11) — i16/i32 as typed tuples, i24 packed ([`Pack24`]).
+/// width — i16/i32 as typed tuples, i24 packed ([`Pack24`]).
 pub trait CoordPair: Copy {
     /// The narrow in-memory coordinate type; widened to `W` per edge.
     type Narrow: Copy + Ord;
@@ -199,7 +199,7 @@ where
 /// Sign-split arithmetic of a narrow coordinate type: the unsigned product
 /// type one cross-product half fits EXACTLY — `(2^b−1)² ≤ 2^2b − 1`, i.e.
 /// the compare form needs only 2b bits where [`edge`]'s subtract form needs
-/// 2b+2 (§14.11/§15). The magnitudes are true b-bit `abs_diff`s, so each
+/// 2b+2. The magnitudes are true b-bit `abs_diff`s, so each
 /// product is one widening multiply even on cores whose word is b bits —
 /// unlike the W kernels, whose (b+1)-bit differences force full wide
 /// multiplies there.
@@ -257,13 +257,13 @@ where
     }
 }
 
-/// The sign-split edge kernel — [`edge`] without the wide type (§14.11/§15):
+/// The sign-split edge kernel — [`edge`] without the wide type:
 /// each cross-product half becomes a sign (narrow comparisons) times an
 /// exact unsigned magnitude product ([`Narrow::magnitude_product`]). Strictly a
 /// 32-bit-core kernel — the i16 instantiation measured 0.75× the i64
 /// kernel on a 32-bit core but 2.3× (slower) on a 64-bit host, where a
 /// wide multiply is one instruction and the extra branches only cost —
-/// which is why lookups use it on 32-bit targets alone (§15).
+/// which is why lookups use it on 32-bit targets alone.
 ///
 /// Normalizes the edge upward first: swapping endpoints negates the cross
 /// product, folding [`edge`]'s up/down branches into one, and the upward
@@ -312,7 +312,7 @@ pub fn edge_split<N: Narrow>(a: (N, N), b: (N, N), px: N, py: N) -> EdgeHit {
 /// requirement. The unpack compiles to whatever the target does best
 /// (single unaligned-style loads where hardware allows, byte assembly on
 /// strict-alignment cores — measured a tie with hand-blocked aligned
-/// loads there, §15).
+/// loads there).
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 #[cfg(feature = "geom-image")]
@@ -327,7 +327,7 @@ impl CoordPair for Pack24 {
         // two overlapping in-struct word reads (x = low 3 bytes of the first,
         // y = high 3 of the second); read_unaligned is a single load where
         // hardware allows, byte assembly on strict-alignment cores (measured
-        // a tie with hand-blocked aligned loads there — §15). Arithmetic
+        // a tie with hand-blocked aligned loads there). Arithmetic
         // shifts sign-extend.
         let p = self.0.as_ptr();
         // SAFETY: both 4-byte reads lie within this 6-byte struct
@@ -529,7 +529,7 @@ mod tests {
         }
     }
 
-    /// cross-validate against the geo i64 oracle (PLAN.md §8) on random
+    /// cross-validate against the geo i64 oracle on random
     /// integer polygons — interiors must agree everywhere off-boundary.
     #[test]
     #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, reason = "test PRNG: values constructed within i24/i32 range")]

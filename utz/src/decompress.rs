@@ -1,15 +1,15 @@
-//! Codec backends (PLAN.md §7). Each cargo feature compiles in the decoder
+//! Codec backends. Each cargo feature compiles in the decoder
 //! for one outer-header codec byte; a container whose codec is not compiled
 //! in fails with [`Error::Decompress`]. Backends:
 //!
 //! | feature    | codec byte | crate                | needs `std`? |
 //! |------------|-----------:|----------------------|--------------|
 //! | (always)   | 0          | — (memcpy)           | no           |
-//! | `gzip`     | 1          | `miniz_oxide`          | no (alloc)   |
-//! | `ruzstd`   | 2          | ruzstd (pure Rust)   | no (alloc)   |
-//! | `zstd-sys` | 2          | zstd (C libzstd)     | yes          |
-//! | `brotli`   | 3          | brotli-decompressor (no-stdlib) | no (alloc) |
-//! | `xz`       | 4          | lzma-rust2 (`no_std`)  | no (alloc)   |
+//! | `gzip`     | 1          | [`miniz_oxide`](https://docs.rs/miniz_oxide) | no (alloc)   |
+//! | `ruzstd`   | 2          | [`ruzstd`](https://docs.rs/ruzstd) (pure Rust) | no (alloc)   |
+//! | `zstd-sys` | 2          | [`zstd`](https://docs.rs/zstd) (C libzstd) | yes          |
+//! | `brotli`   | 3          | [`brotli-decompressor`](https://docs.rs/brotli-decompressor) (no-stdlib) | no (alloc) |
+//! | `xz`       | 4          | [`lzma-rust2`](https://docs.rs/lzma-rust2) (`no_std`) | no (alloc) |
 //!
 //! If both zstd backends are enabled, `zstd-sys` wins (faster).
 
@@ -34,7 +34,8 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>, Err
             // gives the exact size): the output slice doubles as the DEFLATE
             // history, so decode RAM is decoded + ~10 K tables.
             // decompress_to_vec_zlib would grow an unhinted Vec instead —
-            // realloc overlap peaks at ~1.4× decoded (window-sweep, §7).
+            // realloc overlap peaks at ~1.4× decoded (measured by the
+            // window-sweep bench).
             let mut out = alloc::vec![0u8; raw_len];
             let n = miniz_oxide::inflate::decompress_slice_iter_to_slice(
                 &mut out,
@@ -55,7 +56,7 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>, Err
             // Drive the decoder block-by-block, draining after each one:
             // decode_all_to_vec batches up to 1 MiB in the internal decode
             // buffer before draining, peaking at ~2× decoded regardless of
-            // the frame's window and defeating the window knob (§7). This
+            // the frame's window and defeating the window knob. This
             // loop keeps the internal buffer at window + one block.
             let mut input = body;
             let mut dec = FrameDecoder::new();

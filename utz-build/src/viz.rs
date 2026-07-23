@@ -1,4 +1,4 @@
-//! Webdist viewer emission (PLAN.md §12): one static Leaflet page plus binary
+//! Webdist viewer emission: one static Leaflet page plus binary
 //! data blobs per TZBB dataset (arcs + per-vertex densities) and a shared
 //! heat raster. Everything is generated on demand — never a committed asset.
 

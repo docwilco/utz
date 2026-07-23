@@ -1,9 +1,9 @@
-//! Preset-tier smoke test (§11): `Finder::new()` borrows the baked-in
+//! Preset-tier smoke test: `Finder::new()` borrows the baked-in
 //! tiny-static asset zero-copy — the `core`-rung preset (the utz rlib builds
 //! without `alloc`; the test binary itself links std, that's fine).
 //! Run with: cargo test -p utz --no-default-features --features core,tiny-static
 
-// mirrors the Finder::new() exactly-one-preset cfg (§11)
+// mirrors the Finder::new() exactly-one-preset cfg
 #![cfg(all(feature = "tiny-static", not(any(feature = "tiny", feature = "compact", feature = "balanced", feature = "accurate"))))]
 
 #[test]

@@ -1,4 +1,4 @@
-// Measurement backlog #7 (PLAN.md §15): antimeridian scan — is TZBB with-oceans
+// Antimeridian scan: is TZBB with-oceans
 // already split at ±180°? Flags any edge whose lon span exceeds 180° (a true
 // crossing stored planar) and any coordinate outside [-180, 180] / [-90, 90].
 //

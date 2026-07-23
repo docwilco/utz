@@ -1,5 +1,5 @@
 //! Generates the uncompressed twins of the compact/balanced presets through
-//! the consumer builder API (`utz-build` as a build-dependency — the PLAN §11
+//! the consumer builder API (`utz-build` as a build-dependency — the
 //! custom-tier path, dogfooded). The preset shapes come from the `utz-data-*`
 //! crates via `utz` features; only the codec-none twins, which no data crate
 //! ships, are built here. One copy for both benches (exposed as
@@ -24,7 +24,7 @@ fn main() {
         .out_path(format!("{out}/balanced-none.utz"))
         .generate()
         .expect("generate balanced-none.utz");
-    // fixed-width-arc twins: the XIP speed tier (§13/§15 — streaming
+    // fixed-width-arc twins: the XIP speed tier (streaming
     // lookups skip varint decode; costs flash, zero RAM). tiny = i16,
     // compact = i24 (heavier read_fixed byte assembly)
     Config::tiny()
@@ -39,7 +39,7 @@ fn main() {
         .out_path(format!("{out}/compact-fixed-none.utz"))
         .generate()
         .expect("generate compact-fixed-none.utz");
-    // eager-image twins (§15): the geometry section IS the preload cache —
+    // eager-image twins: the geometry section IS the preload cache —
     // slice kernels run straight off flash (eager speed, zero RAM, no boot)
     Config::tiny()
         .codec(Codec::Uncompressed)

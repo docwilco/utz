@@ -1,4 +1,4 @@
-//! Multi-preset build (§11): with two presets in the tree `Finder::new()` is
+//! Multi-preset build: with two presets in the tree `Finder::new()` is
 //! cfg'd out — consumers load explicitly, and the compressed and flat tiny
 //! variants must answer identically (same decoded container).
 //! Run with: cargo test -p utz --no-default-features --features std,tiny,tiny-static

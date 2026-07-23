@@ -1,4 +1,4 @@
-// Measurement backlog (PLAN.md §7 + §15): ratio-vs-window sweep + MEASURED
+// Ratio-vs-window sweep + MEASURED
 // peak decode RAM. Encodes the real payload per codec across window/dict
 // sizes (capped at decoded size), then decodes each blob through the exact
 // paths `utz` ships (`utz::decompress` — ruzstd backend here, not zstd-sys)
@@ -70,7 +70,7 @@ pub struct Args {
 }
 
 pub fn run(a: &Args) -> utz_build::Result<()> {
-    // preset candidates (§14.5): i16 pairs with ε≥500, i24 with ε≤250 (§15)
+    // preset candidates: i16 pairs with ε≥500, i24 with ε≤250
     let shapes: Vec<(f64, u32)> = match a.eps {
         Some(e) => vec![(e, a.quant.unwrap_or(if e <= 250.0 { 24 } else { 16 }))],
         None => vec![(2000.0, 16), (1000.0, 16), (500.0, 16), (250.0, 24), (100.0, 24)],
@@ -109,7 +109,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
             let (out, peak, ms) = measure(|| utz::decompress::decompress(codec as u8, raw, &blob));
             let out = out.map_err(|e| Error::Msg(format!("{name} decode: {e:?}")))?;
             ensure!(out == payload, Error::Msg(format!("{name} roundtrip mismatch")));
-            let win_eff = window.min(raw); // beyond raw, back-refs can't reach (§7)
+            let win_eff = window.min(raw); // beyond raw, back-refs can't reach
             #[expect(clippy::cast_precision_loss, reason = "blob/raw/peak byte sizes ≪ 2^53; KiB and ratio display")]
             let (comp_kb, ratio, peak_kb, state_kb) = (
                 blob.len() as f64 / 1024.0,

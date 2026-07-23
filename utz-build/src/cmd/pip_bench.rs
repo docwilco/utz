@@ -1,4 +1,4 @@
-// Measurement backlog #2 (PLAN.md §15): hand-rolled i64 PIP vs the geo i64
+// Hand-rolled i64 PIP vs the geo i64
 // oracle vs geometry-rs (tzf-rs's PIP crate, tidwall/geometry port) on real
 // OSM geometry — correctness (target 0 disagreements vs geo) + speed.
 //

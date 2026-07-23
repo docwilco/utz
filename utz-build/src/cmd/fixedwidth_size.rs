@@ -1,5 +1,5 @@
-//! What does dropping delta+varint geometry cost in flash? (PLAN §13
-//! fixed-width arcs / §14.10 streaming-eager discussion.)
+//! What does dropping delta+varint geometry cost in flash? (The
+//! fixed-width-arcs / streaming-eager question.)
 //!
 //! For a codec-*none* container, rebuilds the payload in two variants and
 //! compresses all three with the preset encoders (`utz_encode::compress`):

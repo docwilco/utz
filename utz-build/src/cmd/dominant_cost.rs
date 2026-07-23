@@ -1,4 +1,4 @@
-// Measurement backlog #1 (PLAN.md §15): dominant-first candidate-list ordering —
+// Dominant-first candidate-list ordering —
 // how many extra unique lists / KB does it cost vs id-sorted interning, and how
 // much PIP early-exit does each ordering actually buy?
 //

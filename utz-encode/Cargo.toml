@@ -6,7 +6,7 @@ license.workspace = true
 publish = false
 
 # `lib` for the builder (utz-build). The webdist viewer's live container
-# encode (PLAN.md §12) wants a WASM cdylib of the same encoder (plus the
+# encode wants a WASM cdylib of the same encoder (plus the
 # utz-simplify exports it links in) — requested per-build, NOT via crate-type:
 #   cargo rustc -p utz-encode --release --target wasm32-unknown-unknown --crate-type cdylib
 # (a `cdylib` crate-type would give every build unhashed artifact names, which

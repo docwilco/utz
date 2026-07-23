@@ -3,7 +3,7 @@
 //! of signed arc references. Optional topology-aware Ramer–Douglas–Peucker
 //! (RDP) line simplification runs on each arc a single time (endpoints fixed),
 //! so neighbouring polygons stay stitched. Other open-polyline simplifiers
-//! could slot into the same per-arc pass (PLAN.md §14).
+//! could slot into the same per-arc pass.
 
 use std::collections::HashMap;
 

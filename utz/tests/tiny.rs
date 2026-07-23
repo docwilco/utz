@@ -1,7 +1,7 @@
-//! Preset-tier smoke test (§11): `Finder::new()` decodes the baked-in tiny
+//! Preset-tier smoke test: `Finder::new()` decodes the baked-in tiny
 //! asset. Run with: cargo test -p utz --no-default-features --features std,tiny
 
-// mirrors the Finder::new() exactly-one-preset cfg (§11)
+// mirrors the Finder::new() exactly-one-preset cfg
 #![cfg(all(feature = "tiny", not(any(feature = "tiny-static", feature = "compact", feature = "balanced", feature = "accurate"))))]
 
 #[test]

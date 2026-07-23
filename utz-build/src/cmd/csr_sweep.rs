@@ -1,4 +1,4 @@
-// Measurement backlog (PLAN.md §15): grid size × P(PIP) × memory with the
+// Grid size × P(PIP) × memory with the
 // *real* grid + interned-CSR builder (grid.rs), replacing gridsweep's crude
 // border-cell estimate. For each cell size: border-cell fraction, sampled
 // P(PIP) over uniform lon/lat points, unique interned lists, and the memory

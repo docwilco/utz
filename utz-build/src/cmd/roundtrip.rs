@@ -94,7 +94,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     println!("lookup_coarse: {answered}/{npts} answered, {:.2} µs/point", us_per_point(start.elapsed()));
 
     // zero-copy static source (core-rung path) must answer identically —
-    // lazy lookup streams PIP straight off the borrowed bytes (§9, §14.7)
+    // lazy lookup streams PIP straight off the borrowed bytes
     let static_finder = utz::Finder::from_static(Box::leak(container.clone().into_boxed_slice()))
         .expect("static decode");
     let nstatic = npts.min(20_000);
@@ -103,7 +103,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     }
     println!("from_static lookup: agrees over {nstatic}");
 
-    // eager mode (§9): preload, must agree everywhere; report heap + speedup
+    // eager mode: preload, must agree everywhere; report heap + speedup
     let mut eager_finder = utz::Finder::from_reader(&container[..]).expect("decode");
     let ((), heap, ms) = super::window_sweep::measure(|| eager_finder.preload());
     let start = Instant::now();

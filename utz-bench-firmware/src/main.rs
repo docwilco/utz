@@ -1,4 +1,4 @@
-//! μTZ lookup bench on ESP32-S3 — the PLAN §15 flash-latency matrix.
+//! μTZ lookup bench on ESP32-S3 — the on-target flash-latency matrix.
 //!
 //! Embeds each preset shape (tiny / compact / balanced) twice — the preset's
 //! compressed asset and its uncompressed twin — and measures every memory
@@ -329,7 +329,7 @@ fn main() -> ! {
 
     // --- streaming from flash (XIP, zero-copy) ---
     xip_leg("tiny xip-flash", TINY_NONE, &pts);
-    // fixed-width arcs: same geometry, no per-vertex varint decode (§13);
+    // fixed-width arcs: same geometry, no per-vertex varint decode;
     // tiny = i16, compact = i24 (heavier read_fixed byte assembly)
     xip_leg("tiny-fixed xip-flash", TINY_FIXED, &pts);
     xip_leg("compact xip-flash", COMPACT_NONE, &pts);
@@ -441,7 +441,7 @@ fn kernel_bench() {
 /// The i32-quant kernel matrix: sign-split u64 vs the i128 kernel over a
 /// FULL-i32-range ring — the only two exact kernels at this width (i64
 /// overflows, f64 is inexact), so the pair must agree and their ratio is
-/// the §14.11 "retire i128 on 32-bit cores" answer.
+/// the "retire i128 on 32-bit cores" answer.
 fn kernel_bench_i32() {
     use utz::pip::{ring_hit, ring_hit_split, RingHit};
     const N: usize = 8192;
@@ -483,7 +483,7 @@ fn kernel_bench_i32() {
     );
 }
 
-/// The i16 kernel matrix (§14.11/§15): the shipped sign-split kernel
+/// The i16 kernel matrix: the shipped sign-split kernel
 /// (`pip::ring_hit_split` — what i16-quant eager/image lookups dispatch)
 /// vs the generic i64 kernel on the identical `(i16, i16)` slice, plus the
 /// same geometry widened to `(i32, i32)` pairs for the load-width effect.
@@ -544,7 +544,7 @@ fn kernel_bench_i16() {
     );
 }
 
-/// The 15-bit-quant question (§15): quantizing one bit shy of the storage
+/// The 15-bit-quant question: quantizing one bit shy of the storage
 /// width (|coord| ≤ 2^14) makes the plain compare-form kernel exact at
 /// `W = i32` — differences fit 15 bits, each cross-product half fits 2^30 —
 /// with no swap and no sign classification. Races it against the i64 kernel

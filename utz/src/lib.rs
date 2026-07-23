@@ -1,16 +1,16 @@
 //! `μTZ` — micro-timezone: tiny, embeddable lat/lon → IANA tzid lookup.
 //!
-//! Self-describing container (see PLAN.md §4) → one generic decoder: grid
+//! Self-describing container (see [`format`](mod@format)) → one generic decoder: grid
 //! prefilter, then per-polygon integer PIP. Three memory modes, selected by
-//! how the container is loaded (§9): **zero-copy** (uncompressed asset
+//! how the container is loaded: **zero-copy** (uncompressed asset
 //! borrowed from any static source), **lazy** (payload decompressed into
 //! owned RAM, no decoded-geometry cache), **eager** ([`Finder::preload`]:
 //! all rings decoded up front). `no_std`-first: API availability follows
-//! the environment ladder `core` ⊂ `alloc` ⊂ `std` (§11).
+//! the environment ladder `core` ⊂ `alloc` ⊂ `std`.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-// §11: three mandatory, at-least-one-of feature choices. "At least one of"
+// Three mandatory, at-least-one-of feature choices. "At least one of"
 // errors can only be *silenced* by feature union, never triggered — safe
 // under cargo's feature unification. The message is the onboarding.
 #[cfg(not(any(
@@ -63,7 +63,7 @@ pub mod pip;
 mod finder;
 pub use finder::{Finder, Position};
 
-/// Preset assets baked in by the data-tier features (§11). With exactly one
+/// Preset assets baked in by the data-tier features. With exactly one
 /// preset enabled, `Finder::new` loads it; with several in the tree, pick
 /// explicitly: `Finder::from_slice(utz::data::TINY)` /
 /// `Finder::from_static(utz::data::TINY_STATIC)`.
@@ -76,24 +76,24 @@ pub use finder::{Finder, Position};
 ))]
 pub mod data {
     /// tiny preset: dataset `now`, RDP ε=10 000 m (pop-density floor 1e-3),
-    /// i16, 2° grid, gzip — ~71 K flash, peak decode RAM 125 K (§14.5).
+    /// i16, 2° grid, gzip — ~71 K flash, peak decode RAM 125 K.
     #[cfg(feature = "tiny")]
     pub use utz_data_tiny::TINY;
     /// tiny-static preset: tiny's decoded container shipped flat — ~125 K
     /// flash, zero-copy via [`Finder::from_static`](crate::Finder::from_static),
-    /// ~0 RAM, no decoder, bare-`core` capable (§14.5).
+    /// ~0 RAM, no decoder, bare-`core` capable.
     #[cfg(feature = "tiny-static")]
     pub use utz_data_tiny_static::TINY_STATIC;
     /// compact preset: dataset `now`, RDP ε=1 000 m (pop-density floor 1e-3),
-    /// i24, 4/3° grid, xz (§14.5).
+    /// i24, 4/3° grid, xz.
     #[cfg(feature = "compact")]
     pub use utz_data_compact::COMPACT;
     /// balanced preset: dataset `now`, RDP ε=50 m (pop-density floor 2e-2),
-    /// i24, 2/3° grid, brotli (§14.5).
+    /// i24, 2/3° grid, brotli.
     #[cfg(feature = "balanced")]
     pub use utz_data_balanced::BALANCED;
     /// accurate preset: dataset `all` (every distinct tzid), RDP ε=10 m
-    /// (pop-density floor 1e-1), i32, 0.5° grid, brotli (§14.5).
+    /// (pop-density floor 1e-1), i32, 0.5° grid, brotli.
     #[cfg(feature = "accurate")]
     pub use utz_data_accurate::ACCURATE;
 }

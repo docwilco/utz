@@ -1,5 +1,5 @@
 //! `eager_from_slice` agrees with `from_slice` + `preload` everywhere
-//! (§14.10 decode-to-eager: geometry sections dropped, grid/tzid kept).
+//! (decode-to-eager: geometry sections dropped, grid/tzid kept).
 //! Run with: cargo test -p utz --no-default-features --features std,tiny
 
 #![cfg(feature = "tiny")]

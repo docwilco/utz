@@ -1,7 +1,7 @@
-//! Preset-tier smoke test (§11): `Finder::new()` decodes the baked-in accurate
+//! Preset-tier smoke test: `Finder::new()` decodes the baked-in accurate
 //! asset. Run with: cargo test -p utz --no-default-features --features std,accurate
 
-// mirrors the Finder::new() exactly-one-preset cfg (§11)
+// mirrors the Finder::new() exactly-one-preset cfg
 #![cfg(all(feature = "accurate", not(any(feature = "tiny", feature = "tiny-static", feature = "compact", feature = "balanced"))))]
 
 #[test]

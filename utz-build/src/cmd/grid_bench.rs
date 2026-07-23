@@ -1,4 +1,4 @@
-// Measurement backlog #3 (PLAN.md §15): real grid lookup bench — interned-CSR
+// Real grid lookup bench: interned-CSR
 // grid prefilter (interior O(1), border cells → dominant-first PIP) vs the
 // plain linear first-hit scan, on the same quantized simplified geometry.
 //

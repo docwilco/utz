@@ -1,4 +1,4 @@
-// Measurement backlog #4 + #6 (PLAN.md §15): full pipeline size table on the
+// Full pipeline size table on the
 // REAL container — topology × RDP(ε) × quant(i16/i24) × codec (incl gzip).
 //
 // usage: utz-build size-table [ds] [grid_deg]

@@ -10,7 +10,7 @@ mod cmd;
 enum Cmd {
     /// Generate the webdist viewer (static page + per-dataset binary blobs)
     Visualize(cmd::visualize::Args),
-    /// Generate a .utz container to disk (the §11 custom-tier CLI;
+    /// Generate a .utz container to disk (the custom-tier CLI;
     /// also feeds bench-cli / firmware)
     #[command(visible_alias = "encode")]
     Gen(cmd::encode::Args),

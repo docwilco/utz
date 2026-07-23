@@ -4,8 +4,8 @@
 //! the measurement examples ported from the old `formatlab` prototype. Also
 //! hosts the viz tool.
 //!
-//! The source is always OSM timezone-boundary-builder **with-oceans** (NED was
-//! dropped; see PLAN.md §1). The only dataset choice is the merge vintage:
+//! The source is always OSM timezone-boundary-builder **with-oceans** (NED
+//! was evaluated and dropped). The only dataset choice is the merge vintage:
 //! `now` (65 zones, default), `1970` (304 zones), or `all` (444 zones).
 
 // encoder core (types, topo, grid, encode) lives in utz-encode (WASM-shared);
@@ -26,7 +26,7 @@ pub use config::Config;
 use std::path::PathBuf;
 
 
-/// The two dataset knobs (PLAN.md §6): merge vintage × ocean coverage.
+/// The two dataset knobs: merge vintage × ocean coverage.
 /// TZBB's terminology: `now` = "Same since now", `1970` = "Same since 1970",
 /// `all` = "Comprehensive" (every tzid, unsuffixed release). `μTZ` defaults to
 /// with-oceans; a `land-` prefix selects the land-only releases.
@@ -80,7 +80,7 @@ pub fn load(ds: &str) -> crate::Result<Vec<Feat>> {
 }
 
 /// [`load`] plus the TZBB release tag the features came from — for stamping
-/// container headers (provenance, §11). `"dev"` when the source isn't a
+/// container headers (provenance). `"dev"` when the source isn't a
 /// pinned release (offline fallback).
 ///
 /// # Errors

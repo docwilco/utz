@@ -1,6 +1,6 @@
 //! Every geometry encoding of the same recipe answers identically — the
 //! build.rs twins cross-checked over the deterministic bench points, lazy
-//! and preloaded. Pins the width-dispatch matrix (§14.11): tiny (i16 quant)
+//! and preloaded. Pins the width-dispatch matrix: tiny (i16 quant)
 //! exercises the narrow i16 eager cache and the `(i16, i16)` image kernel;
 //! compact (i24) the i32 eager cache and the `Pack24` image kernel.
 

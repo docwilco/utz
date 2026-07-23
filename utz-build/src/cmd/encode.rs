@@ -29,11 +29,11 @@ pub struct Args {
     /// grid cell size in integer degrees
     #[arg(long, default_value_t = 2.0)]
     grid_deg: f64,
-    /// simplification algorithm: rdp|ii (visvalingam: builder API only, §14.8)
+    /// simplification algorithm: rdp|ii (visvalingam: builder API only)
     #[arg(long, default_value = "rdp")]
     algo: String,
     /// geometry encoding: varint|fixed|eager (fixed: +flash, streaming lookups
-    /// skip varint decode — the XIP -static speed tier, §13)
+    /// skip varint decode — the XIP -static speed tier)
     #[arg(long, default_value = "varint")]
     geom: String,
     /// enable population weighting with this floor multiplier (e.g. 0.052)

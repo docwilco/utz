@@ -1,4 +1,4 @@
-//! Consumer-facing builder API for the `custom` tier (PLAN.md §11): the
+//! Consumer-facing builder API for the `custom` tier: the
 //! typed config IS the build config — rustdoc'd, IDE-completable, no file
 //! discovery. Meant for a consumer `build.rs` with `utz-build` as a
 //! build-dependency (`prost-build` pattern):
@@ -16,10 +16,10 @@
 //! ```
 //!
 //! Source data (TZBB, optionally GHS-POP for density weighting) is fetched
-//! into the cache, never committed (§5); downloads are cond-GET-cached so
+//! into the cache, never committed; downloads are cond-GET-cached so
 //! regeneration is cheap.
 //!
-//! The preset recipes (§14.5) double as constructors — start from one and
+//! The preset recipes double as constructors — start from one and
 //! override a single knob instead of spelling the whole recipe:
 //! `Config::compact().codec(Codec::Uncompressed)`.
 
@@ -64,7 +64,7 @@ impl Config {
         Config::default()
     }
 
-    /// The `tiny` preset recipe (§14.5): RDP ε=10 000 m with pop-density
+    /// The `tiny` preset recipe: RDP ε=10 000 m with pop-density
     /// floor 1e-3, i16, 2° grid, gzip. A preset constructor is a starting
     /// point for one-knob variants — `tiny-static` is
     /// `Config::tiny().codec(Codec::Uncompressed)`.
@@ -78,7 +78,7 @@ impl Config {
             .codec(Codec::Gzip)
     }
 
-    /// The `compact` preset recipe (§14.5): RDP ε=1 000 m with pop-density
+    /// The `compact` preset recipe: RDP ε=1 000 m with pop-density
     /// floor 1e-3, i24, 4/3° grid, xz.
     #[must_use]
     pub fn compact() -> Self {
@@ -90,7 +90,7 @@ impl Config {
             .codec(Codec::Xz)
     }
 
-    /// The `balanced` preset recipe (§14.5): RDP ε=50 m with pop-density
+    /// The `balanced` preset recipe: RDP ε=50 m with pop-density
     /// floor 2e-2, i24, 2/3° grid, brotli.
     #[must_use]
     pub fn balanced() -> Self {
@@ -102,7 +102,7 @@ impl Config {
             .codec(Codec::Brotli)
     }
 
-    /// The `accurate` preset recipe (§14.5): dataset `all` (the full
+    /// The `accurate` preset recipe: dataset `all` (the full
     /// Comprehensive zone set — the other presets use `now`), RDP ε=10 m
     /// with pop-density floor 1e-1, i32, 0.5° grid, brotli.
     #[must_use]
@@ -116,7 +116,7 @@ impl Config {
             .codec(Codec::Brotli)
     }
 
-    /// Dataset: `[land-]now|1970|all` (§6).
+    /// Dataset: `[land-]now|1970|all` (see [`Dataset`](crate::Dataset)).
     #[must_use]
     pub fn dataset(mut self, ds: &str) -> Self {
         self.dataset = ds.into();
@@ -130,21 +130,21 @@ impl Config {
         self
     }
 
-    /// Quantization width: 16 / 24 / 32 (§8).
+    /// Quantization width: 16 / 24 / 32.
     #[must_use]
     pub fn quant_bits(mut self, bits: u32) -> Self {
         self.quant_bits = bits;
         self
     }
 
-    /// Grid cell size in degrees, 0.1–45 (§10).
+    /// Grid cell size in degrees, 0.1–45.
     #[must_use]
     pub fn grid_deg(mut self, deg: f64) -> Self {
         self.grid_deg = deg;
         self
     }
 
-    /// Payload codec (§7). `Codec::Uncompressed` gives a `core`-rung asset:
+    /// Payload codec. `Codec::Uncompressed` gives a `core`-rung asset:
     /// zero decode RAM, more flash.
     #[must_use]
     pub fn codec(mut self, codec: Codec) -> Self {
@@ -152,7 +152,7 @@ impl Config {
         self
     }
 
-    /// Simplification algorithm (§14.8). Default RDP; `ImaiIri` gives provably
+    /// Simplification algorithm. Default RDP; `ImaiIri` gives provably
     /// minimum vertices for the same ε (−4 to −19% measured, slower encode).
     #[must_use]
     pub fn simplify_algo(mut self, algo: SimplifyAlgo) -> Self {
@@ -160,7 +160,7 @@ impl Config {
         self
     }
 
-    /// Arc-store encoding (§13/§15). Default delta+varint (smallest flash).
+    /// Arc-store encoding. Default delta+varint (smallest flash).
     /// `GeomEncoding::Fixed` stores absolute fixed-width coords: +40–72% raw
     /// / +24–32% best-compressed flash, and streaming lookups skip the
     /// per-vertex varint decode — near-eager speed with zero RAM cache, the
@@ -211,7 +211,7 @@ impl Config {
         };
         let bytes = match self.density_weight_floor {
             Some(w) => {
-                // TODO(hermetic consumers, §11): cache_dir() is workspace-
+                // TODO(hermetic consumers): cache_dir() is workspace-
                 // relative — as a build-dependency this lands in the registry
                 // copy. Needs a user-cache dir + a pre-fetched-source knob.
                 let grid = crate::density::DensityGrid::load(&crate::cache_dir())?;

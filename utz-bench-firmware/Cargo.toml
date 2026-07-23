@@ -12,7 +12,7 @@ publish = false
 [dependencies]
 # XIP legs borrow uncompressed containers zero-copy from flash
 # (Finder::from_static); the buffered-decode legs need the preset codecs
-# (gzip/xz/brotli — all no_std-clean, PLAN §7). Preset blobs come from the
+# (gzip/xz/brotli — all no_std-clean). Preset blobs come from the
 # utz-data-* crates via the preset features; the codec-none twins (and the
 # geom-* decoder features they need) come via utz-bench-common::assets.
 utz = { path = "../utz", default-features = false, features = [

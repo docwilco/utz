@@ -1,4 +1,4 @@
-//! Self-describing container parsing (PLAN.md §4). Layout is defined by the
+//! Self-describing container parsing. Layout is defined by the
 //! encoder in `utz-build/src/encode.rs` — keep the two in sync.
 //!
 //! All multi-byte values little-endian. The parser stores OFFSETS into the
@@ -27,7 +27,7 @@ pub struct Header {
     pub geom: u8,
     /// reserved, must be zero (room for future format flags)
     pub flags: u8,
-    /// simplification algorithm the asset was built with (§14.8):
+    /// simplification algorithm the asset was built with:
     /// 0 = RDP, 1 = Visvalingam, 2 = Imai–Iri — provenance, not decode logic
     pub simplify_algo: u8,
     /// cell size in degrees — fractional (e.g. 0.5) allowed

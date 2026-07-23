@@ -1,8 +1,8 @@
-//! `Finder`: grid prefilter → per-polygon integer PIP (PLAN.md §3, §9).
+//! `Finder`: grid prefilter → per-polygon integer PIP.
 //!
 //! Three memory modes, selected automatically by how the container is loaded
 //! (only eager is an explicit request); availability falls out of the
-//! environment rung (§9, §11):
+//! environment rung:
 //! - **zero-copy** (`from_static`, uncompressed): the payload is borrowed
 //!   from static storage (flash partition, `include_bytes!`, …). No RAM
 //!   payload at all; flash pays the uncompressed size. `core` rung.
@@ -16,7 +16,7 @@
 //!
 //! Zero-copy and lazy share the identical lookup mechanism — candidates are
 //! PIP-tested by walking their arcs directly off the payload bytes through
-//! the per-edge kernel (§14.7), O(1) state, no allocation — they differ only
+//! the per-edge kernel, O(1) state, no allocation — they differ only
 //! in where the payload resides (borrowed static vs owned RAM), i.e. the
 //! `Cow` variant of [`Payload`]. Interior cells touch zero geometry in every
 //! mode, and [`Finder::lookup_coarse`] never touches geometry at all.
@@ -31,7 +31,7 @@ use crate::{pip, Error};
 
 const NO_ZONE: u16 = 0x7FFF;
 
-/// A geographic position in degrees — **order-neutral by design** (§14.3):
+/// A geographic position in degrees — **order-neutral by design**:
 /// construct with named fields, so there is no argument order to get wrong,
 /// only values. `Position { lat: 51.5, lon: -0.13 }` and
 /// `Position { lon: -0.13, lat: 51.5 }` are the same position.
@@ -47,7 +47,7 @@ pub struct Position {
 }
 
 /// The container's payload section. `Cow::Borrowed` = zero-copy mode,
-/// `Cow::Owned` = lazy/eager (§9). `Cow` itself lives in `alloc`; on the
+/// `Cow::Owned` = lazy/eager. `Cow` itself lives in `alloc`; on the
 /// bare-`core` rung borrowed is the only possible variant.
 #[cfg(feature = "alloc")]
 type Payload = alloc::borrow::Cow<'static, [u8]>;
@@ -82,7 +82,7 @@ fn check_image(payload: &[u8], hdr: &Header) -> Result<(), Error> {
     Ok(())
 }
 
-/// Eager-mode storage: every ring decoded, flat (§9). Ranges are exclusive
+/// Eager-mode storage: every ring decoded, flat. Ranges are exclusive
 /// ends; a range's start is the previous entry's end (global across
 /// features, so no per-item start field).
 #[cfg(feature = "alloc")]
@@ -101,7 +101,7 @@ struct Eager {
 #[cfg(feature = "alloc")]
 type Polys = Vec<([i32; 4], u32)>;
 
-/// The eager cache's coordinate store, at quant-nearest width (§14.11):
+/// The eager cache's coordinate store, at quant-nearest width:
 /// i16-quant assets keep i16 pairs — half the cache RAM — and PIP widens
 /// per edge inside the kernel (still to i64: crosses of i16 coords reach
 /// 2^33, see the pip module docs).
@@ -134,7 +134,7 @@ impl EagerCoord for (i16, i16) {
 
 /// A loaded timezone index. Build once, query many.
 ///
-/// Availability follows the environment ladder (§11): `core` gets
+/// Availability follows the environment ladder: `core` gets
 /// [`from_static`](Finder::from_static) (zero-copy mode),
 /// [`lookup`](Finder::lookup) and [`lookup_coarse`](Finder::lookup_coarse);
 /// `alloc` adds owned/compressed containers (lazy mode) and
@@ -313,8 +313,8 @@ impl Finder {
         Ok(Finder { payload: payload.into(), hdr, eager: None })
     }
 
-    /// Decode straight to eager mode, then drop the geometry sections
-    /// (PLAN §14.10): steady-state RAM is the eager cache plus only the
+    /// Decode straight to eager mode, then drop the geometry sections:
+    /// steady-state RAM is the eager cache plus only the
     /// header/tzid/grid tables — less than `from_slice` +
     /// [`preload`](Finder::preload)
     /// keeping the full decoded payload (−17% on the compact preset), with
@@ -389,7 +389,7 @@ impl Finder {
             return 0; // EagerImage / coarse: nothing to decode
         }
         let h = &self.hdr;
-        // coords are cached at quant-nearest width (§14.11)
+        // coords are cached at quant-nearest width
         let pair = if h.quant_bits == 16 {
             core::mem::size_of::<(i16, i16)>()
         } else {
@@ -400,11 +400,11 @@ impl Finder {
             + h.eager_polys as usize * core::mem::size_of::<([i32; 4], u32)>()
     }
 
-    /// Decode all polygons into RAM once (eager mode, §9): repeat lookups
+    /// Decode all polygons into RAM once (eager mode): repeat lookups
     /// then skip the per-arc varint decode. Costs
     /// [`preload_bytes`](Finder::preload_bytes)
     /// (≈ uncompressed geometry at quant-nearest width: i16 pairs for
-    /// i16-quant assets — half the cache — i32 otherwise, §14.11) in heap,
+    /// i16-quant assets — half the cache — i32 otherwise) in heap,
     /// reserved exactly up front from the v2 header counts — peak = final,
     /// no growth doubling. A no-op if already preloaded.
     #[cfg(feature = "alloc")]
@@ -562,7 +562,7 @@ impl Finder {
     /// header demands. Grid candidates are polys (v4) localized to the
     /// CELL; the record's bbox (v5) is the point-granular refinement — a
     /// miss returns before touching any arc. Lazy path streams the arcs
-    /// straight off the container bytes through the per-edge kernel (§14.7):
+    /// straight off the container bytes through the per-edge kernel:
     /// junction vertices are shared by consecutive arcs and the ring closure
     /// is a shared junction too, so the ring's segment set is exactly the
     /// union of each arc's internal segments — every arc is walked FORWARD
@@ -817,7 +817,7 @@ impl Finder {
     }
 }
 
-/// The ring-scan kernel for i16/i24-quant geometry (§14.11/§15): the
+/// The ring-scan kernel for i16/i24-quant geometry: the
 /// sign-split kernel on 32-bit targets (0.61–0.72× the i64 kernel there —
 /// its magnitudes take single widening multiplies where the W kernels'
 /// (b+1)-bit differences force full wide ones), the generic i64 kernel on
@@ -838,7 +838,7 @@ where
 }
 
 /// [`ring_hit_narrow`]'s i32-quant sibling: sign-split on 32-bit targets
-/// (0.24× the i128 kernel there — §15), i128 on 64-bit ones (where i128
+/// (0.24× the i128 kernel there), i128 on 64-bit ones (where i128
 /// measured 0.75× of even the i64 kernel).
 #[cfg(any(feature = "alloc", feature = "geom-image"))]
 fn ring_hit_wide(ring: &[(i32, i32)], px: i32, py: i32) -> pip::RingHit {

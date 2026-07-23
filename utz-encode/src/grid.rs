@@ -1,4 +1,4 @@
-//! Grid + interned-CSR builder (PLAN.md §10).
+//! Grid + interned-CSR builder.
 //!
 //! Two passes over the geometry:
 //! 1. edge walk — every cell a ring passes through collects that feature id
@@ -180,7 +180,7 @@ fn subcell_owners(feats: &[Feat], deg: f64, sub: usize, fcols: usize, frows: usi
     owner
 }
 
-/// Candidate-list ordering inside the interned CSR (PLAN.md §10 dominant-first).
+/// Candidate-list ordering inside the interned CSR.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Order {
     /// ascending feature id — maximal interning (baseline)

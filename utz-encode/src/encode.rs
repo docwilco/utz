@@ -1,4 +1,4 @@
-//! Self-describing container serializer (PLAN.md §4/§5 step 7).
+//! Self-describing container serializer.
 //!
 //! Layout (all little-endian):
 //! ```text
@@ -25,7 +25,7 @@
 //!   grid:       ncols u16 | nrows u16 | primary u16[ncols*nrows]
 //!               | uniq u16 | list_offsets u16[uniq+1] | list_ids u16[Σ]
 //! ```
-//! The header records every knob, so the runtime decoder stays generic (§4).
+//! The header records every knob, so the runtime decoder stays generic.
 //! Grid + bboxes are derived from the QUANTIZED geometry, so what the runtime
 //! PIPs is exactly what the grid indexed.
 
@@ -61,7 +61,7 @@ pub enum Codec {
     Xz = 4,
 }
 
-/// Simplification algorithm recorded in the header (§14.8) and applied by
+/// Simplification algorithm recorded in the header and applied by
 /// [`build_payload`]. RDP is the default; Imai–Iri gives provably minimum
 /// vertices for the same ε bound (slower encode). Visvalingam has an area
 /// knob, not ε — reachable via `topo::build_topology_algo`, not this byte's
@@ -75,8 +75,8 @@ pub enum SimplifyAlgo {
     ImaiIri = 2,
 }
 
-/// Arc-store encoding, recorded in the header (PLAN §13/§15 fixed-width
-/// measurements). `DeltaVarint` is the flash-size default. `Fixed` stores
+/// Arc-store encoding, recorded in the header.
+/// `DeltaVarint` is the flash-size default. `Fixed` stores
 /// absolute fixed-width coords: raw arcs +40–72%, best-compressed +24–32%
 /// (xz overtakes brotli) — bought: streaming lookups skip the per-vertex
 /// varint decode, the dominant cost on embedded (near-eager speed, zero
@@ -87,14 +87,14 @@ pub enum GeomEncoding {
     #[default]
     DeltaVarint = 0,
     Fixed = 1,
-    /// The geometry section IS the preload cache (§15): flattened per-ring
+    /// The geometry section IS the preload cache: flattened per-ring
     /// `(i32, i32)` runs + ring/poly index tables, 4-aligned — the slice
     /// kernels run straight off flash (`from_static`: eager speed, zero RAM,
     /// zero boot) or straight off the decompressed buffer (`from_slice`:
     /// no preload pass). No arc store; shared arcs duplicated per ring:
     /// raw ~4.1–4.3× the varint payload, best-compressed +61–94% (xz).
     EagerImage = 2,
-    /// Grid-only asset (§10/§15): header + tzid pool + parent + grid, no
+    /// Grid-only asset: header + tzid pool + parent + grid, no
     /// geometry at all. `lookup()` answers at cell precision (== the
     /// dominant-first coarse answer) — precision is an asset property, like
     /// `eps_m`. Smallest flash by far (~⅓ of even the varint payload for
@@ -131,7 +131,7 @@ pub struct Params<'a> {
     /// grid cell size in degrees, 0.1–45 — fractional (0.5, 4/3, …) allowed
     pub grid_deg: f64,
     pub codec: Codec,
-    /// simplification algorithm (§14.8): applied by [`build_payload`],
+    /// simplification algorithm: applied by [`build_payload`],
     /// recorded in the header either way
     pub simplify: SimplifyAlgo,
     /// arc-store encoding: delta+varint (default) or fixed-width
@@ -299,7 +299,7 @@ fn quantize_clean(t: &topo::Topology, arc_coords: &[Arc], qmax: f64) -> CleanGeo
 /// sees. v4: rasterized per POLYGON, not per feature — border-cell candidate
 /// lists carry poly ids, so lookups jump straight to the ~2 polys whose rings
 /// touch the cell instead of bbox-scanning every poly of every candidate
-/// feature (§10/§15 `polygrid_probe`: 20-24 polys parsed → 2.1, per-poly bboxes
+/// feature (the `polygrid_probe` bench: 20-24 polys parsed → 2.1, per-poly bboxes
 /// redundant, CSR growth ≈ dropped bbox bytes). Returns the cell grid, the
 /// interned CSR (interior cells rewritten to FEATURE ids — coarse answers
 /// need no parent hop; border lists keep poly ids), and the poly→feature
@@ -335,7 +335,7 @@ fn poly_grid(
             *v = parent[*v as usize];
         }
     }
-    // the format's CSR tables are u16 (§4): border-cell tags carry a 15-bit
+    // the format's CSR tables are u16: border-cell tags carry a 15-bit
     // list index, and list_offsets index into list_ids as u16 — a fine grid
     // on a dense dataset can overflow both. Fail loudly instead of the `as
     // u16` wrap silently corrupting the tables.
@@ -433,7 +433,7 @@ fn eager_counts(
     }
 }
 
-/// Payload header (§4). Returns the fixup offset where the arcs/rings/grid
+/// Payload header. Returns the fixup offset where the arcs/rings/grid
 /// section offsets are patched once known.
 fn write_header(
     o: &mut Vec<u8>,
@@ -583,7 +583,7 @@ fn write_ring_index(
             // per-poly bbox (v5): the point-granular gate — a streaming
             // miss returns before touching any arc, preload reads instead
             // of recomputing. Rejects ~5% of poly-grid candidates for 4
-            // compares (§15) — ~20x above the check's break-even.
+            // compares — ~20x above the check's break-even.
             let mut bb = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
             for &ri in poly {
                 for &r in &geom.t.ring_refs[ri] {

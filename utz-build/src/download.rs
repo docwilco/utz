@@ -1,4 +1,4 @@
-//! Conditional-GET download cache (PLAN.md §5 step 1): store `ETag` /
+//! Conditional-GET download cache: store `ETag` /
 //! `Last-Modified` next to each cached file and revalidate with
 //! `If-None-Match` / `If-Modified-Since`; a 304 reuses the cache untouched.
 
