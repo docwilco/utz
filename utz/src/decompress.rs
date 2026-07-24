@@ -30,12 +30,11 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
         0 => body.to_vec(),
         #[cfg(feature = "gzip")]
         1 => {
-            // Inflate straight into a raw_len-sized buffer (the outer header
-            // gives the exact size): the output slice doubles as the DEFLATE
-            // history, so decode RAM is decoded + ~10 K tables.
-            // decompress_to_vec_zlib would grow an unhinted Vec instead —
-            // realloc overlap peaks at ~1.4× decoded (measured by the
-            // window-sweep bench).
+            // Inflate straight into a raw_len-sized buffer: the output slice
+            // doubles as the DEFLATE history, so miniz_oxide needs no separate
+            // 32 KB window and decode RAM is decoded + ~10 K tables.
+            // decompress_to_vec_zlib would grow an unhinted Vec instead — realloc
+            // overlap peaks at ~1.4× decoded (measured by the window-sweep bench).
             let mut out = alloc::vec![0u8; raw_len];
             let n = miniz_oxide::inflate::decompress_slice_iter_to_slice(
                 &mut out,
