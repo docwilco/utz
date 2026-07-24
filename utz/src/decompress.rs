@@ -15,7 +15,7 @@
 
 use alloc::vec::Vec;
 
-use crate::Error;
+use crate::{Error, Result};
 
 /// Decompress `body` into an owned buffer of exactly `raw_len` bytes
 /// (`raw_len` comes from the outer header). Codec 0 copies.
@@ -25,7 +25,7 @@ use crate::Error;
 /// [`Error::DecoderFailed`] if the stream is corrupt (carries the backend's
 /// own diagnostic); [`Error::RawLengthMismatch`] if the decoded size
 /// disagrees with `raw_len`.
-pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>, Error> {
+pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     let out = match codec {
         0 => body.to_vec(),
         #[cfg(feature = "gzip")]

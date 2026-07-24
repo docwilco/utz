@@ -5,7 +5,7 @@
 //! payload (no self-referential slices), so the same code serves borrowed
 //! (`&'static`, zero-copy) and owned buffers.
 
-use crate::Error;
+use crate::{Error, Result};
 
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
@@ -116,7 +116,7 @@ pub fn unzigzag(v: u64) -> i64 {
 /// # Errors
 /// [`Error::Truncated`] / [`Error::BadMagic`] / [`Error::UnsupportedVersion`]
 /// if the bytes are too short or the magic/version don't match.
-pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize), Error> {
+pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize)> {
     if bytes.len() < OUTER_LEN {
         return Err(Error::Truncated);
     }
@@ -136,7 +136,7 @@ pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize), Error> {
 /// [`Error::SectionOverrun`] for a section overrunning the payload;
 /// [`Error::GeometryNotCompiledIn`] if the geometry encoding has no
 /// compiled-in decoder.
-pub fn parse(p: &[u8]) -> Result<Header, Error> {
+pub fn parse(p: &[u8]) -> Result<Header> {
     let need = |n: usize| {
         if p.len() < n {
             Err(Error::SectionOverrun)

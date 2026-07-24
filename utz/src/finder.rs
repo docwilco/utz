@@ -27,7 +27,7 @@ use alloc::vec::Vec;
 use crate::format::{self, fixed_bytes, read_fixed, read_u16, read_u32, read_varint, unzigzag, Header};
 #[cfg(feature = "alloc")]
 use crate::decompress;
-use crate::{pip, Error};
+use crate::{pip, Error, Result};
 
 const NO_ZONE: u16 = 0x7FFF;
 
@@ -72,7 +72,7 @@ const _: () = assert!(
 /// [`crate::include_bytes_aligned!`]`(4, ..)`). Endianness is a compile-time
 /// refusal —
 /// see the `geom-image` `compile_error` in lib.rs.
-fn check_image(payload: &[u8], hdr: &Header) -> Result<(), Error> {
+fn check_image(payload: &[u8], hdr: &Header) -> Result<()> {
     #[cfg(feature = "geom-image")]
     if hdr.geom == 2 && !(payload.as_ptr() as usize + hdr.img_coords).is_multiple_of(4) {
         return Err(Error::Misaligned);
@@ -166,7 +166,7 @@ impl Finder {
             feature = "accurate"
         ))
     ))]
-    pub fn new() -> Result<Finder, Error> {
+    pub fn new() -> Result<Finder> {
         Finder::from_slice(crate::data::TINY)
     }
     /// Load the preset selected by the (single) enabled preset feature.
@@ -184,7 +184,7 @@ impl Finder {
             feature = "accurate"
         ))
     ))]
-    pub fn new() -> Result<Finder, Error> {
+    pub fn new() -> Result<Finder> {
         Finder::from_static(crate::data::TINY_STATIC)
     }
     /// Load the preset selected by the (single) enabled preset feature.
@@ -202,7 +202,7 @@ impl Finder {
             feature = "accurate"
         ))
     ))]
-    pub fn new() -> Result<Finder, Error> {
+    pub fn new() -> Result<Finder> {
         Finder::from_slice(crate::data::COMPACT)
     }
     /// Load the preset selected by the (single) enabled preset feature.
@@ -220,7 +220,7 @@ impl Finder {
             feature = "accurate"
         ))
     ))]
-    pub fn new() -> Result<Finder, Error> {
+    pub fn new() -> Result<Finder> {
         Finder::from_slice(crate::data::BALANCED)
     }
     /// Load the preset selected by the (single) enabled preset feature.
@@ -238,7 +238,7 @@ impl Finder {
             feature = "balanced"
         ))
     ))]
-    pub fn new() -> Result<Finder, Error> {
+    pub fn new() -> Result<Finder> {
         Finder::from_slice(crate::data::ACCURATE)
     }
 
@@ -251,7 +251,7 @@ impl Finder {
     /// the header-validation errors of [`format::outer`]/[`format::parse`]
     /// for an invalid container; [`Error::Misaligned`] for unaligned
     /// `EagerImage` coords.
-    pub fn from_static(bytes: &'static [u8]) -> Result<Finder, Error> {
+    pub fn from_static(bytes: &'static [u8]) -> Result<Finder> {
         let (codec, _, start) = format::outer(bytes)?;
         if codec != 0 {
             return Err(Error::StaticContainerCompressed);
@@ -278,7 +278,7 @@ impl Finder {
     /// [`Error::DecoderFailed`] if the payload can't be decoded;
     /// [`Error::Misaligned`] for unaligned `EagerImage` coords.
     #[cfg(feature = "alloc")]
-    pub fn from_slice(bytes: &[u8]) -> Result<Finder, Error> {
+    pub fn from_slice(bytes: &[u8]) -> Result<Finder> {
         let (codec, raw_len, start) = format::outer(bytes)?;
         let payload = if codec == 0 {
             bytes[start..].to_vec()
@@ -299,7 +299,7 @@ impl Finder {
     /// # Errors
     /// As [`Finder::from_slice`].
     #[cfg(feature = "alloc")]
-    pub fn from_vec(bytes: Vec<u8>) -> Result<Finder, Error> {
+    pub fn from_vec(bytes: Vec<u8>) -> Result<Finder> {
         let (codec, raw_len, start) = format::outer(&bytes)?;
         let payload = if codec == 0 {
             let mut p = bytes;
@@ -329,7 +329,7 @@ impl Finder {
     /// # Errors
     /// As [`Finder::from_slice`], which performs the load.
     #[cfg(feature = "alloc")]
-    pub fn eager_from_slice(bytes: &[u8]) -> Result<Finder, Error> {
+    pub fn eager_from_slice(bytes: &[u8]) -> Result<Finder> {
         let mut f = Finder::from_slice(bytes)?;
         if f.hdr.geom >= 2 {
             return Ok(f); // EagerImage/coarse: nothing further to decode
@@ -368,7 +368,7 @@ impl Finder {
     /// [`Error::ReadFailed`] if reading fails; otherwise as
     /// [`Finder::from_vec`].
     #[cfg(feature = "std")]
-    pub fn from_reader(mut r: impl std::io::Read) -> Result<Finder, Error> {
+    pub fn from_reader(mut r: impl std::io::Read) -> Result<Finder> {
         let mut bytes = Vec::new();
         r.read_to_end(&mut bytes)
             .map_err(|source| Error::ReadFailed(source.to_string()))?;

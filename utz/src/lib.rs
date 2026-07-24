@@ -192,6 +192,9 @@ pub enum Error {
     GeometryNotCompiledIn(#[error(not(source))] u8),
 }
 
+/// Shorthand for `Result` with this crate's [`Error`].
+pub type Result<T> = core::result::Result<T, Error>;
+
 #[cfg(any(
     feature = "gzip",
     feature = "ruzstd",
