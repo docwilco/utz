@@ -412,7 +412,7 @@ union, never triggered — unlike "exactly one of N", which union breaks.)
    `geom-image`, one per `GeomEncoding`. Presets enable the one their recipe
    uses (all `geom-varint` today), so a bare preset feature stays a complete
    build; `custom` users pick their asset's. A container whose geom byte has
-   no compiled decoder is refused at load (`Error::Geometry`), mirroring the
+   no compiled decoder is refused at load (`Error::GeometryNotCompiledIn`), mirroring the
    codec features. `geom-image` is little-endian-only (typed coordinate
    slices) and is a compile_error on big-endian targets — precise because it
    is an opt-in; BE hosts keep the other encodings. **Capability guards**:

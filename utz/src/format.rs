@@ -114,11 +114,17 @@ pub fn unzigzag(v: u64) -> i64 {
 /// `raw_len` is the UNCOMPRESSED payload size (single exact allocation).
 ///
 /// # Errors
-/// [`Error::BadFormat`] if the bytes are too short or the magic/version
-/// don't match.
+/// [`Error::Truncated`] / [`Error::BadMagic`] / [`Error::UnsupportedVersion`]
+/// if the bytes are too short or the magic/version don't match.
 pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize), Error> {
-    if bytes.len() < OUTER_LEN || bytes[0..4] != MAGIC || bytes[4] != VERSION {
-        return Err(Error::BadFormat);
+    if bytes.len() < OUTER_LEN {
+        return Err(Error::Truncated);
+    }
+    if bytes[0..4] != MAGIC {
+        return Err(Error::BadMagic);
+    }
+    if bytes[4] != VERSION {
+        return Err(Error::UnsupportedVersion(bytes[4]));
     }
     Ok((bytes[5], read_u32(bytes, 6) as usize, OUTER_LEN))
 }
@@ -126,11 +132,18 @@ pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize), Error> {
 /// Parse the payload header + section directory.
 ///
 /// # Errors
-/// [`Error::BadFormat`] for invalid header fields or a section overrunning
-/// the payload; [`Error::Geometry`] if the geometry encoding has no
+/// [`Error::InvalidHeaderField`] for invalid header fields;
+/// [`Error::SectionOverrun`] for a section overrunning the payload;
+/// [`Error::GeometryNotCompiledIn`] if the geometry encoding has no
 /// compiled-in decoder.
 pub fn parse(p: &[u8]) -> Result<Header, Error> {
-    let need = |n: usize| if p.len() < n { Err(Error::BadFormat) } else { Ok(()) };
+    let need = |n: usize| {
+        if p.len() < n {
+            Err(Error::SectionOverrun)
+        } else {
+            Ok(())
+        }
+    };
     need(14)?;
     let dataset = p[0];
     let quant_bits = p[1];
@@ -144,7 +157,7 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
         || grid_deg.is_nan()
         || grid_deg <= 0.0
     {
-        return Err(Error::BadFormat);
+        return Err(Error::InvalidHeaderField);
     }
     // a valid geom byte whose decoder isn't compiled in is refused loudly
     let compiled = match geom {
@@ -154,7 +167,7 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
         _ => cfg!(feature = "geom-coarse"),
     };
     if !compiled {
-        return Err(Error::Geometry);
+        return Err(Error::GeometryNotCompiledIn(geom));
     }
     let eps_m = f32::from_le_bytes([p[9], p[10], p[11], p[12]]);
     let rel_len = p[13] as usize;
@@ -189,7 +202,7 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
         // pads; the v6 12-byte outer header preserves it in flash).
         img_coords = arcs_off;
         if img_coords % 4 != 0 {
-            return Err(Error::BadFormat);
+            return Err(Error::ImageSectionMisaligned);
         }
         // coords at quant width (v7): 4 / 6 / 8 bytes per vertex
         let vb = 2 * fixed_bytes(quant_bits);
@@ -200,7 +213,7 @@ pub fn parse(p: &[u8]) -> Result<Header, Error> {
         if eager_rings > 0
             && read_u32(p, img_ring_ends + (eager_rings as usize - 1) * 4) != eager_coords
         {
-            return Err(Error::BadFormat);
+            return Err(Error::ImageCountsDisagree);
         }
         (n_arcs, arc_offsets, arc_data) = (0, usize::MAX, usize::MAX);
         (poly_offsets, ring_data) = (usize::MAX, usize::MAX);

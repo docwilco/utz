@@ -126,24 +126,90 @@ pub mod caps {
 }
 
 /// Errors surfaced by the reader.
-#[derive(Debug, PartialEq, derive_more::Display, derive_more::Error)]
+///
+/// Variants carrying captured text (`DecoderFailed`, `ReadFailed`) exist only
+/// on the feature rungs whose code can produce them; the text is best-effort
+/// diagnostics for logs, not a parseable API.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
 pub enum Error {
-    /// The byte source is not a valid `μTZ` container.
-    #[display("not a valid μTZ container")]
-    BadFormat,
-    /// Container is compressed with a codec this build cannot decode
-    /// (or `from_static` was handed a non-`uncompressed` container).
-    #[display("codec not compiled in, or decompression failed")]
-    Decompress,
+    /// The byte source is shorter than the outer container header.
+    #[display("container shorter than its outer header")]
+    Truncated,
+    /// The magic bytes don't match — not a `μTZ` container.
+    #[display("not a μTZ container (bad magic)")]
+    BadMagic,
+    /// A `μTZ` container, but a format version this reader doesn't speak.
+    #[display("unsupported container version {_0}")]
+    UnsupportedVersion(#[error(not(source))] u8),
+    /// A payload header field holds an invalid value (quantization bits,
+    /// geometry byte, flags, or grid degrees).
+    #[display("invalid payload header field")]
+    InvalidHeaderField,
+    /// The payload is too short for its header, or a section overruns it.
+    #[display("section overruns the payload")]
+    SectionOverrun,
+    /// The decoded payload size disagrees with the outer header's raw length.
+    #[display("decoded size disagrees with the header's raw length")]
+    RawLengthMismatch,
+    /// The container's codec byte has no compiled-in backend — enable the
+    /// matching codec feature.
+    #[display("codec {_0} has no compiled-in backend")]
+    CodecNotCompiledIn(#[error(not(source))] u8),
+    /// A compiled-in codec backend rejected the stream as corrupt.
+    #[cfg(feature = "alloc")]
+    #[display("codec {codec} decoder reported: {detail}")]
+    DecoderFailed {
+        /// Codec byte of the backend that failed.
+        codec: u8,
+        /// The backend's own diagnostic text.
+        detail: alloc::string::String,
+    },
+    /// Reading the byte source failed; carries the I/O error's text.
+    #[cfg(feature = "std")]
+    #[display("reading the container failed: {_0}")]
+    ReadFailed(#[error(not(source))] alloc::string::String),
+    /// [`Finder::from_static`] was handed a compressed container —
+    /// decompression needs an owned buffer (use `from_slice`/`from_vec`).
+    #[display("compressed container passed to from_static")]
+    StaticContainerCompressed,
     /// An `EagerImage` container's coordinate section is not 4-byte aligned
     /// in memory — embed static assets with [`include_bytes_aligned!`]`(4, ..)`
     /// instead of a bare `include_bytes!`.
     #[display("EagerImage container not 4-byte aligned (use include_bytes_aligned!(4, ..))")]
     Misaligned,
-    /// The container's geometry encoding has no compiled decoder — enable
-    /// the matching `geom-varint` / `geom-fixed` / `geom-image` feature.
-    #[display("geometry decoder not compiled in (enable the matching geom-* feature)")]
-    Geometry,
+    /// An `EagerImage` coordinate section is misaligned within the payload
+    /// itself — the container is corrupt or came from a broken encoder.
+    #[display("EagerImage coordinate section misaligned within the payload")]
+    ImageSectionMisaligned,
+    /// An `EagerImage` container's ring-end table disagrees with its declared
+    /// coordinate count.
+    #[display("EagerImage ring-end table disagrees with the coordinate count")]
+    ImageCountsDisagree,
+    /// The geometry encoding byte has no compiled-in decoder — enable the
+    /// matching `geom-*` feature.
+    #[display("geometry encoding {_0} has no compiled-in decoder (enable the matching geom-* feature)")]
+    GeometryNotCompiledIn(#[error(not(source))] u8),
+}
+
+#[cfg(any(
+    feature = "gzip",
+    feature = "ruzstd",
+    feature = "zstd-sys",
+    feature = "brotli",
+    feature = "xz"
+))]
+impl Error {
+    /// A `DecoderFailed` capturing the backend's diagnostic. Callers pass
+    /// `format_args!` over the source error — `{source}` where the backend
+    /// implements `Display`, `{source:?}` otherwise (`Debug` is the one
+    /// trait every backend's error type implements).
+    pub(crate) fn decoder_failed(codec: u8, detail: core::fmt::Arguments<'_>) -> Error {
+        Error::DecoderFailed {
+            codec,
+            detail: alloc::fmt::format(detail),
+        }
+    }
 }
 
 /// Embed a `.utz` container with `include_bytes_aligned!(4, path)`. Required

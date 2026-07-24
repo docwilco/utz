@@ -247,13 +247,14 @@ impl Finder {
     /// `uncompressed` codec is accepted here.
     ///
     /// # Errors
-    /// [`Error::Decompress`] if the container is compressed;
-    /// [`Error::BadFormat`]/[`Error::Geometry`] for an invalid container or
-    /// header; [`Error::Misaligned`] for unaligned `EagerImage` coords.
+    /// [`Error::StaticContainerCompressed`] if the container is compressed;
+    /// the header-validation errors of [`format::outer`]/[`format::parse`]
+    /// for an invalid container; [`Error::Misaligned`] for unaligned
+    /// `EagerImage` coords.
     pub fn from_static(bytes: &'static [u8]) -> Result<Finder, Error> {
         let (codec, _, start) = format::outer(bytes)?;
         if codec != 0 {
-            return Err(Error::Decompress); // compressed containers need an owned buffer
+            return Err(Error::StaticContainerCompressed);
         }
         let payload = &bytes[start..];
         let hdr = format::parse(payload)?;
@@ -272,10 +273,10 @@ impl Finder {
     /// input is made.
     ///
     /// # Errors
-    /// [`Error::BadFormat`]/[`Error::Geometry`] for an invalid container or
-    /// header; [`Error::Decompress`] if the codec isn't compiled in or the
-    /// payload fails to decode; [`Error::Misaligned`] for unaligned
-    /// `EagerImage` coords.
+    /// The header-validation errors of [`format::outer`]/[`format::parse`]
+    /// for an invalid container; [`Error::CodecNotCompiledIn`] /
+    /// [`Error::DecoderFailed`] if the payload can't be decoded;
+    /// [`Error::Misaligned`] for unaligned `EagerImage` coords.
     #[cfg(feature = "alloc")]
     pub fn from_slice(bytes: &[u8]) -> Result<Finder, Error> {
         let (codec, raw_len, start) = format::outer(bytes)?;
@@ -364,12 +365,13 @@ impl Finder {
     /// Read a container from any `Read` source into an owned buffer.
     ///
     /// # Errors
-    /// [`Error::BadFormat`] if reading fails; otherwise as
+    /// [`Error::ReadFailed`] if reading fails; otherwise as
     /// [`Finder::from_vec`].
     #[cfg(feature = "std")]
     pub fn from_reader(mut r: impl std::io::Read) -> Result<Finder, Error> {
         let mut bytes = Vec::new();
-        r.read_to_end(&mut bytes).map_err(|_| Error::BadFormat)?;
+        r.read_to_end(&mut bytes)
+            .map_err(|source| Error::ReadFailed(source.to_string()))?;
         Finder::from_vec(bytes)
     }
 

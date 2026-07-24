@@ -1,6 +1,6 @@
 //! Codec backends. Each cargo feature compiles in the decoder
 //! for one outer-header codec byte; a container whose codec is not compiled
-//! in fails with [`Error::Decompress`]. Backends:
+//! in fails with [`Error::CodecNotCompiledIn`]. Backends:
 //!
 //! | feature    | codec byte | crate                | needs `std`? |
 //! |------------|-----------:|----------------------|--------------|
@@ -21,10 +21,10 @@ use crate::Error;
 /// (`raw_len` comes from the outer header). Codec 0 copies.
 ///
 /// # Errors
-/// [`Error::Decompress`] if the codec has no compiled-in backend or the
-/// stream is corrupt; [`Error::BadFormat`] if the decoded size disagrees
-/// with `raw_len`.
-#[allow(unused_variables)]
+/// [`Error::CodecNotCompiledIn`] if the codec has no compiled-in backend;
+/// [`Error::DecoderFailed`] if the stream is corrupt (carries the backend's
+/// own diagnostic); [`Error::RawLengthMismatch`] if the decoded size
+/// disagrees with `raw_len`.
 pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>, Error> {
     let out = match codec {
         0 => body.to_vec(),
@@ -43,12 +43,13 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>, Err
                 true,  // zlib header
                 false, // verify adler32
             )
-            .map_err(|_| Error::Decompress)?;
+            .map_err(|status| Error::decoder_failed(codec, format_args!("{status:?}")))?;
             out.truncate(n);
             out
         }
         #[cfg(feature = "zstd-sys")]
-        2 => zstd::stream::decode_all(body).map_err(|_| Error::Decompress)?,
+        2 => zstd::stream::decode_all(body)
+            .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?,
         #[cfg(all(feature = "ruzstd", not(feature = "zstd-sys")))]
         2 => {
             use ruzstd::decoding::{BlockDecodingStrategy, FrameDecoder};
@@ -60,15 +61,18 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>, Err
             // loop keeps the internal buffer at window + one block.
             let mut input = body;
             let mut dec = FrameDecoder::new();
-            dec.init(&mut input).map_err(|_| Error::Decompress)?;
+            dec.init(&mut input)
+                .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
             let mut out = alloc::vec![0u8; raw_len];
             let mut written = 0;
             loop {
                 dec.decode_blocks(&mut input, BlockDecodingStrategy::UptoBlocks(1))
-                    .map_err(|_| Error::Decompress)?;
-                written += dec.read(&mut out[written..]).map_err(|_| Error::Decompress)?;
+                    .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
+                written += dec
+                    .read(&mut out[written..])
+                    .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
                 if dec.can_collect() != 0 {
-                    return Err(Error::BadFormat); // frame holds more than raw_len declared
+                    return Err(Error::RawLengthMismatch); // frame holds more than raw_len declared
                 }
                 if dec.is_finished() {
                     break;
@@ -97,9 +101,10 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>, Err
             ) {
                 // whole input + exact-size output in one call: anything but
                 // success (incl. NeedsMoreInput/Output) is corrupt or a
-                // raw_len mismatch
+                // raw_len mismatch. state.error_code holds the specific
+                // libbrotli code (BrotliResult itself is a bare status).
                 BrotliResult::ResultSuccess => {}
-                _ => return Err(Error::Decompress),
+                _ => return Err(Error::decoder_failed(codec, format_args!("{:?}", state.error_code))),
             }
             out.truncate(out_off);
             out
@@ -114,21 +119,28 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>, Err
             let mut r = lzma_rust2::XzReader::new(body, false);
             let mut n = 0;
             while n < raw_len {
-                match r.read(&mut out[n..]).map_err(|_| Error::Decompress)? {
+                match r
+                    .read(&mut out[n..])
+                    .map_err(|source| Error::decoder_failed(codec, format_args!("{source:?}")))?
+                {
                     0 => break,
                     k => n += k,
                 }
             }
-            if n == raw_len && r.read(&mut [0u8]).map_err(|_| Error::Decompress)? != 0 {
-                return Err(Error::BadFormat); // stream longer than raw_len declared
+            if n == raw_len
+                && r.read(&mut [0u8])
+                    .map_err(|source| Error::decoder_failed(codec, format_args!("{source:?}")))?
+                    != 0
+            {
+                return Err(Error::RawLengthMismatch); // stream longer than raw_len declared
             }
             out.truncate(n);
             out
         }
-        _ => return Err(Error::Decompress),
+        _ => return Err(Error::CodecNotCompiledIn(codec)),
     };
     if out.len() != raw_len {
-        return Err(Error::BadFormat); // header lied about the payload size
+        return Err(Error::RawLengthMismatch); // header lied about the payload size
     }
     Ok(out)
 }
