@@ -183,3 +183,70 @@ impl<T: Clone + Default> brotli_decompressor::Allocator<T> for HeapAlloc {
     }
     fn free_cell(&mut self, _cell: HeapCell<T>) {}
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A corrupt stream must surface the backend's own diagnostic, and
+    /// Display must compose the codec byte with that detail.
+    #[cfg(any(
+        feature = "gzip",
+        feature = "ruzstd",
+        feature = "zstd-sys",
+        feature = "brotli",
+        feature = "xz"
+    ))]
+    fn assert_decoder_failed(expected_codec: u8, err: &Error) {
+        match err {
+            Error::DecoderFailed { codec, detail } => {
+                assert_eq!(*codec, expected_codec);
+                assert!(!detail.is_empty(), "backend diagnostic must not be empty");
+                let text = alloc::format!("{err}");
+                assert!(text.contains(&alloc::format!("codec {expected_codec}")));
+                assert!(text.contains(detail.as_str()));
+            }
+            other => panic!("expected DecoderFailed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_codec_reports_its_byte() {
+        assert_eq!(decompress(9, 4, &[]), Err(Error::CodecNotCompiledIn(9)));
+    }
+
+    #[test]
+    fn memcpy_size_lie_is_raw_length_mismatch() {
+        assert_eq!(decompress(0, 5, b"abc"), Err(Error::RawLengthMismatch));
+    }
+
+    #[cfg(feature = "gzip")]
+    #[test]
+    fn gzip_corrupt_stream_carries_detail() {
+        let err = decompress(1, 64, b"not a zlib stream").expect_err("garbage must not inflate");
+        assert_decoder_failed(1, &err);
+    }
+
+    #[cfg(any(feature = "ruzstd", feature = "zstd-sys"))]
+    #[test]
+    fn zstd_corrupt_stream_carries_detail() {
+        let err = decompress(2, 64, b"not a zstd frame").expect_err("garbage must not decode");
+        assert_decoder_failed(2, &err);
+    }
+
+    #[cfg(feature = "brotli")]
+    #[test]
+    fn brotli_corrupt_stream_carries_libbrotli_code() {
+        let err = decompress(3, 64, b"not a brotli stream").expect_err("garbage must not decode");
+        assert_decoder_failed(3, &err);
+        // the detail is the specific libbrotli code, not the bare status
+        assert!(alloc::format!("{err}").contains("BROTLI_DECODER_"));
+    }
+
+    #[cfg(feature = "xz")]
+    #[test]
+    fn xz_corrupt_stream_carries_detail() {
+        let err = decompress(4, 64, b"not an xz stream").expect_err("garbage must not decode");
+        assert_decoder_failed(4, &err);
+    }
+}

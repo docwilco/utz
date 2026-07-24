@@ -56,6 +56,8 @@ jobs:
       - run: cargo test -p utz --no-default-features --features std,balanced
       - run: cargo test -p utz --no-default-features --features std,accurate
       - run: cargo test -p utz --no-default-features --features std,tiny,tiny-static
+      # every pure-Rust codec's corrupt-stream error test, no preset assets needed
+      - run: cargo test -p utz --no-default-features --features std,custom,gzip,ruzstd,brotli,xz,geom-varint
       # the C-backed zstd decoder feature is compile-checked separately
       # (workspace tests use the pure-Rust ruzstd backend)
       - run: cargo check -p utz --features std,custom,geom-varint,zstd-sys
