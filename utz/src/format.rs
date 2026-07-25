@@ -1,18 +1,17 @@
-//! Self-describing container parsing. Layout is defined by the
-//! encoder in `utz-build/src/encode.rs` — keep the two in sync.
+//! Self-describing container parsing. The payload header is the shared
+//! [`PayloadHeader`] record (utz-common) — the encoder in utz-encode
+//! serializes the same struct, so the two cannot drift.
 //!
 //! All multi-byte values little-endian. The parser stores OFFSETS into the
 //! payload (no self-referential slices), so the same code serves borrowed
 //! (`&'static`, zero-copy) and owned buffers.
 
+use scroll::Pread;
+use utz_common::{PayloadHeader, PAYLOAD_HEADER_LEN};
+pub use utz_common::{MAGIC, VERSION};
+
 use crate::{Error, Result};
 
-// on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
-// reject non-ASCII); the project brands as μTZ, the container as uTZ1
-pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 7; // v7: flags byte + image coords at quant width
-                           // (i24 packed, optional ring alignment); v6 12-byte
-                           // outer + EagerImage; v5 bbox; v4 poly grid; v3 geom
 /// Outer container header length (v6): magic4 + version + codec + `raw_len` u32
 /// + 2 reserved bytes so a 4-aligned container gives a 4-aligned payload.
 pub const OUTER_LEN: usize = 12;
@@ -26,7 +25,7 @@ pub struct Header {
     /// 2 = `EagerImage` (flattened per-ring coords at quant width, no arc store)
     pub geom: u8,
     /// reserved, must be zero (room for future format flags)
-    pub flags: u8,
+    pub flags: u16,
     /// simplification algorithm the asset was built with:
     /// 0 = RDP, 1 = Visvalingam, 2 = Imai–Iri — provenance, not decode logic
     pub simplify_algo: u8,
@@ -63,6 +62,9 @@ pub struct Header {
     pub uniq: u16,
     pub list_offsets: usize, // u16[uniq+1]
     pub list_ids: usize,
+    // TZBB release string (the payload tail)
+    pub release_off: usize,
+    pub release_len: usize,
 }
 
 #[must_use]
@@ -142,76 +144,62 @@ pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize)> {
 /// [`Error::GeometryNotCompiledIn`] if the geometry encoding has no
 /// compiled-in decoder.
 pub fn parse(p: &[u8]) -> Result<Header> {
-    need(p, 14)?;
-    let dataset = p[0];
-    let quant_bits = p[1];
-    let simplify_algo = p[2];
-    let geom = p[3];
-    let flags = p[4];
-    let grid_deg = f32::from_le_bytes([p[5], p[6], p[7], p[8]]);
-    if !matches!(quant_bits, 16 | 24 | 32)
-        || geom > 3
-        || flags != 0
-        || grid_deg.is_nan()
-        || grid_deg <= 0.0
+    let h: PayloadHeader = p
+        .pread_with(0, scroll::LE)
+        .map_err(|_| Error::SectionOverrun)?;
+    if !matches!(h.quant_bits, 16 | 24 | 32)
+        || h.geom > 3
+        || h.flags != 0
+        || h.grid_deg.is_nan()
+        || h.grid_deg <= 0.0
     {
         return Err(Error::InvalidHeaderField);
     }
     // a valid geom byte whose decoder isn't compiled in is refused loudly
-    let compiled = match geom {
+    let compiled = match h.geom {
         0 => cfg!(feature = "geom-varint"),
         1 => cfg!(feature = "geom-fixed"),
         2 => cfg!(feature = "geom-image"),
         _ => cfg!(feature = "geom-coarse"),
     };
     if !compiled {
-        return Err(Error::GeometryNotCompiledIn(geom));
+        return Err(Error::GeometryNotCompiledIn(h.geom));
     }
-    let eps_m = f32::from_le_bytes([p[9], p[10], p[11], p[12]]);
-    let rel_len = p[13] as usize;
-    let mut pos = 14 + rel_len; // tzbb_release skipped (read via header_release)
-    need(p, pos + 26)?;
-    let n_features = read_u16(p, pos);
-    pos += 2;
-    let arcs_off = read_u32(p, pos) as usize;
-    let rings_off = read_u32(p, pos + 4) as usize;
-    let grid_off = read_u32(p, pos + 8) as usize;
-    let eager_coords = read_u32(p, pos + 12);
-    let eager_rings = read_u32(p, pos + 16);
-    let eager_polys = read_u32(p, pos + 20);
-    pos += 24;
 
-    let str_offsets = pos;
-    let pool = str_offsets + (n_features as usize + 1) * 2;
+    let str_offsets = PAYLOAD_HEADER_LEN;
+    let pool = str_offsets + (h.n_features as usize + 1) * 2;
 
-    let n_polys = eager_polys as usize;
-    let parent = rings_off;
-    let sections = match geom {
+    let n_polys = h.eager_polys as usize;
+    let (arcs_off, parent) = (h.arcs_off as usize, h.rings_off as usize);
+    let sections = match h.geom {
         3 => coarse_sections(p, parent, n_polys)?,
-        2 => image_sections(p, quant_bits, arcs_off, n_polys, eager_coords, eager_rings)?,
-        _ => arc_sections(p, arcs_off, parent, n_polys)?,
+        2 => image_sections(
+            p,
+            h.quant_bits,
+            arcs_off,
+            n_polys,
+            h.eager_coords,
+            h.eager_rings,
+        )?,
+        _ => arc_sections(p, arcs_off, parent, n_polys, h.n_arcs)?,
     };
 
-    need(p, grid_off + 4)?;
-    let ncols = read_u16(p, grid_off);
-    let nrows = read_u16(p, grid_off + 2);
-    let primary = grid_off + 4;
-    let after_primary = primary + ncols as usize * nrows as usize * 2;
-    need(p, after_primary + 2)?;
-    let uniq = read_u16(p, after_primary);
-    let list_offsets = after_primary + 2;
-    let list_ids = list_offsets + (uniq as usize + 1) * 2;
+    let primary = h.grid_off as usize;
+    let list_offsets = primary + h.ncols as usize * h.nrows as usize * 2;
+    let list_ids = list_offsets + (h.uniq as usize + 1) * 2;
     need(p, list_ids)?;
+    let (release_off, release_len) = (h.release_off as usize, h.release_len as usize);
+    need(p, release_off + release_len)?;
 
     Ok(Header {
-        dataset,
-        quant_bits,
-        geom,
-        flags,
-        simplify_algo,
-        grid_deg,
-        eps_m,
-        n_features,
+        dataset: h.dataset,
+        quant_bits: h.quant_bits,
+        geom: h.geom,
+        flags: h.flags,
+        simplify_algo: h.simplify_algo,
+        grid_deg: h.grid_deg,
+        eps_m: h.eps_m,
+        n_features: h.n_features,
         str_offsets,
         pool,
         n_arcs: sections.n_arcs,
@@ -223,15 +211,17 @@ pub fn parse(p: &[u8]) -> Result<Header> {
         img_coords: sections.img_coords,
         img_ring_ends: sections.img_ring_ends,
         img_polys: sections.img_polys,
-        eager_coords,
-        eager_rings,
-        eager_polys,
-        ncols,
-        nrows,
+        eager_coords: h.eager_coords,
+        eager_rings: h.eager_rings,
+        eager_polys: h.eager_polys,
+        ncols: h.ncols,
+        nrows: h.nrows,
         primary,
-        uniq,
+        uniq: h.uniq,
         list_offsets,
         list_ids,
+        release_off,
+        release_len,
     })
 }
 
@@ -317,11 +307,11 @@ fn arc_sections(
     arcs_off: usize,
     parent: usize,
     n_polys: usize,
+    n_arcs: u32,
 ) -> Result<GeometrySections> {
-    need(p, arcs_off + 4)?;
-    let n_arcs = read_u32(p, arcs_off);
-    let arc_offsets = arcs_off + 4;
+    let arc_offsets = arcs_off;
     let arc_data = arc_offsets + (n_arcs as usize + 1) * 4;
+    need(p, arc_data)?;
     let poly_offsets = parent + n_polys * 2;
     let ring_data = poly_offsets + (n_polys + 1) * 4;
     Ok(GeometrySections {
@@ -336,7 +326,6 @@ fn arc_sections(
 
 /// TZBB release string recorded in the header.
 #[must_use]
-pub fn release(p: &[u8]) -> &[u8] {
-    let n = p[13] as usize;
-    &p[14..14 + n]
+pub fn release<'p>(h: &Header, p: &'p [u8]) -> &'p [u8] {
+    &p[h.release_off..h.release_off + h.release_len]
 }

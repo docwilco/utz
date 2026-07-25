@@ -23,8 +23,9 @@ zstd = ["dep:zstd"]
 
 [dependencies]
 derive_more = { workspace = true }
-# the shared Codec vocabulary (also used by the utz reader)
+# the shared Codec vocabulary + PayloadHeader (also used by the utz reader)
 utz-common = { path = "../utz-common", default-features = false }
+scroll = { version = "0.13", default-features = false }
 # simplification menu + DensityWeight (shared with the viewer via this cdylib)
 utz-simplify = { path = "../utz-simplify" }
 # codecs (all pure Rust except optional zstd)

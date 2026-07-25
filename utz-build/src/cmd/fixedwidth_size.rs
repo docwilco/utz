@@ -79,8 +79,8 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         let h = format::parse(p).unwrap();
         assert!(h.geom <= 1, "arc-store containers only (geom 0/1)");
         let fb = fixed_bytes(h.quant_bits);
-        let arcs_off = h.arc_offsets - 4; // n_arcs u32 sits before the table
-        let grid_block = h.primary - 4; // ncols/nrows u16s before primary
+        let arcs_off = h.arc_offsets; // the arc block starts at its offsets table
+        let grid_block = h.primary; // the grid starts at its primary cell table
 
         let pa = variant_fixed_arcs(p, &h, fb, arcs_off);
         let pb = variant_eager_image(p, &h, fb, arcs_off, grid_block, path);

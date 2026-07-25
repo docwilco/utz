@@ -998,6 +998,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7c1c839d570d835527c9a5e4db7cb2198683a988cb9d7293fc8674e6bd58fc8"
 
 [[package]]
+name = "scroll"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1257cd4248b4132760d6524d6dda4e053bc648c9070b960929bf50cfb1e7add"
+dependencies = [
+ "scroll_derive",
+]
+
+[[package]]
+name = "scroll_derive"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed76efe62313ab6610570951494bdaa81568026e0318eaa55f167de70eeea67d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1292,6 +1312,7 @@ dependencies = [
  "lzma-rust2",
  "miniz_oxide",
  "ruzstd",
+ "scroll",
  "test-case",
  "utz-common",
  "utz-data-accurate",
@@ -1348,6 +1369,9 @@ dependencies = [
 [[package]]
 name = "utz-common"
 version = "0.0.0"
+dependencies = [
+ "scroll",
+]
 
 [[package]]
 name = "utz-data-accurate"
@@ -1380,6 +1404,7 @@ dependencies = [
  "derive_more",
  "lzma-rust2",
  "miniz_oxide",
+ "scroll",
  "utz-common",
  "utz-simplify",
  "zstd",

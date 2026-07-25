@@ -83,6 +83,11 @@ utz-data-accurate = { path = "../utz-data-accurate", optional = true }
 # re-exported for embedding EagerImage assets 4-aligned (see workspace toml)
 include_bytes_aligned = { workspace = true }
 
+[dependencies.scroll]
+# no_std wire reader for the shared PayloadHeader record
+version = "0.13"
+default-features = false
+
 [dependencies.utz-common]
 # the shared Codec vocabulary; no alloc — the enum must exist on the core rung
 path = "../utz-common"

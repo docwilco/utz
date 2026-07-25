@@ -377,19 +377,20 @@ impl Finder {
         // everything lookups still read after preload; the arc store and
         // per-poly ring records between them are shadowed by the eager cache
         let (h, b) = (&f.hdr, f.payload_bytes());
-        let arcs_off = h.arc_offsets - 4; // n_arcs u32 heads the arc block
+        let arcs_off = h.arc_offsets; // the arc block starts at its offsets table
         let parent_len = h.eager_polys as usize * 2;
-        let grid_off = h.primary - 4; // ncols/nrows u16s head the grid block
+        let grid_off = h.primary; // the grid starts at its primary cell table
         let mut p = Vec::with_capacity(arcs_off + parent_len + (b.len() - grid_off));
         p.extend_from_slice(&b[..arcs_off]);
         p.extend_from_slice(&b[h.parent..h.parent + parent_len]);
-        p.extend_from_slice(&b[grid_off..]);
+        p.extend_from_slice(&b[grid_off..]); // grid tables + release tail
         let parent = arcs_off;
         let shift = grid_off - (arcs_off + parent_len);
         f.hdr.parent = parent;
         f.hdr.primary -= shift;
         f.hdr.list_offsets -= shift;
         f.hdr.list_ids -= shift;
+        f.hdr.release_off -= shift;
         // poison the dropped sections' offsets: any residual use panics
         // out-of-bounds instead of reading grid bytes as geometry
         f.hdr.arc_offsets = usize::MAX;
@@ -416,7 +417,7 @@ impl Finder {
     /// TZBB release recorded in the container header.
     #[must_use]
     pub fn tzbb_release(&self) -> &str {
-        core::str::from_utf8(format::release(self.payload_bytes())).unwrap_or("")
+        core::str::from_utf8(format::release(&self.hdr, self.payload_bytes())).unwrap_or("")
     }
 
     /// Heap bytes [`preload`](Finder::preload) will reserve — the eager-cache

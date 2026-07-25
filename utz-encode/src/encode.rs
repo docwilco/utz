@@ -5,16 +5,11 @@
 //! outer:  magic "uTZ1" | version u8 | codec u8 | raw_len u32 | payload…
 //!         (raw_len = UNCOMPRESSED payload size, so decoders allocate once)
 //! payload (compressed per codec):
-//!   header:     dataset u8 | quant_bits u8 | simplify_algo u8
-//!               | grid_deg f32 | eps_m f32
-//!               | tzbb_release (len u8 + bytes)
-//!               | n_features u16 | arcs_off u32 | rings_off u32 | grid_off u32
-//!               | eager_coords u32 | eager_rings u32 | eager_polys u32
-//!               (eager-cache sizes so `preload` reserves exactly — no growth
-//!               doubling; coords is Σ referenced-arc vcounts, a ≤0.1% over-
-//!               estimate of the deduped cache, safe as a reservation)
+//!   header:     one fixed [`PayloadHeader`] record (utz-common) — every
+//!               section offset and count; the encoder Pwrites it, the
+//!               reader Preads it, so the field list IS the wire layout
 //!   zone table: str_offsets u16[n_features+1] | tzid pool bytes   (zone i = feature i)
-//!   arc store:  n_arcs u32 | arc_offsets u32[n_arcs+1] (relative to arc data)
+//!   arc store:  arc_offsets u32[n_arcs+1] (relative to arc data)
 //!               | per arc: varint vcount | first vertex i{16,24,32}×2
 //!               | zigzag-varint deltas
 //!   ring index (v4): parent u16[n_polys] + poly_offsets u32[n_polys+1]
@@ -22,23 +17,21 @@
 //!               | per feature: npolys u16; per poly: bbox i{16,24,32}×4
 //!               | nrings u16; per ring: varint nrefs | varint signed arc refs
 //!               (id<<1|rev)
-//!   grid:       ncols u16 | nrows u16 | primary u16[ncols*nrows]
-//!               | uniq u16 | list_offsets u16[uniq+1] | list_ids u16[Σ]
+//!   grid:       primary u16[ncols*nrows]
+//!               | list_offsets u16[uniq+1] | list_ids u16[Σ]
+//!   release:    the TZBB release string bytes (the payload tail)
 //! ```
 //! The header records every knob, so the runtime decoder stays generic.
 //! Grid + bboxes are derived from the QUANTIZED geometry, so what the runtime
 //! PIPs is exactly what the grid indexed.
 
+use scroll::{Pwrite, LE};
+use utz_common::{PayloadHeader, PAYLOAD_HEADER_LEN};
+pub use utz_common::{MAGIC, VERSION};
+
 use crate::error::ensure;
 use crate::grid::{self, Order};
 use crate::{clean, q_lat, q_lon, qmax_for, topo, Arc, Error, Feat};
-
-// on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
-// reject non-ASCII); the project brands as μTZ, the container as uTZ1
-pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 7; // v7: flags byte + image coords at quant width
-                           // (i24 packed, optional ring alignment); v6 12-byte
-                           // outer + EagerImage; v5 bbox; v4 poly grid; v3 geom
 /// Outer container header length (v6): magic4 + version + codec + `raw_len` u32
 /// + 2 reserved/pad bytes so a 4-aligned container gives a 4-aligned payload.
 pub const OUTER_LEN: usize = 12;
@@ -225,9 +218,11 @@ pub fn payload_from_topology(
         clean: geom.stats,
         ..Default::default()
     };
-    let mut o = Vec::new();
     let counts = eager_counts(image.as_ref(), &geom, feats.len(), parent.len(), p.geom);
-    let fixup = write_header(&mut o, p, feats.len(), counts, parent.len())?;
+    ensure_header_limits(p, counts, parent.len())?;
+    let (eager_coords, eager_rings, eager_polys) = counts;
+    // header space reserved up front; Pwritten once the offsets exist
+    let mut o = vec![0u8; PAYLOAD_HEADER_LEN];
     stats.header = c32(o.len());
     write_zone_table(&mut o, feats)?;
 
@@ -244,7 +239,7 @@ pub fn payload_from_topology(
     } else if let Some(img) = &image {
         // ---- eager-image geometry (geom=2): coords 4-aligned within the
         // payload (the 12-byte outer header keeps it 4-aligned in flash) ----
-        while o.len() % 4 != 0 {
+        while !o.len().is_multiple_of(4) {
             o.push(0);
         }
         arcs_off = c32(o.len());
@@ -270,12 +265,42 @@ pub fn payload_from_topology(
 
     let grid_off = c32(o.len());
     stats.rings = grid_off - rings_off;
-    write_grid(&mut o, &g, &csr);
+    write_grid(&mut o, &csr);
     stats.grid = c32(o.len()) - grid_off;
 
-    for (i, off) in [arcs_off, rings_off, grid_off].into_iter().enumerate() {
-        o[fixup + i * 4..fixup + i * 4 + 4].copy_from_slice(&off.to_le_bytes());
-    }
+    let release_off = c32(o.len());
+    o.extend_from_slice(p.tzbb_release.as_bytes());
+
+    #[expect(clippy::cast_possible_truncation, reason = "f32 header fields")]
+    let (grid_deg, eps_m) = (p.grid_deg as f32, p.eps_m as f32);
+    let header = PayloadHeader {
+        arcs_off,
+        rings_off,
+        grid_off,
+        release_off,
+        eager_coords: u32::try_from(eager_coords).expect("guarded by ensure_header_limits"),
+        eager_rings,
+        eager_polys,
+        // no arc store outside the arc-encoded geometries
+        n_arcs: match p.geom {
+            GeomEncoding::DeltaVarint | GeomEncoding::Fixed => stats.n_arcs,
+            GeomEncoding::EagerImage | GeomEncoding::Coarse => 0,
+        },
+        grid_deg,
+        eps_m,
+        n_features: c16(feats.len()),
+        ncols: c16(g.ncols),
+        nrows: c16(g.nrows),
+        uniq: c16(csr.uniq_lists),
+        release_len: c16(p.tzbb_release.len()),
+        flags: 0, // reserved
+        dataset: p.dataset,
+        quant_bits: u8::try_from(p.quant_bits).expect("quant_bits guarded to 16/24/32"),
+        simplify_algo: p.simplify as u8,
+        geom: p.geom as u8,
+    };
+    o.pwrite_with(header, 0, LE)
+        .expect("header buffer reserved at PAYLOAD_HEADER_LEN");
     Ok((o, stats))
 }
 
@@ -485,16 +510,10 @@ fn eager_counts(
     }
 }
 
-/// Payload header. Returns the fixup offset where the arcs/rings/grid
-/// section offsets are patched once known.
-fn write_header(
-    o: &mut Vec<u8>,
-    p: &Params,
-    nfeats: usize,
-    counts: (u64, u32, u32),
-    n_parent: usize,
-) -> crate::Result<usize> {
-    let (eager_coords, eager_rings, eager_polys) = counts;
+/// Format-limit guards for the header fields (the header itself is written
+/// by `Pwrite` at the end of `payload_from_topology`, once offsets exist).
+fn ensure_header_limits(p: &Params, counts: (u64, u32, u32), n_parent: usize) -> crate::Result<()> {
+    let (eager_coords, _, eager_polys) = counts;
     ensure!(
         u32::try_from(eager_coords).is_ok(),
         Error::FormatLimit {
@@ -512,39 +531,14 @@ fn write_header(
         }
     );
     ensure!(
-        p.tzbb_release.len() < 256,
+        u16::try_from(p.tzbb_release.len()).is_ok(),
         Error::FormatLimit {
             what: "tzbb_release bytes",
             n: p.tzbb_release.len(),
-            max: 255
+            max: u16::MAX as usize
         }
     );
-    o.extend_from_slice(&[
-        p.dataset,
-        u8::try_from(p.quant_bits).expect("quant_bits guarded to 16/24/32"),
-        p.simplify as u8,
-        p.geom as u8,
-        0, // flags: reserved, zero
-    ]);
-    #[expect(clippy::cast_possible_truncation, reason = "f32 header field")]
-    let grid_deg32 = p.grid_deg as f32;
-    o.extend_from_slice(&grid_deg32.to_le_bytes());
-    #[expect(clippy::cast_possible_truncation, reason = "f32 header field")]
-    let eps_m32 = p.eps_m as f32;
-    o.extend_from_slice(&eps_m32.to_le_bytes());
-    o.push(u8::try_from(p.tzbb_release.len()).expect("guarded < 256"));
-    o.extend_from_slice(p.tzbb_release.as_bytes());
-    o.extend_from_slice(&c16(nfeats).to_le_bytes());
-    let fixup = o.len(); // arcs_off, rings_off, grid_off patched by the caller
-    o.extend_from_slice(&[0u8; 12]);
-    o.extend_from_slice(
-        &u32::try_from(eager_coords)
-            .expect("guarded above")
-            .to_le_bytes(),
-    );
-    o.extend_from_slice(&eager_rings.to_le_bytes());
-    o.extend_from_slice(&eager_polys.to_le_bytes());
-    Ok(fixup)
+    Ok(())
 }
 
 /// Zone table: `str_offsets u16[n+1]` + tzid pool (zone i = feature i).
@@ -602,11 +596,10 @@ fn write_image(o: &mut Vec<u8>, img: &EagerImage, quant_bits: u32) {
     }
 }
 
-/// Arc store: `n_arcs u32 | arc_offsets u32[n+1] | per arc: varint vcount |
+/// Arc store: `arc_offsets u32[n_arcs+1] | per arc: varint vcount |
 /// first vertex fixed | zigzag-varint deltas` (or all-fixed for
-/// `GeomEncoding::Fixed`).
+/// `GeomEncoding::Fixed`); `n_arcs` lives in the payload header.
 fn write_arc_store(o: &mut Vec<u8>, arcs_q: &[Arc<i32>], geom: GeomEncoding, quant_bits: u32) {
-    o.extend_from_slice(&c32(arcs_q.len()).to_le_bytes());
     let mut arc_data = Vec::new();
     let mut arc_offsets: Vec<u32> = Vec::with_capacity(arcs_q.len() + 1);
     for a in arcs_q {
@@ -690,15 +683,12 @@ fn write_ring_index(
     o.extend_from_slice(&ring_data);
 }
 
-/// Grid section: `ncols u16 | nrows u16 | primary | uniq u16 | list_offsets |
-/// list_ids`.
-fn write_grid(o: &mut Vec<u8>, g: &grid::CellGrid, csr: &grid::Csr) {
-    o.extend_from_slice(&c16(g.ncols).to_le_bytes());
-    o.extend_from_slice(&c16(g.nrows).to_le_bytes());
+/// Grid tables: `primary u16[ncols*nrows] | list_offsets u16[uniq+1] |
+/// list_ids u16[Σ]`; the dimensions and `uniq` live in the payload header.
+fn write_grid(o: &mut Vec<u8>, csr: &grid::Csr) {
     for v in &csr.primary {
         o.extend_from_slice(&v.to_le_bytes());
     }
-    o.extend_from_slice(&c16(csr.uniq_lists).to_le_bytes());
     for v in &csr.list_offsets {
         o.extend_from_slice(&v.to_le_bytes());
     }

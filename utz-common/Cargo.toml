@@ -12,6 +12,8 @@ default = ["alloc"]
 alloc = []
 
 [dependencies]
+# no_std wire ser/de for the shared container header (derive both sides)
+scroll = { version = "0.13", default-features = false, features = ["derive"] }
 
 [lints]
 workspace = true
