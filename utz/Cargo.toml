@@ -25,11 +25,11 @@ default = []
 # own asset, generated with utz-build.
 # Each preset also enables the geometry decoder its recipe uses (all preset
 # recipes are delta+varint today), so `tiny` alone is a complete build.
-tiny = ["dep:utz-data-tiny", "alloc", "gzip", "geom-varint"]
-tiny-static = ["dep:utz-data-tiny-static", "geom-varint"]
-compact = ["dep:utz-data-compact", "alloc", "xz", "geom-varint"]
-balanced = ["dep:utz-data-balanced", "alloc", "brotli", "geom-varint"]
-accurate = ["dep:utz-data-accurate", "alloc", "brotli", "geom-varint"]
+tiny = ["dep:utz-data-tiny", "alloc", "gzip", "geom-varint-arcs"]
+tiny-static = ["dep:utz-data-tiny-static", "geom-varint-arcs"]
+compact = ["dep:utz-data-compact", "alloc", "xz", "geom-varint-arcs"]
+balanced = ["dep:utz-data-balanced", "alloc", "brotli", "geom-varint-arcs"]
+accurate = ["dep:utz-data-accurate", "alloc", "brotli", "geom-varint-arcs"]
 custom = []
 
 # ---- choice 2: environment ladder: std ⊃ alloc ⊃ core -----------------------
@@ -43,12 +43,12 @@ std = ["alloc"]
 # ---- choice 3: geometry decoders --------------------------------------------
 # One per GeomEncoding; a container whose geom byte has no compiled decoder
 # is refused at load (Error::Geometry). Presets carry theirs; `custom` users
-# pick the one(s) their assets use. `geom-image` is little-endian-only
+# pick the one(s) their assets use. `geom-full-rings` is little-endian-only
 # (typed coordinate slices) — enabling it on a big-endian target is a
 # compile_error.
-geom-varint = []
-geom-fixed = []
-geom-image = []
+geom-varint-arcs = []
+geom-fixed-width-arcs = []
+geom-full-rings = []
 # grid-only assets (GeomEncoding::Coarse): no PIP code at all; lookup()
 # answers at cell precision (the asset's precision); endian-independent
 geom-coarse = []
@@ -63,7 +63,7 @@ xz = ["dep:lzma-rust2", "alloc"]
 [package.metadata.docs.rs]
 # representative set: the mandatory choices can't be defaulted, so
 # docs.rs picks one of each + the decoders
-features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint", "geom-fixed", "geom-image", "geom-coarse"]
+features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint-arcs", "geom-fixed-width-arcs", "geom-full-rings", "geom-coarse"]
 
 [dependencies]
 # no default features: keeps the derives no_std (Error derive = core::error::Error)
@@ -80,7 +80,7 @@ utz-data-tiny-static = { path = "../utz-data-tiny-static", optional = true }
 utz-data-compact = { path = "../utz-data-compact", optional = true }
 utz-data-balanced = { path = "../utz-data-balanced", optional = true }
 utz-data-accurate = { path = "../utz-data-accurate", optional = true }
-# re-exported for embedding EagerImage assets 4-aligned (see workspace toml)
+# re-exported for embedding FullRings assets 4-aligned (see workspace toml)
 include_bytes_aligned = { workspace = true }
 
 [dependencies.scroll]

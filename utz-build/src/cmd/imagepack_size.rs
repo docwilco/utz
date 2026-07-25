@@ -1,4 +1,4 @@
-//! Does packing `EagerImage` coords to quant width beat general compression
+//! Does packing `FullRings` coords to quant width beat general compression
 //! of the zero-padded i32 pairs? (Decides whether packed images are
 //! worth it for *compressed* assets; uncompressed XIP always saves the raw
 //! 25–50%.) Takes v6 geom=2 codec-none containers, rewrites the coords
@@ -30,20 +30,20 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
         assert_eq!(header.codec, utz::Codec::Uncompressed, "need codec-none");
         assert_eq!(
             header.geom,
-            GeomEncoding::EagerImage,
-            "need an EagerImage container"
+            GeomEncoding::FullRings,
+            "need an FullRings container"
         );
         let coord_bytes = header.quant_bits.bytes();
         let coord_count = header.eager_coords as usize;
 
         // packed variant: each i32 coord truncated to coord_bytes bytes (LE
         // keeps the low bytes; sign travels in the top retained byte)
-        let mut packed = container_payload[..header.img_coords].to_vec();
+        let mut packed = container_payload[..header.full_coords].to_vec();
         for word_idx in 0..coord_count * 2 {
-            let word = format::read_u32(container_payload, header.img_coords + word_idx * 4);
+            let word = format::read_u32(container_payload, header.full_coords + word_idx * 4);
             packed.extend_from_slice(&word.to_le_bytes()[..coord_bytes]);
         }
-        packed.extend_from_slice(&container_payload[header.img_ring_ends..]);
+        packed.extend_from_slice(&container_payload[header.full_ring_ends..]);
 
         let name = std::path::Path::new(&path)
             .file_stem()

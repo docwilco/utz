@@ -52,7 +52,7 @@ enum Cmd {
     FixedwidthSize(cmd::fixedwidth_size::Args),
     /// Poly-granular grid vs per-poly bboxes probe
     PolygridProbe(cmd::polygrid_probe::Args),
-    /// Packed `EagerImage` coords vs general compression (geom=2 containers)
+    /// Packed `FullRings` coords vs general compression (geom=2 containers)
     ImagepackSize(cmd::imagepack_size::Args),
 }
 

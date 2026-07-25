@@ -31,23 +31,23 @@ compile_error!(
      or `core` (bare metal: uncompressed assets only, ~zero heap)"
 );
 #[cfg(not(any(
-    feature = "geom-varint",
-    feature = "geom-fixed",
-    feature = "geom-image",
+    feature = "geom-varint-arcs",
+    feature = "geom-fixed-width-arcs",
+    feature = "geom-full-rings",
     feature = "geom-coarse"
 )))]
 compile_error!(
-    "utz: pick at least one geometry decoder: `geom-varint` (what the presets \
-     use — they enable it themselves), `geom-fixed`, `geom-image`, or \
+    "utz: pick at least one geometry decoder: `geom-varint-arcs` (what the presets \
+     use — they enable it themselves), `geom-fixed-width-arcs`, `geom-full-rings`, or \
      `geom-coarse` (grid-only assets, cell precision)"
 );
-// EagerImage reads coordinate sections as native-integer slices — LE hosts
+// FullRings reads coordinate sections as native-integer slices — LE hosts
 // only. Refusing at compile time is precise here because it is an opt-in:
 // big-endian builds keep every other encoding by not enabling this feature.
-#[cfg(all(feature = "geom-image", target_endian = "big"))]
+#[cfg(all(feature = "geom-full-rings", target_endian = "big"))]
 compile_error!(
-    "utz: `geom-image` (EagerImage) requires a little-endian host; \
-     the `geom-varint`/`geom-fixed` encodings work on any endianness"
+    "utz: `geom-full-rings` (FullRings) requires a little-endian host; \
+     the `geom-varint-arcs`/`geom-fixed-width-arcs` encodings work on any endianness"
 );
 
 #[cfg(feature = "alloc")]
@@ -112,12 +112,12 @@ pub mod data {
 /// Also useful directly for OTA/file-loaded assets:
 /// `assert!(utz::caps::XZ)` at startup.
 pub mod caps {
-    /// delta+varint arc geometry decoder (`geom-varint`)
-    pub const GEOM_VARINT: bool = cfg!(feature = "geom-varint");
-    /// fixed-width arc geometry decoder (`geom-fixed`)
-    pub const GEOM_FIXED: bool = cfg!(feature = "geom-fixed");
-    /// `EagerImage` geometry decoder (`geom-image`)
-    pub const GEOM_IMAGE: bool = cfg!(feature = "geom-image");
+    /// delta+varint arc geometry decoder (`geom-varint-arcs`)
+    pub const GEOM_VARINT_ARCS: bool = cfg!(feature = "geom-varint-arcs");
+    /// fixed-width arc geometry decoder (`geom-fixed-width-arcs`)
+    pub const GEOM_FIXED_WIDTH_ARCS: bool = cfg!(feature = "geom-fixed-width-arcs");
+    /// `FullRings` geometry decoder (`geom-full-rings`)
+    pub const GEOM_FULL_RINGS: bool = cfg!(feature = "geom-full-rings");
     /// grid-only coarse assets (`geom-coarse`)
     pub const GEOM_COARSE: bool = cfg!(feature = "geom-coarse");
     /// gzip payload decoder (`gzip`)
@@ -182,19 +182,19 @@ pub enum Error {
     /// decompression needs an owned buffer (use `from_slice`/`from_vec`).
     #[display("compressed container passed to from_static")]
     StaticContainerCompressed,
-    /// An `EagerImage` container's coordinate section is not 4-byte aligned
+    /// A `FullRings` container's coordinate section is not 4-byte aligned
     /// in memory — embed static assets with [`include_bytes_aligned!`]`(4, ..)`
     /// instead of a bare `include_bytes!`.
-    #[display("EagerImage container not 4-byte aligned (use include_bytes_aligned!(4, ..))")]
+    #[display("FullRings container not 4-byte aligned (use include_bytes_aligned!(4, ..))")]
     Misaligned,
-    /// An `EagerImage` coordinate section is misaligned within the payload
+    /// A `FullRings` coordinate section is misaligned within the payload
     /// itself — the container is corrupt or came from a broken encoder.
-    #[display("EagerImage coordinate section misaligned within the payload")]
-    ImageSectionMisaligned,
-    /// An `EagerImage` container's ring-end table disagrees with its declared
+    #[display("FullRings coordinate section misaligned within the payload")]
+    FullRingsSectionMisaligned,
+    /// A `FullRings` container's ring-end table disagrees with its declared
     /// coordinate count.
-    #[display("EagerImage ring-end table disagrees with the coordinate count")]
-    ImageCountsDisagree,
+    #[display("FullRings ring-end table disagrees with the coordinate count")]
+    FullRingsCountsDisagree,
     /// The geometry encoding byte has no compiled-in decoder — enable the
     /// matching `geom-*` feature.
     #[display(
@@ -227,7 +227,7 @@ impl Error {
 }
 
 /// Embed a `.utz` container with `include_bytes_aligned!(4, path)`. Required
-/// for [`Finder::from_static`] on `EagerImage` assets — the PIP kernels read
+/// for [`Finder::from_static`] on `FullRings` assets — the PIP kernels read
 /// `(i32, i32)` pairs straight from the embedded bytes, and a bare
 /// `include_bytes!` guarantees no alignment. Harmless for any other asset.
 // Re-exported so consumers don't need their own copy of the dependency. Both

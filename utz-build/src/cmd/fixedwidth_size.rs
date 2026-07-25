@@ -83,7 +83,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
             "{path}: need a codec-none container"
         );
         assert!(
-            matches!(h.geom, GeomEncoding::DeltaVarint | GeomEncoding::Fixed),
+            matches!(h.geom, GeomEncoding::VarintArcs | GeomEncoding::FixedWidthArcs),
             "arc-store containers only (geom 0/1)"
         );
         let fb = h.quant_bits.bytes();

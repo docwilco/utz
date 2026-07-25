@@ -29,27 +29,27 @@ fn main() {
     // compact = i24 (heavier read_fixed byte assembly)
     Config::tiny()
         .codec(Codec::Uncompressed)
-        .geom(GeomEncoding::Fixed)
+        .geom(GeomEncoding::FixedWidthArcs)
         .out_path(format!("{out}/tiny-fixed-static.utz"))
         .generate()
         .expect("generate tiny-fixed-static.utz");
     Config::compact()
         .codec(Codec::Uncompressed)
-        .geom(GeomEncoding::Fixed)
+        .geom(GeomEncoding::FixedWidthArcs)
         .out_path(format!("{out}/compact-fixed-none.utz"))
         .generate()
         .expect("generate compact-fixed-none.utz");
-    // eager-image twins: the geometry section IS the preload cache —
+    // full-rings twins: the geometry section IS the preload cache —
     // slice kernels run straight off flash (eager speed, zero RAM, no boot)
     Config::tiny()
         .codec(Codec::Uncompressed)
-        .geom(GeomEncoding::EagerImage)
+        .geom(GeomEncoding::FullRings)
         .out_path(format!("{out}/tiny-eager-static.utz"))
         .generate()
         .expect("generate tiny-eager-static.utz");
     Config::compact()
         .codec(Codec::Uncompressed)
-        .geom(GeomEncoding::EagerImage)
+        .geom(GeomEncoding::FullRings)
         .out_path(format!("{out}/compact-eager-static.utz"))
         .generate()
         .expect("generate compact-eager-static.utz");

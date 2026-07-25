@@ -25,9 +25,9 @@
 //!   quant width — and on FPU-less cores it is the slow path.
 //!
 //! The coordinate storage is a [`CoordPair`]: decoded `(i32, i32)` pairs,
-//! `(i16, i16)` pairs at quant width (i16-quant eager cache and image
+//! `(i16, i16)` pairs at quant width (i16-quant eager cache and full-rings
 //! sections — half the RAM/flash traffic), or packed `Pack24`
-//! straight over image bytes. The kernel widens each vertex as it loads it;
+//! straight over full-rings section bytes. The kernel widens each vertex as it loads it;
 //! coordinate comparisons run at the narrow width.
 //!
 //! There is also a second kernel family, sign-split ([`edge_split`] /
@@ -47,7 +47,7 @@
 //!
 //! Three granularities, one kernel — one per memory mode:
 //! - [`contains`] — whole polygon from ring slices.
-//! - [`ring_hit`] — one ring (eager cache / image sections).
+//! - [`ring_hit`] — one ring (eager cache / full-rings sections).
 //! - [`edge`] — one edge, the streaming unit: the test is
 //!   per-segment, endpoint-symmetric, and parity accumulation is
 //!   order-independent, so lazy/static lookups fold arcs through it straight
@@ -332,17 +332,17 @@ pub fn edge_split<N: Narrow>(a: (N, N), b: (N, N), px: N, py: N) -> EdgeHit {
 }
 
 /// Packed little-endian i24 pair (6 bytes, align 1): `&[Pack24]` is a valid
-/// slice over the image bytes at ANY address — i24 images have no alignment
+/// slice over the section bytes at ANY address — i24 sections have no alignment
 /// requirement. The unpack compiles to whatever the target does best
 /// (single unaligned-style loads where hardware allows, byte assembly on
 /// strict-alignment cores — measured a tie with hand-blocked aligned
 /// loads there).
 #[derive(Clone, Copy)]
 #[repr(transparent)]
-#[cfg(feature = "geom-image")]
+#[cfg(feature = "geom-full-rings")]
 pub struct Pack24(pub [u8; 6]);
 
-#[cfg(feature = "geom-image")]
+#[cfg(feature = "geom-full-rings")]
 impl CoordPair for Pack24 {
     type Narrow = i32;
     #[expect(

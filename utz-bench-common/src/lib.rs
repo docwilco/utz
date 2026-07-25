@@ -99,7 +99,7 @@ pub mod assets {
         include_bytes!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz"));
     pub static COMPACT_FIXED: &[u8] =
         include_bytes!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz"));
-    // eager-image twins need 4-aligned statics (EagerImage slice casts)
+    // full-rings twins need 4-aligned statics (FullRings slice casts)
     pub static TINY_EAGER: &[u8] =
         utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
     pub static COMPACT_EAGER: &[u8] =

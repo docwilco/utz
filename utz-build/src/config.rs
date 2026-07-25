@@ -51,7 +51,7 @@ impl Default for Config {
             grid_deg: 2.0,
             codec: Codec::Gzip,
             simplify: SimplifyAlgo::Rdp,
-            geom: GeomEncoding::DeltaVarint,
+            geom: GeomEncoding::VarintArcs,
             density_weight_floor: None,
             out: None,
         }
@@ -160,11 +160,9 @@ impl Config {
         self
     }
 
-    /// Arc-store encoding. Default delta+varint (smallest flash).
-    /// `GeomEncoding::Fixed` stores absolute fixed-width coords: +40–72% raw
-    /// / +24–32% best-compressed flash, and streaming lookups skip the
-    /// per-vertex varint decode — near-eager speed with zero RAM cache, the
-    /// XIP `-static` embedded tier.
+    /// Geometry encoding. Default [`GeomEncoding::VarintArcs`] (smallest
+    /// flash); the measured size/speed ladder is the table on
+    /// [`GeomEncoding`].
     #[must_use]
     pub fn geom(mut self, geom: GeomEncoding) -> Self {
         self.geom = geom;
@@ -243,9 +241,9 @@ impl Config {
 pub fn write_guard(out: &std::path::Path, geom: GeomEncoding, codec: Codec) -> crate::Result<()> {
     let name = out.file_name().and_then(|n| n.to_str()).unwrap_or("asset");
     let (gc, gf) = match geom {
-        GeomEncoding::DeltaVarint => ("GEOM_VARINT", "geom-varint"),
-        GeomEncoding::Fixed => ("GEOM_FIXED", "geom-fixed"),
-        GeomEncoding::EagerImage => ("GEOM_IMAGE", "geom-image"),
+        GeomEncoding::VarintArcs => ("GEOM_VARINT_ARCS", "geom-varint-arcs"),
+        GeomEncoding::FixedWidthArcs => ("GEOM_FIXED_WIDTH_ARCS", "geom-fixed-width-arcs"),
+        GeomEncoding::FullRings => ("GEOM_FULL_RINGS", "geom-full-rings"),
         GeomEncoding::Coarse => ("GEOM_COARSE", "geom-coarse"),
     };
     let mut g = format!(

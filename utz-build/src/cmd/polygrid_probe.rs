@@ -28,7 +28,7 @@ fn arc_coords(payload: &[u8], header: &format::PayloadLayout, id: usize) -> Vec<
     let (vcount, after_vcount) = read_varint(payload, pos);
     pos = after_vcount;
     let mut coords = Vec::with_capacity(usize::try_from(vcount).expect("vcount fits usize"));
-    if header.geom == GeomEncoding::Fixed {
+    if header.geom == GeomEncoding::FixedWidthArcs {
         for _ in 0..vcount {
             coords.push((
                 read_fixed(payload, pos, header.quant_bits),
@@ -65,7 +65,7 @@ fn load_feats(bytes: &[u8]) -> (format::PayloadLayout, Vec<Feat>) {
         "need a codec-none container"
     );
     assert!(
-        matches!(h.geom, GeomEncoding::DeltaVarint | GeomEncoding::Fixed),
+        matches!(h.geom, GeomEncoding::VarintArcs | GeomEncoding::FixedWidthArcs),
         "arc-store containers only (geom 0/1)"
     );
     #[expect(

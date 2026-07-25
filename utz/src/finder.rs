@@ -53,47 +53,47 @@ type Payload = alloc::borrow::Cow<'static, [u8]>;
 #[cfg(not(feature = "alloc"))]
 type Payload = &'static [u8];
 
-// EagerImage casts payload bytes to coordinate pairs — pin the layout
+// FullRings casts payload bytes to coordinate pairs — pin the layout
 const _: () =
     assert!(core::mem::size_of::<(i32, i32)>() == 8 && core::mem::align_of::<(i32, i32)>() == 4);
 const _: () =
     assert!(core::mem::size_of::<(i16, i16)>() == 4 && core::mem::align_of::<(i16, i16)>() == 2);
-#[cfg(feature = "geom-image")]
+#[cfg(feature = "geom-full-rings")]
 const _: () = assert!(
     core::mem::size_of::<crate::pip::Pack24>() == 6
         && core::mem::align_of::<crate::pip::Pack24>() == 1
 );
 
-/// `EagerImage` load-time check: the coords are read via typed slice casts,
+/// `FullRings` load-time check: the coords are read via typed slice casts,
 /// so the payload must land them 4-aligned (static assets:
 /// [`crate::include_bytes_aligned!`]`(4, ..)`). Endianness is a compile-time
 /// refusal —
-/// see the `geom-image` `compile_error` in lib.rs.
+/// see the `geom-full-rings` `compile_error` in lib.rs.
 #[cfg_attr(
-    not(feature = "geom-image"),
+    not(feature = "geom-full-rings"),
     expect(
         clippy::unnecessary_wraps,
-        reason = "the alignment check only exists on the geom-image rung; the signature stays uniform"
+        reason = "the alignment check only exists on the geom-full-rings rung; the signature stays uniform"
     )
 )]
-fn check_image(payload: &[u8], layout: &PayloadLayout) -> Result<()> {
-    #[cfg(feature = "geom-image")]
-    if layout.geom == GeomEncoding::EagerImage {
-        if !(payload.as_ptr() as usize + layout.img_coords).is_multiple_of(4) {
+fn check_full_rings(payload: &[u8], layout: &PayloadLayout) -> Result<()> {
+    #[cfg(feature = "geom-full-rings")]
+    if layout.geom == GeomEncoding::FullRings {
+        if !(payload.as_ptr() as usize + layout.full_coords).is_multiple_of(4) {
             return Err(Error::Misaligned);
         }
-        // the flattened image is self-delimiting — the counts must agree
+        // the full-rings sections are self-delimiting — the counts must agree
         // (post-decompression: the header can't vouch for section bytes)
         if layout.eager_rings > 0
             && read_u32(
                 payload,
-                layout.img_ring_ends + (layout.eager_rings as usize - 1) * 4,
+                layout.full_ring_ends + (layout.eager_rings as usize - 1) * 4,
             ) != layout.eager_coords
         {
-            return Err(Error::ImageCountsDisagree);
+            return Err(Error::FullRingsCountsDisagree);
         }
     }
-    #[cfg(not(feature = "geom-image"))]
+    #[cfg(not(feature = "geom-full-rings"))]
     let _ = (payload, layout);
     Ok(())
 }
@@ -256,7 +256,7 @@ impl Finder {
     /// [`Error::StaticContainerCompressed`] if the container is compressed;
     /// the header-validation errors of [`format::outer`]/[`format::parse`]
     /// for an invalid container; [`Error::Misaligned`] for unaligned
-    /// `EagerImage` coords.
+    /// `FullRings` coords.
     pub fn from_static(bytes: &'static [u8]) -> Result<Finder> {
         let start = format::outer(bytes)?;
         let layout = format::parse(&bytes[start..])?;
@@ -269,7 +269,7 @@ impl Finder {
         let payload = bytes
             .get(sections_start..sections_start + layout.sections_len)
             .ok_or(Error::Truncated)?;
-        check_image(payload, &layout)?;
+        check_full_rings(payload, &layout)?;
         Ok(Finder {
             #[cfg(feature = "alloc")]
             payload: alloc::borrow::Cow::Borrowed(payload),
@@ -303,7 +303,7 @@ impl Finder {
     /// The header-validation errors of [`format::outer`]/[`format::parse`]
     /// for an invalid container; [`Error::CodecNotCompiledIn`] /
     /// [`Error::DecoderFailed`] if the payload can't be decoded;
-    /// [`Error::Misaligned`] for unaligned `EagerImage` coords.
+    /// [`Error::Misaligned`] for unaligned `FullRings` coords.
     #[cfg(feature = "alloc")]
     pub fn from_slice(bytes: &[u8]) -> Result<Finder> {
         let start = format::outer(bytes)?;
@@ -319,7 +319,7 @@ impl Finder {
                 .to_vec(),
             codec => decompress::decompress(codec, layout.sections_len, sections)?,
         };
-        check_image(&payload, &layout)?;
+        check_full_rings(&payload, &layout)?;
         Ok(Finder {
             payload: payload.into(),
             layout,
@@ -357,7 +357,7 @@ impl Finder {
                 decompress::decompress(codec, layout.sections_len, sections)?
             }
         };
-        check_image(&payload, &layout)?;
+        check_full_rings(&payload, &layout)?;
         Ok(Finder {
             payload: payload.into(),
             layout,
@@ -384,9 +384,9 @@ impl Finder {
         let mut f = Finder::from_slice(bytes)?;
         if matches!(
             f.layout.geom,
-            GeomEncoding::EagerImage | GeomEncoding::Coarse
+            GeomEncoding::FullRings | GeomEncoding::Coarse
         ) {
-            return Ok(f); // EagerImage/coarse: nothing further to decode
+            return Ok(f); // FullRings/coarse: nothing further to decode
         }
         f.preload();
         // keep [header + zone strings], [parent table] and [grid] —
@@ -444,9 +444,9 @@ impl Finder {
     pub fn preload_bytes(&self) -> usize {
         if matches!(
             self.layout.geom,
-            GeomEncoding::EagerImage | GeomEncoding::Coarse
+            GeomEncoding::FullRings | GeomEncoding::Coarse
         ) {
-            return 0; // EagerImage / coarse: nothing to decode
+            return 0; // FullRings / coarse: nothing to decode
         }
         let h = &self.layout;
         // coords are cached at quant-nearest width
@@ -472,10 +472,10 @@ impl Finder {
         if self.eager.is_some()
             || matches!(
                 self.layout.geom,
-                GeomEncoding::EagerImage | GeomEncoding::Coarse
+                GeomEncoding::FullRings | GeomEncoding::Coarse
             )
         {
-            // geom=2 (EagerImage): the payload already IS the cache;
+            // geom=2 (FullRings): the payload already IS the cache;
             // geom=3 (coarse): nothing to decode
             return;
         }
@@ -661,9 +661,9 @@ impl Finder {
     /// (orientation bit ignored) with O(1) state, and parity XORs across
     /// arcs order-independently.
     fn poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
-        #[cfg(feature = "geom-image")]
-        if self.layout.geom == GeomEncoding::EagerImage {
-            return self.image_poly_contains(pid, px, py);
+        #[cfg(feature = "geom-full-rings")]
+        if self.layout.geom == GeomEncoding::FullRings {
+            return self.full_rings_poly_contains(pid, px, py);
         }
         #[cfg(feature = "alloc")]
         if let Some(e) = &self.eager {
@@ -714,7 +714,7 @@ impl Finder {
     fn scan_arc(&self, id: usize, px: i32, py: i32) -> pip::RingHit {
         let (h, b) = (&self.layout, self.payload_bytes());
         let wide = h.quant_bits == QuantBits::Bits32;
-        let fixed = cfg!(feature = "geom-fixed") && h.geom == GeomEncoding::Fixed;
+        let fixed = cfg!(feature = "geom-fixed-width-arcs") && h.geom == GeomEncoding::FixedWidthArcs;
         let mut pos = h.arc_data + read_u32(b, h.arc_offsets + id * 4) as usize;
         let (vcount, p2) = read_varint(b, pos);
         pos = p2;
@@ -757,15 +757,15 @@ impl Finder {
         }
     }
 
-    /// `EagerImage` path (geom=2): the payload geometry IS the eager cache —
+    /// `FullRings` path (geom=2): the payload geometry IS the eager cache —
     /// one generic slice kernel folds straight off the payload bytes (flash
     /// in zero-copy mode). Coord width follows the quant width: i16 /
     /// i32 as typed pairs, i24 as [`pip::Pack24`] (align 1 — no alignment
     /// requirement). Works on the bare `core` rung.
-    #[cfg(feature = "geom-image")]
-    fn image_poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
+    #[cfg(feature = "geom-full-rings")]
+    fn full_rings_poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
         let (h, b) = (&self.layout, self.payload_bytes());
-        let pe = h.img_polys + pid as usize * 20;
+        let pe = h.full_polys + pid as usize * 20;
         let bb = [
             read_u32(b, pe).cast_signed(),
             read_u32(b, pe + 4).cast_signed(),
@@ -788,24 +788,24 @@ impl Finder {
                 let (Ok(px), Ok(py)) = (i16::try_from(px), i16::try_from(py)) else {
                     return false;
                 };
-                self.image_rings(rstart, rend, px, py, ring_hit_narrow::<(i16, i16)>)
+                self.full_rings_fold(rstart, rend, px, py, ring_hit_narrow::<(i16, i16)>)
             }
             QuantBits::Bits24 => {
-                self.image_rings(rstart, rend, px, py, ring_hit_narrow::<pip::Pack24>)
+                self.full_rings_fold(rstart, rend, px, py, ring_hit_narrow::<pip::Pack24>)
             }
-            QuantBits::Bits32 => self.image_rings(rstart, rend, px, py, ring_hit_wide),
+            QuantBits::Bits32 => self.full_rings_fold(rstart, rend, px, py, ring_hit_wide),
         }
     }
 
-    /// Even-odd fold over one image poly's rings `[rstart, rend)` at pair
-    /// type `P` — `size_of::<P>()` IS the on-image coordinate stride; `scan`
+    /// Even-odd fold over one poly's rings `[rstart, rend)` at pair
+    /// type `P` — `size_of::<P>()` IS the stored coordinate stride; `scan`
     /// is the width-matched per-target ring kernel ([`ring_hit_narrow`] /
     /// [`ring_hit_wide`]).
     /// (No `cast_ptr_alignment` expect needed anymore: the cast target is
     /// the opaque `P`, so the lint can't see a concrete alignment — the
     /// invariant itself is stated in the SAFETY comment below.)
-    #[cfg(feature = "geom-image")]
-    fn image_rings<P: pip::CoordPair>(
+    #[cfg(feature = "geom-full-rings")]
+    fn full_rings_fold<P: pip::CoordPair>(
         &self,
         rstart: usize,
         rend: usize,
@@ -818,19 +818,19 @@ impl Finder {
         let mut cstart = if rstart == 0 {
             0
         } else {
-            read_u32(b, h.img_ring_ends + (rstart - 1) * 4) as usize
+            read_u32(b, h.full_ring_ends + (rstart - 1) * 4) as usize
         };
         for ri in rstart..rend {
-            let cend = read_u32(b, h.img_ring_ends + ri * 4) as usize;
+            let cend = read_u32(b, h.full_ring_ends + ri * 4) as usize;
             let n = cend - cstart;
             // SAFETY (slice cast): pair layouts are asserted at the top of
             // this file (Pack24 is align 1; i16/i32 pairs land aligned
-            // because img_coords is 4-aligned — checked at load — and their
+            // because full_coords is 4-aligned — checked at load — and their
             // strides are multiples of the element alignment); parse bounds
-            // the image sections against the header counts.
+            // the full-rings sections against the header counts.
             let ring = unsafe {
                 core::slice::from_raw_parts(
-                    b[h.img_coords + cstart * core::mem::size_of::<P>()..]
+                    b[h.full_coords + cstart * core::mem::size_of::<P>()..]
                         .as_ptr()
                         .cast::<P>(),
                     n,
@@ -919,7 +919,7 @@ impl Finder {
         let start = coords.len();
         coords.push(C::from_q(qlon as i32, qlat as i32));
         for _ in 1..vcount {
-            if cfg!(feature = "geom-fixed") && header.geom == GeomEncoding::Fixed {
+            if cfg!(feature = "geom-fixed-width-arcs") && header.geom == GeomEncoding::FixedWidthArcs {
                 coords.push(C::from_q(
                     read_fixed(payload, pos, header.quant_bits),
                     read_fixed(payload, pos + coord_bytes, header.quant_bits),
@@ -951,7 +951,7 @@ impl Finder {
 /// 64-bit targets (one-instruction wide multiplies; sign-split measured
 /// 2.3× SLOWER on a 64-bit host). Ring verdicts are identical either way,
 /// so answers stay platform-independent.
-#[cfg(any(feature = "alloc", feature = "geom-image"))]
+#[cfg(any(feature = "alloc", feature = "geom-full-rings"))]
 fn ring_hit_narrow<P>(ring: &[P], px: P::Narrow, py: P::Narrow) -> pip::RingHit
 where
     P: pip::CoordPair,
@@ -967,7 +967,7 @@ where
 /// [`ring_hit_narrow`]'s i32-quant sibling: sign-split on 32-bit targets
 /// (0.24× the i128 kernel there), i128 on 64-bit ones (where i128
 /// measured 0.75× of even the i64 kernel).
-#[cfg(any(feature = "alloc", feature = "geom-image"))]
+#[cfg(any(feature = "alloc", feature = "geom-full-rings"))]
 fn ring_hit_wide(ring: &[(i32, i32)], px: i32, py: i32) -> pip::RingHit {
     #[cfg(target_pointer_width = "32")]
     return pip::ring_hit_split(ring, px, py);

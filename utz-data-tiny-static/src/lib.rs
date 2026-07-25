@@ -15,7 +15,7 @@
 
 /// The tiny-static container bytes (outer header + uncompressed payload).
 /// 4-aligned: this preset is borrowed in place by `Finder::from_static`, and
-/// alignment keeps it valid under any geometry recipe (`EagerImage` slice-casts
+/// alignment keeps it valid under any geometry recipe (`FullRings` slice-casts
 /// `(i32, i32)` pairs; today's varint encoding doesn't care).
 pub static TINY_STATIC: &[u8] =
     include_bytes_aligned::include_bytes_aligned!(4, "../data/tiny-static.utz");

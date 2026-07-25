@@ -13,7 +13,7 @@ publish = false
 utz-common = { path = "../utz-common" }
 utz = { path = "../utz", default-features = false, features = [
     "alloc", "custom",
-    "geom-varint", "geom-fixed", "geom-image", "geom-coarse",
+    "geom-varint-arcs", "geom-fixed-width-arcs", "geom-full-rings", "geom-coarse",
 ] }
 
 [build-dependencies]

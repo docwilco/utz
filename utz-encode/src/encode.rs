@@ -164,7 +164,7 @@ pub fn payload_from_topology(
     let qmax = qmax_for(p.quant_bits);
     let geom = quantize_clean(t, arc_coords, qmax);
     let (g, csr, parent) = poly_grid(&geom, feats, p, qmax)?;
-    let image = (p.geom == GeomEncoding::EagerImage).then(|| flatten_image(&geom, feats.len()));
+    let full_rings = (p.geom == GeomEncoding::FullRings).then(|| flatten_full_rings(&geom, feats.len()));
 
     let mut stats = PayloadStats {
         n_arcs: c32(geom.arcs_q.len()),
@@ -172,7 +172,7 @@ pub fn payload_from_topology(
         clean: geom.stats,
         ..Default::default()
     };
-    let counts = eager_counts(image.as_ref(), &geom, feats.len(), parent.len(), p.geom);
+    let counts = eager_counts(full_rings.as_ref(), &geom, feats.len(), parent.len(), p.geom);
     ensure_header_limits(p, counts, parent.len())?;
     let (eager_coords, eager_rings, eager_polys) = counts;
     // header space reserved up front (plaintext; finish() compresses only
@@ -184,7 +184,7 @@ pub fn payload_from_topology(
         &mut o,
         p,
         &geom,
-        image.as_ref(),
+        full_rings.as_ref(),
         &parent,
         feats.len(),
         &mut stats,
@@ -211,8 +211,8 @@ pub fn payload_from_topology(
         eager_polys,
         // no arc store outside the arc-encoded geometries
         n_arcs: match p.geom {
-            GeomEncoding::DeltaVarint | GeomEncoding::Fixed => stats.n_arcs,
-            GeomEncoding::EagerImage | GeomEncoding::Coarse => 0,
+            GeomEncoding::VarintArcs | GeomEncoding::FixedWidthArcs => stats.n_arcs,
+            GeomEncoding::FullRings | GeomEncoding::Coarse => 0,
         },
         raw_len: c32(o.len() - PAYLOAD_HEADER_LEN),
         grid_deg,
@@ -356,16 +356,16 @@ fn poly_grid(
 /// The flattened preload-cache shape (geom=2): per-ring coord runs +
 /// ring/poly index tables. Built before the header so the eager counts are
 /// exact and serialization just copies.
-struct EagerImage {
+struct FullRingsSections {
     coords: Vec<(i32, i32)>,
     ring_ends: Vec<u32>,
     /// per poly: bbox + `ring_ends` index one past its last ring
-    ipolys: Vec<([i32; 4], u32)>,
+    polys: Vec<([i32; 4], u32)>,
 }
 
-/// Assemble the [`EagerImage`]. Junction dedup stays within a ring.
-fn flatten_image(geom: &CleanGeom, nfeats: usize) -> EagerImage {
-    let (mut coords, mut ring_ends, mut ipolys) = (Vec::new(), Vec::new(), Vec::new());
+/// Assemble the [`FullRingsSections`]. Junction dedup stays within a ring.
+fn flatten_full_rings(geom: &CleanGeom, nfeats: usize) -> FullRingsSections {
+    let (mut coords, mut ring_ends, mut polys) = (Vec::new(), Vec::new(), Vec::new());
     for fi in 0..nfeats {
         for poly in &geom.t.structure[fi] {
             let mut bb = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
@@ -394,33 +394,33 @@ fn flatten_image(geom: &CleanGeom, nfeats: usize) -> EagerImage {
                 }
                 ring_ends.push(c32(coords.len()));
             }
-            ipolys.push((bb, c32(ring_ends.len())));
+            polys.push((bb, c32(ring_ends.len())));
         }
     }
-    EagerImage {
+    FullRingsSections {
         coords,
         ring_ends,
-        ipolys,
+        polys,
     }
 }
 
 /// Eager-cache counts the header advertises: what preload will hold.
-/// Exact for `EagerImage` (they locate the sections) and `Coarse`; for the
+/// Exact for `FullRingsSections` (they locate the sections) and `Coarse`; for the
 /// arc-store geoms a reservation — coords as Σ referenced-arc vcounts
 /// (junction dedup at decode shrinks it a hair; a reservation may only
 /// over-estimate).
 fn eager_counts(
-    image: Option<&EagerImage>,
+    full_rings: Option<&FullRingsSections>,
     geom: &CleanGeom,
     nfeats: usize,
     n_parent: usize,
     g: GeomEncoding,
 ) -> (u64, u32, u32) {
-    match image {
-        Some(img) => (
-            img.coords.len() as u64,
-            c32(img.ring_ends.len()),
-            c32(img.ipolys.len()),
+    match full_rings {
+        Some(rings) => (
+            rings.coords.len() as u64,
+            c32(rings.ring_ends.len()),
+            c32(rings.polys.len()),
         ),
         // coarse: no geometry — polys counts the parent table entries
         None if g == GeomEncoding::Coarse => (0, 0, c32(n_parent)),
@@ -450,7 +450,7 @@ fn write_geometry_sections(
     o: &mut Vec<u8>,
     p: &Params,
     geom: &CleanGeom,
-    image: Option<&EagerImage>,
+    full_rings: Option<&FullRingsSections>,
     parent: &[u16],
     n_features: usize,
     stats: &mut PayloadStats,
@@ -465,15 +465,15 @@ fn write_geometry_sections(
         for &pf in parent {
             o.extend_from_slice(&pf.to_le_bytes());
         }
-    } else if let Some(img) = image {
-        // ---- eager-image geometry (geom=2): coords 4-aligned within the
+    } else if let Some(rings) = full_rings {
+        // ---- full-rings geometry (geom=2): coords 4-aligned within the
         // payload (the 12-byte outer header keeps it 4-aligned in flash) ----
         while !o.len().is_multiple_of(4) {
             o.push(0);
         }
         arcs_off = c32(o.len());
         stats.zones = arcs_off - stats.header;
-        write_image(o, img, p.quant_bits);
+        write_full_rings(o, rings, p.quant_bits);
         // ---- ring index reduces to the parent table ----
         rings_off = c32(o.len());
         stats.arcs = rings_off - arcs_off;
@@ -569,18 +569,18 @@ fn push_fixed(o: &mut Vec<u8>, v: i32, quant_bits: u32) {
     o.extend_from_slice(&v.to_le_bytes()[0..n]);
 }
 
-/// Eager-image sections — `[coords][ring_ends u32][polys bbox 4×i32 + rend
+/// Full-rings sections — `[coords][ring_ends u32][polys bbox 4×i32 + rend
 /// u32]` — with coords at quant width: i16 4 B/vertex, i24 packed 6 B,
 /// i32 8 B.
-fn write_image(o: &mut Vec<u8>, img: &EagerImage, quant_bits: u32) {
-    for &(x, y) in &img.coords {
+fn write_full_rings(o: &mut Vec<u8>, rings: &FullRingsSections, quant_bits: u32) {
+    for &(x, y) in &rings.coords {
         push_fixed(o, x, quant_bits);
         push_fixed(o, y, quant_bits);
     }
-    for v in &img.ring_ends {
+    for v in &rings.ring_ends {
         o.extend_from_slice(&v.to_le_bytes());
     }
-    for &(bb, rend) in &img.ipolys {
+    for &(bb, rend) in &rings.polys {
         for v in bb {
             o.extend_from_slice(&v.to_le_bytes());
         }
@@ -590,7 +590,7 @@ fn write_image(o: &mut Vec<u8>, img: &EagerImage, quant_bits: u32) {
 
 /// Arc store: `arc_offsets u32[n_arcs+1] | per arc: varint vcount |
 /// first vertex fixed | zigzag-varint deltas` (or all-fixed for
-/// `GeomEncoding::Fixed`); `n_arcs` lives in the payload header.
+/// `GeomEncoding::FixedWidthArcs`); `n_arcs` lives in the payload header.
 fn write_arc_store(o: &mut Vec<u8>, arcs_q: &[Arc<i32>], geom: GeomEncoding, quant_bits: u32) {
     let mut arc_data = Vec::new();
     let mut arc_offsets: Vec<u32> = Vec::with_capacity(arcs_q.len() + 1);
@@ -598,7 +598,7 @@ fn write_arc_store(o: &mut Vec<u8>, arcs_q: &[Arc<i32>], geom: GeomEncoding, qua
         arc_offsets.push(c32(arc_data.len()));
         put_varint(&mut arc_data, a.len() as u64);
         match geom {
-            GeomEncoding::DeltaVarint => {
+            GeomEncoding::VarintArcs => {
                 let (mut px, mut py) = (0i64, 0i64);
                 for (i, &(x, y)) in a.iter().enumerate() {
                     if i == 0 {
@@ -611,13 +611,13 @@ fn write_arc_store(o: &mut Vec<u8>, arcs_q: &[Arc<i32>], geom: GeomEncoding, qua
                     (px, py) = (i64::from(x), i64::from(y));
                 }
             }
-            GeomEncoding::Fixed => {
+            GeomEncoding::FixedWidthArcs => {
                 for &(x, y) in a {
                     push_fixed(&mut arc_data, x, quant_bits);
                     push_fixed(&mut arc_data, y, quant_bits);
                 }
             }
-            GeomEncoding::EagerImage | GeomEncoding::Coarse => {
+            GeomEncoding::FullRings | GeomEncoding::Coarse => {
                 unreachable!("handled by the caller")
             }
         }

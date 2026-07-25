@@ -44,11 +44,11 @@ pub struct PayloadLayout {
     pub parent: usize,
     pub poly_offsets: usize, // u32[eager_polys+1]
     pub ring_data: usize,
-    // eager-image sections (geom=2 only; usize::MAX otherwise): the
+    // full-rings sections (geom=2 only; usize::MAX otherwise): the
     // preload-cache layout serialized — coords 4-aligned within the payload
-    pub img_coords: usize,    // (i32, i32)[eager_coords]
-    pub img_ring_ends: usize, // u32[eager_rings]
-    pub img_polys: usize,     // (bbox [i32; 4] + ring_end u32)[eager_polys]
+    pub full_coords: usize,    // (i32, i32)[eager_coords]
+    pub full_ring_ends: usize, // u32[eager_rings]
+    pub full_polys: usize,     // (bbox [i32; 4] + ring_end u32)[eager_polys]
     // eager-cache reservation counts: exact Vec sizes for `preload`
     // (coords is Σ referenced-arc vcounts — may only over-estimate)
     pub eager_coords: u32,
@@ -157,9 +157,9 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
     let sections_len = h.raw_len as usize;
     // a valid geom byte whose decoder isn't compiled in is refused loudly
     let compiled = match h.geom {
-        GeomEncoding::DeltaVarint => cfg!(feature = "geom-varint"),
-        GeomEncoding::Fixed => cfg!(feature = "geom-fixed"),
-        GeomEncoding::EagerImage => cfg!(feature = "geom-image"),
+        GeomEncoding::VarintArcs => cfg!(feature = "geom-varint-arcs"),
+        GeomEncoding::FixedWidthArcs => cfg!(feature = "geom-fixed-width-arcs"),
+        GeomEncoding::FullRings => cfg!(feature = "geom-full-rings"),
         GeomEncoding::Coarse => cfg!(feature = "geom-coarse"),
     };
     if !compiled {
@@ -172,7 +172,7 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
     let (arcs_off, parent) = (h.arcs_off as usize, h.rings_off as usize);
     let sections = match h.geom {
         GeomEncoding::Coarse => coarse_sections(sections_len, parent, n_polys)?,
-        GeomEncoding::EagerImage => image_sections(
+        GeomEncoding::FullRings => full_rings_sections(
             sections_len,
             h.quant_bits,
             arcs_off,
@@ -180,7 +180,7 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
             h.eager_coords,
             h.eager_rings,
         )?,
-        GeomEncoding::DeltaVarint | GeomEncoding::Fixed => {
+        GeomEncoding::VarintArcs | GeomEncoding::FixedWidthArcs => {
             arc_sections(sections_len, arcs_off, parent, n_polys, h.n_arcs)?
         }
     };
@@ -210,9 +210,9 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
         parent,
         poly_offsets: sections.poly_offsets,
         ring_data: sections.ring_data,
-        img_coords: sections.img_coords,
-        img_ring_ends: sections.img_ring_ends,
-        img_polys: sections.img_polys,
+        full_coords: sections.full_coords,
+        full_ring_ends: sections.full_ring_ends,
+        full_polys: sections.full_polys,
         eager_coords: h.eager_coords,
         eager_rings: h.eager_rings,
         eager_polys: h.eager_polys,
@@ -244,9 +244,9 @@ struct GeometrySections {
     arc_data: usize,
     poly_offsets: usize,
     ring_data: usize,
-    img_coords: usize,
-    img_ring_ends: usize,
-    img_polys: usize,
+    full_coords: usize,
+    full_ring_ends: usize,
+    full_polys: usize,
 }
 
 impl GeometrySections {
@@ -257,9 +257,9 @@ impl GeometrySections {
         arc_data: usize::MAX,
         poly_offsets: usize::MAX,
         ring_data: usize::MAX,
-        img_coords: usize::MAX,
-        img_ring_ends: usize::MAX,
-        img_polys: usize::MAX,
+        full_coords: usize::MAX,
+        full_ring_ends: usize::MAX,
+        full_polys: usize::MAX,
     };
 }
 
@@ -270,31 +270,31 @@ fn coarse_sections(sections_len: usize, parent: usize, n_polys: usize) -> Result
     Ok(GeometrySections::NONE)
 }
 
-/// `EagerImage` (geom 2): the preload-cache layout in place of arc store +
+/// `FullRings` (geom 2): the preload-cache layout in place of arc store +
 /// ring records. Coords must be 4-aligned within the payload (encoder pads;
 /// the 12-byte outer header preserves it in flash).
-fn image_sections(
+fn full_rings_sections(
     sections_len: usize,
     quant_bits: QuantBits,
-    img_coords: usize,
+    full_coords: usize,
     n_polys: usize,
     eager_coords: u32,
     eager_rings: u32,
 ) -> Result<GeometrySections> {
-    if !img_coords.is_multiple_of(4) {
-        return Err(Error::ImageSectionMisaligned);
+    if !full_coords.is_multiple_of(4) {
+        return Err(Error::FullRingsSectionMisaligned);
     }
     // coords at quant width: 4 / 6 / 8 bytes per vertex
     let vertex_bytes = 2 * quant_bits.bytes();
-    let img_ring_ends = img_coords + eager_coords as usize * vertex_bytes;
-    let img_polys = img_ring_ends + eager_rings as usize * 4;
-    need(sections_len, img_polys + n_polys * 20)?;
+    let full_ring_ends = full_coords + eager_coords as usize * vertex_bytes;
+    let full_polys = full_ring_ends + eager_rings as usize * 4;
+    need(sections_len, full_polys + n_polys * 20)?;
     // (the ring-end/coordinate-count agreement check needs section bytes and
-    // runs post-decompression in the finder's check_image)
+    // runs post-decompression in the finder's check_full_rings)
     Ok(GeometrySections {
-        img_coords,
-        img_ring_ends,
-        img_polys,
+        full_coords,
+        full_ring_ends,
+        full_polys,
         ..GeometrySections::NONE
     })
 }

@@ -32,9 +32,9 @@ pub struct Args {
     /// simplification algorithm: none|rdp|vw|ii
     #[arg(long, default_value = "rdp")]
     algo: String,
-    /// geometry encoding: varint|fixed|eager (fixed: +flash, streaming lookups
-    /// skip varint decode — the XIP -static speed tier)
-    #[arg(long, default_value = "varint")]
+    /// geometry encoding: varint-arcs|fixed-width-arcs|full-rings|coarse
+    /// (see `GeomEncoding` for the size/speed ladder)
+    #[arg(long, default_value = "varint-arcs")]
     geom: String,
     /// enable population weighting with this floor multiplier (e.g. 0.052)
     #[arg(long)]
@@ -69,13 +69,13 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         }
     };
     let geom = match a.geom.as_str() {
-        "varint" | "delta" => encode::GeomEncoding::DeltaVarint,
-        "fixed" => encode::GeomEncoding::Fixed,
-        "eager" | "image" => encode::GeomEncoding::EagerImage,
+        "varint-arcs" | "varint" | "delta" => encode::GeomEncoding::VarintArcs,
+        "fixed-width-arcs" | "fixed" => encode::GeomEncoding::FixedWidthArcs,
+        "full-rings" | "eager" | "image" => encode::GeomEncoding::FullRings,
         "coarse" => encode::GeomEncoding::Coarse,
         c => {
             return Err(Error::Msg(format!(
-                "unknown geom {c:?}: use varint|fixed|eager|coarse"
+                "unknown geom {c:?}: use varint-arcs|fixed-width-arcs|full-rings|coarse"
             )))
         }
     };

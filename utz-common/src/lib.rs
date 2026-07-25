@@ -43,7 +43,7 @@ pub const NO_ZONE: u16 = 0x7FFF;
 /// string at `release_off`.
 #[derive(Debug, Clone, Copy, PartialEq, Pread, Pwrite)]
 pub struct PayloadHeader {
-    /// arc store (geom 0/1) / `EagerImage` coords (geom 2, 4-aligned)
+    /// arc store (geom 0/1) / `FullRings` coords (geom 2, 4-aligned)
     pub arcs_off: u32,
     /// poly→feature parent table (+ ring records for geom 0/1)
     pub rings_off: u32,
@@ -118,38 +118,61 @@ impl QuantBits {
     }
 }
 
-/// Geometry encoding, recorded in the header.
+/// Geometry encoding, recorded in the header: what the geometry section
+/// contains and how lookups read it.
+///
+/// The three polygon encodings answer bit-identically; they trade storage
+/// for lookup speed. `Coarse` alone trades precision instead: it drops the
+/// polygons and answers at grid-cell precision.
+///
+/// The measured cost/speed ladder lives here — every other doc site links
+/// back to this table rather than restating numbers. Size columns are
+/// whole containers relative to the `VarintArcs` build of the same preset;
+/// lookup speed is the flash-XIP (execute-in-place, zero RAM) leg of the
+/// embedded bench, same baseline.
+///
+/// | encoding | geometry section | raw | best-compressed | XIP lookup |
+/// |---|---|---|---|---|
+/// | `VarintArcs` | shared arcs, delta + zigzag-varint coords | 1× | 1× | 1× |
+/// | `FixedWidthArcs` | shared arcs, absolute quant-width coords | +40–72% | +24–32% (xz) | 1.3–1.5× |
+/// | `FullRings` | whole rings, absolute quant-width coords | 2.1–3.2× | +61–94% (xz) | 2.0–3.3× |
+/// | `Coarse` | none (grid only) | ~⅓× | ~⅓× | grid probe only |
+///
+/// Narrow-quant `FullRings` XIP even outran the RAM preload cache on the
+/// embedded bench. On fixed-width payloads the codec ranking flips: xz
+/// overtakes brotli at every shape.
+///
+/// **TODO(verify):** these figures date to the 2026-07 `fixedwidth_size` /
+/// `imagepack_size` sweeps and bench-firmware runs on earlier payload
+/// revisions — re-run them against the current format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
 #[repr(u8)]
 pub enum GeomEncoding {
     /// Shared arcs as delta + zigzag-varint streams — the default, for
     /// minimal storage size.
     #[default]
-    DeltaVarint = 0,
-    /// Shared arcs as absolute fixed-width coordinates. Costs storage —
-    /// raw arcs grow 40–72% and the best-compressed container 24–32%
-    /// (xz overtakes brotli) — but streaming lookups no longer decode a
-    /// varint per vertex, the dominant lookup cost on embedded targets.
-    /// Near-eager speed with no RAM cache, suited to uncompressed
-    /// `-static` assets read in place from memory-mapped flash.
-    Fixed = 1,
-    /// The geometry section is the preload cache itself: coordinates
-    /// flattened per ring as `(i32, i32)` runs plus the ring/poly index
-    /// tables, 4-byte aligned. The slice kernels read it directly —
-    /// from memory-mapped flash via `from_static` (eager-lookup speed
-    /// with no RAM cache and no preload pass at boot) or from the
-    /// decompressed buffer via `from_slice`. There is no arc store, so
-    /// arcs shared between zones are duplicated per ring: raw size is
-    /// ~4.1–4.3× the varint payload and the best-compressed container
-    /// grows 61–94% (xz).
-    EagerImage = 2,
+    VarintArcs = 0,
+    /// Shared arcs as absolute fixed-width (quant-width) coordinates:
+    /// streaming lookups no longer decode a varint per vertex, the
+    /// dominant lookup cost on embedded targets. Near-eager speed with no
+    /// RAM cache, suited to uncompressed `-static` assets read in place
+    /// from memory-mapped flash. Costs storage (table above).
+    FixedWidthArcs = 1,
+    /// Each ring stored in full — coordinates flattened per ring as
+    /// quant-width pairs plus ring/poly index tables, 4-byte aligned; the
+    /// preload cache serialized. Slice kernels read it in place: from
+    /// memory-mapped flash via `from_static` (eager-lookup speed with no
+    /// RAM cache and no preload pass at boot) or from the decompressed
+    /// buffer via `from_slice`. There is no arc store, so borders shared
+    /// between zones are duplicated per ring — the largest encoding
+    /// (table above). Little-endian hosts only.
+    FullRings = 2,
     /// Grid-only asset: header, tzid pool, parent table, and grid — no
     /// geometry at all. `lookup()` answers at cell precision, the same
     /// answer `lookup_coarse` gives; precision is a property of the
-    /// asset, like `eps_m`. By far the smallest storage (about a third
-    /// of even the varint payload for the tiny preset), works on any
-    /// endianness, and a reader built only for coarse assets compiles
-    /// no point-in-polygon code.
+    /// asset, like `eps_m`. By far the smallest storage (table above),
+    /// works on any endianness, and a reader built only for coarse
+    /// assets compiles no point-in-polygon code.
     Coarse = 3,
 }
 
@@ -315,7 +338,7 @@ mod tests {
             dataset: Dataset::Now,
             quant_bits: QuantBits::Bits24,
             simplify_algo: SimplifyAlgo::Rdp,
-            geom: GeomEncoding::Fixed,
+            geom: GeomEncoding::FixedWidthArcs,
             codec: Codec::Brotli,
             reserved: [0; 3],
         };
@@ -353,7 +376,7 @@ mod tests {
             dataset: Dataset::Now,
             quant_bits: QuantBits::Bits16,
             simplify_algo: SimplifyAlgo::None,
-            geom: GeomEncoding::DeltaVarint,
+            geom: GeomEncoding::VarintArcs,
             codec: Codec::Uncompressed,
             reserved: [0; 3],
         };

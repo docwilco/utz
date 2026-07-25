@@ -61,8 +61,8 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       # feature rungs the workspace build doesn't visit
       - run: cargo clippy -p utz --no-default-features --features core,tiny-static --all-targets -- -D warnings
-      - run: cargo clippy -p utz --no-default-features --features std,custom,gzip,ruzstd,brotli,xz,geom-varint,geom-fixed,geom-image,geom-coarse --all-targets -- -D warnings
-      - run: cargo clippy -p utz --no-default-features --features std,custom,geom-varint,zstd-sys --all-targets -- -D warnings
+      - run: cargo clippy -p utz --no-default-features --features std,custom,gzip,ruzstd,brotli,xz,geom-varint-arcs,geom-fixed-width-arcs,geom-full-rings,geom-coarse --all-targets -- -D warnings
+      - run: cargo clippy -p utz --no-default-features --features std,custom,geom-varint-arcs,zstd-sys --all-targets -- -D warnings
 
   test:
     name: Test (std)
@@ -87,10 +87,10 @@ jobs:
       - run: cargo test -p utz --no-default-features --features std,accurate
       - run: cargo test -p utz --no-default-features --features std,tiny,tiny-static
       # every pure-Rust codec's corrupt-stream error test, no preset assets needed
-      - run: cargo test -p utz --no-default-features --features std,custom,gzip,ruzstd,brotli,xz,geom-varint
+      - run: cargo test -p utz --no-default-features --features std,custom,gzip,ruzstd,brotli,xz,geom-varint-arcs
       # the C-backed zstd decoder feature is tested separately
       # (workspace tests use the pure-Rust ruzstd backend)
-      - run: cargo test -p utz --no-default-features --features std,custom,geom-varint,zstd-sys
+      - run: cargo test -p utz --no-default-features --features std,custom,geom-varint-arcs,zstd-sys
       # cdylib per-build, not via crate-type — see utz-simplify/Cargo.toml
       - run: cargo rustc -p utz-simplify --release --target wasm32-unknown-unknown --crate-type cdylib
 
@@ -117,9 +117,9 @@ jobs:
       - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features alloc,accurate
       # bring-your-own-asset rungs: custom carries no decoder, so pick them
       # here — between the two lines all four geometry decoders build on
-      # bare metal (presets only ever exercise geom-varint)
-      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features core,custom,geom-image,geom-coarse
-      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features alloc,custom,gzip,ruzstd,geom-varint,geom-fixed
+      # bare metal (presets only ever exercise geom-varint-arcs)
+      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features core,custom,geom-full-rings,geom-coarse
+      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features alloc,custom,gzip,ruzstd,geom-varint-arcs,geom-fixed-width-arcs
       # the shared bench harness must stay no_std (the ESP32-S3 firmware uses it)
       - run: cargo build -p utz-bench-common --target riscv32imac-unknown-none-elf
 
