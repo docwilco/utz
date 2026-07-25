@@ -347,9 +347,24 @@ mod tests {
         assert_eq!(decompress(codec, 64, body), Err(Error::Truncated));
     }
 
-    #[test_case(0, 5, b"abc"; "memcpy")]
-    #[cfg_attr(feature = "gzip", test_case(1, 63, &ZLIB_64; "gzip"))]
-    #[cfg_attr(feature = "brotli", test_case(3, 63, &BROTLI_64; "brotli"))]
+    /// The header's `raw_len` disagrees with the stream's true decoded size
+    /// (64) in either direction.
+    #[test_case(0, 63, DECODED_64; "memcpy under declared")]
+    #[test_case(0, 65, DECODED_64; "memcpy over declared")]
+    #[cfg_attr(feature = "gzip", test_case(1, 63, &ZLIB_64; "gzip under declared"))]
+    #[cfg_attr(feature = "gzip", test_case(1, 65, &ZLIB_64; "gzip over declared"))]
+    #[cfg_attr(
+        any(feature = "ruzstd", feature = "zstd-sys"),
+        test_case(2, 63, &ZSTD_64; "zstd under declared")
+    )]
+    #[cfg_attr(
+        any(feature = "ruzstd", feature = "zstd-sys"),
+        test_case(2, 65, &ZSTD_64; "zstd over declared")
+    )]
+    #[cfg_attr(feature = "brotli", test_case(3, 63, &BROTLI_64; "brotli under declared"))]
+    #[cfg_attr(feature = "brotli", test_case(3, 65, &BROTLI_64; "brotli over declared"))]
+    #[cfg_attr(feature = "xz", test_case(4, 63, &XZ_64; "xz under declared"))]
+    #[cfg_attr(feature = "xz", test_case(4, 65, &XZ_64; "xz over declared"))]
     fn size_lie_is_raw_length_mismatch(codec: u8, raw_len: usize, body: &[u8]) {
         assert_eq!(
             decompress(codec, raw_len, body),
