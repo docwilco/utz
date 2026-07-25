@@ -58,7 +58,7 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
             let grid = grid::build(&out.simplified, deg, sub);
             let csr = grid::intern_csr(&grid, Order::CellDominantFirst, &areas);
 
-            let total = grid.ncols * grid.nrows;
+            let total = grid.ncols() * grid.nrows();
             let border = csr
                 .primary
                 .iter()
@@ -73,17 +73,17 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
                         clippy::cast_possible_wrap,
                         reason = "cell index, fraction dropped then clamped"
                     )]
-                    let col =
-                        (((lon + 180.0) / deg) as isize).clamp(0, grid.ncols as isize - 1) as usize;
+                    let col = (((lon + 180.0) / deg) as isize).clamp(0, grid.ncols() as isize - 1)
+                        as usize;
                     #[expect(
                         clippy::cast_possible_truncation,
                         clippy::cast_sign_loss,
                         clippy::cast_possible_wrap,
                         reason = "cell index, fraction dropped then clamped"
                     )]
-                    let row =
-                        (((lat + 90.0) / deg) as isize).clamp(0, grid.nrows as isize - 1) as usize;
-                    let tag = csr.primary[row * grid.ncols + col];
+                    let row = (((lat + 90.0) / deg) as isize).clamp(0, grid.nrows() as isize - 1)
+                        as usize;
+                    let tag = csr.primary[row * grid.ncols() + col];
                     tag & 0x8000 != 0 && tag != 0x7FFF
                 })
                 .count();

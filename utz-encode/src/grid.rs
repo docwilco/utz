@@ -9,19 +9,33 @@
 
 use std::collections::{HashMap, HashSet};
 
+use ndarray::Array2;
+
 use crate::Feat;
 use utz_common::NO_ZONE;
 
+/// Cell arrays are `[row, col]`-indexed and iterate row-major — the same
+/// order the primary table serializes in.
 pub struct CellGrid {
     pub deg: f64,
-    pub ncols: usize,
-    pub nrows: usize,
     /// sorted candidate feature ids per cell (from the edge walk; empty = no ring)
-    pub sets: Vec<Vec<u16>>,
+    pub sets: Array2<Vec<u16>>,
     /// dominant zone per cell from subcell ownership (`NO_ZONE` if nothing filled)
-    pub dominant: Vec<u16>,
+    pub dominant: Array2<u16>,
     /// per-cell subcell ownership tallies (candidate id -> subcells owned)
-    pub tallies: Vec<Vec<(u16, u32)>>,
+    pub tallies: Array2<Vec<(u16, u32)>>,
+}
+
+impl CellGrid {
+    #[must_use]
+    pub fn ncols(&self) -> usize {
+        self.dominant.ncols()
+    }
+
+    #[must_use]
+    pub fn nrows(&self) -> usize {
+        self.dominant.nrows()
+    }
 }
 
 /// Rasterize `feats` onto a `deg`-cell grid; ownership sampled on a grid
@@ -38,60 +52,44 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
         reason = "deg >= 0.1 so at most 3600 cells; float as saturates"
     )]
     let (ncols, nrows) = ((360.0 / deg).ceil() as usize, (180.0 / deg).ceil() as usize);
-    let total = ncols * nrows;
 
-    let sets = edge_walk(feats, deg, ncols, nrows);
-    let (fcols, frows) = (ncols * sub, nrows * sub);
-    let owner = subcell_owners(feats, deg, sub, fcols, frows);
+    let mut sets = edge_walk(feats, deg, ncols, nrows);
+    let owner = subcell_owners(feats, deg, sub, ncols * sub, nrows * sub);
 
     // ---- aggregate subcell owners to per-cell tallies + dominant ----
-    let mut tallies: Vec<HashMap<u16, u32>> = vec![HashMap::new(); total];
-    for fj in 0..frows {
-        let cj = fj / sub;
-        for fi in 0..fcols {
-            let o = owner[fj * fcols + fi];
-            if o != NO_ZONE {
-                *tallies[cj * ncols + fi / sub].entry(o).or_insert(0) += 1;
-            }
+    let mut counts: Array2<HashMap<u16, u32>> = Array2::from_elem((nrows, ncols), HashMap::new());
+    for ((fj, fi), &o) in owner.indexed_iter() {
+        if o != NO_ZONE {
+            *counts[[fj / sub, fi / sub]].entry(o).or_insert(0) += 1;
         }
     }
     // tie-break by smallest id: HashMap iteration order is seeded per process,
     // and a tie decided by it made the whole container nondeterministic
-    let dominant: Vec<u16> = tallies
-        .iter()
-        .map(|t| {
-            t.iter()
-                .max_by_key(|&(&z, &c)| (c, core::cmp::Reverse(z)))
-                .map_or(NO_ZONE, |(&z, _)| z)
-        })
-        .collect();
-    let tallies: Vec<Vec<(u16, u32)>> = tallies
-        .into_iter()
-        .map(|t| {
-            let mut v: Vec<(u16, u32)> = t.into_iter().collect();
-            v.sort_unstable();
-            v
-        })
-        .collect();
+    let dominant: Array2<u16> = counts.map(|t| {
+        t.iter()
+            .max_by_key(|&(&z, &c)| (c, core::cmp::Reverse(z)))
+            .map_or(NO_ZONE, |(&z, _)| z)
+    });
+    let tallies: Array2<Vec<(u16, u32)>> = counts.map(|t| {
+        let mut v: Vec<(u16, u32)> = t.iter().map(|(&z, &n)| (z, n)).collect();
+        v.sort_unstable();
+        v
+    });
     // candidate set = edge walk ∪ subcell owners. The union matters where TZBB
     // zones deliberately OVERLAP (e.g. Asia/Shanghai + Asia/Urumqi over
     // Xinjiang): a zone covering a whole cell leaves no ring in it, so the edge
     // walk alone misses it and would mislabel the cell interior.
-    let sets: Vec<Vec<u16>> = sets
-        .into_iter()
-        .enumerate()
-        .map(|(c, mut s)| {
-            s.extend(tallies[c].iter().map(|&(z, _)| z));
-            let mut v: Vec<u16> = s.into_iter().collect();
-            v.sort_unstable();
-            v
-        })
-        .collect();
+    for (s, t) in sets.iter_mut().zip(tallies.iter()) {
+        s.extend(t.iter().map(|&(z, _)| z));
+    }
+    let sets: Array2<Vec<u16>> = sets.map(|s| {
+        let mut v: Vec<u16> = s.iter().copied().collect();
+        v.sort_unstable();
+        v
+    });
 
     CellGrid {
         deg,
-        ncols,
-        nrows,
         sets,
         dominant,
         tallies,
@@ -101,18 +99,18 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
 /// Pass 1: walk every ring edge in `deg`-sized steps — every cell an edge
 /// passes through collects that feature id (candidate sets; ≥2 candidates =
 /// border cell needing PIP).
-fn edge_walk(feats: &[Feat], deg: f64, ncols: usize, nrows: usize) -> Vec<HashSet<u16>> {
-    let mut sets: Vec<HashSet<u16>> = vec![HashSet::new(); ncols * nrows];
+fn edge_walk(feats: &[Feat], deg: f64, ncols: usize, nrows: usize) -> Array2<HashSet<u16>> {
+    let mut sets: Array2<HashSet<u16>> = Array2::from_elem((nrows, ncols), HashSet::new());
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         clippy::cast_possible_wrap,
         reason = "cast saturates then clamped to grid range"
     )]
-    let cell = |lon: f64, lat: f64| -> usize {
+    let cell = |lon: f64, lat: f64| -> [usize; 2] {
         let c = (((lon + 180.0) / deg) as isize).clamp(0, ncols as isize - 1) as usize;
         let r = (((lat + 90.0) / deg) as isize).clamp(0, nrows as isize - 1) as usize;
-        r * ncols + c
+        [r, c]
     };
     for (fid, f) in feats.iter().enumerate() {
         for p in &f.polys {
@@ -150,13 +148,13 @@ fn edge_walk(feats: &[Feat], deg: f64, ncols: usize, nrows: usize) -> Vec<HashSe
 ///
 /// # Panics
 /// If any coordinate is NaN (crossing xs become unsortable).
-fn subcell_owners(feats: &[Feat], deg: f64, sub: usize, fcols: usize, frows: usize) -> Vec<u16> {
+fn subcell_owners(feats: &[Feat], deg: f64, sub: usize, fcols: usize, frows: usize) -> Array2<u16> {
     #[expect(
         clippy::cast_precision_loss,
         reason = "subdivision factor sub = 8 in practice, ≪ 2^53; exact in f64"
     )]
     let r = deg / sub as f64;
-    let mut owner: Vec<u16> = vec![NO_ZONE; fcols * frows];
+    let mut owner: Array2<u16> = Array2::from_elem((frows, fcols), NO_ZONE);
     let mut row_x: Vec<Vec<f32>> = vec![Vec::new(); frows]; // crossing xs per row, reused per poly
     for (fid, f) in feats.iter().enumerate() {
         for p in &f.polys {
@@ -234,11 +232,10 @@ fn subcell_owners(feats: &[Feat], deg: f64, sub: usize, fcols: usize, frows: usi
                         reason = "fcols = ncols*sub ≤ 8*3600; exact in f64"
                     )]
                     let i1 = (((xb + 180.0) / r - 0.5).floor().min(fcols as f64 - 1.0)) as isize;
-                    let base = j as usize * fcols;
+                    let mut row = owner.row_mut(j as usize);
                     let mut i = i0.cast_signed();
                     while i <= i1 {
-                        owner[base + i.cast_unsigned()] =
-                            u16::try_from(fid).expect("feature id fits u16");
+                        row[i.cast_unsigned()] = u16::try_from(fid).expect("feature id fits u16");
                         i += 1;
                     }
                 }
@@ -284,8 +281,7 @@ impl Csr {
 /// Panics with `AreaDesc` if a candidate's `areas` entry is NaN.
 #[must_use]
 pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
-    let total = grid.ncols * grid.nrows;
-    let mut primary = vec![0u16; total];
+    let mut primary = vec![0u16; grid.dominant.len()];
     let mut lists: Vec<Vec<u16>> = Vec::new();
     let mut index: HashMap<Vec<u16>, u16> = HashMap::new();
     let by_area = |v: &mut Vec<u16>| {
@@ -296,18 +292,22 @@ pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
                 .then(a.cmp(&b))
         });
     };
-    for (c, pc) in primary.iter_mut().enumerate() {
-        let set = &grid.sets[c];
+    // row-major zip: primary cell c ↔ the arrays' cell c
+    for ((set, &dominant), pc) in grid
+        .sets
+        .iter()
+        .zip(grid.dominant.iter())
+        .zip(primary.iter_mut())
+    {
         if set.len() > 1 {
             let mut list = set.clone(); // already id-sorted
             match order {
                 Order::IdSorted => {}
                 Order::AreaDesc => by_area(&mut list),
                 Order::CellDominantFirst => {
-                    let dom = grid.dominant[c];
-                    if let Some(pos) = list.iter().position(|&z| z == dom) {
+                    if let Some(pos) = list.iter().position(|&z| z == dominant) {
                         list.remove(pos);
-                        list.insert(0, dom);
+                        list.insert(0, dominant);
                     }
                 }
             }
@@ -320,11 +320,7 @@ pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
             *pc = 0x8000 | li;
         } else {
             // interior (single candidate) or no-ring cell: dominant zone
-            let z = if set.len() == 1 {
-                set[0]
-            } else {
-                grid.dominant[c]
-            };
+            let z = if set.len() == 1 { set[0] } else { dominant };
             // an unclaimed cell already carries the wire marker (ids stay
             // below NO_ZONE by the 15-bit guard)
             *pc = z;

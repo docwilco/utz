@@ -76,14 +76,14 @@ pub fn run(a: Args) -> utz_build::Result<()> {
 /// P(subcell owner == list[0]) over owned subcells in border cells.
 fn early_exit(g: &grid::CellGrid, csr: &grid::Csr) -> f64 {
     let (mut hit, mut tot) = (0u64, 0u64);
-    for c in 0..g.ncols * g.nrows {
-        let p = csr.primary[c];
+    // row-major zip: primary cell c ↔ tallies cell c
+    for (&p, tallies) in csr.primary.iter().zip(g.tallies.iter()) {
         if p & 0x8000 == 0 {
             continue;
         }
         let li = (p & 0x7FFF) as usize;
         let first = csr.list_ids[csr.list_offsets[li] as usize];
-        for &(z, n) in &g.tallies[c] {
+        for &(z, n) in tallies {
             tot += u64::from(n);
             if z == first {
                 hit += u64::from(n);

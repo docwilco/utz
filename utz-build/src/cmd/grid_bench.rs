@@ -55,7 +55,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         .iter()
         .map(|&(lo, la)| (q24_lon(lo), q24_lat(la)))
         .collect();
-    let (ncols, nrows) = (g.ncols, g.nrows);
+    let (ncols, nrows) = (g.ncols(), g.nrows());
     let cell_of = |px: i32, py: i32| -> usize {
         let lon = f64::from(px) / QMAX_I24 * 180.0;
         let lat = f64::from(py) / QMAX_I24 * 90.0;

@@ -218,8 +218,8 @@ pub fn payload_from_topology(
         grid_deg,
         eps_m,
         n_features: c16(feats.len()),
-        ncols: c16(g.ncols),
-        nrows: c16(g.nrows),
+        ncols: c16(g.ncols()),
+        nrows: c16(g.nrows()),
         uniq: c16(csr.uniq_lists),
         release_len: c16(p.tzbb_release.len()),
         flags: 0, // reserved
