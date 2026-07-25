@@ -14,7 +14,7 @@
   Or use no compression for direct from flash.
 - **DST-correct** — returns the IANA `tzid`; resolve offsets/DST
   downstream with [`jiff`](https://crates.io/crates/jiff) (whose
-  compile-time static zones pair well with `μTZ`'s embedded story) or the
+  compile-time static zones pair well with `μTZ`'s embedded nature) or the
   prevalent `chrono-tz`.
 
 ```rust
@@ -23,7 +23,7 @@ let tz = finder.lookup(utz::Position { lon: -0.1278, lat: 51.5074 });
 // Some("Europe/London")
 ```
 
-## How it reads
+## How it works
 
 Self-describing container (see the `format` module) → one generic decoder: grid
 prefilter, then per-polygon integer PIP. Three memory modes, selected by
