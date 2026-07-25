@@ -541,7 +541,7 @@ impl Finder {
             v if v & 0x8000 == 0 => self.tzid(v),
             v => {
                 // border cell: candidates are the POLYS whose rings touch it
-                // (v4) — resolve the winner's feature via the parent table
+                // — resolve the winner's feature via the parent table
                 let (s, e) = self.list_bounds(v & 0x7FFF);
                 let b = self.payload_bytes();
                 // coarse assets carry no geometry: cell precision IS the
@@ -639,8 +639,8 @@ impl Finder {
     }
 
     /// Per-polygon test: bbox gate, then even-odd PIP at the width the
-    /// header demands. Grid candidates are polys (v4) localized to the
-    /// CELL; the record's bbox (v5) is the point-granular refinement — a
+    /// header demands. Grid candidates are polys localized to the
+    /// CELL; the record's bbox is the point-granular refinement — a
     /// miss returns before touching any arc. Lazy path streams the arcs
     /// straight off the container bytes through the per-edge kernel:
     /// junction vertices are shared by consecutive arcs and the ring closure
@@ -747,7 +747,7 @@ impl Finder {
 
     /// `EagerImage` path (geom=2): the payload geometry IS the eager cache —
     /// one generic slice kernel folds straight off the payload bytes (flash
-    /// in zero-copy mode). Coord width follows the quant width (v7): i16 /
+    /// in zero-copy mode). Coord width follows the quant width: i16 /
     /// i32 as typed pairs, i24 as [`pip::Pack24`] (align 1 — no alignment
     /// requirement). Works on the bare `core` rung.
     #[cfg(feature = "geom-image")]

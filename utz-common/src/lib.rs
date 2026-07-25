@@ -15,11 +15,7 @@ use alloc::vec::Vec;
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
 pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 8; // v8: one fixed payload-header record (all counts
-                           // hoisted, release string at the payload tail);
-                           // v7 flags byte + image coords at quant width;
-                           // v6 12-byte outer + EagerImage; v5 bbox;
-                           // v4 poly grid; v3 geom
+pub const VERSION: u8 = 8;
 
 /// [`PayloadHeader`]'s serialized size — the zone table starts here.
 pub const PAYLOAD_HEADER_LEN: usize = 56;

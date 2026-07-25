@@ -14,7 +14,7 @@ pub use utz_common::{MAGIC, VERSION};
 
 use crate::{Error, Result};
 
-/// Outer container header length (v6): magic4 + version + codec + `raw_len` u32
+/// Outer container header length: magic4 + version + codec + `raw_len` u32
 /// + 2 reserved bytes so a 4-aligned container gives a 4-aligned payload.
 pub const OUTER_LEN: usize = 12;
 
@@ -39,7 +39,7 @@ pub struct PayloadLayout {
     pub n_arcs: u32,
     pub arc_offsets: usize, // u32[n_arcs+1]
     pub arc_data: usize,
-    // ring index (v4: per-poly records; grid candidates are polys)
+    // ring index (per-poly records; grid candidates are polys)
     /// poly id → feature id, `u16[eager_polys]`
     pub parent: usize,
     pub poly_offsets: usize, // u32[eager_polys+1]
@@ -49,7 +49,7 @@ pub struct PayloadLayout {
     pub img_coords: usize,    // (i32, i32)[eager_coords]
     pub img_ring_ends: usize, // u32[eager_rings]
     pub img_polys: usize,     // (bbox [i32; 4] + ring_end u32)[eager_polys]
-    // eager-cache reservation counts (v2): exact Vec sizes for `preload`
+    // eager-cache reservation counts: exact Vec sizes for `preload`
     // (coords is Σ referenced-arc vcounts — may only over-estimate)
     pub eager_coords: u32,
     pub eager_rings: u32,
@@ -265,7 +265,7 @@ fn coarse_sections(p: &[u8], parent: usize, n_polys: usize) -> Result<GeometrySe
 
 /// `EagerImage` (geom 2): the preload-cache layout in place of arc store +
 /// ring records. Coords must be 4-aligned within the payload (encoder pads;
-/// the v6 12-byte outer header preserves it in flash).
+/// the 12-byte outer header preserves it in flash).
 fn image_sections(
     p: &[u8],
     quant_bits: QuantBits,
@@ -277,7 +277,7 @@ fn image_sections(
     if !img_coords.is_multiple_of(4) {
         return Err(Error::ImageSectionMisaligned);
     }
-    // coords at quant width (v7): 4 / 6 / 8 bytes per vertex
+    // coords at quant width: 4 / 6 / 8 bytes per vertex
     let vertex_bytes = 2 * quant_bits.bytes();
     let img_ring_ends = img_coords + eager_coords as usize * vertex_bytes;
     let img_polys = img_ring_ends + eager_rings as usize * 4;

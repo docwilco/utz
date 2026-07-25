@@ -12,7 +12,7 @@
 //!   arc store:  arc_offsets u32[n_arcs+1] (relative to arc data)
 //!               | per arc: varint vcount | first vertex i{16,24,32}×2
 //!               | zigzag-varint deltas
-//!   ring index (v4): parent u16[n_polys] + poly_offsets u32[n_polys+1]
+//!   ring index: parent u16[n_polys] + poly_offsets u32[n_polys+1]
 //!   (relative to ring data) — grid candidates are polys
 //!               | per feature: npolys u16; per poly: bbox i{16,24,32}×4
 //!               | nrings u16; per ring: varint nrefs | varint signed arc refs
@@ -32,7 +32,7 @@ pub use utz_common::{MAGIC, VERSION};
 use crate::error::ensure;
 use crate::grid::{self, Order};
 use crate::{clean, q_lat, q_lon, qmax_for, topo, Arc, Error, Feat};
-/// Outer container header length (v6): magic4 + version + codec + `raw_len` u32
+/// Outer container header length: magic4 + version + codec + `raw_len` u32
 /// + 2 reserved/pad bytes so a 4-aligned container gives a 4-aligned payload.
 pub const OUTER_LEN: usize = 12;
 
@@ -277,7 +277,7 @@ fn quantize_clean(t: &topo::Topology, arc_coords: &[Arc], qmax: f64) -> CleanGeo
 }
 
 /// Grid over the snapped (dequantized) geometry = exactly what the runtime
-/// sees. v4: rasterized per POLYGON, not per feature — border-cell candidate
+/// sees. Rasterized per POLYGON, not per feature — border-cell candidate
 /// lists carry poly ids, so lookups jump straight to the ~2 polys whose rings
 /// touch the cell instead of bbox-scanning every poly of every candidate
 /// feature (the `polygrid_probe` bench: 20-24 polys parsed → 2.1, per-poly bboxes
@@ -402,7 +402,7 @@ fn flatten_image(geom: &CleanGeom, nfeats: usize) -> EagerImage {
     }
 }
 
-/// Eager-cache counts the header advertises (v2): what preload will hold.
+/// Eager-cache counts the header advertises: what preload will hold.
 /// Exact for `EagerImage` (they locate the sections) and `Coarse`; for the
 /// arc-store geoms a reservation — coords as Σ referenced-arc vcounts
 /// (junction dedup at decode shrinks it a hair; a reservation may only
@@ -568,7 +568,7 @@ fn push_fixed(o: &mut Vec<u8>, v: i32, quant_bits: u32) {
 }
 
 /// Eager-image sections — `[coords][ring_ends u32][polys bbox 4×i32 + rend
-/// u32]` — with coords at quant width (v7): i16 4 B/vertex, i24 packed 6 B,
+/// u32]` — with coords at quant width: i16 4 B/vertex, i24 packed 6 B,
 /// i32 8 B.
 fn write_image(o: &mut Vec<u8>, img: &EagerImage, quant_bits: u32) {
     for &(x, y) in &img.coords {
@@ -627,7 +627,7 @@ fn write_arc_store(o: &mut Vec<u8>, arcs_q: &[Arc<i32>], geom: GeomEncoding, qua
     o.extend_from_slice(&arc_data);
 }
 
-/// Ring index (v4: per-poly records — grid candidates are polys; the parent
+/// Ring index (per-poly records — grid candidates are polys; the parent
 /// table maps them to features): `poly_offsets u32[n+1] | per poly: bbox
 /// fixed×4 | nrings u16 | per ring: varint nrefs + signed arc refs`.
 fn write_ring_index(
@@ -642,7 +642,7 @@ fn write_ring_index(
     for fi in 0..nfeats {
         for poly in &geom.t.structure[fi] {
             poly_offsets.push(c32(ring_data.len()));
-            // per-poly bbox (v5): the point-granular gate — a streaming
+            // per-poly bbox: the point-granular gate — a streaming
             // miss returns before touching any arc, preload reads instead
             // of recomputing. Rejects ~5% of poly-grid candidates for 4
             // compares — ~20x above the check's break-even.
@@ -700,7 +700,7 @@ pub fn finish(payload: &[u8], codec: Codec) -> crate::Result<Vec<u8>> {
     o.push(VERSION);
     o.push(codec as u8);
     o.extend_from_slice(&raw_len.to_le_bytes());
-    o.extend_from_slice(&[0u8; 2]); // reserved; pads the payload to +12 (v6)
+    o.extend_from_slice(&[0u8; 2]); // reserved; pads the payload start to +12
     o.extend_from_slice(&body);
     Ok(o)
 }
