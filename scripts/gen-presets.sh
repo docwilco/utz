@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate every preset asset (PLAN.md §11; recipes pinned in §14.5).
+# Regenerate every preset asset (recipes pinned in utz-build's Config).
 # Assets are gitignored and never committed — CI runs this and the data
 # crates include_bytes! the results. Sources land in cache/ (cond-GET
 # revalidated); the GHS-POP density grid is a ~460 MB download on first run.

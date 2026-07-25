@@ -714,7 +714,8 @@ impl Finder {
     fn scan_arc(&self, id: usize, px: i32, py: i32) -> pip::RingHit {
         let (h, b) = (&self.layout, self.payload_bytes());
         let wide = h.quant_bits == QuantBits::Bits32;
-        let fixed = cfg!(feature = "geom-fixed-width-arcs") && h.geom == GeomEncoding::FixedWidthArcs;
+        let fixed =
+            cfg!(feature = "geom-fixed-width-arcs") && h.geom == GeomEncoding::FixedWidthArcs;
         let mut pos = h.arc_data + read_u32(b, h.arc_offsets + id * 4) as usize;
         let (vcount, p2) = read_varint(b, pos);
         pos = p2;
@@ -919,7 +920,9 @@ impl Finder {
         let start = coords.len();
         coords.push(C::from_q(qlon as i32, qlat as i32));
         for _ in 1..vcount {
-            if cfg!(feature = "geom-fixed-width-arcs") && header.geom == GeomEncoding::FixedWidthArcs {
+            if cfg!(feature = "geom-fixed-width-arcs")
+                && header.geom == GeomEncoding::FixedWidthArcs
+            {
                 coords.push(C::from_q(
                     read_fixed(payload, pos, header.quant_bits),
                     read_fixed(payload, pos + coord_bytes, header.quant_bits),

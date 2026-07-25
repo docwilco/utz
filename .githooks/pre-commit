@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+
+# Regenerate README.md from the utz crate docs and stage it if it changed
+./scripts/gen-readme.sh
+git add README.md
+
+# Everything CI runs — single source: scripts/checks.sh
+./scripts/checks.sh all

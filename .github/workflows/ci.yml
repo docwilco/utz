@@ -18,9 +18,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - run: cargo fmt --check
+      - run: ./scripts/checks.sh fmt
+      - run: ./scripts/checks.sh readme
 
-  # Preset assets are gitignored and regenerated (PLAN.md §5, §11) — every
+  # Preset assets are gitignored and regenerated — every
   # job that compiles the utz-data-* crates needs them, so generate once and
   # pass them as an artifact.
   gen:
@@ -58,11 +59,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: preset-assets
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      # feature rungs the workspace build doesn't visit
-      - run: cargo clippy -p utz --no-default-features --features core,tiny-static --all-targets -- -D warnings
-      - run: cargo clippy -p utz --no-default-features --features std,custom,gzip,ruzstd,brotli,xz,geom-varint-arcs,geom-fixed-width-arcs,geom-full-rings,geom-coarse --all-targets -- -D warnings
-      - run: cargo clippy -p utz --no-default-features --features std,custom,geom-varint-arcs,zstd-sys --all-targets -- -D warnings
+      - run: ./scripts/checks.sh clippy
 
   test:
     name: Test (std)
@@ -77,22 +74,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: preset-assets
-      - run: cargo test --workspace
-      # each preset alone (Finder::new() smoke test), then two together
-      # (new() cfg'd out, lazy/zero-copy agreement)
-      - run: cargo test -p utz --no-default-features --features std,tiny
-      - run: cargo test -p utz --no-default-features --features core,tiny-static
-      - run: cargo test -p utz --no-default-features --features std,compact
-      - run: cargo test -p utz --no-default-features --features std,balanced
-      - run: cargo test -p utz --no-default-features --features std,accurate
-      - run: cargo test -p utz --no-default-features --features std,tiny,tiny-static
-      # every pure-Rust codec's corrupt-stream error test, no preset assets needed
-      - run: cargo test -p utz --no-default-features --features std,custom,gzip,ruzstd,brotli,xz,geom-varint-arcs
-      # the C-backed zstd decoder feature is tested separately
-      # (workspace tests use the pure-Rust ruzstd backend)
-      - run: cargo test -p utz --no-default-features --features std,custom,geom-varint-arcs,zstd-sys
-      # cdylib per-build, not via crate-type — see utz-simplify/Cargo.toml
-      - run: cargo rustc -p utz-simplify --release --target wasm32-unknown-unknown --crate-type cdylib
+      - run: ./scripts/checks.sh test
 
   no_std:
     name: Build (no_std, riscv32imac bare metal)
@@ -107,21 +89,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: preset-assets
-      # the headline (§9, §11): preset baked in, zero-copy from flash —
-      # no alloc, no codec
-      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features core,tiny-static
-      # every compressed preset is no_std+alloc clean (pure-Rust decoders)
-      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features alloc,tiny
-      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features alloc,compact
-      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features alloc,balanced
-      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features alloc,accurate
-      # bring-your-own-asset rungs: custom carries no decoder, so pick them
-      # here — between the two lines all four geometry decoders build on
-      # bare metal (presets only ever exercise geom-varint-arcs)
-      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features core,custom,geom-full-rings,geom-coarse
-      - run: cargo build -p utz --target riscv32imac-unknown-none-elf --no-default-features --features alloc,custom,gzip,ruzstd,geom-varint-arcs,geom-fixed-width-arcs
-      # the shared bench harness must stay no_std (the ESP32-S3 firmware uses it)
-      - run: cargo build -p utz-bench-common --target riscv32imac-unknown-none-elf
+      - run: ./scripts/checks.sh no-std
 
   docs:
     name: Docs
@@ -130,8 +98,6 @@ jobs:
     if: github.event_name == 'pull_request'
     needs: gen
     runs-on: ubuntu-latest
-    env:
-      RUSTDOCFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -139,4 +105,4 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: preset-assets
-      - run: cargo doc --workspace --no-deps
+      - run: ./scripts/checks.sh docs

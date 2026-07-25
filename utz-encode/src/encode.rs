@@ -164,7 +164,8 @@ pub fn payload_from_topology(
     let qmax = qmax_for(p.quant_bits);
     let geom = quantize_clean(t, arc_coords, qmax);
     let (g, csr, parent) = poly_grid(&geom, feats, p, qmax)?;
-    let full_rings = (p.geom == GeomEncoding::FullRings).then(|| flatten_full_rings(&geom, feats.len()));
+    let full_rings =
+        (p.geom == GeomEncoding::FullRings).then(|| flatten_full_rings(&geom, feats.len()));
 
     let mut stats = PayloadStats {
         n_arcs: c32(geom.arcs_q.len()),
@@ -172,7 +173,13 @@ pub fn payload_from_topology(
         clean: geom.stats,
         ..Default::default()
     };
-    let counts = eager_counts(full_rings.as_ref(), &geom, feats.len(), parent.len(), p.geom);
+    let counts = eager_counts(
+        full_rings.as_ref(),
+        &geom,
+        feats.len(),
+        parent.len(),
+        p.geom,
+    );
     ensure_header_limits(p, counts, parent.len())?;
     let (eager_coords, eager_rings, eager_polys) = counts;
     // header space reserved up front (plaintext; finish() compresses only

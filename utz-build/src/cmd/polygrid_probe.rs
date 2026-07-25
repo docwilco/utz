@@ -65,7 +65,10 @@ fn load_feats(bytes: &[u8]) -> (format::PayloadLayout, Vec<Feat>) {
         "need a codec-none container"
     );
     assert!(
-        matches!(h.geom, GeomEncoding::VarintArcs | GeomEncoding::FixedWidthArcs),
+        matches!(
+            h.geom,
+            GeomEncoding::VarintArcs | GeomEncoding::FixedWidthArcs
+        ),
         "arc-store containers only (geom 0/1)"
     );
     #[expect(
