@@ -164,25 +164,30 @@ pub enum GeomEncoding {
     /// minimal storage size.
     #[default]
     DeltaVarint = 0,
-    /// Shared arcs as absolute fixed-width coords: raw arcs +40–72%,
-    /// best-compressed +24–32% (xz overtakes brotli) — bought: streaming
-    /// lookups skip the per-vertex varint decode, the dominant cost on
-    /// embedded (near-eager speed, zero RAM), so it suits XIP `-static`
-    /// assets.
+    /// Shared arcs as absolute fixed-width coordinates. Costs storage —
+    /// raw arcs grow 40–72% and the best-compressed container 24–32%
+    /// (xz overtakes brotli) — but streaming lookups no longer decode a
+    /// varint per vertex, the dominant lookup cost on embedded targets.
+    /// Near-eager speed with no RAM cache, suited to uncompressed
+    /// `-static` assets read in place from memory-mapped flash.
     Fixed = 1,
-    /// The geometry section IS the preload cache: flattened per-ring
-    /// `(i32, i32)` runs + ring/poly index tables, 4-aligned — the slice
-    /// kernels run straight off flash (`from_static`: eager speed, zero RAM,
-    /// zero boot) or straight off the decompressed buffer (`from_slice`:
-    /// no preload pass). No arc store; shared arcs duplicated per ring:
-    /// raw ~4.1–4.3× the varint payload, best-compressed +61–94% (xz).
+    /// The geometry section is the preload cache itself: coordinates
+    /// flattened per ring as `(i32, i32)` runs plus the ring/poly index
+    /// tables, 4-byte aligned. The slice kernels read it directly —
+    /// from memory-mapped flash via `from_static` (eager-lookup speed
+    /// with no RAM cache and no preload pass at boot) or from the
+    /// decompressed buffer via `from_slice`. There is no arc store, so
+    /// arcs shared between zones are duplicated per ring: raw size is
+    /// ~4.1–4.3× the varint payload and the best-compressed container
+    /// grows 61–94% (xz).
     EagerImage = 2,
-    /// Grid-only asset: header + tzid pool + parent + grid, no
-    /// geometry at all. `lookup()` answers at cell precision (== the
-    /// dominant-first coarse answer) — precision is an asset property, like
-    /// `eps_m`. Smallest flash by far (~⅓ of even the varint payload for
-    /// tiny); endianness-independent; the coarse reader compiles no
-    /// PIP code.
+    /// Grid-only asset: header, tzid pool, parent table, and grid — no
+    /// geometry at all. `lookup()` answers at cell precision, the same
+    /// answer `lookup_coarse` gives; precision is a property of the
+    /// asset, like `eps_m`. By far the smallest storage (about a third
+    /// of even the varint payload for the tiny preset), works on any
+    /// endianness, and a reader built only for coarse assets compiles
+    /// no point-in-polygon code.
     Coarse = 3,
 }
 
