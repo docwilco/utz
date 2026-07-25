@@ -160,8 +160,8 @@ wire_byte!(QuantBits, "invalid quant_bits header byte");
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum GeomEncoding {
-    /// Shared arcs as delta + zigzag-varint streams — the flash-size
-    /// default.
+    /// Shared arcs as delta + zigzag-varint streams — the default, for
+    /// minimal storage size.
     #[default]
     DeltaVarint = 0,
     /// Shared arcs as absolute fixed-width coords: raw arcs +40–72%,
