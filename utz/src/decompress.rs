@@ -91,12 +91,12 @@ fn decompress_ruzstd(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
     dec.init(&mut input)
         .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
     let mut out = alloc::vec![0u8; raw_len];
-    let mut written = 0;
+    let mut decoded_len = 0;
     loop {
         dec.decode_blocks(&mut input, BlockDecodingStrategy::UptoBlocks(1))
             .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
-        written += dec
-            .read(&mut out[written..])
+        decoded_len += dec
+            .read(&mut out[decoded_len..])
             // We could detect Truncated, but it's a real PITA to catch all
             // cases. Just trust that this provides enough detail.
             .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
@@ -107,7 +107,7 @@ fn decompress_ruzstd(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
             break;
         }
     }
-    if written != raw_len {
+    if decoded_len != raw_len {
         return Err(Error::RawLengthMismatch); // frame shorter than raw_len declared
     }
     Ok(out)
