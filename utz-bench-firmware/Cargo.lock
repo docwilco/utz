@@ -1660,6 +1660,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "matrixmultiply"
+version = "0.3.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f607c237553f086e7043417a51df26b2eb899d3caff94e6a67592ff992fedc7"
+dependencies = [
+ "autocfg",
+ "rawpointer",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1689,6 +1699,39 @@ name = "nb"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
+
+[[package]]
+name = "ndarray"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "882ed72dce9365842bf196bdeedf5055305f11fc8c03dee7bb0194a6cad34841"
+dependencies = [
+ "matrixmultiply",
+ "num-complex",
+ "num-integer",
+ "num-traits",
+ "portable-atomic",
+ "portable-atomic-util",
+ "rawpointer",
+]
+
+[[package]]
+name = "num-complex"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "num-integer"
+version = "0.1.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7969661fd2958a5cb096e56c8e1ad0444ac2bbcd0061bd28660485a44879858f"
+dependencies = [
+ "num-traits",
+]
 
 [[package]]
 name = "num-traits"
@@ -1866,6 +1909,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
+name = "rawpointer"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60a357793950651c4ed0f3f52338f53b2f809f32d83a07f72909fa13e4c6c1e3"
+
+[[package]]
 name = "rayon"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2036,6 +2085,26 @@ name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+
+[[package]]
+name = "scroll"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1257cd4248b4132760d6524d6dda4e053bc648c9070b960929bf50cfb1e7add"
+dependencies = [
+ "scroll_derive",
+]
+
+[[package]]
+name = "scroll_derive"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed76efe62313ab6610570951494bdaa81568026e0318eaa55f167de70eeea67d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "semihosting"
@@ -2405,7 +2474,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "utz"
-version = "0.0.0"
+version = "0.1.0+2026c"
 dependencies = [
  "brotli-decompressor",
  "derive_more",
@@ -2413,6 +2482,8 @@ dependencies = [
  "lzma-rust2",
  "miniz_oxide",
  "ruzstd",
+ "scroll",
+ "utz-common",
  "utz-data-balanced",
  "utz-data-compact",
  "utz-data-tiny",
@@ -2421,7 +2492,7 @@ dependencies = [
 
 [[package]]
 name = "utz-bench-common"
-version = "0.0.0"
+version = "0.1.0+2026c"
 dependencies = [
  "utz",
  "utz-build",
@@ -2430,7 +2501,7 @@ dependencies = [
 
 [[package]]
 name = "utz-bench-firmware"
-version = "0.0.0"
+version = "0.1.0+2026c"
 dependencies = [
  "embedded-storage",
  "esp-alloc",
@@ -2445,7 +2516,7 @@ dependencies = [
 
 [[package]]
 name = "utz-build"
-version = "0.0.0"
+version = "0.1.0+2026c"
 dependencies = [
  "brotli",
  "clap",
@@ -2469,42 +2540,48 @@ dependencies = [
 
 [[package]]
 name = "utz-common"
-version = "0.0.0"
+version = "0.1.0+2026c"
+dependencies = [
+ "scroll",
+]
 
 [[package]]
 name = "utz-data-balanced"
-version = "0.0.0"
+version = "0.1.0+2026c"
 
 [[package]]
 name = "utz-data-compact"
-version = "0.0.0"
+version = "0.1.0+2026c"
 
 [[package]]
 name = "utz-data-tiny"
-version = "0.0.0"
+version = "0.1.0+2026c"
 
 [[package]]
 name = "utz-data-tiny-static"
-version = "0.0.0"
+version = "0.1.0+2026c"
 dependencies = [
  "include_bytes_aligned",
 ]
 
 [[package]]
 name = "utz-encode"
-version = "0.0.0"
+version = "0.1.0+2026c"
 dependencies = [
  "brotli",
  "derive_more",
  "lzma-rust2",
  "miniz_oxide",
+ "ndarray",
+ "scroll",
+ "utz-common",
  "utz-simplify",
  "zstd",
 ]
 
 [[package]]
 name = "utz-simplify"
-version = "0.0.0"
+version = "0.1.0+2026c"
 
 [[package]]
 name = "vcell"

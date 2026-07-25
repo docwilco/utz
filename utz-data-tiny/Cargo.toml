@@ -1,6 +1,6 @@
 [package]
 name = "utz-data-tiny"
-version = "0.0.0"
+version = "0.1.0+2026c"
 edition.workspace = true
 license = "MIT"
 publish = false
