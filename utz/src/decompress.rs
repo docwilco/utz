@@ -31,8 +31,7 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
         #[cfg(feature = "gzip")]
         1 => decompress_gzip(codec, raw_len, body)?,
         #[cfg(feature = "zstd-sys")]
-        2 => zstd::stream::decode_all(body)
-            .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?,
+        2 => decompress_zstd_sys(codec, body)?,
         #[cfg(all(feature = "ruzstd", not(feature = "zstd-sys")))]
         2 => decompress_ruzstd(codec, raw_len, body)?,
         #[cfg(feature = "brotli")]
@@ -75,6 +74,18 @@ fn decompress_gzip(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
         return Err(Error::RawLengthMismatch); // stream shorter than raw_len declared
     }
     Ok(out)
+}
+
+/// Decode via C libzstd (the `zstd` crate). `decode_all` sizes the output
+/// itself; the shared `raw_len` check in [`decompress`] validates it.
+/// libzstd reports a truncated input as `UnexpectedEof` ("incomplete frame")
+/// — mapped to `Truncated` (best-effort, like the other codecs).
+#[cfg(feature = "zstd-sys")]
+fn decompress_zstd_sys(codec: u8, body: &[u8]) -> Result<Vec<u8>> {
+    zstd::stream::decode_all(body).map_err(|source| match source.kind() {
+        std::io::ErrorKind::UnexpectedEof => Error::Truncated,
+        _ => Error::decoder_failed(codec, format_args!("{source}")),
+    })
 }
 
 /// Drive the pure-Rust zstd decoder block-by-block, draining after each
@@ -297,6 +308,25 @@ mod tests {
     fn zstd_corrupt_stream_carries_detail() {
         let err = decompress(2, 64, b"not a zstd frame").expect_err("garbage must not decode");
         assert_decoder_failed(2, &err);
+    }
+
+    /// A zstd frame of the same 64 bytes of ASCII text as [`BROTLI_64`]
+    /// (produced by Node's zlib.zstdCompressSync). Truncation mapping is
+    /// zstd-sys-only: ruzstd's truncation signal is a nested read error
+    /// left in `DecoderFailed` text.
+    #[cfg(feature = "zstd-sys")]
+    const ZSTD_64: [u8; 73] = [
+        40, 181, 47, 253, 32, 64, 1, 2, 0, 116, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114,
+        111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32,
+        116, 104, 101, 32, 108, 97, 122, 121, 32, 100, 111, 103, 59, 32, 112, 97, 99, 107, 32, 109,
+        121, 32, 98, 111, 120, 32, 119, 105, 116, 104, 32, 102, 105,
+    ];
+
+    #[cfg(feature = "zstd-sys")]
+    #[test]
+    fn zstd_sys_truncated_stream_is_truncated() {
+        assert_eq!(decompress(2, 64, &ZSTD_64).map(|out| out.len()), Ok(64));
+        assert_eq!(decompress(2, 64, &ZSTD_64[..36]), Err(Error::Truncated));
     }
 
     #[cfg(feature = "brotli")]
