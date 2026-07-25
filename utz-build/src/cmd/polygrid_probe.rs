@@ -58,8 +58,8 @@ fn arc_coords(payload: &[u8], header: &format::PayloadLayout, id: usize) -> Vec<
 fn load_feats(bytes: &[u8]) -> (format::PayloadLayout, Vec<Feat>) {
     let (codec, _, start) = format::outer(bytes).expect("not a utz container");
     assert_eq!(codec, 0, "need a codec-none container");
-    let p = &bytes[start..];
-    let h = format::parse(p).unwrap();
+    let p = &bytes[start + format::PAYLOAD_HEADER_LEN..];
+    let h = format::parse(&bytes[start..], p.len()).unwrap();
     assert!(
         matches!(h.geom, GeomEncoding::DeltaVarint | GeomEncoding::Fixed),
         "arc-store containers only (geom 0/1)"

@@ -4,10 +4,11 @@
 //! ```text
 //! outer:  magic "uTZ1" | version u8 | codec u8 | raw_len u32 | payload…
 //!         (raw_len = UNCOMPRESSED payload size, so decoders allocate once)
+//! header:  one fixed [`PayloadHeader`] record (utz-common), PLAINTEXT —
+//!          every section offset and count; the encoder Pwrites it, the
+//!          reader Preads it (before decompressing anything), so the
+//!          field list IS the wire layout
 //! payload (compressed per codec):
-//!   header:     one fixed [`PayloadHeader`] record (utz-common) — every
-//!               section offset and count; the encoder Pwrites it, the
-//!               reader Preads it, so the field list IS the wire layout
 //!   zone table: str_offsets u16[n_features+1] | tzid pool bytes   (zone i = feature i)
 //!   arc store:  arc_offsets u32[n_arcs+1] (relative to arc data)
 //!               | per arc: varint vcount | first vertex i{16,24,32}×2
@@ -178,7 +179,8 @@ pub fn payload_from_topology(
     let counts = eager_counts(image.as_ref(), &geom, feats.len(), parent.len(), p.geom);
     ensure_header_limits(p, counts, parent.len())?;
     let (eager_coords, eager_rings, eager_polys) = counts;
-    // header space reserved up front; Pwritten once the offsets exist
+    // header space reserved up front (plaintext; finish() compresses only
+    // the sections after it); stored offsets are relative to the sections
     let mut o = vec![0u8; PAYLOAD_HEADER_LEN];
     stats.header = c32(o.len());
     write_zone_table(&mut o, feats)?;
@@ -202,11 +204,12 @@ pub fn payload_from_topology(
 
     #[expect(clippy::cast_possible_truncation, reason = "f32 header fields")]
     let (grid_deg, eps_m) = (p.grid_deg as f32, p.eps_m as f32);
+    let header_len = c32(PAYLOAD_HEADER_LEN);
     let header = PayloadHeader {
-        arcs_off,
-        rings_off,
-        grid_off,
-        release_off,
+        arcs_off: arcs_off - header_len,
+        rings_off: rings_off - header_len,
+        grid_off: grid_off - header_len,
+        release_off: release_off - header_len,
         eager_coords: u32::try_from(eager_coords).expect("guarded by ensure_header_limits"),
         eager_rings,
         eager_polys,
@@ -693,14 +696,17 @@ fn write_grid(o: &mut Vec<u8>, csr: &grid::Csr) {
 ///
 /// As [`compress`].
 pub fn finish(payload: &[u8], codec: Codec) -> crate::Result<Vec<u8>> {
-    let raw_len = c32(payload.len());
-    let body = compress(payload, codec)?;
-    let mut o = Vec::with_capacity(body.len() + OUTER_LEN);
+    // the header stays plaintext; only the sections after it compress
+    let (header, sections) = payload.split_at(PAYLOAD_HEADER_LEN);
+    let raw_len = c32(sections.len());
+    let body = compress(sections, codec)?;
+    let mut o = Vec::with_capacity(OUTER_LEN + PAYLOAD_HEADER_LEN + body.len());
     o.extend_from_slice(&MAGIC);
     o.push(VERSION);
     o.push(codec as u8);
     o.extend_from_slice(&raw_len.to_le_bytes());
-    o.extend_from_slice(&[0u8; 2]); // reserved; pads the payload start to +12
+    o.extend_from_slice(&[0u8; 2]); // reserved; pads the header start to +12
+    o.extend_from_slice(header);
     o.extend_from_slice(&body);
     Ok(o)
 }

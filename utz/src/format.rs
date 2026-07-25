@@ -1,16 +1,16 @@
 //! Self-describing container parsing. The payload header is the shared
 //! [`PayloadHeader`] record (utz-common) — the encoder in utz-encode
-//! serializes the same struct, so the two cannot drift.
+//! serializes the same struct, so the two cannot drift. It sits in
+//! plaintext after the outer header, so a container is validated BEFORE
+//! any decompression; only the section blob after it is compressed.
 //!
 //! All multi-byte values little-endian. The parser stores OFFSETS into the
-//! payload (no self-referential slices), so the same code serves borrowed
-//! (`&'static`, zero-copy) and owned buffers.
+//! section blob (no self-referential slices), so the same code serves
+//! borrowed (`&'static`, zero-copy) and owned buffers.
 
 use scroll::Pread;
-use utz_common::{
-    Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo, PAYLOAD_HEADER_LEN,
-};
-pub use utz_common::{MAGIC, VERSION};
+use utz_common::{Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo};
+pub use utz_common::{MAGIC, PAYLOAD_HEADER_LEN, VERSION};
 
 use crate::{Error, Result};
 
@@ -32,8 +32,8 @@ pub struct PayloadLayout {
     pub grid_deg: f32,
     pub eps_m: f32,
     pub n_features: u16,
-    // zone table
-    pub str_offsets: usize, // u16[n_features+1]
+    // zone table: the string-offset table (u16[n_features+1]) starts the
+    // section blob at offset 0; the tzid pool follows it
     pub pool: usize,
     // arc store
     pub n_arcs: u32,
@@ -131,20 +131,25 @@ pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize)> {
     Ok((bytes[5], read_u32(bytes, 6) as usize, OUTER_LEN))
 }
 
-/// Parse the payload header + section directory.
+/// Parse the plaintext payload header against the section blob's length
+/// (`sections_len` — the decompressed size for compressed containers, so
+/// this validates before any decompression happens).
 ///
 /// # Errors
-/// [`Error::InvalidHeaderField`] for invalid header fields;
-/// [`Error::SectionOverrun`] for a section overrunning the payload;
-/// [`Error::GeometryNotCompiledIn`] if the geometry encoding has no
-/// compiled-in decoder.
-pub fn parse(p: &[u8]) -> Result<PayloadLayout> {
+/// [`Error::Truncated`] if `header` is short; [`Error::InvalidHeaderField`]
+/// for invalid header fields; [`Error::SectionOverrun`] for a section
+/// overrunning the blob; [`Error::GeometryNotCompiledIn`] if the geometry
+/// encoding has no compiled-in decoder.
+pub fn parse(header: &[u8], sections_len: usize) -> Result<PayloadLayout> {
     // an invalid enum byte (quant_bits/geom/simplify_algo/dataset) fails the
-    // header read itself as BadInput; running out of bytes is an overrun
-    let h: PayloadHeader = p.pread_with(0, scroll::LE).map_err(|source| match source {
-        scroll::Error::BadInput { .. } => Error::InvalidHeaderField,
-        _ => Error::SectionOverrun,
-    })?;
+    // header read itself as BadInput; running out of bytes means the source
+    // ends inside the header
+    let h: PayloadHeader = header
+        .pread_with(0, scroll::LE)
+        .map_err(|source| match source {
+            scroll::Error::BadInput { .. } => Error::InvalidHeaderField,
+            _ => Error::Truncated,
+        })?;
     if h.flags != 0 || h.grid_deg.is_nan() || h.grid_deg <= 0.0 {
         return Err(Error::InvalidHeaderField);
     }
@@ -159,15 +164,14 @@ pub fn parse(p: &[u8]) -> Result<PayloadLayout> {
         return Err(Error::GeometryNotCompiledIn(h.geom));
     }
 
-    let str_offsets = PAYLOAD_HEADER_LEN;
-    let pool = str_offsets + (h.n_features as usize + 1) * 2;
+    let pool = (h.n_features as usize + 1) * 2;
 
     let n_polys = h.eager_polys as usize;
     let (arcs_off, parent) = (h.arcs_off as usize, h.rings_off as usize);
     let sections = match h.geom {
-        GeomEncoding::Coarse => coarse_sections(p, parent, n_polys)?,
+        GeomEncoding::Coarse => coarse_sections(sections_len, parent, n_polys)?,
         GeomEncoding::EagerImage => image_sections(
-            p,
+            sections_len,
             h.quant_bits,
             arcs_off,
             n_polys,
@@ -175,16 +179,16 @@ pub fn parse(p: &[u8]) -> Result<PayloadLayout> {
             h.eager_rings,
         )?,
         GeomEncoding::DeltaVarint | GeomEncoding::Fixed => {
-            arc_sections(p, arcs_off, parent, n_polys, h.n_arcs)?
+            arc_sections(sections_len, arcs_off, parent, n_polys, h.n_arcs)?
         }
     };
 
     let primary = h.grid_off as usize;
     let list_offsets = primary + h.ncols as usize * h.nrows as usize * 2;
     let list_ids = list_offsets + (h.uniq as usize + 1) * 2;
-    need(p, list_ids)?;
+    need(sections_len, list_ids)?;
     let (release_off, release_len) = (h.release_off as usize, h.release_len as usize);
-    need(p, release_off + release_len)?;
+    need(sections_len, release_off + release_len)?;
 
     Ok(PayloadLayout {
         dataset: h.dataset,
@@ -195,7 +199,6 @@ pub fn parse(p: &[u8]) -> Result<PayloadLayout> {
         grid_deg: h.grid_deg,
         eps_m: h.eps_m,
         n_features: h.n_features,
-        str_offsets,
         pool,
         n_arcs: sections.n_arcs,
         arc_offsets: sections.arc_offsets,
@@ -220,9 +223,22 @@ pub fn parse(p: &[u8]) -> Result<PayloadLayout> {
     })
 }
 
-/// Reject a section end past the payload end.
-fn need(p: &[u8], end: usize) -> Result<()> {
-    if p.len() < end {
+/// Reject a section blob shorter than a declared length (the codec-0 load
+/// paths' analogue of the decompressors' `raw_len` check).
+///
+/// # Errors
+/// [`Error::RawLengthMismatch`] on disagreement.
+pub fn need_len(actual: usize, declared: usize) -> Result<()> {
+    if actual == declared {
+        Ok(())
+    } else {
+        Err(Error::RawLengthMismatch)
+    }
+}
+
+/// Reject a section end past the blob end.
+fn need(sections_len: usize, end: usize) -> Result<()> {
+    if sections_len < end {
         Err(Error::SectionOverrun)
     } else {
         Ok(())
@@ -258,8 +274,8 @@ impl GeometrySections {
 
 /// Coarse containers (geom 3) have no geometry sections at all — just the
 /// parent table + grid.
-fn coarse_sections(p: &[u8], parent: usize, n_polys: usize) -> Result<GeometrySections> {
-    need(p, parent + n_polys * 2)?;
+fn coarse_sections(sections_len: usize, parent: usize, n_polys: usize) -> Result<GeometrySections> {
+    need(sections_len, parent + n_polys * 2)?;
     Ok(GeometrySections::NONE)
 }
 
@@ -267,7 +283,7 @@ fn coarse_sections(p: &[u8], parent: usize, n_polys: usize) -> Result<GeometrySe
 /// ring records. Coords must be 4-aligned within the payload (encoder pads;
 /// the 12-byte outer header preserves it in flash).
 fn image_sections(
-    p: &[u8],
+    sections_len: usize,
     quant_bits: QuantBits,
     img_coords: usize,
     n_polys: usize,
@@ -281,13 +297,9 @@ fn image_sections(
     let vertex_bytes = 2 * quant_bits.bytes();
     let img_ring_ends = img_coords + eager_coords as usize * vertex_bytes;
     let img_polys = img_ring_ends + eager_rings as usize * 4;
-    need(p, img_polys + n_polys * 20)?;
-    // the flattened image is self-delimiting — the counts must agree
-    if eager_rings > 0
-        && read_u32(p, img_ring_ends + (eager_rings as usize - 1) * 4) != eager_coords
-    {
-        return Err(Error::ImageCountsDisagree);
-    }
+    need(sections_len, img_polys + n_polys * 20)?;
+    // (the ring-end/coordinate-count agreement check needs section bytes and
+    // runs post-decompression in the finder's check_image)
     Ok(GeometrySections {
         img_coords,
         img_ring_ends,
@@ -298,7 +310,7 @@ fn image_sections(
 
 /// Arc-store encodings (geom 0/1): arc offsets + data, per-poly ring records.
 fn arc_sections(
-    p: &[u8],
+    sections_len: usize,
     arcs_off: usize,
     parent: usize,
     n_polys: usize,
@@ -306,7 +318,7 @@ fn arc_sections(
 ) -> Result<GeometrySections> {
     let arc_offsets = arcs_off;
     let arc_data = arc_offsets + (n_arcs as usize + 1) * 4;
-    need(p, arc_data)?;
+    need(sections_len, arc_data)?;
     let poly_offsets = parent + n_polys * 2;
     let ring_data = poly_offsets + (n_polys + 1) * 4;
     Ok(GeometrySections {

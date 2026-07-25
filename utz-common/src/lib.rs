@@ -15,7 +15,7 @@ use alloc::vec::Vec;
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
 pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 8;
+pub const VERSION: u8 = 9;
 
 /// [`PayloadHeader`]'s serialized size — the zone table starts here.
 pub const PAYLOAD_HEADER_LEN: usize = 56;
@@ -25,13 +25,16 @@ pub const PAYLOAD_HEADER_LEN: usize = 56;
 /// flags a border cell carrying a candidate-list index instead.
 pub const NO_ZONE: u16 = 0x7FFF;
 
-/// The payload's one fixed header record — everything the reader needs to
-/// locate every section. The encoder `Pwrite`s it, the reader `Pread`s it
-/// (both little-endian); field order is the wire order.
+/// The container's one fixed header record — everything the reader needs to
+/// locate every section. It sits in PLAINTEXT right after the outer header
+/// (only the section blob after it is compressed), so any container is
+/// inspectable and validated before decompression. The encoder `Pwrite`s
+/// it, the reader `Pread`s it (both little-endian); field order is the wire
+/// order; all offsets are relative to the section blob that follows.
 ///
-/// Layout after the header: zone-string offsets + pool, the
-/// geometry-dependent sections at the stored offsets, the grid tables, and
-/// the TZBB release string at `release_off`.
+/// Section blob layout: zone-string offsets + pool, the geometry-dependent
+/// sections at the stored offsets, the grid tables, and the TZBB release
+/// string at `release_off`.
 #[derive(Debug, Clone, Copy, PartialEq, Pread, Pwrite)]
 pub struct PayloadHeader {
     /// arc store (geom 0/1) / `EagerImage` coords (geom 2, 4-aligned)

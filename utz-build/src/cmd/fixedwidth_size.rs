@@ -76,8 +76,8 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         let bytes = std::fs::read(path)?;
         let (codec, _, start) = format::outer(&bytes).expect("not a utz container");
         assert_eq!(codec, 0, "{path}: need a codec-none container");
-        let p = &bytes[start..];
-        let h = format::parse(p).unwrap();
+        let p = &bytes[start + format::PAYLOAD_HEADER_LEN..];
+        let h = format::parse(&bytes[start..], p.len()).unwrap();
         assert!(
             matches!(h.geom, GeomEncoding::DeltaVarint | GeomEncoding::Fixed),
             "arc-store containers only (geom 0/1)"

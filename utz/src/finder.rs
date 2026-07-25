@@ -80,10 +80,20 @@ const _: () = assert!(
 )]
 fn check_image(payload: &[u8], layout: &PayloadLayout) -> Result<()> {
     #[cfg(feature = "geom-image")]
-    if layout.geom == GeomEncoding::EagerImage
-        && !(payload.as_ptr() as usize + layout.img_coords).is_multiple_of(4)
-    {
-        return Err(Error::Misaligned);
+    if layout.geom == GeomEncoding::EagerImage {
+        if !(payload.as_ptr() as usize + layout.img_coords).is_multiple_of(4) {
+            return Err(Error::Misaligned);
+        }
+        // the flattened image is self-delimiting — the counts must agree
+        // (post-decompression: the header can't vouch for section bytes)
+        if layout.eager_rings > 0
+            && read_u32(
+                payload,
+                layout.img_ring_ends + (layout.eager_rings as usize - 1) * 4,
+            ) != layout.eager_coords
+        {
+            return Err(Error::ImageCountsDisagree);
+        }
     }
     #[cfg(not(feature = "geom-image"))]
     let _ = (payload, layout);
@@ -267,8 +277,10 @@ impl Finder {
         if codec != 0 {
             return Err(Error::StaticContainerCompressed);
         }
-        let payload = &bytes[start..];
-        let layout = format::parse(payload)?;
+        let header = &bytes[start..];
+        let sections_start = start + format::PAYLOAD_HEADER_LEN;
+        let payload = bytes.get(sections_start..).unwrap_or(&[]);
+        let layout = format::parse(header, payload.len())?;
         check_image(payload, &layout)?;
         Ok(Finder {
             #[cfg(feature = "alloc")]
@@ -307,12 +319,19 @@ impl Finder {
     #[cfg(feature = "alloc")]
     pub fn from_slice(bytes: &[u8]) -> Result<Finder> {
         let (codec, raw_len, start) = format::outer(bytes)?;
+        // the header is plaintext: validate it BEFORE any decompression
+        let layout = format::parse(&bytes[start..], raw_len)?;
+        let sections = bytes
+            .get(start + format::PAYLOAD_HEADER_LEN..)
+            .ok_or(Error::Truncated)?;
         let payload = match Codec::from_byte(codec) {
-            Some(Codec::Uncompressed) => bytes[start..].to_vec(),
-            Some(codec) => decompress::decompress(codec, raw_len, &bytes[start..])?,
+            Some(Codec::Uncompressed) => {
+                format::need_len(sections.len(), raw_len)?;
+                sections.to_vec()
+            }
+            Some(codec) => decompress::decompress(codec, raw_len, sections)?,
             None => return Err(Error::CodecNotCompiledIn(codec)),
         };
-        let layout = format::parse(&payload)?;
         check_image(&payload, &layout)?;
         Ok(Finder {
             payload: payload.into(),
@@ -332,17 +351,23 @@ impl Finder {
     #[cfg(feature = "alloc")]
     pub fn from_vec(bytes: Vec<u8>) -> Result<Finder> {
         let (codec, raw_len, start) = format::outer(&bytes)?;
+        // the header is plaintext: validate it BEFORE any decompression
+        let layout = format::parse(&bytes[start..], raw_len)?;
+        let sections_start = start + format::PAYLOAD_HEADER_LEN;
+        if bytes.len() < sections_start {
+            return Err(Error::Truncated);
+        }
         let payload = match Codec::from_byte(codec) {
             Some(Codec::Uncompressed) => {
+                format::need_len(bytes.len() - sections_start, raw_len)?;
                 let mut p = bytes;
-                p.copy_within(start.., 0); // reuse the allocation
-                p.truncate(p.len() - start);
+                p.copy_within(sections_start.., 0); // reuse the allocation
+                p.truncate(p.len() - sections_start);
                 p
             }
-            Some(codec) => decompress::decompress(codec, raw_len, &bytes[start..])?,
+            Some(codec) => decompress::decompress(codec, raw_len, &bytes[sections_start..])?,
             None => return Err(Error::CodecNotCompiledIn(codec)),
         };
-        let layout = format::parse(&payload)?;
         check_image(&payload, &layout)?;
         Ok(Finder {
             payload: payload.into(),
@@ -624,8 +649,8 @@ impl Finder {
 
     fn tzid(&self, fid: u16) -> Option<&str> {
         let (h, b) = (&self.layout, self.payload_bytes());
-        let s = read_u16(b, h.str_offsets + fid as usize * 2) as usize;
-        let e = read_u16(b, h.str_offsets + fid as usize * 2 + 2) as usize;
+        let s = read_u16(b, fid as usize * 2) as usize;
+        let e = read_u16(b, fid as usize * 2 + 2) as usize;
         core::str::from_utf8(&b[h.pool + s..h.pool + e])
             .ok()
             .filter(|t| !t.is_empty())
