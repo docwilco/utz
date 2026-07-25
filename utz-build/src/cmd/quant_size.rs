@@ -16,10 +16,18 @@ pub struct Args {
 pub fn run(a: Args) -> utz_build::Result<()> {
     let (eps_m, bits) = (a.eps_m, a.qbits);
     let feats = utz_build::load("now")?;
-    let v0: usize = feats.iter().flat_map(|f| &f.polys).flatten().map(std::vec::Vec::len).sum();
+    let v0: usize = feats
+        .iter()
+        .flat_map(|f| &f.polys)
+        .flatten()
+        .map(std::vec::Vec::len)
+        .sum();
     println!("with-oceans-now: {} features, {v0} verts", feats.len());
     println!("topology + topology-aware RDP eps={eps_m} m\n");
-    println!("{:<16}{:>10}{:>12}{:>12}{:>12}{:>12}", "encoding", "arc-verts", "raw", "zstd22", "br.w24", "xz.dmax");
+    println!(
+        "{:<16}{:>10}{:>12}{:>12}{:>12}{:>12}",
+        "encoding", "arc-verts", "raw", "zstd22", "br.w24", "xz.dmax"
+    );
     println!("{}", "-".repeat(74));
     let eps_deg = eps_m / 111_320.0;
     for &qbits in &bits {
@@ -30,16 +38,31 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             let b = brotli_w24(raw);
             let x = xz_dmax(raw);
             let name = format!("i{qbits} {tag}");
-            println!("{:<16}{:>10}{:>12}{:>12}{:>12}{:>12}", name, out.verts, raw.len(), z, b, x);
+            println!(
+                "{:<16}{:>10}{:>12}{:>12}{:>12}{:>12}",
+                name,
+                out.verts,
+                raw.len(),
+                z,
+                b,
+                x
+            );
         }
     }
     Ok(())
 }
 
 fn brotli_w24(raw: &[u8]) -> usize {
-    let params = brotli::enc::BrotliEncoderParams { quality: 11, lgwin: 24, ..Default::default() };
+    let params = brotli::enc::BrotliEncoderParams {
+        quality: 11,
+        lgwin: 24,
+        ..Default::default()
+    };
     let mut out = Vec::new();
-    { let mut w = brotli::CompressorWriter::with_params(&mut out, 4096, &params); w.write_all(raw).unwrap(); }
+    {
+        let mut w = brotli::CompressorWriter::with_params(&mut out, 4096, &params);
+        w.write_all(raw).unwrap();
+    }
     out.len()
 }
 fn xz_dmax(raw: &[u8]) -> usize {

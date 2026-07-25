@@ -28,7 +28,10 @@ impl Lcg {
     }
 
     /// Uniform in [0, 1): 53-bit mantissa construction.
-    #[expect(clippy::cast_precision_loss, reason = "53-bit mantissa construction: state>>11 < 2^53 and 2^53 are both exact")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "53-bit mantissa construction: state>>11 < 2^53 and 2^53 are both exact"
+    )]
     pub fn unit_f64(&mut self) -> f64 {
         (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
     }
@@ -40,5 +43,12 @@ impl Lcg {
 #[must_use]
 pub fn gen_pts(seed: u64, n: usize) -> Vec<(f64, f64)> {
     let mut lcg = Lcg::new(seed);
-    (0..n).map(|_| (lcg.unit_f64() * 360.0 - 180.0, lcg.unit_f64() * 180.0 - 90.0)).collect()
+    (0..n)
+        .map(|_| {
+            (
+                lcg.unit_f64() * 360.0 - 180.0,
+                lcg.unit_f64() * 180.0 - 90.0,
+            )
+        })
+        .collect()
 }

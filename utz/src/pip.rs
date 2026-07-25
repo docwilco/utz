@@ -71,7 +71,10 @@ pub trait CoordPair: Copy {
 
 impl CoordPair for (i32, i32) {
     type Narrow = i32;
-    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; inlining must not depend on per-target heuristics")]
+    #[expect(
+        clippy::inline_always,
+        reason = "per-vertex accessor in the streaming PIP hot loop; inlining must not depend on per-target heuristics"
+    )]
     #[inline(always)]
     fn xy(&self) -> (i32, i32) {
         *self
@@ -79,7 +82,10 @@ impl CoordPair for (i32, i32) {
 }
 impl CoordPair for (i16, i16) {
     type Narrow = i16;
-    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; inlining must not depend on per-target heuristics")]
+    #[expect(
+        clippy::inline_always,
+        reason = "per-vertex accessor in the streaming PIP hot loop; inlining must not depend on per-target heuristics"
+    )]
     #[inline(always)]
     fn xy(&self) -> (i16, i16) {
         *self
@@ -156,7 +162,10 @@ where
 /// vertex counted once): an upward edge excludes its final endpoint,
 /// a downward edge excludes its starting endpoint, horizontal edges
 /// never cross. Direction-symmetric in `a`/`b` by construction.
-#[expect(clippy::inline_always, reason = "the per-edge kernel every PIP loop folds through; inlining must not depend on per-target heuristics")]
+#[expect(
+    clippy::inline_always,
+    reason = "the per-edge kernel every PIP loop folds through; inlining must not depend on per-target heuristics"
+)]
 #[inline(always)]
 pub fn edge<W, N>(a: (N, N), b: (N, N), px: N, py: N) -> EdgeHit
 where
@@ -211,7 +220,10 @@ pub trait Narrow: Copy + Ord {
 }
 impl Narrow for i16 {
     type Product = u32;
-    #[expect(clippy::inline_always, reason = "per-edge product in the PIP hot loop; inlining must not depend on per-target heuristics")]
+    #[expect(
+        clippy::inline_always,
+        reason = "per-edge product in the PIP hot loop; inlining must not depend on per-target heuristics"
+    )]
     #[inline(always)]
     fn magnitude_product(a: Self, b: Self, c: Self, d: Self) -> u32 {
         u32::from(a.abs_diff(b)) * u32::from(c.abs_diff(d))
@@ -219,7 +231,10 @@ impl Narrow for i16 {
 }
 impl Narrow for i32 {
     type Product = u64;
-    #[expect(clippy::inline_always, reason = "per-edge product in the PIP hot loop; inlining must not depend on per-target heuristics")]
+    #[expect(
+        clippy::inline_always,
+        reason = "per-edge product in the PIP hot loop; inlining must not depend on per-target heuristics"
+    )]
     #[inline(always)]
     fn magnitude_product(a: Self, b: Self, c: Self, d: Self) -> u64 {
         u64::from(a.abs_diff(b)) * u64::from(c.abs_diff(d))
@@ -272,7 +287,10 @@ where
 /// exactly; `Boundary` may fire from a different edge of the same shared
 /// vertex, which ring-level verdicts can't observe (`Boundary`
 /// short-circuits the ring).
-#[expect(clippy::inline_always, reason = "the per-edge kernel every PIP loop folds through; inlining must not depend on per-target heuristics")]
+#[expect(
+    clippy::inline_always,
+    reason = "the per-edge kernel every PIP loop folds through; inlining must not depend on per-target heuristics"
+)]
 #[inline(always)]
 #[must_use]
 pub fn edge_split<N: Narrow>(a: (N, N), b: (N, N), px: N, py: N) -> EdgeHit {
@@ -292,8 +310,14 @@ pub fn edge_split<N: Narrow>(a: (N, N), b: (N, N), px: N, py: N) -> EdgeHit {
     let lhs_negative = x1 < x0 && py != y0;
     let rhs_negative = px < x0 && y1 != y0;
     let (greater, equal) = match (lhs_negative, rhs_negative) {
-        (false, false) => (lhs_magnitude > rhs_magnitude, lhs_magnitude == rhs_magnitude),
-        (true, true) => (lhs_magnitude < rhs_magnitude, lhs_magnitude == rhs_magnitude),
+        (false, false) => (
+            lhs_magnitude > rhs_magnitude,
+            lhs_magnitude == rhs_magnitude,
+        ),
+        (true, true) => (
+            lhs_magnitude < rhs_magnitude,
+            lhs_magnitude == rhs_magnitude,
+        ),
         (true, false) => (false, false), // lhs < 0 ≤ rhs
         (false, true) => (true, false),  // lhs ≥ 0 > rhs
     };
@@ -321,7 +345,10 @@ pub struct Pack24(pub [u8; 6]);
 #[cfg(feature = "geom-image")]
 impl CoordPair for Pack24 {
     type Narrow = i32;
-    #[expect(clippy::inline_always, reason = "per-vertex accessor in the streaming PIP hot loop; inlining must not depend on per-target heuristics")]
+    #[expect(
+        clippy::inline_always,
+        reason = "per-vertex accessor in the streaming PIP hot loop; inlining must not depend on per-target heuristics"
+    )]
     #[inline(always)]
     fn xy(&self) -> (i32, i32) {
         // two overlapping in-struct word reads (x = low 3 bytes of the first,
@@ -376,7 +403,11 @@ mod tests {
         let poly: &[&[(i32, i32)]] = &[SQUARE, HOLE];
         for x in -2..13 {
             for y in -2..13 {
-                assert_eq!(contains::<i64, _>(poly, x, y), contains::<i128, _>(poly, x, y), "at ({x},{y})");
+                assert_eq!(
+                    contains::<i64, _>(poly, x, y),
+                    contains::<i128, _>(poly, x, y),
+                    "at ({x},{y})"
+                );
             }
         }
     }
@@ -386,7 +417,11 @@ mod tests {
         let poly: &[&[(i32, i32)]] = &[SQUARE, HOLE];
         for x in -2..13 {
             for y in -2..13 {
-                assert_eq!(contains::<i64, _>(poly, x, y), contains::<f64, _>(poly, x, y), "at ({x},{y})");
+                assert_eq!(
+                    contains::<i64, _>(poly, x, y),
+                    contains::<f64, _>(poly, x, y),
+                    "at ({x},{y})"
+                );
             }
         }
     }
@@ -403,8 +438,10 @@ mod tests {
         for _ in 0..200 {
             let n = 3 + (next().unsigned_abs() as usize % 14);
             let ring16: Vec<(i16, i16)> = (0..n).map(|_| (next(), next())).collect();
-            let ring32: Vec<(i32, i32)> =
-                ring16.iter().map(|&(x, y)| (i32::from(x), i32::from(y))).collect();
+            let ring32: Vec<(i32, i32)> = ring16
+                .iter()
+                .map(|&(x, y)| (i32::from(x), i32::from(y)))
+                .collect();
             let code = |h: RingHit| match h {
                 RingHit::Outside => 0,
                 RingHit::Inside => 1,
@@ -438,7 +475,10 @@ mod tests {
     /// and this test runs in debug, where an overflow would panic rather
     /// than wrap, so it also guards the bound itself.
     #[test]
-    #[expect(clippy::cast_possible_truncation, reason = "test PRNG: values constructed within the 15-bit quant range")]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "test PRNG: values constructed within the 15-bit quant range"
+    )]
     fn wide_i32_matches_i64_at_15_bit_quant() {
         const M: i64 = 1 << 15; // draws in [−2^14, 2^14−1]
         let mut lcg = utz_common::Lcg::new(0x1515_1515);
@@ -492,7 +532,11 @@ mod tests {
     /// so agreement with i64 over full-range random polygons is a hard
     /// assertion, boundaries included.
     #[test]
-    #[expect(clippy::cast_possible_truncation, clippy::cast_possible_wrap, reason = "test PRNG: values constructed within i24/i32 range")]
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap,
+        reason = "test PRNG: values constructed within i24/i32 range"
+    )]
     fn f64_matches_i64_at_i24_range() {
         const M: i64 = 1 << 23; // i24 coordinate range
         let mut lcg = utz_common::Lcg::new(0x0dd_ba11);
@@ -519,7 +563,10 @@ mod tests {
             }
             let rings: &[&[(i32, i32)]] = &[&pts];
             for _ in 0..200 {
-                let (px, py) = (cx.saturating_add(next(1 << 21)), cy.saturating_add(next(1 << 21)));
+                let (px, py) = (
+                    cx.saturating_add(next(1 << 21)),
+                    cy.saturating_add(next(1 << 21)),
+                );
                 assert_eq!(
                     contains::<i64, _>(rings, px, py),
                     contains::<f64, _>(rings, px, py),
@@ -532,7 +579,12 @@ mod tests {
     /// cross-validate against the geo i64 oracle on random
     /// integer polygons — interiors must agree everywhere off-boundary.
     #[test]
-    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, reason = "test PRNG: values constructed within i24/i32 range")]
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_wrap,
+        reason = "test PRNG: values constructed within i24/i32 range"
+    )]
     fn geo_oracle_agreement() {
         use geo::Contains;
         let mut lcg = utz_common::Lcg::new(0xdead_beef);
@@ -542,17 +594,33 @@ mod tests {
             let (cx, cy) = (next(1000) - 500, next(1000) - 500);
             let n = 5 + (next(12) as usize);
             let mut pts: Vec<(i32, i32)> = (0..n)
-                .map(#[expect(clippy::cast_precision_loss, reason = "test geometry: k < n ≤ 17 and radius r ≤ 450, exact in f64")] |k| {
-                    let ang = k as f64 / n as f64 * core::f64::consts::TAU;
-                    let r = 50 + i64::from(next(400));
-                    (cx + (ang.cos() * r as f64) as i32, cy + (ang.sin() * r as f64) as i32)
-                })
+                .map(
+                    #[expect(
+                        clippy::cast_precision_loss,
+                        reason = "test geometry: k < n ≤ 17 and radius r ≤ 450, exact in f64"
+                    )]
+                    |k| {
+                        let ang = k as f64 / n as f64 * core::f64::consts::TAU;
+                        let r = 50 + i64::from(next(400));
+                        (
+                            cx + (ang.cos() * r as f64) as i32,
+                            cy + (ang.sin() * r as f64) as i32,
+                        )
+                    },
+                )
                 .collect();
             pts.dedup();
-            if pts.first() == pts.last() { pts.pop(); }
-            if pts.len() < 3 { continue; }
+            if pts.first() == pts.last() {
+                pts.pop();
+            }
+            if pts.len() < 3 {
+                continue;
+            }
 
-            let ext: geo::LineString<i64> = pts.iter().map(|&(x, y)| (i64::from(x), i64::from(y))).collect();
+            let ext: geo::LineString<i64> = pts
+                .iter()
+                .map(|&(x, y)| (i64::from(x), i64::from(y)))
+                .collect();
             let gpoly = geo::Polygon::new(ext, vec![]);
             let rings: &[&[(i32, i32)]] = &[&pts];
             for _ in 0..200 {
@@ -563,7 +631,9 @@ mod tests {
                     // geo::Contains excludes the boundary; we claim it. Only
                     // that exact disagreement is allowed.
                     use geo::algorithm::Intersects;
-                    let on_boundary = gpoly.exterior().intersects(&geo::Point::new(i64::from(px), i64::from(py)));
+                    let on_boundary = gpoly
+                        .exterior()
+                        .intersects(&geo::Point::new(i64::from(px), i64::from(py)));
                     assert!(ours && on_boundary, "disagree off-boundary at ({px},{py})");
                 }
             }

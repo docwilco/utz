@@ -4,7 +4,9 @@
 //! exercises the narrow i16 eager cache and the `(i16, i16)` image kernel;
 //! compact (i24) the i32 eager cache and the `Pack24` image kernel.
 
-use utz_bench_common::assets::{COMPACT_EAGER, COMPACT_FIXED, COMPACT_NONE, TINY_EAGER, TINY_FIXED};
+use utz_bench_common::assets::{
+    COMPACT_EAGER, COMPACT_FIXED, COMPACT_NONE, TINY_EAGER, TINY_FIXED,
+};
 
 fn agree(name: &str, finders: &[&utz::Finder], pts: &[(f64, f64)]) {
     for &(lon, lat) in pts {
@@ -36,5 +38,9 @@ fn geometry_encodings_agree() {
     compact_pre.preload();
     let compact_fixed = utz::Finder::from_slice(COMPACT_FIXED).unwrap();
     let compact_image = utz::Finder::from_static(COMPACT_EAGER).unwrap();
-    agree("compact", &[&compact, &compact_pre, &compact_fixed, &compact_image], &pts);
+    agree(
+        "compact",
+        &[&compact, &compact_pre, &compact_fixed, &compact_image],
+        &pts,
+    );
 }

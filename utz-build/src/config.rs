@@ -219,9 +219,10 @@ impl Config {
             }
             None => encode::encode(&feats, &p)?,
         };
-        let out = if let Some(p) = self.out { p } else {
-            let dir = std::env::var_os("OUT_DIR")
-                .ok_or_else(|| crate::Error::NoOutDir)?;
+        let out = if let Some(p) = self.out {
+            p
+        } else {
+            let dir = std::env::var_os("OUT_DIR").ok_or_else(|| crate::Error::NoOutDir)?;
             PathBuf::from(dir).join("tz.utz")
         };
         if let Some(parent) = out.parent() {

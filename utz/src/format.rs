@@ -48,9 +48,9 @@ pub struct Header {
     pub ring_data: usize,
     // eager-image sections (geom=2 only; usize::MAX otherwise): the
     // preload-cache layout serialized — coords 4-aligned within the payload
-    pub img_coords: usize, // (i32, i32)[eager_coords]
+    pub img_coords: usize,    // (i32, i32)[eager_coords]
     pub img_ring_ends: usize, // u32[eager_rings]
-    pub img_polys: usize, // (bbox [i32; 4] + ring_end u32)[eager_polys]
+    pub img_polys: usize,     // (bbox [i32; 4] + ring_end u32)[eager_polys]
     // eager-cache reservation counts (v2): exact Vec sizes for `preload`
     // (coords is Σ referenced-arc vcounts — may only over-estimate)
     pub eager_coords: u32,
@@ -80,8 +80,13 @@ pub fn read_fixed(b: &[u8], pos: usize, qbits: u8) -> i32 {
     match qbits {
         16 => i32::from(read_u16(b, pos).cast_signed()),
         24 => {
-            let v = i32::from(b[pos]) | (i32::from(b[pos + 1]) << 8) | (i32::from(b[pos + 2]) << 16);
-            if v & 0x0080_0000 != 0 { v | !0x00FF_FFFF } else { v }
+            let v =
+                i32::from(b[pos]) | (i32::from(b[pos + 1]) << 8) | (i32::from(b[pos + 2]) << 16);
+            if v & 0x0080_0000 != 0 {
+                v | !0x00FF_FFFF
+            } else {
+                v
+            }
         }
         _ => read_u32(b, pos).cast_signed(),
     }
@@ -239,13 +244,34 @@ pub fn parse(p: &[u8]) -> Result<Header> {
     need(list_ids)?;
 
     Ok(Header {
-        dataset, quant_bits, geom, flags, simplify_algo, grid_deg, eps_m, n_features,
-        str_offsets, pool,
-        n_arcs, arc_offsets, arc_data,
-        parent, poly_offsets, ring_data,
-        img_coords, img_ring_ends, img_polys,
-        eager_coords, eager_rings, eager_polys,
-        ncols, nrows, primary, uniq, list_offsets, list_ids,
+        dataset,
+        quant_bits,
+        geom,
+        flags,
+        simplify_algo,
+        grid_deg,
+        eps_m,
+        n_features,
+        str_offsets,
+        pool,
+        n_arcs,
+        arc_offsets,
+        arc_data,
+        parent,
+        poly_offsets,
+        ring_data,
+        img_coords,
+        img_ring_ends,
+        img_polys,
+        eager_coords,
+        eager_rings,
+        eager_polys,
+        ncols,
+        nrows,
+        primary,
+        uniq,
+        list_offsets,
+        list_ids,
     })
 }
 

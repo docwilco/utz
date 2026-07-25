@@ -75,9 +75,15 @@ impl DensityGrid {
     /// Density at a point; outside the grid → 0.
     #[must_use]
     pub fn sample(&self, lon: f64, lat: f64) -> f64 {
-        #[expect(clippy::cast_possible_truncation, reason = "floored cell index fits i64")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "floored cell index fits i64"
+        )]
         let ix = ((lon - self.lon0) / self.dlon).floor() as i64;
-        #[expect(clippy::cast_possible_truncation, reason = "floored cell index fits i64")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "floored cell index fits i64"
+        )]
         let iy = ((self.lat0 - lat) / self.dlat).floor() as i64;
         self.cell_val(ix, iy)
     }
@@ -91,9 +97,15 @@ impl DensityGrid {
         // continuous cell-space coordinates (x → lon cells, y → rows south)
         let (x0, y0) = ((a.0 - self.lon0) / self.dlon, (self.lat0 - a.1) / self.dlat);
         let (x1, y1) = ((b.0 - self.lon0) / self.dlon, (self.lat0 - b.1) / self.dlat);
-        #[expect(clippy::cast_possible_truncation, reason = "floored cell coords fit i64")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "floored cell coords fit i64"
+        )]
         let (mut ix, mut iy) = (x0.floor() as i64, y0.floor() as i64);
-        #[expect(clippy::cast_possible_truncation, reason = "floored cell coords fit i64")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "floored cell coords fit i64"
+        )]
         let (ex, ey) = (x1.floor() as i64, y1.floor() as i64);
         let mut best = self.cell_val(ix, iy);
         let (dx, dy) = (x1 - x0, y1 - y0);
@@ -102,14 +114,20 @@ impl DensityGrid {
         let (mut tx, tdx) = if dx == 0.0 {
             (f64::INFINITY, f64::INFINITY)
         } else {
-            #[expect(clippy::cast_precision_loss, reason = "|ix| ~ raster width ≤ 43200/8 for in-range lon; exact in f64")]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "|ix| ~ raster width ≤ 43200/8 for in-range lon; exact in f64"
+            )]
             let first = (ix + i64::from(dx > 0.0)) as f64;
             (((first - x0) / dx).abs().max(0.0), (1.0 / dx).abs())
         };
         let (mut ty, tdy) = if dy == 0.0 {
             (f64::INFINITY, f64::INFINITY)
         } else {
-            #[expect(clippy::cast_precision_loss, reason = "|iy| ~ raster height ≤ 21600/8 for in-range lat; exact in f64")]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "|iy| ~ raster height ≤ 21600/8 for in-range lat; exact in f64"
+            )]
             let first = (iy + i64::from(dy > 0.0)) as f64;
             (((first - y0) / dy).abs().max(0.0), (1.0 / dy).abs())
         };
@@ -134,7 +152,10 @@ impl DensityGrid {
         }
         // wrap longitude when the grid spans the full 360° (it does for
         // GHS-POP; the guard keeps synthetic test grids honest)
-        #[expect(clippy::cast_precision_loss, reason = "raster width w ≤ 43200/8 (GHS-POP downsampled); exact in f64")]
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "raster width w ≤ 43200/8 (GHS-POP downsampled); exact in f64"
+        )]
         let ix = if (self.width as f64 * self.dlon - 360.0).abs() < 1e-6 {
             ix.rem_euclid(self.width as i64)
         } else if ix < 0 || ix >= self.width as i64 {
@@ -142,8 +163,10 @@ impl DensityGrid {
         } else {
             ix
         };
-        let (ix, iy) =
-            (usize::try_from(ix).expect("checked in range"), usize::try_from(iy).expect("checked in range"));
+        let (ix, iy) = (
+            usize::try_from(ix).expect("checked in range"),
+            usize::try_from(iy).expect("checked in range"),
+        );
         f64::from(self.cells[iy * self.width + ix])
     }
 
@@ -166,7 +189,10 @@ impl DensityGrid {
         // geotransform: pixel scale + tiepoint (don't assume ±180/±90 cover)
         let scale = dec.get_tag_f64_vec(Tag::ModelPixelScaleTag)?;
         let tie = dec.get_tag_f64_vec(Tag::ModelTiepointTag)?;
-        crate::ensure!(scale.len() >= 2 && tie.len() >= 5, Error::MissingGeotransform);
+        crate::ensure!(
+            scale.len() >= 2 && tie.len() >= 5,
+            Error::MissingGeotransform
+        );
         let (sdlon, sdlat) = (scale[0], scale[1]);
         let (lon0, lat0) = (tie[3] - tie[0] * sdlon, tie[4] + tie[1] * sdlat);
 
@@ -176,9 +202,14 @@ impl DensityGrid {
         let (cw, ch) = (cw as usize, ch as usize);
         let across = sw.div_ceil(cw);
         for chunk in 0..u32::try_from(across * sh.div_ceil(ch)).expect("chunk count fits u32") {
-            let (x_off, y_off) = ((chunk as usize % across) * cw, (chunk as usize / across) * ch);
+            let (x_off, y_off) = (
+                (chunk as usize % across) * cw,
+                (chunk as usize / across) * ch,
+            );
             // GDAL writes all-nodata ocean tiles as sparse (offset 0) — skip
-            let Ok(data) = dec.read_chunk(chunk) else { continue };
+            let Ok(data) = dec.read_chunk(chunk) else {
+                continue;
+            };
             let (dw, dh) = dec.chunk_data_dimensions(chunk);
             let (dw, dh) = (dw as usize, dh as usize);
             let mut add = |px: usize, py: usize, v: f64| {
@@ -202,7 +233,11 @@ impl DensityGrid {
                         }
                     }
                 }
-                other => return Err(Error::BadSampleFormat { format: format!("{other:?}") }),
+                other => {
+                    return Err(Error::BadSampleFormat {
+                        format: format!("{other:?}"),
+                    })
+                }
             }
         }
 
@@ -211,32 +246,55 @@ impl DensityGrid {
         // demographics. cos clamped at 85° (population there ≈ 0 anyway).
         #[expect(clippy::cast_precision_loss, reason = "DOWNSAMPLE = 8, exact in f64")]
         let (dlon, dlat) = (sdlon * DOWNSAMPLE as f64, sdlat * DOWNSAMPLE as f64);
-        #[expect(clippy::cast_possible_truncation, reason = "density → f32 grid cell, rounding is fine")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "density → f32 grid cell, rounding is fine"
+        )]
         let cells = (0..w * h)
             .map(|i| {
-                #[expect(clippy::cast_precision_loss, reason = "row index i/w < h ≤ 21600/8; exact in f64")]
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "row index i/w < h ≤ 21600/8; exact in f64"
+                )]
                 let lat_c = lat0 - (((i / w) as f64) + 0.5) * dlat;
                 let coslat = lat_c.to_radians().cos().max((85f64).to_radians().cos());
                 let area = (dlat * KM_PER_DEG) * (dlon * KM_PER_DEG * coslat);
                 (sums[i] / area) as f32
             })
             .collect();
-        Ok(Self { width: w, height: h, lon0, lat0, dlon, dlat, cells })
+        Ok(Self {
+            width: w,
+            height: h,
+            lon0,
+            lat0,
+            dlon,
+            dlat,
+            cells,
+        })
     }
 
     fn write_sidecar(&self, path: &Path) -> crate::Result<()> {
         let tmp = path.with_extension("part");
         let mut f = BufWriter::new(std::fs::File::create(&tmp)?);
         f.write_all(SIDECAR_MAGIC)?;
-        f.write_all(&u32::try_from(self.width).expect("grid width fits u32").to_le_bytes())?;
-        f.write_all(&u32::try_from(self.height).expect("grid height fits u32").to_le_bytes())?;
+        f.write_all(
+            &u32::try_from(self.width)
+                .expect("grid width fits u32")
+                .to_le_bytes(),
+        )?;
+        f.write_all(
+            &u32::try_from(self.height)
+                .expect("grid height fits u32")
+                .to_le_bytes(),
+        )?;
         for v in [self.lon0, self.lat0, self.dlon, self.dlat] {
             f.write_all(&v.to_le_bytes())?;
         }
         for c in &self.cells {
             f.write_all(&c.to_le_bytes())?;
         }
-        f.into_inner().map_err(std::io::IntoInnerError::into_error)?;
+        f.into_inner()
+            .map_err(std::io::IntoInnerError::into_error)?;
         std::fs::rename(&tmp, path)?;
         Ok(())
     }
@@ -259,10 +317,23 @@ impl DensityGrid {
         }
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)?;
-        crate::ensure!(bytes.len() == width * height * 4, Error::BadSidecar("size mismatch"));
-        let cells =
-            bytes.chunks_exact(4).map(|cell| f32::from_le_bytes(cell.try_into().unwrap())).collect();
-        Ok(Self { width, height, lon0: geo[0], lat0: geo[1], dlon: geo[2], dlat: geo[3], cells })
+        crate::ensure!(
+            bytes.len() == width * height * 4,
+            Error::BadSidecar("size mismatch")
+        );
+        let cells = bytes
+            .chunks_exact(4)
+            .map(|cell| f32::from_le_bytes(cell.try_into().unwrap()))
+            .collect();
+        Ok(Self {
+            width,
+            height,
+            lon0: geo[0],
+            lat0: geo[1],
+            dlon: geo[2],
+            dlat: geo[3],
+            cells,
+        })
     }
 }
 
@@ -272,13 +343,22 @@ fn extract_tif(zip_path: &Path, cache_dir: &Path) -> crate::Result<PathBuf> {
     let mut archive = zip::ZipArchive::new(std::fs::File::open(zip_path)?)?;
     let name = archive
         .file_names()
-        .find(|n| Path::new(n).extension().is_some_and(|e| e.eq_ignore_ascii_case("tif")))
-        .ok_or_else(|| Error::NoTif { zip: zip_path.into() })?
+        .find(|n| {
+            Path::new(n)
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("tif"))
+        })
+        .ok_or_else(|| Error::NoTif {
+            zip: zip_path.into(),
+        })?
         .to_string();
     let out = cache_dir.join(name.rsplit('/').next().unwrap());
     let mut entry = archive.by_name(&name)?;
     let tmp = out.with_extension("part");
-    std::io::copy(&mut entry, &mut BufWriter::new(std::fs::File::create(&tmp)?))?;
+    std::io::copy(
+        &mut entry,
+        &mut BufWriter::new(std::fs::File::create(&tmp)?),
+    )?;
     std::fs::rename(&tmp, &out)?;
     Ok(out)
 }
@@ -292,11 +372,22 @@ mod tests {
     fn grid() -> DensityGrid {
         let mut cells = vec![0f32; 100];
         cells[4 * 10 + 5] = 1000.0; // row 4 = lat 5..6 (row 0 is lat 9..10)
-        DensityGrid { width: 10, height: 10, lon0: 0.0, lat0: 10.0, dlon: 1.0, dlat: 1.0, cells }
+        DensityGrid {
+            width: 10,
+            height: 10,
+            lon0: 0.0,
+            lat0: 10.0,
+            dlon: 1.0,
+            dlat: 1.0,
+            cells,
+        }
     }
 
     #[test]
-    #[expect(clippy::float_cmp, reason = "cell values stored exactly (0.0/1000.0); approximate equality would weaken the test")]
+    #[expect(
+        clippy::float_cmp,
+        reason = "cell values stored exactly (0.0/1000.0); approximate equality would weaken the test"
+    )]
     fn sample_hits_the_right_cell() {
         let g = grid();
         assert_eq!(g.sample(5.5, 5.5), 1000.0);
@@ -307,7 +398,10 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::float_cmp, reason = "cell values stored exactly (0.0/1000.0); approximate equality would weaken the test")]
+    #[expect(
+        clippy::float_cmp,
+        reason = "cell values stored exactly (0.0/1000.0); approximate equality would weaken the test"
+    )]
     fn max_along_sees_cells_between_vertices() {
         let g = grid();
         // horizontal crossing: both endpoints in cold cells, hot in between
@@ -330,7 +424,10 @@ mod tests {
         let path = dir.join(SIDECAR_NAME);
         g.write_sidecar(&path).unwrap();
         let r = DensityGrid::read_sidecar(&path).unwrap();
-        assert_eq!((r.width, r.height, r.lon0, r.lat0, r.dlon, r.dlat), (10, 10, 0.0, 10.0, 1.0, 1.0));
+        assert_eq!(
+            (r.width, r.height, r.lon0, r.lat0, r.dlon, r.dlat),
+            (10, 10, 0.0, 10.0, 1.0, 1.0)
+        );
         assert_eq!(r.cells, g.cells);
         std::fs::remove_file(&path).unwrap();
     }

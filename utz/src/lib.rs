@@ -75,6 +75,18 @@ pub use finder::{Finder, Position};
     feature = "accurate"
 ))]
 pub mod data {
+    /// accurate preset: dataset `all` (every distinct tzid), RDP ε=10 m
+    /// (pop-density floor 1e-1), i32, 0.5° grid, brotli.
+    #[cfg(feature = "accurate")]
+    pub use utz_data_accurate::ACCURATE;
+    /// balanced preset: dataset `now`, RDP ε=50 m (pop-density floor 2e-2),
+    /// i24, 2/3° grid, brotli.
+    #[cfg(feature = "balanced")]
+    pub use utz_data_balanced::BALANCED;
+    /// compact preset: dataset `now`, RDP ε=1 000 m (pop-density floor 1e-3),
+    /// i24, 4/3° grid, xz.
+    #[cfg(feature = "compact")]
+    pub use utz_data_compact::COMPACT;
     /// tiny preset: dataset `now`, RDP ε=10 000 m (pop-density floor 1e-3),
     /// i16, 2° grid, gzip — ~71 K flash, peak decode RAM 125 K.
     #[cfg(feature = "tiny")]
@@ -84,18 +96,6 @@ pub mod data {
     /// ~0 RAM, no decoder, bare-`core` capable.
     #[cfg(feature = "tiny-static")]
     pub use utz_data_tiny_static::TINY_STATIC;
-    /// compact preset: dataset `now`, RDP ε=1 000 m (pop-density floor 1e-3),
-    /// i24, 4/3° grid, xz.
-    #[cfg(feature = "compact")]
-    pub use utz_data_compact::COMPACT;
-    /// balanced preset: dataset `now`, RDP ε=50 m (pop-density floor 2e-2),
-    /// i24, 2/3° grid, brotli.
-    #[cfg(feature = "balanced")]
-    pub use utz_data_balanced::BALANCED;
-    /// accurate preset: dataset `all` (every distinct tzid), RDP ε=10 m
-    /// (pop-density floor 1e-1), i32, 0.5° grid, brotli.
-    #[cfg(feature = "accurate")]
-    pub use utz_data_accurate::ACCURATE;
 }
 
 /// Compile-time capabilities of THIS utz build (its resolved features).
@@ -192,7 +192,9 @@ pub enum Error {
     ImageCountsDisagree,
     /// The geometry encoding byte has no compiled-in decoder — enable the
     /// matching `geom-*` feature.
-    #[display("geometry encoding {_0} has no compiled-in decoder (enable the matching geom-* feature)")]
+    #[display(
+        "geometry encoding {_0} has no compiled-in decoder (enable the matching geom-* feature)"
+    )]
     GeometryNotCompiledIn(#[error(not(source))] u8),
 }
 

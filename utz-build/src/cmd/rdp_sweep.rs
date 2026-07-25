@@ -4,7 +4,6 @@
 //
 // usage: utz-build rdp-sweep [ds]
 
-
 use geo::Contains;
 
 use utz_build::{topo, Feat};
@@ -19,8 +18,17 @@ pub struct Args {
 pub fn run(a: Args) -> utz_build::Result<()> {
     let ds = a.ds;
     let feats = utz_build::load(&ds)?;
-    let v0: usize = feats.iter().flat_map(|f| &f.polys).flatten().map(std::vec::Vec::len).sum();
-    println!("{}: {} features, {v0} vertices\n", ds.to_uppercase(), feats.len());
+    let v0: usize = feats
+        .iter()
+        .flat_map(|f| &f.polys)
+        .flatten()
+        .map(std::vec::Vec::len)
+        .sum();
+    println!(
+        "{}: {} features, {v0} vertices\n",
+        ds.to_uppercase(),
+        feats.len()
+    );
 
     // full-precision reference lookups
     let refs = build_refs(&feats);
@@ -28,8 +36,10 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     let pts: Vec<(f64, f64)> = gen_pts(sample);
     let truth: Vec<String> = pts.iter().map(|&(lo, la)| lookup(&refs, lo, la)).collect();
 
-    println!("{:>8}{:>10}{:>9}{:>12}{:>12}{:>12}{:>11}",
-        "eps(m)", "verts", "%kept", "raw", "zstd22", "xz.dmax", "mismatch");
+    println!(
+        "{:>8}{:>10}{:>9}{:>12}{:>12}{:>12}{:>11}",
+        "eps(m)", "verts", "%kept", "raw", "zstd22", "xz.dmax", "mismatch"
+    );
     println!("{}", "-".repeat(74));
 
     for eps_m in [0.0f64, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2000.0] {
@@ -42,13 +52,22 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         let srefs = build_refs(&out.simplified);
         let mut miss = 0usize;
         for (i, &(lo, la)) in pts.iter().enumerate() {
-            if lookup(&srefs, lo, la) != truth[i] { miss += 1; }
+            if lookup(&srefs, lo, la) != truth[i] {
+                miss += 1;
+            }
         }
-        #[expect(clippy::cast_precision_loss, reason = "vertex counts and miss ≤ sample point count ≪ 2^53; % display")]
-        let (kept_pct, miss_pct) = (100.0 * out.verts as f64 / v0 as f64, 100.0 * miss as f64 / sample as f64);
-        println!("{:>8}{:>10}{kept_pct:>8.1}%{:>12}{:>12}{:>12}{miss_pct:>10.3}%",
-            eps_m, out.verts,
-            raw, z, x);
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "vertex counts and miss ≤ sample point count ≪ 2^53; % display"
+        )]
+        let (kept_pct, miss_pct) = (
+            100.0 * out.verts as f64 / v0 as f64,
+            100.0 * miss as f64 / sample as f64,
+        );
+        println!(
+            "{:>8}{:>10}{kept_pct:>8.1}%{:>12}{:>12}{:>12}{miss_pct:>10.3}%",
+            eps_m, out.verts, raw, z, x
+        );
     }
     Ok(())
 }
@@ -59,9 +78,15 @@ fn build_refs(feats: &[Feat]) -> Vec<Ref> {
     for f in feats {
         let tz = f.tzid.clone().unwrap_or_default();
         for p in &f.polys {
-            if p[0].len() < 3 { continue; }
+            if p[0].len() < 3 {
+                continue;
+            }
             let ext = geo::LineString::from(closed(&p[0]));
-            let holes: Vec<_> = p[1..].iter().filter(|h| h.len() >= 3).map(|h| geo::LineString::from(closed(h))).collect();
+            let holes: Vec<_> = p[1..]
+                .iter()
+                .filter(|h| h.len() >= 3)
+                .map(|h| geo::LineString::from(closed(h)))
+                .collect();
             refs.push((tz.clone(), geo::Polygon::new(ext, holes)));
         }
     }
@@ -69,12 +94,20 @@ fn build_refs(feats: &[Feat]) -> Vec<Ref> {
 }
 fn closed(v: &[(f64, f64)]) -> Vec<(f64, f64)> {
     let mut r = v.to_vec();
-    if r.first() != r.last() { if let Some(&f) = r.first() { r.push(f); } }
+    if r.first() != r.last() {
+        if let Some(&f) = r.first() {
+            r.push(f);
+        }
+    }
     r
 }
 fn lookup(refs: &[Ref], lon: f64, lat: f64) -> String {
     let pt = geo::Point::new(lon, lat);
-    for (tz, poly) in refs { if poly.contains(&pt) { return tz.clone(); } }
+    for (tz, poly) in refs {
+        if poly.contains(&pt) {
+            return tz.clone();
+        }
+    }
     String::new()
 }
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {

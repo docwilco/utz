@@ -13,26 +13,53 @@ pub struct Args {
 pub fn run(a: Args) -> utz_build::Result<()> {
     let ds = a.ds;
     let feats = utz_build::load(&ds)?;
-    let rings: Vec<Vec<(f64, f64)>> = feats.iter()
+    let rings: Vec<Vec<(f64, f64)>> = feats
+        .iter()
         .flat_map(|f| f.polys.iter().flatten().cloned())
         .collect();
     let nedges: usize = rings.iter().map(std::vec::Vec::len).sum();
-    println!("{}: {} rings, ~{} edges\n", ds.to_uppercase(), rings.len(), nedges);
-    println!("{:>4}{:>12}{:>12}{:>11}{:>13}{:>11}", "deg", "cells", "border", "interior", "P(PIP)", "grid mem");
+    println!(
+        "{}: {} rings, ~{} edges\n",
+        ds.to_uppercase(),
+        rings.len(),
+        nedges
+    );
+    println!(
+        "{:>4}{:>12}{:>12}{:>11}{:>13}{:>11}",
+        "deg", "cells", "border", "interior", "P(PIP)", "grid mem"
+    );
     println!("{}", "-".repeat(63));
 
     for d in 1u32..=20 {
         let df = f64::from(d);
-        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "ceil(360/deg) is a small positive integer")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "ceil(360/deg) is a small positive integer"
+        )]
         let ncols = ((360.0 / df).ceil()) as usize;
-        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "ceil(180/deg) is a small positive integer")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "ceil(180/deg) is a small positive integer"
+        )]
         let nrows = ((180.0 / df).ceil()) as usize;
         let total = ncols * nrows;
         let mut border = vec![false; total];
         let cell = |lon: f64, lat: f64| -> usize {
-            #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, reason = "cell index, fraction dropped then clamped")]
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                clippy::cast_possible_wrap,
+                reason = "cell index, fraction dropped then clamped"
+            )]
             let c = (((lon + 180.0) / df) as isize).clamp(0, ncols as isize - 1) as usize;
-            #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, reason = "cell index, fraction dropped then clamped")]
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                clippy::cast_possible_wrap,
+                reason = "cell index, fraction dropped then clamped"
+            )]
             let r = (((lat + 90.0) / df) as isize).clamp(0, nrows as isize - 1) as usize;
             r * ncols + c
         };
@@ -41,11 +68,18 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             for i in 0..n {
                 let (x0, y0) = ring[i];
                 let (x1, y1) = ring[(i + 1) % n];
-                #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "edge span in cells is small and non-negative")]
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "edge span in cells is small and non-negative"
+                )]
                 let span = (((x1 - x0).abs()).max((y1 - y0).abs()) / df * 2.0).ceil() as usize;
                 let steps = span.max(1);
                 for s in 0..=steps {
-                    #[expect(clippy::cast_precision_loss, reason = "s ≤ steps = small per-edge cell span; exact")]
+                    #[expect(
+                        clippy::cast_precision_loss,
+                        reason = "s ≤ steps = small per-edge cell span; exact"
+                    )]
                     let t = s as f64 / steps as f64;
                     border[cell(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)] = true;
                 }
@@ -53,11 +87,22 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         }
         let b = border.iter().filter(|&&x| x).count();
         let interior = total - b;
-        #[expect(clippy::cast_precision_loss, reason = "b ≤ total grid-cell count ≪ 2^53; percentage display")]
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "b ≤ total grid-cell count ≪ 2^53; percentage display"
+        )]
         let p_pip = 100.0 * b as f64 / total as f64;
         // dense primary-zone u16 per cell + ~2 spillover u16 per border cell
         let mem = total * 2 + b * 4;
-        println!("{:>4}{:>12}{:>12}{:>11}{:>12.1}%{:>9} KB", d, total, b, interior, p_pip, mem / 1024);
+        println!(
+            "{:>4}{:>12}{:>12}{:>11}{:>12.1}%{:>9} KB",
+            d,
+            total,
+            b,
+            interior,
+            p_pip,
+            mem / 1024
+        );
     }
     Ok(())
 }

@@ -34,20 +34,39 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         let areas = grid::feat_areas(&feats);
         let g = grid::build(&feats, deg, 8);
         let border = g.sets.iter().filter(|s| s.len() > 1).count();
-        println!("{} @ {deg}°  ({} zones, {} border cells)", ds.to_uppercase(), feats.len(), border);
-        println!("{:<22}{:>12}{:>10}{:>12}{:>14}", "ordering", "uniq lists", "ids", "CSR bytes", "P(hit@[0])");
+        println!(
+            "{} @ {deg}°  ({} zones, {} border cells)",
+            ds.to_uppercase(),
+            feats.len(),
+            border
+        );
+        println!(
+            "{:<22}{:>12}{:>10}{:>12}{:>14}",
+            "ordering", "uniq lists", "ids", "CSR bytes", "P(hit@[0])"
+        );
         println!("{}", "-".repeat(70));
 
         let mut base_bytes = 0usize;
-        for (name, order) in [("id-sorted", Order::IdSorted),
-                              ("area-desc", Order::AreaDesc),
-                              ("cell-dominant-first", Order::CellDominantFirst)] {
+        for (name, order) in [
+            ("id-sorted", Order::IdSorted),
+            ("area-desc", Order::AreaDesc),
+            ("cell-dominant-first", Order::CellDominantFirst),
+        ] {
             let csr = grid::intern_csr(&g, order, &areas);
             let hit = early_exit(&g, &csr);
-            if order == Order::IdSorted { base_bytes = csr.bytes(); }
+            if order == Order::IdSorted {
+                base_bytes = csr.bytes();
+            }
             let delta = csr.bytes().cast_signed() - base_bytes.cast_signed();
-            println!("{:<22}{:>12}{:>10}{:>12}{:>13.1}%  ({:+} B)",
-                name, csr.uniq_lists, csr.list_ids.len(), csr.bytes(), 100.0 * hit, delta);
+            println!(
+                "{:<22}{:>12}{:>10}{:>12}{:>13.1}%  ({:+} B)",
+                name,
+                csr.uniq_lists,
+                csr.list_ids.len(),
+                csr.bytes(),
+                100.0 * hit,
+                delta
+            );
         }
         println!();
     }
@@ -59,15 +78,26 @@ fn early_exit(g: &grid::CellGrid, csr: &grid::Csr) -> f64 {
     let (mut hit, mut tot) = (0u64, 0u64);
     for c in 0..g.ncols * g.nrows {
         let p = csr.primary[c];
-        if p & 0x8000 == 0 { continue; }
+        if p & 0x8000 == 0 {
+            continue;
+        }
         let li = (p & 0x7FFF) as usize;
         let first = csr.list_ids[csr.list_offsets[li] as usize];
         for &(z, n) in &g.tallies[c] {
             tot += u64::from(n);
-            if z == first { hit += u64::from(n); }
+            if z == first {
+                hit += u64::from(n);
+            }
         }
     }
-    #[expect(clippy::cast_precision_loss, reason = "hit ≤ tot = subcell tally sum ≪ 2^53; probability")]
-    let p = if tot == 0 { 0.0 } else { hit as f64 / tot as f64 };
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "hit ≤ tot = subcell tally sum ≪ 2^53; probability"
+    )]
+    let p = if tot == 0 {
+        0.0
+    } else {
+        hit as f64 / tot as f64
+    };
     p
 }

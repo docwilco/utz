@@ -35,36 +35,65 @@ pub struct Args {
 pub fn run(a: &Args) -> utz_build::Result<()> {
     let feats = utz_build::load(&a.ds)?;
     let t = topo::build_topology(&feats, a.eps_m / 111_320.0);
-    println!("{} · RDP ε {} m · {} arcs, {} rings\n", a.ds, a.eps_m, t.arc_coords.len(), t.ring_refs.len());
+    println!(
+        "{} · RDP ε {} m · {} arcs, {} rings\n",
+        a.ds,
+        a.eps_m,
+        t.arc_coords.len(),
+        t.ring_refs.len()
+    );
 
     for &qbits in &a.qbits {
-        ensure!(matches!(qbits, 16 | 24 | 32), Error::Msg(format!("qbits must be 16/24/32 (got {qbits})")));
-        #[expect(clippy::cast_precision_loss, reason = "qmax = 2^(bits-1)-1 < 2^31, exact in f64")]
+        ensure!(
+            matches!(qbits, 16 | 24 | 32),
+            Error::Msg(format!("qbits must be 16/24/32 (got {qbits})"))
+        );
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "qmax = 2^(bits-1)-1 < 2^31, exact in f64"
+        )]
         let qmax = ((1u64 << (qbits - 1)) - 1) as f64;
-        #[expect(clippy::cast_possible_truncation, reason = "|coord·qmax| ≤ qmax < 2^31")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "|coord·qmax| ≤ qmax < 2^31"
+        )]
         let quant = |a: &Vec<(f64, f64)>| -> Vec<(i32, i32)> {
             a.iter()
-                .map(|&(x, y)| (((x / 180.0 * qmax).round()) as i32, ((y / 90.0 * qmax).round()) as i32))
+                .map(|&(x, y)| {
+                    (
+                        ((x / 180.0 * qmax).round()) as i32,
+                        ((y / 90.0 * qmax).round()) as i32,
+                    )
+                })
                 .collect()
         };
 
         // before: what the encoder used to ship (consecutive-dup collapse only)
-        let raw: Vec<Vec<(i32, i32)>> = t.arc_coords.iter().map(|a| {
-            let mut q = quant(a);
-            q.dedup();
-            q
-        }).collect();
+        let raw: Vec<Vec<(i32, i32)>> = t
+            .arc_coords
+            .iter()
+            .map(|a| {
+                let mut q = quant(a);
+                q.dedup();
+                q
+            })
+            .collect();
         let before = validate::measure(t.ring_refs.iter().map(|r| clean::ring_coords_q(r, &raw)));
 
         // after: per-arc clean + degenerate-ring drop (what the encoder ships now)
         let mut cst = CleanStats::default();
-        let cleaned: Vec<Vec<(i32, i32)>> = t.arc_coords.iter().map(|a| {
-            let mut q = quant(a);
-            let closed = a.len() > 1 && a.first() == a.last();
-            clean::clean_arc(&mut q, closed, &mut cst);
-            q
-        }).collect();
-        let (ring_refs, _, arcs) = clean::drop_degenerate_rings(&t.ring_refs, &t.structure, cleaned, &mut cst);
+        let cleaned: Vec<Vec<(i32, i32)>> = t
+            .arc_coords
+            .iter()
+            .map(|a| {
+                let mut q = quant(a);
+                let closed = a.len() > 1 && a.first() == a.last();
+                clean::clean_arc(&mut q, closed, &mut cst);
+                q
+            })
+            .collect();
+        let (ring_refs, _, arcs) =
+            clean::drop_degenerate_rings(&t.ring_refs, &t.structure, cleaned, &mut cst);
         let after = validate::measure(ring_refs.iter().map(|r| clean::ring_coords_q(r, &arcs)));
 
         println!("i{qbits}");
@@ -77,7 +106,12 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         row("before:", &before);
         println!(
             "  clean:  dups {}  spikes {}  collinear {}  rings dropped {} (polys {}, arcs {})",
-            cst.dups, cst.spikes, cst.collinear, cst.rings_dropped, cst.polys_dropped, cst.arcs_dropped
+            cst.dups,
+            cst.spikes,
+            cst.collinear,
+            cst.rings_dropped,
+            cst.polys_dropped,
+            cst.arcs_dropped
         );
         row("after:", &after);
 
@@ -85,12 +119,20 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
             // same pipeline, but with owner mapping + dedup by location: a
             // spot on a shared border shows up once per owning ring — group
             // the zones per location instead of repeating the URL
-            let mut spots: std::collections::BTreeMap<(String, &str), std::collections::BTreeSet<&str>> =
-                std::collections::BTreeMap::new();
+            let mut spots: std::collections::BTreeMap<
+                (String, &str),
+                std::collections::BTreeSet<&str>,
+            > = std::collections::BTreeMap::new();
             for p in validate::find_problems(&t, &t.arc_coords, qbits) {
-                let kind = match p.kind { Kind::Cross => "cross", Kind::Overlap => "overlap" };
+                let kind = match p.kind {
+                    Kind::Cross => "cross",
+                    Kind::Overlap => "overlap",
+                };
                 let tz = feats[p.feat].tzid.as_deref().unwrap_or("?");
-                spots.entry((format!("{:.5},{:.5}", p.lat, p.lon), kind)).or_default().insert(tz);
+                spots
+                    .entry((format!("{:.5},{:.5}", p.lat, p.lon), kind))
+                    .or_default()
+                    .insert(tz);
             }
             for ((at, kind), tzs) in &spots {
                 let zones = tzs.iter().copied().collect::<Vec<_>>().join(" + ");

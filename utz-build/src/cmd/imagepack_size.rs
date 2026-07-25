@@ -40,12 +40,19 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
         }
         packed.extend_from_slice(&container_payload[header.img_ring_ends..]);
 
-        let name = std::path::Path::new(&path).file_stem().unwrap().to_string_lossy().into_owned();
+        let name = std::path::Path::new(&path)
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
         for (label, payload) in [
             (format!("{name} i32 pairs"), container_payload.to_vec()),
             (format!("{name} packed i{}", header.quant_bits), packed),
         ] {
-            #[expect(clippy::cast_precision_loss, reason = "payload byte counts ≪ 2^53; KiB display")]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "payload byte counts ≪ 2^53; KiB display"
+            )]
             let kib = |len: usize| format!("{:.1}K", len as f64 / 1024.0);
             println!(
                 "{:<30} {:>9} {:>9} {:>9} {:>9}",

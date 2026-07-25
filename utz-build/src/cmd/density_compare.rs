@@ -39,9 +39,10 @@ pub fn run(a: Args) -> utz_build::Result<()> {
 
     let eps_deg = eps_m / 111_320.0;
     let t_u = topo::build_topology(&feats, eps_deg);
-    let t_w = topo::build_topology_weighted(&feats, topo::Simplify::Rdp { eps: eps_deg }, &|a, b| {
-        model.weight(grid.max_along(a, b))
-    });
+    let t_w =
+        topo::build_topology_weighted(&feats, topo::Simplify::Rdp { eps: eps_deg }, &|a, b| {
+            model.weight(grid.max_along(a, b))
+        });
 
     let hist = |t: &topo::Topology| -> [usize; 4] {
         let mut h = [0usize; 4];
@@ -55,15 +56,34 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     };
     let (hu, hw) = (hist(&t_u), hist(&t_w));
 
-    println!("{ds} · RDP ε {eps_m} m ceiling · weighted floor ×{w_min} (ε {} m)\n", eps_m * w_min);
-    println!("{:>16} {:>10} {:>10} {:>9}", "density band", "uniform", "weighted", "delta");
+    println!(
+        "{ds} · RDP ε {eps_m} m ceiling · weighted floor ×{w_min} (ε {} m)\n",
+        eps_m * w_min
+    );
+    println!(
+        "{:>16} {:>10} {:>10} {:>9}",
+        "density band", "uniform", "weighted", "delta"
+    );
     for (i, b) in BANDS.iter().enumerate() {
-        println!("{:>16} {:>10} {:>10} {:>+9}", b.2, hu[i], hw[i], hw[i].cast_signed() - hu[i].cast_signed());
+        println!(
+            "{:>16} {:>10} {:>10} {:>+9}",
+            b.2,
+            hu[i],
+            hw[i],
+            hw[i].cast_signed() - hu[i].cast_signed()
+        );
     }
     let (su, sw) = (hu.iter().sum::<usize>(), hw.iter().sum::<usize>());
-    #[expect(clippy::cast_precision_loss, reason = "vertex-count band sums ≪ 2^53; % delta display")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "vertex-count band sums ≪ 2^53; % delta display"
+    )]
     let pct = 100.0 * (sw as f64 / su as f64 - 1.0);
-    println!("{:>16} {su:>10} {sw:>10} {:>+9}  ({pct:+.1}%)\n", "total", sw.cast_signed() - su.cast_signed());
+    println!(
+        "{:>16} {su:>10} {sw:>10} {:>+9}  ({pct:+.1}%)\n",
+        "total",
+        sw.cast_signed() - su.cast_signed()
+    );
 
     // container size delta (same knobs, zstd; topologies already built above)
     let p = Params {
@@ -77,11 +97,17 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         geom: encode::GeomEncoding::default(),
     };
     let container = |t: &topo::Topology| -> utz_build::Result<Vec<u8>> {
-        Ok(encode::finish(&encode::payload_from_topology(t, &t.arc_coords, &feats, &p)?.0, p.codec)?)
+        Ok(encode::finish(
+            &encode::payload_from_topology(t, &t.arc_coords, &feats, &p)?.0,
+            p.codec,
+        )?)
     };
     let cu = container(&t_u)?;
     let cw = container(&t_w)?;
-    #[expect(clippy::cast_precision_loss, reason = "container sizes ≪ 2^53; KiB and % display")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "container sizes ≪ 2^53; KiB and % display"
+    )]
     let (ku, kw, kpct) = (
         cu.len() as f64 / 1024.0,
         cw.len() as f64 / 1024.0,

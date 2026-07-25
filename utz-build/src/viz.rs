@@ -12,7 +12,9 @@ fn template_path(name: &str) -> String {
 /// # Errors
 /// I/O failure reading the template file.
 pub fn webdist_index() -> crate::Result<String> {
-    Ok(std::fs::read_to_string(template_path("webdist_index.html"))?)
+    Ok(std::fs::read_to_string(template_path(
+        "webdist_index.html",
+    ))?)
 }
 
 /// Binary dataset blob for the webdist viewer (all little-endian):
@@ -50,8 +52,16 @@ pub fn dataset_bin(
     let mut o = Vec::with_capacity(24 + 4 * n_arcs + 20 * n_verts);
     o.extend_from_slice(b"uTZv");
     o.extend_from_slice(&(u32::from(g.is_some()) | 2).to_le_bytes());
-    o.extend_from_slice(&u32::try_from(n_arcs).expect("arc count fits u32").to_le_bytes());
-    o.extend_from_slice(&u32::try_from(n_verts).expect("vert count fits u32").to_le_bytes());
+    o.extend_from_slice(
+        &u32::try_from(n_arcs)
+            .expect("arc count fits u32")
+            .to_le_bytes(),
+    );
+    o.extend_from_slice(
+        &u32::try_from(n_verts)
+            .expect("vert count fits u32")
+            .to_le_bytes(),
+    );
     let mut off = 0u32;
     o.extend_from_slice(&off.to_le_bytes());
     for a in arcs {
@@ -71,7 +81,10 @@ pub fn dataset_bin(
             for i in 0..a.len() {
                 let left = if i > 0 { ew[i - 1] } else { 0.0 };
                 let right = ew.get(i).copied().unwrap_or(0.0);
-                #[expect(clippy::cast_possible_truncation, reason = "density → f32 blob field, rounding is fine")]
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "density → f32 blob field, rounding is fine"
+                )]
                 let d = left.max(right) as f32;
                 o.extend_from_slice(&d.to_le_bytes());
             }
@@ -82,9 +95,16 @@ pub fn dataset_bin(
     assert!(release.len() < 256, "release tag too long");
     o.push(u8::try_from(release.len()).expect("release len fits u8"));
     o.extend_from_slice(release.as_bytes());
-    o.extend_from_slice(&u16::try_from(feats.len()).expect("feature count fits u16").to_le_bytes());
+    o.extend_from_slice(
+        &u16::try_from(feats.len())
+            .expect("feature count fits u16")
+            .to_le_bytes(),
+    );
     for f in feats {
-        #[expect(clippy::cast_possible_truncation, reason = "offset → f32 blob field, rounding is fine")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "offset → f32 blob field, rounding is fine"
+        )]
         let off32 = f.offset as f32;
         o.extend_from_slice(&off32.to_le_bytes());
         let tzid = f.tzid.as_deref().unwrap_or("");
@@ -92,16 +112,36 @@ pub fn dataset_bin(
         o.push(u8::try_from(tzid.len()).expect("tzid len fits u8"));
         o.extend_from_slice(tzid.as_bytes());
     }
-    o.extend_from_slice(&u32::try_from(t.ring_refs.len()).expect("ring count fits u32").to_le_bytes());
+    o.extend_from_slice(
+        &u32::try_from(t.ring_refs.len())
+            .expect("ring count fits u32")
+            .to_le_bytes(),
+    );
     for refs in &t.ring_refs {
-        o.extend_from_slice(&u32::try_from(refs.len()).expect("ref count fits u32").to_le_bytes());
-        for &r in refs { o.extend_from_slice(&r.to_le_bytes()); }
+        o.extend_from_slice(
+            &u32::try_from(refs.len())
+                .expect("ref count fits u32")
+                .to_le_bytes(),
+        );
+        for &r in refs {
+            o.extend_from_slice(&r.to_le_bytes());
+        }
     }
     for fi in 0..feats.len() {
-        o.extend_from_slice(&u16::try_from(t.structure[fi].len()).expect("poly count fits u16").to_le_bytes());
+        o.extend_from_slice(
+            &u16::try_from(t.structure[fi].len())
+                .expect("poly count fits u16")
+                .to_le_bytes(),
+        );
         for poly in &t.structure[fi] {
-            o.extend_from_slice(&u16::try_from(poly.len()).expect("ring count fits u16").to_le_bytes());
-            for &ri in poly { o.extend_from_slice(&u32::try_from(ri).expect("ring idx fits u32").to_le_bytes()); }
+            o.extend_from_slice(
+                &u16::try_from(poly.len())
+                    .expect("ring count fits u16")
+                    .to_le_bytes(),
+            );
+            for &ri in poly {
+                o.extend_from_slice(&u32::try_from(ri).expect("ring idx fits u32").to_le_bytes());
+            }
         }
     }
     o
@@ -125,7 +165,11 @@ pub fn heat_bin(grid: &crate::density::DensityGrid) -> Vec<u8> {
         for col in 0..grid.width {
             let density = f64::from(grid.cells[row * grid.width + col]);
             if density >= 1.0 {
-                #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "clamped to 1..=255")]
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "clamped to 1..=255"
+                )]
                 let heat = (255.0 * density.ln() / dmax_ln).clamp(1.0, 255.0) as u8;
                 let out = &mut cells[row / DS * width + col / DS];
                 *out = (*out).max(heat);
@@ -134,11 +178,24 @@ pub fn heat_bin(grid: &crate::density::DensityGrid) -> Vec<u8> {
     }
     let mut o = Vec::with_capacity(48 + cells.len());
     o.extend_from_slice(b"uTZh");
-    o.extend_from_slice(&u32::try_from(width).expect("raster width fits u32").to_le_bytes());
-    o.extend_from_slice(&u32::try_from(height).expect("raster height fits u32").to_le_bytes());
+    o.extend_from_slice(
+        &u32::try_from(width)
+            .expect("raster width fits u32")
+            .to_le_bytes(),
+    );
+    o.extend_from_slice(
+        &u32::try_from(height)
+            .expect("raster height fits u32")
+            .to_le_bytes(),
+    );
     o.extend_from_slice(&[0u8; 4]); // pad so the f64 extents sit 8-aligned
     #[expect(clippy::cast_precision_loss, reason = "DS = 4, exact in f64")]
-    for v in [grid.lon0, grid.lat0, grid.dlon * DS as f64, grid.dlat * DS as f64] {
+    for v in [
+        grid.lon0,
+        grid.lat0,
+        grid.dlon * DS as f64,
+        grid.dlat * DS as f64,
+    ] {
         o.extend_from_slice(&v.to_le_bytes());
     }
     o.extend_from_slice(&cells);

@@ -28,7 +28,10 @@ pub struct BenchResult {
 
 impl BenchResult {
     #[must_use]
-    #[expect(clippy::cast_precision_loss, reason = "elapsed µs ≪ 2^53 (would be 285 years); µs/lookup display")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "elapsed µs ≪ 2^53 (would be 285 years); µs/lookup display"
+    )]
     pub fn us_per_lookup(&self) -> f64 {
         self.elapsed_us as f64 / f64::from(self.lookups.max(1))
     }
@@ -39,7 +42,11 @@ impl BenchResult {
 ///
 /// # Panics
 /// If `pts` holds more than `u32::MAX` points.
-pub fn run(finder: &utz::Finder, pts: &[(f64, f64)], now_us: &mut dyn FnMut() -> u64) -> BenchResult {
+pub fn run(
+    finder: &utz::Finder,
+    pts: &[(f64, f64)],
+    now_us: &mut dyn FnMut() -> u64,
+) -> BenchResult {
     let (mut hits, mut checksum) = (0u32, 0u64);
     let t0 = now_us();
     for &(lon, lat) in pts {
@@ -49,7 +56,12 @@ pub fn run(finder: &utz::Finder, pts: &[(f64, f64)], now_us: &mut dyn FnMut() ->
         }
     }
     let elapsed_us = now_us().saturating_sub(t0);
-    BenchResult { lookups: u32::try_from(pts.len()).expect("point count fits u32"), hits, elapsed_us, checksum }
+    BenchResult {
+        lookups: u32::try_from(pts.len()).expect("point count fits u32"),
+        hits,
+        elapsed_us,
+        checksum,
+    }
 }
 
 /// `warmup` + `rounds` passes; returns the fastest round (steady-state cost,
@@ -58,7 +70,12 @@ pub fn run(finder: &utz::Finder, pts: &[(f64, f64)], now_us: &mut dyn FnMut() ->
 /// # Panics
 ///
 /// Never: `rounds` is clamped to ≥ 1, so a best round always exists.
-pub fn run_rounds(finder: &utz::Finder, pts: &[(f64, f64)], rounds: usize, now_us: &mut dyn FnMut() -> u64) -> BenchResult {
+pub fn run_rounds(
+    finder: &utz::Finder,
+    pts: &[(f64, f64)],
+    rounds: usize,
+    now_us: &mut dyn FnMut() -> u64,
+) -> BenchResult {
     let mut best: Option<BenchResult> = None;
     let _ = run(finder, pts, now_us); // warmup
     for _ in 0..rounds.max(1) {
@@ -76,12 +93,17 @@ pub mod assets {
     // uncompressed twins of the compact/balanced presets, and tiny-static
     // with fixed-width arcs — the XIP speed tier
     pub static COMPACT_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-none.utz"));
-    pub static BALANCED_NONE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/balanced-none.utz"));
-    pub static TINY_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz"));
-    pub static COMPACT_FIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz"));
+    pub static BALANCED_NONE: &[u8] =
+        include_bytes!(concat!(env!("OUT_DIR"), "/balanced-none.utz"));
+    pub static TINY_FIXED: &[u8] =
+        include_bytes!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz"));
+    pub static COMPACT_FIXED: &[u8] =
+        include_bytes!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz"));
     // eager-image twins need 4-aligned statics (EagerImage slice casts)
-    pub static TINY_EAGER: &[u8] = utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
-    pub static COMPACT_EAGER: &[u8] = utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/compact-eager-static.utz"));
+    pub static TINY_EAGER: &[u8] =
+        utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
+    pub static COMPACT_EAGER: &[u8] =
+        utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/compact-eager-static.utz"));
     pub static TINY_COARSE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz"));
 
     // capability guards emitted next to each build.rs asset: a feature
@@ -92,6 +114,9 @@ pub mod assets {
     include!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz.guard.rs"));
     include!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz.guard.rs"));
     include!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz.guard.rs"));
-    include!(concat!(env!("OUT_DIR"), "/compact-eager-static.utz.guard.rs"));
+    include!(concat!(
+        env!("OUT_DIR"),
+        "/compact-eager-static.utz.guard.rs"
+    ));
     include!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz.guard.rs"));
 }

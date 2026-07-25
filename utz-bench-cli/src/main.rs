@@ -40,7 +40,10 @@ fn embedded(name: &str) -> Option<&'static [u8]> {
 }
 
 #[derive(Parser)]
-#[command(name = "utz-bench-cli", about = "μTZ lookup benchmark over a preset shape or .utz container")]
+#[command(
+    name = "utz-bench-cli",
+    about = "μTZ lookup benchmark over a preset shape or .utz container"
+)]
 struct Args {
     /// shape name (tiny, tiny-static, tiny-fixed-static, compact,
     /// compact-none, compact-fixed-none, balanced, balanced-none, accurate)
@@ -71,9 +74,16 @@ fn main() -> Result<(), Error> {
     };
     let size = bytes.len();
     let finder = utz::Finder::from_vec(bytes)?;
-    #[expect(clippy::cast_precision_loss, reason = "container size ≪ 2^53; KiB display")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "container size ≪ 2^53; KiB display"
+    )]
     let kib = size as f64 / 1024.0;
-    println!("{}: {kib:.1} KiB container, tzbb release {:?}", a.container, finder.tzbb_release());
+    println!(
+        "{}: {kib:.1} KiB container, tzbb release {:?}",
+        a.container,
+        finder.tzbb_release()
+    );
 
     let pts = utz_bench_common::gen_pts(a.npts);
     let t0 = Instant::now();

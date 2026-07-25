@@ -19,25 +19,37 @@ pub enum Error {
     Utz(utz::Error),
     #[from(skip)]
     #[display("unknown dataset {ds:?}: use [land-]now|1970|all")]
-    UnknownDataset { ds: String },
+    UnknownDataset {
+        ds: String,
+    },
     #[from(skip)]
     #[display("no /releases/tag/ redirect (status {status})")]
-    NoReleaseRedirect { status: u16 },
+    NoReleaseRedirect {
+        status: u16,
+    },
     #[from(skip)]
     #[display("no geojson entry in {}", path.display())]
-    NoGeojsonEntry { path: PathBuf },
+    NoGeojsonEntry {
+        path: PathBuf,
+    },
     #[from(skip)]
     #[display("no filename in url {url}")]
-    NoFilename { url: String },
+    NoFilename {
+        url: String,
+    },
     #[from(skip)]
     #[display("no .tif in {}", zip.display())]
-    NoTif { zip: PathBuf },
+    NoTif {
+        zip: PathBuf,
+    },
     #[from(skip)]
     #[display("missing geotransform")]
     MissingGeotransform,
     #[from(skip)]
     #[display("unexpected GHS-POP sample format {format}")]
-    BadSampleFormat { format: String },
+    BadSampleFormat {
+        format: String,
+    },
     #[from(skip)]
     #[display("bad density sidecar: {_0}")]
     BadSidecar(#[error(not(source))] &'static str),

@@ -73,7 +73,13 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
     // preset candidates: i16 pairs with ε≥500, i24 with ε≤250
     let shapes: Vec<(f64, u32)> = match a.eps {
         Some(e) => vec![(e, a.quant.unwrap_or(if e <= 250.0 { 24 } else { 16 }))],
-        None => vec![(2000.0, 16), (1000.0, 16), (500.0, 16), (250.0, 24), (100.0, 24)],
+        None => vec![
+            (2000.0, 16),
+            (1000.0, 16),
+            (500.0, 16),
+            (250.0, 24),
+            (100.0, 24),
+        ],
     };
     let feats = utz_build::load(&a.ds)?;
 
@@ -90,7 +96,10 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         };
         let payload = encode::build_payload(&feats, &p)?;
         let raw = payload.len();
-        #[expect(clippy::cast_precision_loss, reason = "raw payload size ≪ 2^53; KiB display")]
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "raw payload size ≪ 2^53; KiB display"
+        )]
         let raw_kb = raw as f64 / 1024.0;
         println!(
             "\n{} ε={}m i{qbits}, grid {}° — raw {raw_kb:.1} K",
@@ -105,27 +114,36 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         println!("{}", "-".repeat(63));
 
         // decode through the shipped path; peak-RAM model: decoded + window + state
-        let row = |name: &str, window: usize, codec: Codec, blob: Vec<u8>| -> utz_build::Result<()> {
-            let (out, peak, ms) = measure(|| utz::decompress::decompress(codec as u8, raw, &blob));
-            let out = out.map_err(|e| Error::Msg(format!("{name} decode: {e:?}")))?;
-            ensure!(out == payload, Error::Msg(format!("{name} roundtrip mismatch")));
-            let win_eff = window.min(raw); // beyond raw, back-refs can't reach
-            #[expect(clippy::cast_precision_loss, reason = "blob/raw/peak byte sizes ≪ 2^53; KiB and ratio display")]
-            let (comp_kb, ratio, peak_kb, state_kb) = (
-                blob.len() as f64 / 1024.0,
-                blob.len() as f64 / raw as f64 * 100.0,
-                peak as f64 / 1024.0,
-                (peak.cast_signed() - raw.cast_signed() - win_eff.cast_signed()) as f64 / 1024.0,
-            );
-            println!(
-                "{:>8}{:>9}{comp_kb:>9.1}K{ratio:>7.1}%{:>9.1}{peak_kb:>9.1}K{state_kb:>8.1}K",
-                name,
-                fmt_win(window),
-                ms
-            );
-            std::io::stdout().flush().ok();
-            Ok(())
-        };
+        let row =
+            |name: &str, window: usize, codec: Codec, blob: Vec<u8>| -> utz_build::Result<()> {
+                let (out, peak, ms) =
+                    measure(|| utz::decompress::decompress(codec as u8, raw, &blob));
+                let out = out.map_err(|e| Error::Msg(format!("{name} decode: {e:?}")))?;
+                ensure!(
+                    out == payload,
+                    Error::Msg(format!("{name} roundtrip mismatch"))
+                );
+                let win_eff = window.min(raw); // beyond raw, back-refs can't reach
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "blob/raw/peak byte sizes ≪ 2^53; KiB and ratio display"
+                )]
+                let (comp_kb, ratio, peak_kb, state_kb) = (
+                    blob.len() as f64 / 1024.0,
+                    blob.len() as f64 / raw as f64 * 100.0,
+                    peak as f64 / 1024.0,
+                    (peak.cast_signed() - raw.cast_signed() - win_eff.cast_signed()) as f64
+                        / 1024.0,
+                );
+                println!(
+                    "{:>8}{:>9}{comp_kb:>9.1}K{ratio:>7.1}%{:>9.1}{peak_kb:>9.1}K{state_kb:>8.1}K",
+                    name,
+                    fmt_win(window),
+                    ms
+                );
+                std::io::stdout().flush().ok();
+                Ok(())
+            };
 
         let cap_log = usize::BITS - (raw.max(2) - 1).leading_zeros(); // ceil(log2(raw))
 
@@ -165,7 +183,8 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
             // no_std lzma_rust2::Error isn't std::error::Error → stringify
             let mut w = lzma_rust2::XzWriter::new(Vec::new(), opts)
                 .map_err(|e| Error::Msg(format!("xz: {e:?}")))?;
-            w.write_all(&payload).map_err(|e| Error::Msg(format!("xz: {e:?}")))?;
+            w.write_all(&payload)
+                .map_err(|e| Error::Msg(format!("xz: {e:?}")))?;
             let blob = w.finish().map_err(|e| Error::Msg(format!("xz: {e:?}")))?;
             row("xz9", dict, Codec::Xz, blob)?;
         }
@@ -182,7 +201,10 @@ fn fmt_win(w: usize) -> String {
     } else if w >= 1024 && w.is_multiple_of(1024) {
         format!("{}K", w >> 10)
     } else {
-        #[expect(clippy::cast_precision_loss, reason = "window size ≪ 2^53; KiB display")]
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "window size ≪ 2^53; KiB display"
+        )]
         let kib = w as f64 / 1024.0;
         format!("{kib:.1}K")
     }

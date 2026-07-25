@@ -92,7 +92,11 @@ impl DensityWeight {
 
     #[must_use]
     pub fn new(w_min: f64) -> Self {
-        Self { w_min, d_lo: Self::DEFAULT_D_LO, d_hi: Self::DEFAULT_D_HI }
+        Self {
+            w_min,
+            d_lo: Self::DEFAULT_D_LO,
+            d_hi: Self::DEFAULT_D_HI,
+        }
     }
 
     /// Tolerance multiplier ∈ [`w_min`, 1] for a density in people/km²
@@ -130,7 +134,11 @@ pub fn rdp(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
     }
     let e2 = eps * eps;
     let keep = rdp_keep(pts, |_| e2);
-    pts.iter().zip(keep).filter(|(_, k)| *k).map(|(&p, _)| p).collect()
+    pts.iter()
+        .zip(keep)
+        .filter(|(_, k)| *k)
+        .map(|(&p, _)| p)
+        .collect()
 }
 
 /// [`rdp`] with per-vertex multipliers: deviation at `pts[i]` ≤ `eps * w[i]`.
@@ -146,7 +154,11 @@ pub fn rdp_w(pts: &[(f64, f64)], eps: f64, w: &[f64]) -> Vec<(f64, f64)> {
     }
     let e2: Vec<f64> = w.iter().map(|&x| (eps * x).powi(2)).collect();
     let keep = rdp_keep(pts, |i| e2[i]);
-    pts.iter().zip(keep).filter(|(_, k)| *k).map(|(&p, _)| p).collect()
+    pts.iter()
+        .zip(keep)
+        .filter(|(_, k)| *k)
+        .map(|(&p, _)| p)
+        .collect()
 }
 
 /// Keep-mask form of RDP (the Imai–Iri prefilter needs kept points mapped
@@ -159,7 +171,13 @@ fn rdp_keep(pts: &[(f64, f64)], e2_of: impl Fn(usize) -> f64 + Copy) -> Vec<bool
     keep
 }
 
-fn rdp_rec(p: &[(f64, f64)], a: usize, b: usize, e2_of: impl Fn(usize) -> f64 + Copy, keep: &mut [bool]) {
+fn rdp_rec(
+    p: &[(f64, f64)],
+    a: usize,
+    b: usize,
+    e2_of: impl Fn(usize) -> f64 + Copy,
+    keep: &mut [bool],
+) {
     if b <= a + 1 {
         return;
     }
@@ -224,7 +242,11 @@ impl PartialOrd for VwEntry {
 /// Shared VW core: heap entries hold the *effective* area `tri / w2_of(idx)`
 /// compared against the unscaled `min_area` (division by 1.0 is bit-exact, so
 /// the scalar path is unchanged).
-fn vw_impl(pts: &[(f64, f64)], min_area: f64, w2_of: impl Fn(usize) -> f64 + Copy) -> Vec<(f64, f64)> {
+fn vw_impl(
+    pts: &[(f64, f64)],
+    min_area: f64,
+    w2_of: impl Fn(usize) -> f64 + Copy,
+) -> Vec<(f64, f64)> {
     let n = pts.len();
     if n < 3 || min_area <= 0.0 {
         return pts.to_vec();
@@ -239,7 +261,11 @@ fn vw_impl(pts: &[(f64, f64)], min_area: f64, w2_of: impl Fn(usize) -> f64 + Cop
 
     let mut heap = std::collections::BinaryHeap::with_capacity(n);
     for i in 1..n - 1 {
-        heap.push(VwEntry { area: tri(pts[i - 1], pts[i], pts[i + 1]) / w2_of(i), idx: i, stamp: 0 });
+        heap.push(VwEntry {
+            area: tri(pts[i - 1], pts[i], pts[i + 1]) / w2_of(i),
+            idx: i,
+            stamp: 0,
+        });
     }
     while let Some(e) = heap.pop() {
         if !alive[e.idx] || e.stamp != stamp[e.idx] {
@@ -263,7 +289,11 @@ fn vw_impl(pts: &[(f64, f64)], min_area: f64, w2_of: impl Fn(usize) -> f64 + Cop
             }
         }
     }
-    pts.iter().zip(alive).filter(|(_, a)| *a).map(|(&p, _)| p).collect()
+    pts.iter()
+        .zip(alive)
+        .filter(|(_, a)| *a)
+        .map(|(&p, _)| p)
+        .collect()
 }
 
 /// Imai–Iri: the minimum-vertex polyline whose deviation from `pts` is ≤ `eps`
@@ -324,8 +354,12 @@ pub fn imai_iri_w(pts: &[(f64, f64)], eps: f64, w: &[f64]) -> Vec<(f64, f64)> {
         let keep = rdp_keep(pts, |i| (pre_eps * w[i]).powi(2));
         let kept = keep.iter().filter(|k| **k).count();
         if kept <= 2 * II_MAX || pre_eps >= eps * 0.5 {
-            let idx: Vec<usize> =
-                keep.iter().enumerate().filter(|(_, k)| **k).map(|(i, _)| i).collect();
+            let idx: Vec<usize> = keep
+                .iter()
+                .enumerate()
+                .filter(|(_, k)| **k)
+                .map(|(i, _)| i)
+                .collect();
             let pre: Vec<(f64, f64)> = idx.iter().map(|&i| pts[i]).collect();
             let rest = eps - pre_eps;
             return imai_iri_core(&pre, |m| rest * w[idx[m]]);
@@ -349,13 +383,21 @@ fn cross(a: (f64, f64), b: (f64, f64)) -> f64 {
 
 impl Wedge {
     fn new() -> Self {
-        Wedge { lo: (0.0, 0.0), hi: (0.0, 0.0), any: true, empty: false }
+        Wedge {
+            lo: (0.0, 0.0),
+            hi: (0.0, 0.0),
+            any: true,
+            empty: false,
+        }
     }
     /// Intersect with the wedge of directions whose ray from the anchor
     /// passes within ε of a point at unit direction `c`, `sin_phi` = ε/dist.
     fn add(&mut self, c: (f64, f64), sin_phi: f64) {
         let cos_phi = (1.0 - sin_phi * sin_phi).max(0.0).sqrt();
-        let lo = (c.0 * cos_phi + c.1 * sin_phi, -c.0 * sin_phi + c.1 * cos_phi);
+        let lo = (
+            c.0 * cos_phi + c.1 * sin_phi,
+            -c.0 * sin_phi + c.1 * cos_phi,
+        );
         let hi = (c.0 * cos_phi - c.1 * sin_phi, c.0 * sin_phi + c.1 * cos_phi);
         if self.any {
             (self.lo, self.hi, self.any) = (lo, hi, false);
@@ -395,13 +437,23 @@ impl Wedge {
 /// swept. `dist(p_k, seg(i,j)) ≤ ε_k ⟺ ray-from-i ok ∧ ray-from-j ok`, so two
 /// sweeps decide segment validity exactly. The Chan–Chin lemma is pointwise
 /// in `k`, so each point may carry its own tolerance `eps_of(k)`.
-fn ray_sweep(pts: &[(f64, f64)], from: usize, ks: impl Iterator<Item = usize>, eps_of: impl Fn(usize) -> f64 + Copy, mut visit: impl FnMut(usize, bool) -> bool) {
+fn ray_sweep(
+    pts: &[(f64, f64)],
+    from: usize,
+    ks: impl Iterator<Item = usize>,
+    eps_of: impl Fn(usize) -> f64 + Copy,
+    mut visit: impl FnMut(usize, bool) -> bool,
+) {
     let p0 = pts[from];
     let mut w = Wedge::new();
     let mut has_far = false; // some swept point is > its ε from the anchor
     for k in ks {
         let d = (pts[k].0 - p0.0, pts[k].1 - p0.1);
-        let ok = if d == (0.0, 0.0) { !has_far } else { w.contains(d) };
+        let ok = if d == (0.0, 0.0) {
+            !has_far
+        } else {
+            w.contains(d)
+        };
         if !visit(k, ok) {
             return;
         }
@@ -482,7 +534,15 @@ mod tests {
     /// deterministic pseudo-random polyline (LCG, same recipe as pip tests)
     fn wiggle(n: usize, seed: u64) -> Vec<(f64, f64)> {
         let mut lcg = utz_common::Lcg::new(seed);
-        (0..n).map(#[expect(clippy::cast_precision_loss, reason = "i < n ≤ II_MAX+2000 ≪ 2^53; test x-spacing")] |i| (i as f64 * 0.1, lcg.unit_f64() * 2.0 - 1.0)).collect()
+        (0..n)
+            .map(
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "i < n ≤ II_MAX+2000 ≪ 2^53; test x-spacing"
+                )]
+                |i| (i as f64 * 0.1, lcg.unit_f64() * 2.0 - 1.0),
+            )
+            .collect()
     }
 
     fn max_deviation(orig: &[(f64, f64)], simp: &[(f64, f64)]) -> f64 {
@@ -530,8 +590,14 @@ mod tests {
         for seed in 1..=20u64 {
             let pts = wiggle(200, seed);
             for eps in [0.05, 0.2, 0.8] {
-                assert!(max_deviation(&pts, &rdp(&pts, eps)) <= eps + 1e-12, "rdp seed {seed}");
-                assert!(max_deviation(&pts, &imai_iri(&pts, eps)) <= eps + 1e-12, "ii seed {seed}");
+                assert!(
+                    max_deviation(&pts, &rdp(&pts, eps)) <= eps + 1e-12,
+                    "rdp seed {seed}"
+                );
+                assert!(
+                    max_deviation(&pts, &imai_iri(&pts, eps)) <= eps + 1e-12,
+                    "ii seed {seed}"
+                );
             }
         }
     }
@@ -575,7 +641,9 @@ mod tests {
                     idx.extend(interior);
                     idx.push(n - 1);
                     let ok = idx.windows(2).all(|w| {
-                        pts[w[0] + 1..w[1]].iter().all(|&p| seg_dist2(p, pts[w[0]], pts[w[1]]) <= e2)
+                        pts[w[0] + 1..w[1]]
+                            .iter()
+                            .all(|&p| seg_dist2(p, pts[w[0]], pts[w[1]]) <= e2)
                     });
                     if ok {
                         return keep;
@@ -614,15 +682,21 @@ mod tests {
             simplify(Simplify::Visvalingam { min_area: 0.2 }, &pts),
             visvalingam(&pts, 0.2)
         );
-        assert_eq!(simplify(Simplify::ImaiIri { eps: 0.2 }, &pts), imai_iri(&pts, 0.2));
+        assert_eq!(
+            simplify(Simplify::ImaiIri { eps: 0.2 }, &pts),
+            imai_iri(&pts, 0.2)
+        );
     }
 
     /// naive O(n) per-check BFS — the reference the wedge core must match
     fn imai_iri_naive(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
         let n = pts.len();
         let e2 = eps * eps;
-        let valid =
-            |i: usize, j: usize| pts[i + 1..j].iter().all(|&p| seg_dist2(p, pts[i], pts[j]) <= e2);
+        let valid = |i: usize, j: usize| {
+            pts[i + 1..j]
+                .iter()
+                .all(|&p| seg_dist2(p, pts[i], pts[j]) <= e2)
+        };
         let mut parent = vec![usize::MAX; n];
         let mut frontier = vec![0usize];
         parent[0] = 0;
@@ -655,17 +729,24 @@ mod tests {
         for seed in 1..=30u64 {
             let pts = wiggle(400, seed);
             for eps in [0.03, 0.1, 0.3, 0.9] {
-                let (w, nv) =
-                    (imai_iri_core(&pts, |_| eps).len(), imai_iri_naive(&pts, eps).len());
+                let (w, nv) = (
+                    imai_iri_core(&pts, |_| eps).len(),
+                    imai_iri_naive(&pts, eps).len(),
+                );
                 assert_eq!(w, nv, "seed {seed} eps {eps}: wedge {w} != naive {nv}");
             }
         }
         for seed in 1..=3u64 {
             let pts = wiggle(3000, seed);
             for eps in [0.3, 0.9] {
-                let (w, nv) =
-                    (imai_iri_core(&pts, |_| eps).len(), imai_iri_naive(&pts, eps).len());
-                assert_eq!(w, nv, "seed {seed} eps {eps} (n=3000): wedge {w} != naive {nv}");
+                let (w, nv) = (
+                    imai_iri_core(&pts, |_| eps).len(),
+                    imai_iri_naive(&pts, eps).len(),
+                );
+                assert_eq!(
+                    w, nv,
+                    "seed {seed} eps {eps} (n=3000): wedge {w} != naive {nv}"
+                );
             }
         }
     }
@@ -681,7 +762,10 @@ mod tests {
 
     /// distance from one original point to the simplified polyline
     fn point_dev(p: (f64, f64), simp: &[(f64, f64)]) -> f64 {
-        simp.windows(2).map(|w| seg_dist2(p, w[0], w[1])).fold(f64::INFINITY, f64::min).sqrt()
+        simp.windows(2)
+            .map(|w| seg_dist2(p, w[0], w[1]))
+            .fold(f64::INFINITY, f64::min)
+            .sqrt()
     }
 
     /// deterministic pseudo-random weights in [lo, 1]
@@ -702,7 +786,11 @@ mod tests {
                     visvalingam(&pts, eps),
                     "vw seed {seed}"
                 );
-                assert_eq!(imai_iri_w(&pts, eps, &ones), imai_iri(&pts, eps), "ii seed {seed}");
+                assert_eq!(
+                    imai_iri_w(&pts, eps, &ones),
+                    imai_iri(&pts, eps),
+                    "ii seed {seed}"
+                );
             }
         }
         // prefilter path: the weighted adaptive loop mirrors the scalar one
@@ -750,8 +838,13 @@ mod tests {
         // > II_MAX: per-point bound may relax where w varies within a
         // prefilter shortcut, but the global eps·max(w) bound always holds
         let pts = wiggle(II_MAX + 2000, 13);
-        #[expect(clippy::cast_precision_loss, reason = "i < pts.len() = II_MAX+2000 ≪ 2^53; test weights")]
-        let w: Vec<f64> = (0..pts.len()).map(|i| 0.6 + 0.4 * (i as f64 / 500.0).sin()).collect();
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "i < pts.len() = II_MAX+2000 ≪ 2^53; test weights"
+        )]
+        let w: Vec<f64> = (0..pts.len())
+            .map(|i| 0.6 + 0.4 * (i as f64 / 500.0).sin())
+            .collect();
         let eps = 0.3;
         let out = imai_iri_w(&pts, eps, &w);
         assert!(out.len() < pts.len());
@@ -765,7 +858,10 @@ mod tests {
         let pts = wiggle(100, 3);
         let w = rand_weights(pts.len(), 0.2, 9);
         assert_eq!(simplify_weighted(Simplify::None, &pts, &w), pts);
-        assert_eq!(simplify_weighted(Simplify::Rdp { eps: 0.2 }, &pts, &w), rdp_w(&pts, 0.2, &w));
+        assert_eq!(
+            simplify_weighted(Simplify::Rdp { eps: 0.2 }, &pts, &w),
+            rdp_w(&pts, 0.2, &w)
+        );
         assert_eq!(
             simplify_weighted(Simplify::Visvalingam { min_area: 0.2 }, &pts, &w),
             visvalingam_w(&pts, 0.2, &w)
@@ -777,7 +873,10 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::float_cmp, reason = "weight() knees are exact early-returns (1.0/w_min); approximate equality would weaken the test")]
+    #[expect(
+        clippy::float_cmp,
+        reason = "weight() knees are exact early-returns (1.0/w_min); approximate equality would weaken the test"
+    )]
     fn density_weight_shape() {
         let m = DensityWeight::new(0.1);
         assert_eq!(m.weight(0.0), 1.0);
@@ -791,7 +890,10 @@ mod tests {
         for i in 0..100 {
             let d = m.d_lo * (m.d_hi / m.d_lo).powf(f64::from(i) / 99.0);
             let w = m.weight(d);
-            assert!(w <= last + 1e-15 && (m.w_min..=1.0).contains(&w), "d={d} w={w}");
+            assert!(
+                w <= last + 1e-15 && (m.w_min..=1.0).contains(&w),
+                "d={d} w={w}"
+            );
             last = w;
         }
         // weighting off

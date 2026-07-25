@@ -63,11 +63,21 @@ impl<'a> Rd<'a> {
         self.p += n;
         Some(s)
     }
-    fn u8(&mut self) -> Option<u8> { Some(self.take(1)?[0]) }
-    fn u16(&mut self) -> Option<u16> { Some(u16::from_le_bytes(self.take(2)?.try_into().ok()?)) }
-    fn u32(&mut self) -> Option<u32> { Some(u32::from_le_bytes(self.take(4)?.try_into().ok()?)) }
-    fn f32(&mut self) -> Option<f32> { Some(f32::from_le_bytes(self.take(4)?.try_into().ok()?)) }
-    fn f64(&mut self) -> Option<f64> { Some(f64::from_le_bytes(self.take(8)?.try_into().ok()?)) }
+    fn u8(&mut self) -> Option<u8> {
+        Some(self.take(1)?[0])
+    }
+    fn u16(&mut self) -> Option<u16> {
+        Some(u16::from_le_bytes(self.take(2)?.try_into().ok()?))
+    }
+    fn u32(&mut self) -> Option<u32> {
+        Some(u32::from_le_bytes(self.take(4)?.try_into().ok()?))
+    }
+    fn f32(&mut self) -> Option<f32> {
+        Some(f32::from_le_bytes(self.take(4)?.try_into().ok()?))
+    }
+    fn f64(&mut self) -> Option<f64> {
+        Some(f64::from_le_bytes(self.take(8)?.try_into().ok()?))
+    }
 }
 
 fn parse_blob(b: &[u8]) -> Option<State> {
@@ -114,7 +124,11 @@ fn parse_blob(b: &[u8]) -> Option<State> {
         let offset = r.f32()? as f64;
         let len = r.u8()? as usize;
         let tzid = String::from_utf8(r.take(len)?.to_vec()).ok()?;
-        feats.push(Feat { offset, tzid: (!tzid.is_empty()).then_some(tzid), polys: Vec::new() });
+        feats.push(Feat {
+            offset,
+            tzid: (!tzid.is_empty()).then_some(tzid),
+            polys: Vec::new(),
+        });
     }
     let n_rings = r.u32()? as usize;
     let mut ring_refs = Vec::with_capacity(n_rings);
@@ -141,7 +155,11 @@ fn parse_blob(b: &[u8]) -> Option<State> {
         structure.push(polys);
     }
     Some(State {
-        topo: Topology { arc_coords, ring_refs, structure },
+        topo: Topology {
+            arc_coords,
+            ring_refs,
+            structure,
+        },
         dens,
         feats,
         dataset_code,
@@ -178,11 +196,19 @@ pub unsafe extern "C" fn utz_enc_init(ptr: *mut u8, len: usize) -> u32 {
 /// [`utz_enc_problems`]. `pre_snap_bits` = Some(qbits) snaps every arc to
 /// that grid BEFORE simplifying (the viewer's Q→S order); the later
 /// quantize step then re-snaps the already-on-grid coords, a no-op.
-fn simplified_arcs(st: &State, algo: u32, eps_m: f64, w_min: f64, pre_snap_bits: Option<u32>) -> Vec<Arc> {
+fn simplified_arcs(
+    st: &State,
+    algo: u32,
+    eps_m: f64,
+    w_min: f64,
+    pre_snap_bits: Option<u32>,
+) -> Vec<Arc> {
     let eps_deg = eps_m / 111_320.0;
     let algo = match algo {
         0 => Simplify::Rdp { eps: eps_deg },
-        1 => Simplify::Visvalingam { min_area: eps_deg * eps_deg },
+        1 => Simplify::Visvalingam {
+            min_area: eps_deg * eps_deg,
+        },
         2 => Simplify::ImaiIri { eps: eps_deg },
         _ => Simplify::None,
     };
@@ -190,27 +216,39 @@ fn simplified_arcs(st: &State, algo: u32, eps_m: f64, w_min: f64, pre_snap_bits:
     let weighted = w_min < 1.0 && !st.dens.is_empty();
     let qmax = pre_snap_bits.map(|b| ((1u64 << (b - 1)) - 1) as f64);
     let mut base = 0usize;
-    st.topo.arc_coords.iter().map(|a| {
-        let snapped: Vec<(f64, f64)>;
-        let input = match qmax {
-            Some(q) => {
-                snapped = a.iter()
-                    .map(|&(x, y)| ((x / 180.0 * q).round() / q * 180.0, (y / 90.0 * q).round() / q * 90.0))
+    st.topo
+        .arc_coords
+        .iter()
+        .map(|a| {
+            let snapped: Vec<(f64, f64)>;
+            let input = match qmax {
+                Some(q) => {
+                    snapped = a
+                        .iter()
+                        .map(|&(x, y)| {
+                            (
+                                (x / 180.0 * q).round() / q * 180.0,
+                                (y / 90.0 * q).round() / q * 90.0,
+                            )
+                        })
+                        .collect();
+                    &snapped
+                }
+                None => a,
+            };
+            let out = if weighted {
+                let w: Vec<f64> = st.dens[base..base + a.len()]
+                    .iter()
+                    .map(|&d| model.weight(d as f64))
                     .collect();
-                &snapped
-            }
-            None => a,
-        };
-        let out = if weighted {
-            let w: Vec<f64> =
-                st.dens[base..base + a.len()].iter().map(|&d| model.weight(d as f64)).collect();
-            simplify_weighted(algo, input, &w)
-        } else {
-            utz_simplify::simplify(algo, input)
-        };
-        base += a.len();
-        out
-    }).collect()
+                simplify_weighted(algo, input, &w)
+            } else {
+                utz_simplify::simplify(algo, input)
+            };
+            base += a.len();
+            out
+        })
+        .collect()
 }
 
 #[no_mangle]
@@ -221,7 +259,9 @@ pub extern "C" fn utz_enc_payload(
     quant_bits: u32,
     grid_deg: f64,
 ) -> u32 {
-    let Some(st) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else { return 0 };
+    let Some(st) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else {
+        return 0;
+    };
     let arcs = simplified_arcs(st, algo, eps_m, w_min, None);
     let p = Params {
         dataset: st.dataset_code,
@@ -255,7 +295,9 @@ pub extern "C" fn utz_enc_payload(
 /// 12 arcs dropped (cleanup removals).
 #[no_mangle]
 pub extern "C" fn utz_enc_stat(i: u32) -> u32 {
-    let Some(st) = (unsafe { &*core::ptr::addr_of!(STATE) }) else { return 0 };
+    let Some(st) = (unsafe { &*core::ptr::addr_of!(STATE) }) else {
+        return 0;
+    };
     let s = &st.stats;
     match i {
         0 => s.header,
@@ -302,7 +344,9 @@ pub extern "C" fn utz_enc_problems(
     quant_bits: u32,
     pre: u32,
 ) -> u32 {
-    let Some(st) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else { return 0 };
+    let Some(st) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else {
+        return 0;
+    };
     if !matches!(quant_bits, 16 | 24 | 32) {
         return 0;
     }
@@ -312,7 +356,10 @@ pub extern "C" fn utz_enc_problems(
     for p in &problems {
         out.extend_from_slice(&(p.lon as f32).to_le_bytes());
         out.extend_from_slice(&(p.lat as f32).to_le_bytes());
-        let kind: u16 = match p.kind { validate::Kind::Cross => 0, validate::Kind::Overlap => 1 };
+        let kind: u16 = match p.kind {
+            validate::Kind::Cross => 0,
+            validate::Kind::Overlap => 1,
+        };
         out.extend_from_slice(&kind.to_le_bytes());
         out.extend_from_slice(&(p.feat as u16).to_le_bytes());
     }
@@ -333,7 +380,9 @@ pub extern "C" fn utz_enc_problems_ptr() -> *const u8 {
 #[no_mangle]
 pub extern "C" fn utz_enc_tzid_ptr(i: u32) -> *const u8 {
     match unsafe { &*core::ptr::addr_of!(STATE) } {
-        Some(st) => st.feats.get(i as usize)
+        Some(st) => st
+            .feats
+            .get(i as usize)
             .and_then(|f| f.tzid.as_deref())
             .map_or(core::ptr::null(), |s| s.as_ptr()),
         None => core::ptr::null(),
@@ -342,7 +391,9 @@ pub extern "C" fn utz_enc_tzid_ptr(i: u32) -> *const u8 {
 #[no_mangle]
 pub extern "C" fn utz_enc_tzid_len(i: u32) -> u32 {
     match unsafe { &*core::ptr::addr_of!(STATE) } {
-        Some(st) => st.feats.get(i as usize)
+        Some(st) => st
+            .feats
+            .get(i as usize)
             .and_then(|f| f.tzid.as_deref())
             .map_or(0, |s| s.len() as u32),
         None => 0,
@@ -355,7 +406,9 @@ pub extern "C" fn utz_enc_tzid_len(i: u32) -> u32 {
 /// header. Returns 0 on error / unsupported codec / no payload.
 #[no_mangle]
 pub extern "C" fn utz_enc_compress(codec: u32) -> u32 {
-    let Some(st) = (unsafe { &*core::ptr::addr_of!(STATE) }) else { return 0 };
+    let Some(st) = (unsafe { &*core::ptr::addr_of!(STATE) }) else {
+        return 0;
+    };
     if st.payload.is_empty() {
         return 0;
     }

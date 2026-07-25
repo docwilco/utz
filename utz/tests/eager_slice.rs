@@ -10,7 +10,11 @@ fn eager_from_slice_matches_lazy_and_preload() {
     let mut pre = utz::Finder::from_slice(utz::data::TINY).unwrap();
     pre.preload();
     let eager = utz::Finder::eager_from_slice(utz::data::TINY).unwrap();
-    assert_eq!(eager.tzbb_release(), lazy.tzbb_release(), "header/strings kept");
+    assert_eq!(
+        eager.tzbb_release(),
+        lazy.tzbb_release(),
+        "header/strings kept"
+    );
     // deterministic grid over land and ocean, including cells that need PIP
     let mut n = 0;
     for i in 0..60u32 {
@@ -22,7 +26,11 @@ fn eager_from_slice_matches_lazy_and_preload() {
             let want = lazy.lookup(pos);
             assert_eq!(eager.lookup(pos), want, "at {pos:?}");
             assert_eq!(pre.lookup(pos), want, "preload at {pos:?}");
-            assert_eq!(eager.lookup_coarse(pos), lazy.lookup_coarse(pos), "coarse at {pos:?}");
+            assert_eq!(
+                eager.lookup_coarse(pos),
+                lazy.lookup_coarse(pos),
+                "coarse at {pos:?}"
+            );
             n += usize::from(want.is_some());
         }
     }

@@ -18,9 +18,14 @@ pub struct Args {
 pub fn run(a: Args) -> utz_build::Result<()> {
     let (ds, grid_deg) = (a.ds, a.grid_deg);
     let feats = utz_build::load(&ds)?;
-    println!("{} full container, grid {grid_deg}°, dominant-first CSR", ds.to_uppercase());
-    println!("{:>7}{:>6}{:>12}{:>12}{:>12}{:>12}{:>12}",
-        "eps(m)", "quant", "raw", "gzip", "zstd22", "br.q11", "xz9");
+    println!(
+        "{} full container, grid {grid_deg}°, dominant-first CSR",
+        ds.to_uppercase()
+    );
+    println!(
+        "{:>7}{:>6}{:>12}{:>12}{:>12}{:>12}{:>12}",
+        "eps(m)", "quant", "raw", "gzip", "zstd22", "br.q11", "xz9"
+    );
     println!("{}", "-".repeat(73));
 
     for eps_m in [100.0f64, 250.0, 500.0, 1000.0, 2000.0] {
@@ -36,16 +41,31 @@ pub fn run(a: Args) -> utz_build::Result<()> {
                 geom: encode::GeomEncoding::default(),
             };
             let payload = encode::build_payload(&feats, &p)?;
-            #[expect(clippy::cast_precision_loss, reason = "compressed payload size ≪ 2^53; KiB display")]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "compressed payload size ≪ 2^53; KiB display"
+            )]
             let kb = |c: Codec| -> utz_build::Result<String> {
-                Ok(format!("{:.1}", encode::compress(&payload, c)?.len() as f64 / 1024.0))
+                Ok(format!(
+                    "{:.1}",
+                    encode::compress(&payload, c)?.len() as f64 / 1024.0
+                ))
             };
-            #[expect(clippy::cast_precision_loss, reason = "raw payload size ≪ 2^53; KiB display")]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "raw payload size ≪ 2^53; KiB display"
+            )]
             let raw_kb = payload.len() as f64 / 1024.0;
-            println!("{:>7}{:>6}{:>11} K{:>11} K{:>11} K{:>11} K{:>11} K",
-                eps_m, format!("i{qbits}"),
+            println!(
+                "{:>7}{:>6}{:>11} K{:>11} K{:>11} K{:>11} K{:>11} K",
+                eps_m,
+                format!("i{qbits}"),
                 format!("{raw_kb:.1}"),
-                kb(Codec::Gzip)?, kb(Codec::Zstd)?, kb(Codec::Brotli)?, kb(Codec::Xz)?);
+                kb(Codec::Gzip)?,
+                kb(Codec::Zstd)?,
+                kb(Codec::Brotli)?,
+                kb(Codec::Xz)?
+            );
         }
     }
     Ok(())

@@ -40,7 +40,11 @@ fn classify(p: (i32, i32), q: (i32, i32), r: (i32, i32)) -> Kind {
     if ax * by != ay * bx {
         return Kind::Keep;
     }
-    if ax * bx + ay * by < 0 { Kind::Spike } else { Kind::Collinear }
+    if ax * bx + ay * by < 0 {
+        Kind::Spike
+    } else {
+        Kind::Collinear
+    }
 }
 
 /// Remove quantization artifacts from one quantized arc, in place.
@@ -107,8 +111,7 @@ fn clean_cyclic(arc: &mut Arc<i32>, stats: &mut CleanStats) {
         let mut idx = 0;
         while arc.len() >= 3 && idx < arc.len() {
             let len = arc.len();
-            let (prev, cur, next) =
-                (arc[(idx + len - 1) % len], arc[idx], arc[(idx + 1) % len]);
+            let (prev, cur, next) = (arc[(idx + len - 1) % len], arc[idx], arc[(idx + 1) % len]);
             if cur == prev || cur == next {
                 arc.remove(idx);
                 stats.dups += 1;
@@ -350,7 +353,10 @@ mod tests {
         let mut a = vec![(0, 0), (5, 0), (9, 0), (5, 0), (0, 0)];
         let mut st = stats();
         clean_arc(&mut a, true, &mut st);
-        assert!(ring_degenerate(&ring_coords_q(&[0 << 1], &[a.clone()])), "{a:?}");
+        assert!(
+            ring_degenerate(&ring_coords_q(&[0 << 1], &[a.clone()])),
+            "{a:?}"
+        );
     }
 
     #[test]
@@ -382,8 +388,8 @@ mod tests {
     #[test]
     fn drop_degenerate_exterior_takes_holes() {
         let arcs = vec![
-            vec![(0, 0), (10, 0), (0, 0)],                    // flat exterior
-            vec![(2, 2), (6, 2), (6, 6), (2, 6), (2, 2)],     // healthy hole
+            vec![(0, 0), (10, 0), (0, 0)],                // flat exterior
+            vec![(2, 2), (6, 2), (6, 6), (2, 6), (2, 2)], // healthy hole
         ];
         let ring_refs = vec![vec![0u32 << 1], vec![1u32 << 1]];
         let structure = vec![vec![vec![0usize, 1]]];

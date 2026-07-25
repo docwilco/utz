@@ -27,39 +27,86 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
         let feats = utz_build::load(dataset)?;
         let out = topo::encode_topology(&feats, eps_m / 111_320.0);
         let areas = grid::feat_areas(&out.simplified);
-        println!("{} eps={eps_m}m, {} features, dominant-first CSR, {NPTS} sample points",
-            dataset.to_uppercase(), out.simplified.len());
-        println!("{:>4}{:>9}{:>9}{:>10}{:>9}{:>7}{:>8}{:>11}{:>11}{:>11}",
-            "deg", "cells", "border", "border%", "P(PIP)", "lists", "ids", "primary", "side", "total");
+        println!(
+            "{} eps={eps_m}m, {} features, dominant-first CSR, {NPTS} sample points",
+            dataset.to_uppercase(),
+            out.simplified.len()
+        );
+        println!(
+            "{:>4}{:>9}{:>9}{:>10}{:>9}{:>7}{:>8}{:>11}{:>11}{:>11}",
+            "deg",
+            "cells",
+            "border",
+            "border%",
+            "P(PIP)",
+            "lists",
+            "ids",
+            "primary",
+            "side",
+            "total"
+        );
         println!("{}", "-".repeat(89));
 
         for deg in DEGS {
             // keep subcell resolution ~0.25° regardless of cell size
-            #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "deg ≤ 10 → tiny positive integer")]
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "deg ≤ 10 → tiny positive integer"
+            )]
             let sub = ((deg * 4.0).round() as usize).max(2);
             let grid = grid::build(&out.simplified, deg, sub);
             let csr = grid::intern_csr(&grid, Order::CellDominantFirst, &areas);
 
             let total = grid.ncols * grid.nrows;
-            let border = csr.primary.iter().filter(|&&tag| tag & 0x8000 != 0 && tag != 0x7FFF).count();
-            let hits = pts.iter().filter(|&&(lon, lat)| {
-                #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, reason = "cell index, fraction dropped then clamped")]
-                let col = (((lon + 180.0) / deg) as isize).clamp(0, grid.ncols as isize - 1) as usize;
-                #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, reason = "cell index, fraction dropped then clamped")]
-                let row = (((lat + 90.0) / deg) as isize).clamp(0, grid.nrows as isize - 1) as usize;
-                let tag = csr.primary[row * grid.ncols + col];
-                tag & 0x8000 != 0 && tag != 0x7FFF
-            }).count();
+            let border = csr
+                .primary
+                .iter()
+                .filter(|&&tag| tag & 0x8000 != 0 && tag != 0x7FFF)
+                .count();
+            let hits = pts
+                .iter()
+                .filter(|&&(lon, lat)| {
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        clippy::cast_sign_loss,
+                        clippy::cast_possible_wrap,
+                        reason = "cell index, fraction dropped then clamped"
+                    )]
+                    let col =
+                        (((lon + 180.0) / deg) as isize).clamp(0, grid.ncols as isize - 1) as usize;
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        clippy::cast_sign_loss,
+                        clippy::cast_possible_wrap,
+                        reason = "cell index, fraction dropped then clamped"
+                    )]
+                    let row =
+                        (((lat + 90.0) / deg) as isize).clamp(0, grid.nrows as isize - 1) as usize;
+                    let tag = csr.primary[row * grid.ncols + col];
+                    tag & 0x8000 != 0 && tag != 0x7FFF
+                })
+                .count();
 
             let primary_bytes = csr.primary.len() * 2;
             let side_bytes = (csr.list_offsets.len() + csr.list_ids.len()) * 2;
-            assert!(csr.uniq_lists < 0x7FFF, "list index overflows the 15-bit tag at {deg}°");
-            assert!(u16::try_from(csr.list_ids.len()).is_ok(), "list_offsets u16 overflow at {deg}°");
-            #[expect(clippy::cast_precision_loss, reason = "cell/hit counts and CSR byte sizes ≪ 2^53; % and KB display")]
+            assert!(
+                csr.uniq_lists < 0x7FFF,
+                "list index overflows the 15-bit tag at {deg}°"
+            );
+            assert!(
+                u16::try_from(csr.list_ids.len()).is_ok(),
+                "list_offsets u16 overflow at {deg}°"
+            );
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "cell/hit counts and CSR byte sizes ≪ 2^53; % and KB display"
+            )]
             let (border_pct, pip_pct, primary_kb, side_kb, total_kb) = (
                 100.0 * border as f64 / total as f64,
                 100.0 * hits as f64 / NPTS as f64,
-                primary_bytes as f64 / 1024.0, side_bytes as f64 / 1024.0,
+                primary_bytes as f64 / 1024.0,
+                side_bytes as f64 / 1024.0,
                 (primary_bytes + side_bytes) as f64 / 1024.0,
             );
             println!("{:>4}{:>9}{:>9}{border_pct:>9.1}%{pip_pct:>8.1}%{:>7}{:>8}{primary_kb:>8.1} KB{side_kb:>8.1} KB{total_kb:>8.1} KB",

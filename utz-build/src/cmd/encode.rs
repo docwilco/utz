@@ -9,8 +9,8 @@ use std::path::PathBuf;
 
 use utz_build::density::DensityGrid;
 use utz_build::encode::{self, Codec, Params};
-use utz_simplify::DensityWeight;
 use utz_build::{ensure, Error};
+use utz_simplify::DensityWeight;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -51,19 +51,31 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         "zstd" => Codec::Zstd,
         "brotli" => Codec::Brotli,
         "xz" => Codec::Xz,
-        c => return Err(Error::Msg(format!("unknown codec {c:?}: use none|gzip|zstd|brotli|xz"))),
+        c => {
+            return Err(Error::Msg(format!(
+                "unknown codec {c:?}: use none|gzip|zstd|brotli|xz"
+            )))
+        }
     };
     let simplify = match a.algo.as_str() {
         "rdp" => encode::SimplifyAlgo::Rdp,
         "ii" | "imai-iri" => encode::SimplifyAlgo::ImaiIri,
-        c => return Err(Error::Msg(format!("unknown algo {c:?}: use rdp|ii (visvalingam needs the builder API)"))),
+        c => {
+            return Err(Error::Msg(format!(
+                "unknown algo {c:?}: use rdp|ii (visvalingam needs the builder API)"
+            )))
+        }
     };
     let geom = match a.geom.as_str() {
         "varint" | "delta" => encode::GeomEncoding::DeltaVarint,
         "fixed" => encode::GeomEncoding::Fixed,
         "eager" | "image" => encode::GeomEncoding::EagerImage,
         "coarse" => encode::GeomEncoding::Coarse,
-        c => return Err(Error::Msg(format!("unknown geom {c:?}: use varint|fixed|eager|coarse"))),
+        c => {
+            return Err(Error::Msg(format!(
+                "unknown geom {c:?}: use varint|fixed|eager|coarse"
+            )))
+        }
     };
     let (feats, release) = utz_build::load_with_release(&a.ds)?;
     let p = Params {
@@ -87,7 +99,11 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     // sanity: the runtime must accept what we just wrote
     let f = utz::Finder::from_vec(container.clone())?;
     ensure!(
-        f.lookup(utz::Position { lon: -0.1276, lat: 51.5072 }).is_some(),
+        f.lookup(utz::Position {
+            lon: -0.1276,
+            lat: 51.5072
+        })
+        .is_some(),
         Error::Msg("verify lookup failed".into())
     );
 
@@ -100,8 +116,14 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     }
     std::fs::write(&out, &container)?;
     utz_build::config::write_guard(&out, geom, codec)?;
-    #[expect(clippy::cast_precision_loss, reason = "container size ≪ 2^53; KiB display")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "container size ≪ 2^53; KiB display"
+    )]
     let kib = container.len() as f64 / 1024.0;
-    println!("wrote {} ({kib:.1} KiB, {codec:?}, TZBB {release})", out.display());
+    println!(
+        "wrote {} ({kib:.1} KiB, {codec:?}, TZBB {release})",
+        out.display()
+    );
     Ok(())
 }

@@ -24,9 +24,11 @@
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
-use crate::format::{self, fixed_bytes, read_fixed, read_u16, read_u32, read_varint, unzigzag, Header};
 #[cfg(feature = "alloc")]
 use crate::decompress;
+use crate::format::{
+    self, fixed_bytes, read_fixed, read_u16, read_u32, read_varint, unzigzag, Header,
+};
 use crate::{pip, Error, Result};
 
 const NO_ZONE: u16 = 0x7FFF;
@@ -55,12 +57,10 @@ type Payload = alloc::borrow::Cow<'static, [u8]>;
 type Payload = &'static [u8];
 
 // EagerImage casts payload bytes to coordinate pairs — pin the layout
-const _: () = assert!(
-    core::mem::size_of::<(i32, i32)>() == 8 && core::mem::align_of::<(i32, i32)>() == 4
-);
-const _: () = assert!(
-    core::mem::size_of::<(i16, i16)>() == 4 && core::mem::align_of::<(i16, i16)>() == 2
-);
+const _: () =
+    assert!(core::mem::size_of::<(i32, i32)>() == 8 && core::mem::align_of::<(i32, i32)>() == 4);
+const _: () =
+    assert!(core::mem::size_of::<(i16, i16)>() == 4 && core::mem::align_of::<(i16, i16)>() == 2);
 #[cfg(feature = "geom-image")]
 const _: () = assert!(
     core::mem::size_of::<crate::pip::Pack24>() == 6
@@ -126,7 +126,10 @@ impl EagerCoord for (i32, i32) {
 }
 #[cfg(feature = "alloc")]
 impl EagerCoord for (i16, i16) {
-    #[expect(clippy::cast_possible_truncation, reason = "dispatched only for quant_bits==16 assets, whose coords fit i16 by format")]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "dispatched only for quant_bits==16 assets, whose coords fit i16 by format"
+    )]
     fn from_q(x: i32, y: i32) -> Self {
         (x as i16, y as i16)
     }
@@ -287,7 +290,11 @@ impl Finder {
         };
         let hdr = format::parse(&payload)?;
         check_image(&payload, &hdr)?;
-        Ok(Finder { payload: payload.into(), hdr, eager: None })
+        Ok(Finder {
+            payload: payload.into(),
+            hdr,
+            eager: None,
+        })
     }
 
     /// Take ownership of a container buffer (e.g. an OTA blob), decompressing
@@ -311,7 +318,11 @@ impl Finder {
         };
         let hdr = format::parse(&payload)?;
         check_image(&payload, &hdr)?;
-        Ok(Finder { payload: payload.into(), hdr, eager: None })
+        Ok(Finder {
+            payload: payload.into(),
+            hdr,
+            eager: None,
+        })
     }
 
     /// Decode straight to eager mode, then drop the geometry sections:
@@ -418,17 +429,28 @@ impl Finder {
         }
         self.eager = Some(if self.hdr.quant_bits == 16 {
             let (coords, ring_ends, polys) = self.decode_rings::<(i16, i16)>();
-            Eager { coords: EagerCoords::Narrow(coords), ring_ends, polys }
+            Eager {
+                coords: EagerCoords::Narrow(coords),
+                ring_ends,
+                polys,
+            }
         } else {
             let (coords, ring_ends, polys) = self.decode_rings::<(i32, i32)>();
-            Eager { coords: EagerCoords::Wide(coords), ring_ends, polys }
+            Eager {
+                coords: EagerCoords::Wide(coords),
+                ring_ends,
+                polys,
+            }
         });
     }
 
     /// [`preload`](Finder::preload)'s decode pass, generic over the cache's
     /// coordinate width.
     #[cfg(feature = "alloc")]
-    #[expect(clippy::cast_possible_truncation, reason = "counts bounded by the parse-validated u32 header reservations")]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "counts bounded by the parse-validated u32 header reservations"
+    )]
     fn decode_rings<C: EagerCoord>(&self) -> (Vec<C>, Vec<u32>, Polys) {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let mut coords = Vec::with_capacity(h.eager_coords as usize);
@@ -518,11 +540,17 @@ impl Finder {
         }
     }
 
-    #[expect(clippy::cast_precision_loss, reason = "qmax = 2^(quant_bits-1)-1 ≤ 2^31-1, exact in f64")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "qmax = 2^(quant_bits-1)-1 ≤ 2^31-1, exact in f64"
+    )]
     fn qmax(&self) -> f64 {
         ((1u64 << (self.hdr.quant_bits - 1)) - 1) as f64
     }
-    #[expect(clippy::cast_possible_truncation, reason = "|v*qmax| < i32::MAX for in-range lon/lat; float as saturates, wild input degrades to a miss")]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "|v*qmax| < i32::MAX for in-range lon/lat; float as saturates, wild input degrades to a miss"
+    )]
     fn quantize(&self, pos: Position) -> (i32, i32) {
         // round-half-away like the encoder (f64::round is std-only)
         let r = |v: f64| (v + if v >= 0.0 { 0.5 } else { -0.5 }) as i32;
@@ -530,15 +558,23 @@ impl Finder {
         (r(pos.lon / 180.0 * q), r(pos.lat / 90.0 * q))
     }
 
-    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "cast saturates then clamped to grid range")]
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "cast saturates then clamped to grid range"
+    )]
     fn cell_value(&self, px: i32, py: i32) -> u16 {
         let (header, qmax) = (&self.hdr, self.qmax());
         let cell_deg = f64::from(header.grid_deg);
         let lon = f64::from(px) / qmax * 180.0;
         let lat = f64::from(py) / qmax * 90.0;
-        let col = (((lon + 180.0) / cell_deg) as i64).clamp(0, i64::from(header.ncols) - 1) as usize;
+        let col =
+            (((lon + 180.0) / cell_deg) as i64).clamp(0, i64::from(header.ncols) - 1) as usize;
         let row = (((lat + 90.0) / cell_deg) as i64).clamp(0, i64::from(header.nrows) - 1) as usize;
-        read_u16(&self.payload[..], header.primary + (row * header.ncols as usize + col) * 2)
+        read_u16(
+            &self.payload[..],
+            header.primary + (row * header.ncols as usize + col) * 2,
+        )
     }
 
     fn list_bounds(&self, li: u16) -> (usize, usize) {
@@ -552,7 +588,9 @@ impl Finder {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let s = read_u16(b, h.str_offsets + fid as usize * 2) as usize;
         let e = read_u16(b, h.str_offsets + fid as usize * 2 + 2) as usize;
-        core::str::from_utf8(&b[h.pool + s..h.pool + e]).ok().filter(|t| !t.is_empty())
+        core::str::from_utf8(&b[h.pool + s..h.pool + e])
+            .ok()
+            .filter(|t| !t.is_empty())
     }
 
     /// poly id → feature id (v4 parent table).
@@ -617,7 +655,10 @@ impl Finder {
 
     /// Fold one arc's internal segments through the edge kernel. `Inside` =
     /// this arc contributed an odd number of ray crossings.
-    #[expect(clippy::cast_possible_truncation, reason = "coords accumulate i16/i24/i32-width deltas; sums fit i32 by format")]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "coords accumulate i16/i24/i32-width deltas; sums fit i32 by format"
+    )]
     fn scan_arc(&self, id: usize, px: i32, py: i32) -> pip::RingHit {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let wide = h.quant_bits == 32;
@@ -683,7 +724,11 @@ impl Finder {
             return false;
         }
         let rend = read_u32(b, pe + 16) as usize;
-        let rstart = if pid == 0 { 0 } else { read_u32(b, pe - 4) as usize };
+        let rstart = if pid == 0 {
+            0
+        } else {
+            read_u32(b, pe - 4) as usize
+        };
         match h.quant_bits {
             16 => {
                 // an in-bbox point of a valid i16-quant asset always fits
@@ -716,8 +761,11 @@ impl Finder {
     ) -> bool {
         let (h, b) = (&self.hdr, &self.payload[..]);
         let mut inside = false;
-        let mut cstart =
-            if rstart == 0 { 0 } else { read_u32(b, h.img_ring_ends + (rstart - 1) * 4) as usize };
+        let mut cstart = if rstart == 0 {
+            0
+        } else {
+            read_u32(b, h.img_ring_ends + (rstart - 1) * 4) as usize
+        };
         for ri in rstart..rend {
             let cend = read_u32(b, h.img_ring_ends + ri * 4) as usize;
             let n = cend - cstart;
@@ -728,7 +776,9 @@ impl Finder {
             // the image sections against the header counts.
             let ring = unsafe {
                 core::slice::from_raw_parts(
-                    b[h.img_coords + cstart * core::mem::size_of::<P>()..].as_ptr().cast::<P>(),
+                    b[h.img_coords + cstart * core::mem::size_of::<P>()..]
+                        .as_ptr()
+                        .cast::<P>(),
                     n,
                 )
             };
@@ -752,7 +802,11 @@ impl Finder {
         if !(px >= bb[0] && py >= bb[1] && px <= bb[2] && py <= bb[3]) {
             return false;
         }
-        let rstart = if pi == 0 { 0 } else { e.polys[pi - 1].1 as usize };
+        let rstart = if pi == 0 {
+            0
+        } else {
+            e.polys[pi - 1].1 as usize
+        };
         match &e.coords {
             EagerCoords::Narrow(coords) => {
                 // an in-bbox point of a valid i16-quant asset always fits
@@ -760,11 +814,25 @@ impl Finder {
                 let (Ok(px), Ok(py)) = (i16::try_from(px), i16::try_from(py)) else {
                     return false;
                 };
-                rings_hit(coords, &e.ring_ends, rstart, rend as usize, px, py, ring_hit_narrow)
+                rings_hit(
+                    coords,
+                    &e.ring_ends,
+                    rstart,
+                    rend as usize,
+                    px,
+                    py,
+                    ring_hit_narrow,
+                )
             }
-            EagerCoords::Wide(coords) if self.hdr.quant_bits == 32 => {
-                rings_hit(coords, &e.ring_ends, rstart, rend as usize, px, py, ring_hit_wide)
-            }
+            EagerCoords::Wide(coords) if self.hdr.quant_bits == 32 => rings_hit(
+                coords,
+                &e.ring_ends,
+                rstart,
+                rend as usize,
+                px,
+                py,
+                ring_hit_wide,
+            ),
             EagerCoords::Wide(coords) => rings_hit(
                 coords,
                 &e.ring_ends,
@@ -780,7 +848,10 @@ impl Finder {
     /// Decode one signed arc ref onto the end of `coords` (join-deduplicated).
     /// Eager-mode decode only; the lazy path streams via `scan_arc` instead.
     #[cfg(feature = "alloc")]
-    #[expect(clippy::cast_possible_truncation, reason = "coords accumulate i16/i24/i32-width deltas; sums fit i32 by format")]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "coords accumulate i16/i24/i32-width deltas; sums fit i32 by format"
+    )]
     fn append_arc<C: EagerCoord>(&self, arc_ref: u32, coords: &mut Vec<C>) {
         let (header, payload) = (&self.hdr, &self.payload[..]);
         let (id, rev) = ((arc_ref >> 1) as usize, (arc_ref & 1) == 1);
@@ -882,7 +953,11 @@ fn rings_hit<P: pip::CoordPair>(
     scan: impl Fn(&[P], P::Narrow, P::Narrow) -> pip::RingHit,
 ) -> bool {
     let mut inside = false;
-    let mut cstart = if rstart == 0 { 0 } else { ring_ends[rstart - 1] as usize };
+    let mut cstart = if rstart == 0 {
+        0
+    } else {
+        ring_ends[rstart - 1] as usize
+    };
     for cend in &ring_ends[rstart..rend] {
         let cend = *cend as usize;
         match scan(&coords[cstart..cend], px, py) {

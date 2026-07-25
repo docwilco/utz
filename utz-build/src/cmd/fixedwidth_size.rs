@@ -95,7 +95,10 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
             (format!("{name} A fixed arcs"), pa),
             (format!("{name} B eager image"), pb),
         ] {
-            #[expect(clippy::cast_precision_loss, reason = "payload byte counts ≪ 2^53; KiB display")]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "payload byte counts ≪ 2^53; KiB display"
+            )]
             let k = |n: usize| format!("{:.1}K", n as f64 / 1024.0);
             println!(
                 "{:<28} {:>9} {:>9} {:>9} {:>9}",
@@ -152,7 +155,9 @@ fn variant_eager_image(
     let (mut ncoords, mut nrings) = (0u32, 0u32);
     for pid in 0..n_polys {
         let mut pos = h.ring_data + read_u32(p, h.poly_offsets + pid * 4) as usize;
-        let bb: Vec<i32> = (0..4).map(|i| read_fixed(p, pos + i * fb, h.quant_bits)).collect();
+        let bb: Vec<i32> = (0..4)
+            .map(|i| read_fixed(p, pos + i * fb, h.quant_bits))
+            .collect();
         pos += 4 * fb;
         let nr = read_u16(p, pos);
         pos += 2;
@@ -190,7 +195,10 @@ fn variant_eager_image(
     // header eager_coords counts the ring-closure vertex preload() pops
     // (one per closed ring), so it may exceed the flattened image
     assert!(ncoords <= h.eager_coords, "{path}: coord count mismatch");
-    assert!(ncoords + nrings >= h.eager_coords, "{path}: coord count mismatch");
+    assert!(
+        ncoords + nrings >= h.eager_coords,
+        "{path}: coord count mismatch"
+    );
     assert_eq!(nrings, h.eager_rings);
     let mut pb = p[..arcs_off].to_vec(); // header + zone strings
     pb.extend_from_slice(&p[h.parent..h.parent + n_polys * 2]); // parent table

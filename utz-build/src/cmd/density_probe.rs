@@ -13,22 +13,34 @@ pub struct Args {}
 pub fn run(_a: Args) -> utz_build::Result<()> {
     let t = std::time::Instant::now();
     let g = DensityGrid::load(&utz_build::cache_dir())?;
-    println!("loaded {}x{} grid in {:.1?}", g.width, g.height, t.elapsed());
-    #[expect(clippy::cast_precision_loss, reason = "grid dims w,h ≤ 43200 raster cells; exact")]
-    let (lon1, lat1) = (g.lon0 + g.width as f64 * g.dlon, g.lat0 - g.height as f64 * g.dlat);
+    println!(
+        "loaded {}x{} grid in {:.1?}",
+        g.width,
+        g.height,
+        t.elapsed()
+    );
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "grid dims w,h ≤ 43200 raster cells; exact"
+    )]
+    let (lon1, lat1) = (
+        g.lon0 + g.width as f64 * g.dlon,
+        g.lat0 - g.height as f64 * g.dlat,
+    );
     println!(
         "extent: lon [{:.3}, {:.3}] lat [{:.3}, {:.3}] cell {:.4}x{:.4} deg",
-        g.lon0,
-        lon1,
-        lat1,
-        g.lat0,
-        g.dlon,
-        g.dlat
+        g.lon0, lon1, lat1, g.lat0, g.dlon, g.dlat
     );
-    let (min, max, nz) = g.cells.iter().fold((f32::INFINITY, 0f32, 0usize), |(mn, mx, nz), &c| {
-        (mn.min(c), mx.max(c), nz + usize::from(c > 0.0))
-    });
-    #[expect(clippy::cast_precision_loss, reason = "nz ≤ cell count ≪ 2^53; percentage display")]
+    let (min, max, nz) = g
+        .cells
+        .iter()
+        .fold((f32::INFINITY, 0f32, 0usize), |(mn, mx, nz), &c| {
+            (mn.min(c), mx.max(c), nz + usize::from(c > 0.0))
+        });
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "nz ≤ cell count ≪ 2^53; percentage display"
+    )]
     let pop_pct = 100.0 * nz as f64 / g.cells.len() as f64;
     println!("density min {min:.2} max {max:.0} p/km2, {pop_pct:.1}% cells populated");
 
@@ -45,7 +57,10 @@ pub fn run(_a: Args) -> utz_build::Result<()> {
         let d = g.sample(lon, lat);
         let pass = (lo..=hi).contains(&d);
         ok &= pass;
-        println!("{} {name}: {d:.1} p/km2 (expect {lo}..{hi})", if pass { "ok  " } else { "FAIL" });
+        println!(
+            "{} {name}: {d:.1} p/km2 (expect {lo}..{hi})",
+            if pass { "ok  " } else { "FAIL" }
+        );
     }
     // the edge-sampling path: a segment across the Channel from rural France
     // to rural England passes... nothing dense; London-crossing one does

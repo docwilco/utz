@@ -13,7 +13,10 @@ use std::path::{Path, PathBuf};
 /// fall back on, or I/O failure writing the cache.
 pub fn fetch(url: &str, cache_dir: &Path) -> crate::Result<PathBuf> {
     std::fs::create_dir_all(cache_dir)?;
-    let name = url.rsplit('/').next().filter(|s| !s.is_empty())
+    let name = url
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
         .ok_or_else(|| crate::Error::NoFilename { url: url.into() })?;
     let file = cache_dir.join(name);
     let meta = cache_dir.join(format!("{name}.headers"));

@@ -71,14 +71,15 @@ pub fn find_problems(t: &Topology, arc_coords: &[Vec<(f64, f64)>], qbits: u32) -
     let qmax = crate::qmax_for(qbits);
     let mut cst = CleanStats::default();
     let quantize = |&(lon, lat): &(f64, f64)| (crate::q_lon(lon, qmax), crate::q_lat(lat, qmax));
-    let arcs_q: Vec<Arc<i32>> = arc_coords.iter().map(|a| {
-        let mut q: Vec<(i32, i32)> = a.iter()
-            .map(quantize)
-            .collect();
-        let closed = a.len() > 1 && a.first() == a.last();
-        clean::clean_arc(&mut q, closed, &mut cst);
-        q
-    }).collect();
+    let arcs_q: Vec<Arc<i32>> = arc_coords
+        .iter()
+        .map(|a| {
+            let mut q: Vec<(i32, i32)> = a.iter().map(quantize).collect();
+            let closed = a.len() > 1 && a.first() == a.last();
+            clean::clean_arc(&mut q, closed, &mut cst);
+            q
+        })
+        .collect();
     let (ring_refs, structure, arcs_q) =
         clean::drop_degenerate_rings(&t.ring_refs, &t.structure, arcs_q, &mut cst);
 
@@ -91,12 +92,15 @@ pub fn find_problems(t: &Topology, arc_coords: &[Vec<(f64, f64)>], qbits: u32) -
         }
     }
     let bad = measure(ring_refs.iter().map(|r| clean::ring_coords_q(r, &arcs_q)));
-    bad.locs.iter().map(|l| Problem {
-        lon: l.x / qmax * 180.0,
-        lat: l.y / qmax * 90.0,
-        kind: l.kind,
-        feat: owner[l.ring],
-    }).collect()
+    bad.locs
+        .iter()
+        .map(|l| Problem {
+            lon: l.x / qmax * 180.0,
+            lat: l.y / qmax * 90.0,
+            kind: l.kind,
+            feat: owner[l.ring],
+        })
+        .collect()
 }
 
 /// Count non-adjacent segment pairs of one ring that intersect, split by
@@ -111,7 +115,10 @@ pub fn ring_bad(ring_idx: usize, ring: &[(i32, i32)], bad: &mut Bad) {
         return;
     }
     let seg = |idx: usize| (ring[idx], ring[(idx + 1) % len]);
-    let min_x = |idx: usize| { let (a, b) = seg(idx); a.0.min(b.0) };
+    let min_x = |idx: usize| {
+        let (a, b) = seg(idx);
+        a.0.min(b.0)
+    };
     let mut order: Vec<u32> = (0..u32::try_from(len).expect("segment count fits u32")).collect();
     order.sort_unstable_by_key(|&idx| min_x(idx as usize));
     for sweep_pos in 0..len {
@@ -134,7 +141,12 @@ pub fn ring_bad(ring_idx: usize, ring: &[(i32, i32)], bad: &mut Bad) {
                 Class::Cross => {
                     bad.crossings += 1;
                     let (x, y) = cross_point((p1, p2), (q1, q2));
-                    bad.locs.push(Loc { ring: ring_idx, kind: Kind::Cross, x, y });
+                    bad.locs.push(Loc {
+                        ring: ring_idx,
+                        kind: Kind::Cross,
+                        x,
+                        y,
+                    });
                 }
                 Class::Overlap => {
                     bad.overlaps += 1;
@@ -146,7 +158,12 @@ pub fn ring_bad(ring_idx: usize, ring: &[(i32, i32)], bad: &mut Bad) {
                         f64::midpoint(f64::from(pts[1].0), f64::from(pts[2].0)),
                         f64::midpoint(f64::from(pts[1].1), f64::from(pts[2].1)),
                     );
-                    bad.locs.push(Loc { ring: ring_idx, kind: Kind::Overlap, x, y });
+                    bad.locs.push(Loc {
+                        ring: ring_idx,
+                        kind: Kind::Overlap,
+                        x,
+                        y,
+                    });
                 }
                 Class::Touch => bad.touches += 1,
                 Class::None => {}
@@ -237,16 +254,17 @@ mod tests {
     fn square_ring_is_clean() {
         let ring = vec![(0, 0), (10, 0), (10, 10), (0, 10)];
         let b = measure(vec![ring].into_iter());
-        assert_eq!((b.crossings, b.overlaps, b.touches, b.degenerate), (0, 0, 0, 0));
+        assert_eq!(
+            (b.crossings, b.overlaps, b.touches, b.degenerate),
+            (0, 0, 0, 0)
+        );
     }
 
     #[test]
     fn find_problems_locates_bowtie_in_degrees() {
         // one feature, one ring stored as a single closed arc, bowtie shape
         // big enough to survive i16 snapping (~0.005° cells)
-        let arc: Vec<(f64, f64)> = vec![
-            (0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0),
-        ];
+        let arc: Vec<(f64, f64)> = vec![(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0)];
         let t = Topology {
             arc_coords: vec![arc.clone()],
             ring_refs: vec![vec![0 << 1]],
@@ -256,6 +274,10 @@ mod tests {
         assert_eq!(p.len(), 1);
         assert_eq!(p[0].feat, 0);
         assert!(matches!(p[0].kind, Kind::Cross));
-        assert!((p[0].lon - 0.5).abs() < 0.01 && (p[0].lat - 0.5).abs() < 0.01, "{:?}", p[0]);
+        assert!(
+            (p[0].lon - 0.5).abs() < 0.01 && (p[0].lat - 0.5).abs() < 0.01,
+            "{:?}",
+            p[0]
+        );
     }
 }

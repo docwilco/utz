@@ -29,7 +29,10 @@ fn arc_coords(payload: &[u8], header: &format::Header, id: usize) -> Vec<(i32, i
     let mut coords = Vec::with_capacity(usize::try_from(vcount).expect("vcount fits usize"));
     if header.geom == 1 {
         for _ in 0..vcount {
-            coords.push((read_fixed(payload, pos, header.quant_bits), read_fixed(payload, pos + coord_bytes, header.quant_bits)));
+            coords.push((
+                read_fixed(payload, pos, header.quant_bits),
+                read_fixed(payload, pos + coord_bytes, header.quant_bits),
+            ));
             pos += 2 * coord_bytes;
         }
         return coords;
@@ -57,11 +60,18 @@ fn load_feats(bytes: &[u8]) -> (format::Header, Vec<Feat>) {
     let p = &bytes[start..];
     let h = format::parse(p).unwrap();
     assert!(h.geom <= 1, "arc-store containers only (geom 0/1)");
-    #[expect(clippy::cast_precision_loss, reason = "qmax = 2^(bits-1)-1 < 2^31, exact in f64")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "qmax = 2^(bits-1)-1 < 2^31, exact in f64"
+    )]
     let qmax = ((1u64 << (h.quant_bits - 1)) - 1) as f64;
     let dq = |v: i32, half: f64| f64::from(v) / qmax * half;
     let mut feats: Vec<Feat> = (0..h.n_features)
-        .map(|_| Feat { offset: 0.0, tzid: None, polys: Vec::new() })
+        .map(|_| Feat {
+            offset: 0.0,
+            tzid: None,
+            polys: Vec::new(),
+        })
         .collect();
     let fb = fixed_bytes(h.quant_bits);
     for pid in 0..h.eager_polys as usize {
@@ -109,8 +119,12 @@ fn measure(feats: &[Feat], deg: f64) -> (grid::CellGrid, Stats) {
     let areas = grid::feat_areas(feats);
     let csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
     let border: Vec<&Vec<u16>> = g.sets.iter().filter(|s| s.len() > 1).collect();
-    #[expect(clippy::cast_precision_loss, reason = "candidate-id sum and border-cell count ≪ 2^53; avg display")]
-    let avg_list = border.iter().map(|s| s.len()).sum::<usize>() as f64 / border.len().max(1) as f64;
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "candidate-id sum and border-cell count ≪ 2^53; avg display"
+    )]
+    let avg_list =
+        border.iter().map(|s| s.len()).sum::<usize>() as f64 / border.len().max(1) as f64;
     let s = Stats {
         border_cells: border.len(),
         uniq_lists: csr.uniq_lists,
@@ -143,7 +157,11 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         let mut parent = Vec::with_capacity(npolys);
         for (fi, f) in feats.iter().enumerate() {
             for poly in &f.polys {
-                poly_feats.push(Feat { offset: 0.0, tzid: None, polys: vec![poly.clone()] });
+                poly_feats.push(Feat {
+                    offset: 0.0,
+                    tzid: None,
+                    polys: vec![poly.clone()],
+                });
                 parent.push(u16::try_from(fi).expect("feature id fits u16"));
             }
         }
@@ -157,11 +175,17 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         let (mut polys_today, mut polys_grid) = (0usize, 0usize);
         for (cf, cp) in gf.sets.iter().zip(gp.sets.iter()) {
             if cf.len() > 1 {
-                polys_today += cf.iter().map(|&f| polys_per_feat[f as usize]).sum::<usize>();
-                polys_grid += cp.iter().filter(|&&pi| {
-                    // count only polys of candidate features (same PIP set)
-                    cf.contains(&parent[pi as usize])
-                }).count();
+                polys_today += cf
+                    .iter()
+                    .map(|&f| polys_per_feat[f as usize])
+                    .sum::<usize>();
+                polys_grid += cp
+                    .iter()
+                    .filter(|&&pi| {
+                        // count only polys of candidate features (same PIP set)
+                        cf.contains(&parent[pi as usize])
+                    })
+                    .count();
             }
         }
 
@@ -170,17 +194,43 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         // feat_offsets-style table reshaped per poly; u16 parent id per poly)
         let bbox_bytes = npolys * 4 * fb;
         let parent_bytes = npolys * 2;
-        let delta = sp.csr_bytes.cast_signed() - sf.csr_bytes.cast_signed() - bbox_bytes.cast_signed()
-            + parent_bytes.cast_signed();
+        let delta =
+            sp.csr_bytes.cast_signed() - sf.csr_bytes.cast_signed() - bbox_bytes.cast_signed()
+                + parent_bytes.cast_signed();
 
-        let name = std::path::Path::new(&path).file_stem().unwrap().to_string_lossy().into_owned();
-        println!("== {name}: {} feats, {npolys} polys, {deg:.3}° grid ==", feats.len());
-        println!("  border cells        feature-grid {:6}   poly-grid {:6}", sf.border_cells, sp.border_cells);
-        println!("  uniq lists (cap 32767) {:9}          {:9}", sf.uniq_lists, sp.uniq_lists);
-        println!("  list_ids (cap 65535)   {:9}          {:9}", sf.list_ids, sp.list_ids);
-        println!("  csr bytes              {:9}          {:9}", sf.csr_bytes, sp.csr_bytes);
-        println!("  avg/max list           {:5.2}/{:3}          {:5.2}/{:3}", sf.avg_list, sf.max_list, sp.avg_list, sp.max_list);
-        #[expect(clippy::cast_precision_loss, reason = "poly and border-cell counts ≪ 2^53; ratio display")]
+        let name = std::path::Path::new(&path)
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        println!(
+            "== {name}: {} feats, {npolys} polys, {deg:.3}° grid ==",
+            feats.len()
+        );
+        println!(
+            "  border cells        feature-grid {:6}   poly-grid {:6}",
+            sf.border_cells, sp.border_cells
+        );
+        println!(
+            "  uniq lists (cap 32767) {:9}          {:9}",
+            sf.uniq_lists, sp.uniq_lists
+        );
+        println!(
+            "  list_ids (cap 65535)   {:9}          {:9}",
+            sf.list_ids, sp.list_ids
+        );
+        println!(
+            "  csr bytes              {:9}          {:9}",
+            sf.csr_bytes, sp.csr_bytes
+        );
+        println!(
+            "  avg/max list           {:5.2}/{:3}          {:5.2}/{:3}",
+            sf.avg_list, sf.max_list, sp.avg_list, sp.max_list
+        );
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "poly and border-cell counts ≪ 2^53; ratio display"
+        )]
         let (per_today, per_grid, fewer) = (
             polys_today as f64 / sf.border_cells.max(1) as f64,
             polys_grid as f64 / sf.border_cells.max(1) as f64,
@@ -191,14 +241,21 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         );
         println!(
             "  net size: csr {:+} − bboxes {} + parents {} = {:+} bytes",
-            sp.csr_bytes.cast_signed() - sf.csr_bytes.cast_signed(), bbox_bytes, parent_bytes, delta
+            sp.csr_bytes.cast_signed() - sf.csr_bytes.cast_signed(),
+            bbox_bytes,
+            parent_bytes,
+            delta
         );
 
         // grid-only-exact scaling: how fast do border cells shrink?
         print!("  grid-only scaling (feature grid): ");
         for d in [deg, deg / 2.0, deg / 4.0] {
             let (_, s) = measure(&feats, d);
-            print!("{d:.3}°: {} border cells / {} KiB csr;  ", s.border_cells, s.csr_bytes / 1024);
+            print!(
+                "{d:.3}°: {} border cells / {} KiB csr;  ",
+                s.border_cells,
+                s.csr_bytes / 1024
+            );
         }
         println!();
     }

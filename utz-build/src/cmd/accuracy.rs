@@ -40,7 +40,9 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     let algo = |eps_deg: f64| -> Simplify {
         match algo_key.as_str() {
             "rdp" => Simplify::Rdp { eps: eps_deg },
-            "vw" => Simplify::Visvalingam { min_area: eps_deg * eps_deg },
+            "vw" => Simplify::Visvalingam {
+                min_area: eps_deg * eps_deg,
+            },
             "ii" => Simplify::ImaiIri { eps: eps_deg },
             k => panic!("unknown algo {k:?}: use rdp|vw|ii"),
         }
@@ -53,17 +55,31 @@ pub fn run(a: Args) -> utz_build::Result<()> {
 
     let e = eps_m / 111_320.0;
     let configs: Vec<(String, Topology)> = vec![
-        (format!("uniform ε{eps_m}"), topo::build_topology_algo(&feats, algo(e))),
-        (format!("uniform ε{}", eps_m / 2.0), topo::build_topology_algo(&feats, algo(e / 2.0))),
+        (
+            format!("uniform ε{eps_m}"),
+            topo::build_topology_algo(&feats, algo(e)),
+        ),
+        (
+            format!("uniform ε{}", eps_m / 2.0),
+            topo::build_topology_algo(&feats, algo(e / 2.0)),
+        ),
         (
             format!("weighted ε{eps_m}×{w_min}"),
-            topo::build_topology_weighted(&feats, algo(e), &|a, b| model.weight(grid.max_along(a, b))),
+            topo::build_topology_weighted(&feats, algo(e), &|a, b| {
+                model.weight(grid.max_along(a, b))
+            }),
         ),
     ];
 
     println!("{ds} · {algo_key} · misassignment vs raw ε=0 arcs\n");
-    println!("{:>22} {:>9} {:>10} {:>12} {:>14}", "config", "verts", "max dev", "misassigned", "misassigned");
-    println!("{:>22} {:>9} {:>10} {:>12} {:>14}", "", "", "(m)", "area (km²)", "pop (people)");
+    println!(
+        "{:>22} {:>9} {:>10} {:>12} {:>14}",
+        "config", "verts", "max dev", "misassigned", "misassigned"
+    );
+    println!(
+        "{:>22} {:>9} {:>10} {:>12} {:>14}",
+        "", "", "(m)", "area (km²)", "pop (people)"
+    );
     for (name, t) in &configs {
         let verts: usize = t.arc_coords.iter().map(std::vec::Vec::len).sum();
         let m = measure(&t0, t, &grid);
@@ -134,7 +150,8 @@ fn pocket_scan(chain: &[(f64, f64)], grid: &DensityGrid, acc: &mut Acc) {
             let dist2 = if len2 == 0.0 {
                 (curr.0 - start.0).powi(2) + (curr.1 - start.1).powi(2)
             } else {
-                let frac = (((curr.0 - start.0) * dx + (curr.1 - start.1) * dy) / len2).clamp(0.0, 1.0);
+                let frac =
+                    (((curr.0 - start.0) * dx + (curr.1 - start.1) * dy) / len2).clamp(0.0, 1.0);
                 (curr.0 - start.0 - frac * dx).powi(2) + (curr.1 - start.1 - frac * dy).powi(2)
             };
             acc.max_dev_deg = acc.max_dev_deg.max(dist2.sqrt());
@@ -143,7 +160,10 @@ fn pocket_scan(chain: &[(f64, f64)], grid: &DensityGrid, acc: &mut Acc) {
         if len2 > 0.0 && side_curr * side_next < 0.0 {
             // chain crosses the shortcut line: split the step at the crossing
             let cross_frac = side_curr / (side_curr - side_next);
-            let crossing = (curr.0 + cross_frac * (next.0 - curr.0), curr.1 + cross_frac * (next.1 - curr.1));
+            let crossing = (
+                curr.0 + cross_frac * (next.0 - curr.0),
+                curr.1 + cross_frac * (next.1 - curr.1),
+            );
             pocket += cross_anchored(curr, crossing) / 2.0;
             flush(pocket, clon / npts, clat / npts, acc);
             pocket = cross_anchored(crossing, next) / 2.0;

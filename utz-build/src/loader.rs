@@ -32,13 +32,18 @@ pub fn resolve_release(cache_dir: &Path) -> crate::Result<String> {
     }
     let tag_file = cache_dir.join("tzbb-release.tag");
     let probed: crate::Result<String> = (|| {
-        let resp = ureq::AgentBuilder::new().redirects(0).build()
-            .get(&format!("{REPO}/releases/latest")).call()?;
+        let resp = ureq::AgentBuilder::new()
+            .redirects(0)
+            .build()
+            .get(&format!("{REPO}/releases/latest"))
+            .call()?;
         resp.header("location")
             .and_then(|l| l.split_once("/releases/tag/"))
             .map(|(_, t)| t.trim_matches('/').to_string())
             .filter(|t| !t.is_empty())
-            .ok_or_else(|| Error::NoReleaseRedirect { status: resp.status() })
+            .ok_or_else(|| Error::NoReleaseRedirect {
+                status: resp.status(),
+            })
     })();
     match probed {
         Ok(tag) => {
@@ -48,12 +53,18 @@ pub fn resolve_release(cache_dir: &Path) -> crate::Result<String> {
         }
         Err(e) => {
             if let Some(tag) = std::fs::read_to_string(&tag_file)
-                .ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+                .ok()
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
             {
-                eprintln!("warning: resolving latest TZBB release failed ({e}); using cached tag {tag}");
+                eprintln!(
+                    "warning: resolving latest TZBB release failed ({e}); using cached tag {tag}"
+                );
                 return Ok(tag);
             }
-            eprintln!("warning: resolving latest TZBB release failed ({e}); tagging container \"dev\"");
+            eprintln!(
+                "warning: resolving latest TZBB release failed ({e}); tagging container \"dev\""
+            );
             Ok("dev".into())
         }
     }
@@ -95,9 +106,9 @@ pub fn load_geojson_zip(path: &Path) -> crate::Result<Vec<Feat>> {
     let name = (0..zip.len())
         .map(|i| zip.name_for_index(i).unwrap_or("").to_string())
         .find(|n| {
-            Path::new(n)
-                .extension()
-                .is_some_and(|e| e.eq_ignore_ascii_case("json") || e.eq_ignore_ascii_case("geojson"))
+            Path::new(n).extension().is_some_and(|e| {
+                e.eq_ignore_ascii_case("json") || e.eq_ignore_ascii_case("geojson")
+            })
         })
         .ok_or_else(|| Error::NoGeojsonEntry { path: path.into() })?;
     let mut buf = Vec::new();
@@ -108,16 +119,27 @@ pub fn load_geojson_zip(path: &Path) -> crate::Result<Vec<Feat>> {
 // Typed mirror of the TZBB FeatureCollection: serde deserializes coordinates
 // straight into f64 pairs (no Value DOM — the -now file alone is ~150 MB).
 #[derive(Deserialize)]
-struct Fc { features: Vec<GjFeature> }
+struct Fc {
+    features: Vec<GjFeature>,
+}
 #[derive(Deserialize)]
-struct GjFeature { properties: Props, geometry: Geom }
+struct GjFeature {
+    properties: Props,
+    geometry: Geom,
+}
 #[derive(Deserialize)]
-struct Props { tzid: Option<String> }
+struct Props {
+    tzid: Option<String>,
+}
 #[derive(Deserialize)]
 #[serde(tag = "type")]
 enum Geom {
-    Polygon { coordinates: Vec<Vec<[f64; 2]>> },
-    MultiPolygon { coordinates: Vec<Vec<Vec<[f64; 2]>>> },
+    Polygon {
+        coordinates: Vec<Vec<[f64; 2]>>,
+    },
+    MultiPolygon {
+        coordinates: Vec<Vec<Vec<[f64; 2]>>>,
+    },
 }
 
 /// Deserialize a TZBB `GeoJSON` `FeatureCollection` into `Feat`s.
@@ -126,20 +148,35 @@ enum Geom {
 /// JSON that doesn't deserialize as a Polygon/`MultiPolygon` `FeatureCollection`.
 pub fn parse_geojson(bytes: &[u8]) -> crate::Result<Vec<Feat>> {
     let fc: Fc = serde_json::from_slice(bytes)?;
-    Ok(fc.features.into_iter().map(|f| {
-        let polys: Vec<Poly> = match f.geometry {
-            Geom::Polygon { coordinates } => vec![rings_of(coordinates)],
-            Geom::MultiPolygon { coordinates } => coordinates.into_iter().map(rings_of).collect(),
-        };
-        Feat { offset: 0.0, tzid: f.properties.tzid, polys }
-    }).collect())
+    Ok(fc
+        .features
+        .into_iter()
+        .map(|f| {
+            let polys: Vec<Poly> = match f.geometry {
+                Geom::Polygon { coordinates } => vec![rings_of(coordinates)],
+                Geom::MultiPolygon { coordinates } => {
+                    coordinates.into_iter().map(rings_of).collect()
+                }
+            };
+            Feat {
+                offset: 0.0,
+                tzid: f.properties.tzid,
+                polys,
+            }
+        })
+        .collect())
 }
 
 fn rings_of(rings: Vec<Vec<[f64; 2]>>) -> Poly {
-    rings.into_iter().map(|r| strip_close(r.into_iter().map(|[x, y]| (x, y)).collect())).collect()
+    rings
+        .into_iter()
+        .map(|r| strip_close(r.into_iter().map(|[x, y]| (x, y)).collect()))
+        .collect()
 }
 
 fn strip_close(mut r: Ring) -> Ring {
-    if r.len() > 1 && r.first() == r.last() { r.pop(); }
+    if r.len() > 1 && r.first() == r.last() {
+        r.pop();
+    }
     r
 }

@@ -25,7 +25,6 @@ pub use config::Config;
 
 use std::path::PathBuf;
 
-
 /// The two dataset knobs: merge vintage × ocean coverage.
 /// TZBB's terminology: `now` = "Same since now", `1970` = "Same since 1970",
 /// `all` = "Comprehensive" (every tzid, unsuffixed release). `μTZ` defaults to
@@ -41,13 +40,21 @@ impl Dataset {
     /// Canonical name: `now`, `1970`, `all`, `land-now`, …
     #[must_use]
     pub fn name(&self) -> String {
-        if self.oceans { self.vintage.to_string() } else { format!("land-{}", self.vintage) }
+        if self.oceans {
+            self.vintage.to_string()
+        } else {
+            format!("land-{}", self.vintage)
+        }
     }
     /// Header byte (see encode.rs): bits 0–1 vintage (0=now, 1=1970, 2=all),
     /// bit 2 set = land-only.
     #[must_use]
     pub fn code(&self) -> u8 {
-        let v = match self.vintage { "now" => 0, "1970" => 1, _ => 2 };
+        let v = match self.vintage {
+            "now" => 0,
+            "1970" => 1,
+            _ => 2,
+        };
         v | if self.oceans { 0 } else { 4 }
     }
 }
@@ -67,7 +74,10 @@ pub fn dataset(ds: &str) -> crate::Result<Dataset> {
         "all" | "full" | "comprehensive" => "all",
         _ => return Err(Error::UnknownDataset { ds: ds.into() }),
     };
-    Ok(Dataset { vintage, oceans: !land })
+    Ok(Dataset {
+        vintage,
+        oceans: !land,
+    })
 }
 
 /// Load a dataset via the download+`GeoJSON` pipeline (conditional-GET
@@ -105,10 +115,11 @@ pub fn encode_weighted(
 ) -> crate::Result<Vec<u8>> {
     let eps_deg = p.eps_m / 111_320.0;
     let algo = p.simplify.to_simplify(eps_deg)?;
-    let t = topo::build_topology_weighted(feats, algo, &|a, b| {
-        model.weight(grid.max_along(a, b))
-    });
-    Ok(encode::finish(&encode::payload_from_topology(&t, &t.arc_coords, feats, p)?.0, p.codec)?)
+    let t = topo::build_topology_weighted(feats, algo, &|a, b| model.weight(grid.max_along(a, b)));
+    Ok(encode::finish(
+        &encode::payload_from_topology(&t, &t.arc_coords, feats, p)?.0,
+        p.codec,
+    )?)
 }
 
 /// Workspace-root `cache/` for downloaded TZBB releases (gitignored).

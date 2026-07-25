@@ -27,12 +27,20 @@ pub enum Error {
     /// it at — fail loudly instead of an `as` wrap silently corrupting tables.
     #[from(skip)]
     #[display("{what} ({n}) exceeds format limit {max}")]
-    FormatLimit { what: &'static str, n: usize, max: usize },
+    FormatLimit {
+        what: &'static str,
+        n: usize,
+        max: usize,
+    },
     #[from(skip)]
-    #[display("grid {deg}°: {n} unique candidate lists exceed the 15-bit tag space — coarsen the grid")]
+    #[display(
+        "grid {deg}°: {n} unique candidate lists exceed the 15-bit tag space — coarsen the grid"
+    )]
     GridLists { deg: f64, n: usize },
     #[from(skip)]
-    #[display("grid {deg}°: {n} interned list ids overflow the u16 offset table — coarsen the grid")]
+    #[display(
+        "grid {deg}°: {n} interned list ids overflow the u16 offset table — coarsen the grid"
+    )]
     GridListIds { deg: f64, n: usize },
     #[from(skip)]
     #[display("visvalingam's knob is an area, not ε — build the topology with topo::build_topology_algo and use payload_from_topology")]
