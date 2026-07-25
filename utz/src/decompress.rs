@@ -265,6 +265,18 @@ mod tests {
         assert_eq!(decompress(9, 4, &[]), Err(Error::CodecNotCompiledIn(9)));
     }
 
+    /// What every codec's test vector decodes to.
+    const DECODED_64: &[u8; 64] =
+        b"the quick brown fox jumps over the lazy dog; pack my box with fi";
+
+    #[test]
+    fn memcpy_copies_the_body() {
+        assert_eq!(
+            decompress(0, 64, DECODED_64).as_deref(),
+            Ok(&DECODED_64[..])
+        );
+    }
+
     #[test]
     fn memcpy_size_lie_is_raw_length_mismatch() {
         assert_eq!(decompress(0, 5, b"abc"), Err(Error::RawLengthMismatch));
@@ -288,8 +300,13 @@ mod tests {
 
     #[cfg(feature = "gzip")]
     #[test]
+    fn gzip_decodes_the_vector() {
+        assert_eq!(decompress(1, 64, &ZLIB_64).as_deref(), Ok(&DECODED_64[..]));
+    }
+
+    #[cfg(feature = "gzip")]
+    #[test]
     fn gzip_truncated_stream_is_truncated() {
-        assert_eq!(decompress(1, 64, &ZLIB_64).map(|out| out.len()), Ok(64));
         assert_eq!(decompress(1, 64, &ZLIB_64[..30]), Err(Error::Truncated));
     }
 
@@ -307,9 +324,7 @@ mod tests {
     }
 
     /// A zstd frame that decodes to 64 bytes.
-    /// Truncation mapping is zstd-sys-only: ruzstd's truncation signal is a
-    /// nested read error left in `DecoderFailed` text.
-    #[cfg(feature = "zstd-sys")]
+    #[cfg(any(feature = "ruzstd", feature = "zstd-sys"))]
     const ZSTD_64: [u8; 73] = [
         40, 181, 47, 253, 32, 64, 1, 2, 0, 116, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114,
         111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32,
@@ -317,10 +332,17 @@ mod tests {
         121, 32, 98, 111, 120, 32, 119, 105, 116, 104, 32, 102, 105,
     ];
 
+    #[cfg(any(feature = "ruzstd", feature = "zstd-sys"))]
+    #[test]
+    fn zstd_decodes_the_vector() {
+        assert_eq!(decompress(2, 64, &ZSTD_64).as_deref(), Ok(&DECODED_64[..]));
+    }
+
+    /// Truncation mapping is zstd-sys-only: ruzstd's truncation signal is a
+    /// nested read error left in `DecoderFailed` text.
     #[cfg(feature = "zstd-sys")]
     #[test]
     fn zstd_sys_truncated_stream_is_truncated() {
-        assert_eq!(decompress(2, 64, &ZSTD_64).map(|out| out.len()), Ok(64));
         assert_eq!(decompress(2, 64, &ZSTD_64[..36]), Err(Error::Truncated));
     }
 
@@ -344,8 +366,16 @@ mod tests {
 
     #[cfg(feature = "brotli")]
     #[test]
+    fn brotli_decodes_the_vector() {
+        assert_eq!(
+            decompress(3, 64, &BROTLI_64).as_deref(),
+            Ok(&DECODED_64[..])
+        );
+    }
+
+    #[cfg(feature = "brotli")]
+    #[test]
     fn brotli_truncated_stream_is_truncated() {
-        assert_eq!(decompress(3, 64, &BROTLI_64).map(|out| out.len()), Ok(64));
         assert_eq!(decompress(3, 64, &BROTLI_64[..30]), Err(Error::Truncated));
     }
 
@@ -375,8 +405,13 @@ mod tests {
 
     #[cfg(feature = "xz")]
     #[test]
+    fn xz_decodes_the_vector() {
+        assert_eq!(decompress(4, 64, &XZ_64).as_deref(), Ok(&DECODED_64[..]));
+    }
+
+    #[cfg(feature = "xz")]
+    #[test]
     fn xz_truncated_stream_is_truncated() {
-        assert_eq!(decompress(4, 64, &XZ_64).map(|out| out.len()), Ok(64));
         assert_eq!(decompress(4, 64, &XZ_64[..60]), Err(Error::Truncated));
     }
 }
