@@ -20,6 +20,11 @@ pub const VERSION: u8 = 8;
 /// [`PayloadHeader`]'s serialized size — the zone table starts here.
 pub const PAYLOAD_HEADER_LEN: usize = 56;
 
+/// The primary grid table's "no zone covers this cell" marker (all 15 id
+/// bits set). Zone/feature ids stay strictly below it; the u16's high bit
+/// flags a border cell carrying a candidate-list index instead.
+pub const NO_ZONE: u16 = 0x7FFF;
+
 /// The payload's one fixed header record — everything the reader needs to
 /// locate every section. The encoder `Pwrite`s it, the reader `Pread`s it
 /// (both little-endian); field order is the wire order.

@@ -30,9 +30,7 @@ use crate::format::{self, read_fixed, read_u16, read_u32, read_varint, unzigzag,
 #[cfg(feature = "alloc")]
 use crate::Codec;
 use crate::{pip, Error, Result};
-use utz_common::{GeomEncoding, QuantBits};
-
-const NO_ZONE: u16 = 0x7FFF;
+use utz_common::{GeomEncoding, QuantBits, NO_ZONE};
 
 /// A geographic position in degrees — **order-neutral by design**:
 /// construct with named fields, so there is no argument order to get wrong,

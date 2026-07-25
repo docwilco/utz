@@ -11,7 +11,10 @@ use std::collections::{HashMap, HashSet};
 
 use crate::Feat;
 
-pub const NO_ZONE: u16 = u16::MAX;
+/// Rasterization scratch marker: cell not yet owned by any zone. Internal
+/// to grid building — serialization converts it to the wire
+/// [`utz_common::NO_ZONE`].
+pub const UNCLAIMED: u16 = u16::MAX;
 
 pub struct CellGrid {
     pub deg: f64,
@@ -19,7 +22,7 @@ pub struct CellGrid {
     pub nrows: usize,
     /// sorted candidate feature ids per cell (from the edge walk; empty = no ring)
     pub sets: Vec<Vec<u16>>,
-    /// dominant zone per cell from subcell ownership (`NO_ZONE` if nothing filled)
+    /// dominant zone per cell from subcell ownership (`UNCLAIMED` if nothing filled)
     pub dominant: Vec<u16>,
     /// per-cell subcell ownership tallies (candidate id -> subcells owned)
     pub tallies: Vec<Vec<(u16, u32)>>,
@@ -51,7 +54,7 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
         let cj = fj / sub;
         for fi in 0..fcols {
             let o = owner[fj * fcols + fi];
-            if o != NO_ZONE {
+            if o != UNCLAIMED {
                 *tallies[cj * ncols + fi / sub].entry(o).or_insert(0) += 1;
             }
         }
@@ -63,7 +66,7 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
         .map(|t| {
             t.iter()
                 .max_by_key(|&(&z, &c)| (c, core::cmp::Reverse(z)))
-                .map_or(NO_ZONE, |(&z, _)| z)
+                .map_or(UNCLAIMED, |(&z, _)| z)
         })
         .collect();
     let tallies: Vec<Vec<(u16, u32)>> = tallies
@@ -157,7 +160,7 @@ fn subcell_owners(feats: &[Feat], deg: f64, sub: usize, fcols: usize, frows: usi
         reason = "subdivision factor sub = 8 in practice, ≪ 2^53; exact in f64"
     )]
     let r = deg / sub as f64;
-    let mut owner: Vec<u16> = vec![NO_ZONE; fcols * frows];
+    let mut owner: Vec<u16> = vec![UNCLAIMED; fcols * frows];
     let mut row_x: Vec<Vec<f32>> = vec![Vec::new(); frows]; // crossing xs per row, reused per poly
     for (fid, f) in feats.iter().enumerate() {
         for p in &f.polys {
@@ -326,7 +329,11 @@ pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
             } else {
                 grid.dominant[c]
             };
-            *pc = if z == NO_ZONE { 0x7FFF } else { z };
+            *pc = if z == UNCLAIMED {
+                utz_common::NO_ZONE
+            } else {
+                z
+            };
         }
     }
     let mut list_offsets = Vec::with_capacity(lists.len() + 1);
