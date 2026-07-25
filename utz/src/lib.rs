@@ -135,8 +135,9 @@ pub mod caps {
 pub enum Error {
     /// The byte source ends before the container does: shorter than the
     /// outer header, or a payload cut short. Payload truncation is detected
-    /// best-effort — codecs whose status can't separate a short stream from
-    /// a corrupt one report it as [`DecoderFailed`](Error::DecoderFailed).
+    /// best-effort — where a codec's failure status doesn't cleanly separate
+    /// a short stream from a corrupt one, truncation surfaces as
+    /// [`DecoderFailed`](Error::DecoderFailed).
     #[display("byte source ends before the container does (truncated)")]
     Truncated,
     /// The magic bytes don't match — not a `μTZ` container.

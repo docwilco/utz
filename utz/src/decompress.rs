@@ -52,8 +52,13 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
 /// decode RAM is decoded + ~10 K tables. `decompress_to_vec_zlib` would grow
 /// an unhinted Vec instead — realloc overlap peaks at ~1.4× decoded
 /// (measured by the window-sweep bench).
+///
+/// Status mapping (best-effort, like the other codecs'):
+/// `FailedCannotMakeProgress` = input exhausted mid-stream (truncated);
+/// `HasMoreOutput` = the stream outgrows `raw_len` (header lied).
 #[cfg(feature = "gzip")]
 fn decompress_gzip(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
+    use miniz_oxide::inflate::TINFLStatus;
     let mut out = alloc::vec![0u8; raw_len];
     let n = miniz_oxide::inflate::decompress_slice_iter_to_slice(
         &mut out,
@@ -61,7 +66,11 @@ fn decompress_gzip(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
         true,  // zlib header
         false, // verify adler32
     )
-    .map_err(|status| Error::decoder_failed(codec, format_args!("{status:?}")))?;
+    .map_err(|status| match status {
+        TINFLStatus::FailedCannotMakeProgress => Error::Truncated,
+        TINFLStatus::HasMoreOutput => Error::RawLengthMismatch,
+        status => Error::decoder_failed(codec, format_args!("{status:?}")),
+    })?;
     out.truncate(n);
     Ok(out)
 }
@@ -100,10 +109,10 @@ fn decompress_ruzstd(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
 
 /// Decode the whole input into an exact-size output in one call, making the
 /// two needs-more statuses terminal: input exhausted mid-frame is a truncated
-/// asset (best-effort — brotli is the only backend whose status separates
-/// truncation from corruption), output exhausted means the frame outgrows
-/// what `raw_len` declared. `ResultFailure` carries the specific libbrotli
-/// code from `state.error_code` (`BrotliResult` itself is a bare status).
+/// asset, output exhausted means the frame outgrows what `raw_len` declared
+/// (both best-effort, like the other codecs'). `ResultFailure` carries the
+/// specific libbrotli code from `state.error_code` (`BrotliResult` itself is
+/// a bare status).
 #[cfg(feature = "brotli")]
 fn decompress_brotli(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use brotli_decompressor::{BrotliDecompressStream, BrotliResult, BrotliState};
@@ -136,26 +145,26 @@ fn decompress_brotli(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
 /// Decode via `lzma-rust2` in `no_std` mode. Its `std` feature must stay OFF
 /// tree-wide: with it on, the crate's Read/Write become `pub(crate)`
 /// re-exports of `std::io` and the `Read as _` import below breaks.
+///
+/// A read failing with `Eof` means input exhausted mid-stream — a truncated
+/// asset (best-effort, like the other codecs' truncation mapping).
 #[cfg(feature = "xz")]
 fn decompress_xz(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use lzma_rust2::Read as _;
+    let map_read_error = |source: lzma_rust2::Error| match source {
+        lzma_rust2::Error::Eof => Error::Truncated,
+        source => Error::decoder_failed(codec, format_args!("{source:?}")),
+    };
     let mut out = alloc::vec![0u8; raw_len];
     let mut r = lzma_rust2::XzReader::new(body, false);
     let mut n = 0;
     while n < raw_len {
-        match r
-            .read(&mut out[n..])
-            .map_err(|source| Error::decoder_failed(codec, format_args!("{source:?}")))?
-        {
+        match r.read(&mut out[n..]).map_err(map_read_error)? {
             0 => break,
             k => n += k,
         }
     }
-    if n == raw_len
-        && r.read(&mut [0u8])
-            .map_err(|source| Error::decoder_failed(codec, format_args!("{source:?}")))?
-            != 0
-    {
+    if n == raw_len && r.read(&mut [0u8]).map_err(map_read_error)? != 0 {
         return Err(Error::RawLengthMismatch); // stream longer than raw_len declared
     }
     out.truncate(n);
@@ -244,6 +253,29 @@ mod tests {
         assert_decoder_failed(1, &err);
     }
 
+    /// A zlib stream of the same 64 bytes of ASCII text as [`BROTLI_64`]
+    /// (produced by Node's zlib.deflateSync).
+    #[cfg(feature = "gzip")]
+    const ZLIB_64: [u8; 64] = [
+        120, 156, 5, 193, 129, 1, 128, 16, 20, 64, 193, 85, 222, 30, 77, 131, 136, 196, 151, 8,
+        77, 223, 93, 243, 150, 187, 7, 19, 209, 85, 70, 198, 201, 228, 236, 169, 60, 200, 107, 43,
+        205, 91, 46, 245, 45, 118, 57, 54, 138, 50, 145, 180, 208, 50, 25, 161, 121, 92, 248, 1,
+        252, 248, 23, 46,
+    ];
+
+    #[cfg(feature = "gzip")]
+    #[test]
+    fn gzip_truncated_stream_is_truncated() {
+        assert_eq!(decompress(1, 64, &ZLIB_64).map(|out| out.len()), Ok(64));
+        assert_eq!(decompress(1, 64, &ZLIB_64[..30]), Err(Error::Truncated));
+    }
+
+    #[cfg(feature = "gzip")]
+    #[test]
+    fn gzip_size_lie_is_raw_length_mismatch() {
+        assert_eq!(decompress(1, 63, &ZLIB_64), Err(Error::RawLengthMismatch));
+    }
+
     #[cfg(any(feature = "ruzstd", feature = "zstd-sys"))]
     #[test]
     fn zstd_corrupt_stream_carries_detail() {
@@ -288,5 +320,24 @@ mod tests {
     fn xz_corrupt_stream_carries_detail() {
         let err = decompress(4, 64, b"not an xz stream").expect_err("garbage must not decode");
         assert_decoder_failed(4, &err);
+    }
+
+    /// An xz stream of the same 64 bytes of ASCII text as [`BROTLI_64`]
+    /// (produced by the xz command-line tool).
+    #[cfg(feature = "xz")]
+    const XZ_64: [u8; 120] = [
+        253, 55, 122, 88, 90, 0, 0, 4, 230, 214, 180, 70, 2, 0, 33, 1, 22, 0, 0, 0, 116, 47, 229,
+        163, 1, 0, 63, 116, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32,
+        102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 104, 101, 32,
+        108, 97, 122, 121, 32, 100, 111, 103, 59, 32, 112, 97, 99, 107, 32, 109, 121, 32, 98, 111,
+        120, 32, 119, 105, 116, 104, 32, 102, 105, 0, 202, 232, 76, 14, 75, 53, 221, 214, 0, 1,
+        88, 64, 231, 35, 56, 36, 31, 182, 243, 125, 1, 0, 0, 0, 0, 4, 89, 90,
+    ];
+
+    #[cfg(feature = "xz")]
+    #[test]
+    fn xz_truncated_stream_is_truncated() {
+        assert_eq!(decompress(4, 64, &XZ_64).map(|out| out.len()), Ok(64));
+        assert_eq!(decompress(4, 64, &XZ_64[..60]), Err(Error::Truncated));
     }
 }
