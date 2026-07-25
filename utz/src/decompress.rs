@@ -277,8 +277,7 @@ mod tests {
         assert_decoder_failed(1, &err);
     }
 
-    /// A zlib stream of the same 64 bytes of ASCII text as [`BROTLI_64`]
-    /// (produced by Node's zlib.deflateSync).
+    /// A zlib stream that decodes to the same 64 bytes as [`BROTLI_64`].
     #[cfg(feature = "gzip")]
     const ZLIB_64: [u8; 64] = [
         120, 156, 5, 193, 129, 1, 128, 16, 20, 64, 193, 85, 222, 30, 77, 131, 136, 196, 151, 8, 77,
@@ -307,10 +306,9 @@ mod tests {
         assert_decoder_failed(2, &err);
     }
 
-    /// A zstd frame of the same 64 bytes of ASCII text as [`BROTLI_64`]
-    /// (produced by Node's zlib.zstdCompressSync). Truncation mapping is
-    /// zstd-sys-only: ruzstd's truncation signal is a nested read error
-    /// left in `DecoderFailed` text.
+    /// A zstd frame that decodes to the same 64 bytes as [`BROTLI_64`].
+    /// Truncation mapping is zstd-sys-only: ruzstd's truncation signal is a
+    /// nested read error left in `DecoderFailed` text.
     #[cfg(feature = "zstd-sys")]
     const ZSTD_64: [u8; 73] = [
         40, 181, 47, 253, 32, 64, 1, 2, 0, 116, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114,
@@ -335,9 +333,9 @@ mod tests {
         assert!(alloc::format!("{err}").contains("BROTLI_DECODER_"));
     }
 
-    /// A brotli stream of 64 bytes of ASCII text (produced by Node's
-    /// zlib.brotliCompressSync); truncating or under-declaring `raw_len`
-    /// exercises the two needs-more statuses.
+    /// A brotli stream that decodes to 64 bytes of ASCII text; truncating
+    /// it or under-declaring `raw_len` exercises the two needs-more
+    /// statuses.
     #[cfg(feature = "brotli")]
     const BROTLI_64: [u8; 60] = [
         27, 63, 0, 16, 141, 84, 181, 127, 132, 74, 215, 27, 30, 215, 77, 26, 138, 246, 56, 208, 32,
@@ -365,8 +363,7 @@ mod tests {
         assert_decoder_failed(4, &err);
     }
 
-    /// An xz stream of the same 64 bytes of ASCII text as [`BROTLI_64`]
-    /// (produced by the xz command-line tool).
+    /// An xz stream that decodes to the same 64 bytes as [`BROTLI_64`].
     #[cfg(feature = "xz")]
     const XZ_64: [u8; 120] = [
         253, 55, 122, 88, 90, 0, 0, 4, 230, 214, 180, 70, 2, 0, 33, 1, 22, 0, 0, 0, 116, 47, 229,

@@ -13,6 +13,10 @@ pub struct Args {
     deg: f64,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "linear bench/report command; the stages share the run's accumulators"
+)]
 pub fn run(a: Args) -> utz_build::Result<()> {
     let (ds, d) = (a.ds, a.deg);
 

@@ -32,6 +32,10 @@ pub struct Args {
     viewer: String,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "linear bench/report command; the stages share the run's accumulators"
+)]
 pub fn run(a: &Args) -> utz_build::Result<()> {
     let feats = utz_build::load(&a.ds)?;
     let t = topo::build_topology(&feats, a.eps_m / 111_320.0);

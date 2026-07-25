@@ -143,6 +143,10 @@ pub struct Args {
     paths: Vec<String>,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "linear bench/report command; the stages share the run's accumulators"
+)]
 pub fn run(a: &Args) -> utz_build::Result<()> {
     for path in &a.paths {
         let bytes = std::fs::read(path)?;

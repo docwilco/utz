@@ -136,6 +136,10 @@ pub fn build_topology_weighted(
 /// Tolerance multiplier for the edge `a`–`b` (see [`build_topology_weighted`]).
 pub type EdgeWeightFn<'a> = dyn Fn((f64, f64), (f64, f64)) -> f64 + 'a;
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one pass over shared vertex/arc tables; stage extraction would thread six mutable maps through every helper"
+)]
 fn build_topology_impl(
     feats: &[Feat],
     algo: Simplify,
@@ -306,6 +310,10 @@ fn build_topology_impl(
 /// # Panics
 /// If a count or quantized coordinate exceeds its serialized width
 /// (u16 pool/poly counts, u32 arc ids, i32 coords).
+#[expect(
+    clippy::too_many_lines,
+    reason = "linear serialization of one container; the stages share the running buffer and section offsets"
+)]
 pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: bool) -> TopoOut {
     let qmax = qmax_for(qbits);
     let topo = build_topology(feats, eps_deg);

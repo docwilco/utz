@@ -22,6 +22,10 @@ pub struct Args {
     npts: usize,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "linear bench/report command; the stages share the run's accumulators"
+)]
 pub fn run(args: Args) -> utz_build::Result<()> {
     let (dataset, eps_m, npts) = (args.ds, args.eps_m, args.npts);
     let qbits = 24u32;

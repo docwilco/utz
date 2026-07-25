@@ -45,6 +45,25 @@ jobs:
           name: preset-assets
           path: utz-data-*/data/*.utz
 
+  clippy:
+    name: Clippy
+    needs: gen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: preset-assets
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      # feature rungs the workspace build doesn't visit
+      - run: cargo clippy -p utz --no-default-features --features core,tiny-static --all-targets -- -D warnings
+      - run: cargo clippy -p utz --no-default-features --features std,custom,gzip,ruzstd,brotli,xz,geom-varint,geom-fixed,geom-image,geom-coarse --all-targets -- -D warnings
+      - run: cargo clippy -p utz --no-default-features --features std,custom,geom-varint,zstd-sys --all-targets -- -D warnings
+
   test:
     name: Test (std)
     needs: gen

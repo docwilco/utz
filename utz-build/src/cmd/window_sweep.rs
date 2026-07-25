@@ -69,6 +69,10 @@ pub struct Args {
     quant: Option<u32>,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "linear bench/report command; the stages share the run's accumulators"
+)]
 pub fn run(a: &Args) -> utz_build::Result<()> {
     // preset candidates: i16 pairs with ε≥500, i24 with ε≤250
     let shapes: Vec<(f64, u32)> = match a.eps {

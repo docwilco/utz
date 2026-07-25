@@ -36,6 +36,10 @@ struct P<'a> {
     rings: Vec<&'a [(i32, i32)]>,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "linear bench/report command; the stages share the run's accumulators"
+)]
 pub fn run(a: Args) -> utz_build::Result<()> {
     let (ds, eps_m, npts) = (a.ds, a.eps_m, a.npts);
 

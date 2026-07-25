@@ -72,6 +72,13 @@ const _: () = assert!(
 /// [`crate::include_bytes_aligned!`]`(4, ..)`). Endianness is a compile-time
 /// refusal —
 /// see the `geom-image` `compile_error` in lib.rs.
+#[cfg_attr(
+    not(feature = "geom-image"),
+    expect(
+        clippy::unnecessary_wraps,
+        reason = "the alignment check only exists on the geom-image rung; the signature stays uniform"
+    )
+)]
 fn check_image(payload: &[u8], hdr: &Header) -> Result<()> {
     #[cfg(feature = "geom-image")]
     if hdr.geom == 2 && !(payload.as_ptr() as usize + hdr.img_coords).is_multiple_of(4) {
@@ -263,11 +270,27 @@ impl Finder {
         let hdr = format::parse(payload)?;
         check_image(payload, &hdr)?;
         Ok(Finder {
-            payload: payload.into(),
+            #[cfg(feature = "alloc")]
+            payload: alloc::borrow::Cow::Borrowed(payload),
+            #[cfg(not(feature = "alloc"))]
+            payload,
             hdr,
             #[cfg(feature = "alloc")]
             eager: None,
         })
+    }
+
+    /// The payload bytes, out of whichever representation this rung's
+    /// [`Payload`] is.
+    fn payload_bytes(&self) -> &[u8] {
+        #[cfg(feature = "alloc")]
+        {
+            &self.payload
+        }
+        #[cfg(not(feature = "alloc"))]
+        {
+            self.payload
+        }
     }
 
     /// Decode a borrowed container into an owned `Finder` (lazy mode),
@@ -349,7 +372,7 @@ impl Finder {
         // keep [header + zone strings], [parent table] and [grid] —
         // everything lookups still read after preload; the arc store and
         // per-poly ring records between them are shadowed by the eager cache
-        let (h, b) = (&f.hdr, &f.payload[..]);
+        let (h, b) = (&f.hdr, f.payload_bytes());
         let arcs_off = h.arc_offsets - 4; // n_arcs u32 heads the arc block
         let parent_len = h.eager_polys as usize * 2;
         let grid_off = h.primary - 4; // ncols/nrows u16s head the grid block
@@ -389,7 +412,7 @@ impl Finder {
     /// TZBB release recorded in the container header.
     #[must_use]
     pub fn tzbb_release(&self) -> &str {
-        core::str::from_utf8(format::release(&self.payload[..])).unwrap_or("")
+        core::str::from_utf8(format::release(self.payload_bytes())).unwrap_or("")
     }
 
     /// Heap bytes [`preload`](Finder::preload) will reserve — the eager-cache
@@ -452,7 +475,7 @@ impl Finder {
         reason = "counts bounded by the parse-validated u32 header reservations"
     )]
     fn decode_rings<C: EagerCoord>(&self) -> (Vec<C>, Vec<u32>, Polys) {
-        let (h, b) = (&self.hdr, &self.payload[..]);
+        let (h, b) = (&self.hdr, self.payload_bytes());
         let mut coords = Vec::with_capacity(h.eager_coords as usize);
         let mut ring_ends = Vec::with_capacity(h.eager_rings as usize);
         let mut polys = Vec::with_capacity(h.eager_polys as usize);
@@ -503,7 +526,7 @@ impl Finder {
                 // border cell: candidates are the POLYS whose rings touch it
                 // (v4) — resolve the winner's feature via the parent table
                 let (s, e) = self.list_bounds(v & 0x7FFF);
-                let b = &self.payload[..];
+                let b = self.payload_bytes();
                 // coarse assets carry no geometry: cell precision IS the
                 // asset's precision — the dominant-first head is the answer
                 if cfg!(feature = "geom-coarse") && self.hdr.geom == 3 {
@@ -535,7 +558,7 @@ impl Finder {
             v => {
                 let (s, _) = self.list_bounds(v & 0x7FFF);
                 // dominant-first head (a poly id in v4)
-                self.tzid(self.parent_of(read_u16(&self.payload[..], s)))
+                self.tzid(self.parent_of(read_u16(self.payload_bytes(), s)))
             }
         }
     }
@@ -572,20 +595,20 @@ impl Finder {
             (((lon + 180.0) / cell_deg) as i64).clamp(0, i64::from(header.ncols) - 1) as usize;
         let row = (((lat + 90.0) / cell_deg) as i64).clamp(0, i64::from(header.nrows) - 1) as usize;
         read_u16(
-            &self.payload[..],
+            self.payload_bytes(),
             header.primary + (row * header.ncols as usize + col) * 2,
         )
     }
 
     fn list_bounds(&self, li: u16) -> (usize, usize) {
-        let (h, b) = (&self.hdr, &self.payload[..]);
+        let (h, b) = (&self.hdr, self.payload_bytes());
         let s = read_u16(b, h.list_offsets + li as usize * 2) as usize;
         let e = read_u16(b, h.list_offsets + li as usize * 2 + 2) as usize;
         (h.list_ids + s * 2, h.list_ids + e * 2)
     }
 
     fn tzid(&self, fid: u16) -> Option<&str> {
-        let (h, b) = (&self.hdr, &self.payload[..]);
+        let (h, b) = (&self.hdr, self.payload_bytes());
         let s = read_u16(b, h.str_offsets + fid as usize * 2) as usize;
         let e = read_u16(b, h.str_offsets + fid as usize * 2 + 2) as usize;
         core::str::from_utf8(&b[h.pool + s..h.pool + e])
@@ -595,7 +618,7 @@ impl Finder {
 
     /// poly id → feature id (v4 parent table).
     fn parent_of(&self, pid: u16) -> u16 {
-        read_u16(&self.payload[..], self.hdr.parent + pid as usize * 2)
+        read_u16(self.payload_bytes(), self.hdr.parent + pid as usize * 2)
     }
 
     /// Per-polygon test: bbox gate, then even-odd PIP at the width the
@@ -617,7 +640,7 @@ impl Finder {
         if let Some(e) = &self.eager {
             return self.eager_poly_contains(e, pid, px, py);
         }
-        let (h, b) = (&self.hdr, &self.payload[..]);
+        let (h, b) = (&self.hdr, self.payload_bytes());
         let fb = fixed_bytes(h.quant_bits);
         let mut pos = h.ring_data + read_u32(b, h.poly_offsets + pid as usize * 4) as usize;
         let bb = [
@@ -660,7 +683,7 @@ impl Finder {
         reason = "coords accumulate i16/i24/i32-width deltas; sums fit i32 by format"
     )]
     fn scan_arc(&self, id: usize, px: i32, py: i32) -> pip::RingHit {
-        let (h, b) = (&self.hdr, &self.payload[..]);
+        let (h, b) = (&self.hdr, self.payload_bytes());
         let wide = h.quant_bits == 32;
         let fixed = cfg!(feature = "geom-fixed") && h.geom == 1;
         let mut pos = h.arc_data + read_u32(b, h.arc_offsets + id * 4) as usize;
@@ -712,7 +735,7 @@ impl Finder {
     /// requirement). Works on the bare `core` rung.
     #[cfg(feature = "geom-image")]
     fn image_poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
-        let (h, b) = (&self.hdr, &self.payload[..]);
+        let (h, b) = (&self.hdr, self.payload_bytes());
         let pe = h.img_polys + pid as usize * 20;
         let bb = [
             read_u32(b, pe).cast_signed(),
@@ -759,7 +782,7 @@ impl Finder {
         py: P::Narrow,
         scan: impl Fn(&[P], P::Narrow, P::Narrow) -> pip::RingHit,
     ) -> bool {
-        let (h, b) = (&self.hdr, &self.payload[..]);
+        let (h, b) = (&self.hdr, self.payload_bytes());
         let mut inside = false;
         let mut cstart = if rstart == 0 {
             0
@@ -853,7 +876,7 @@ impl Finder {
         reason = "coords accumulate i16/i24/i32-width deltas; sums fit i32 by format"
     )]
     fn append_arc<C: EagerCoord>(&self, arc_ref: u32, coords: &mut Vec<C>) {
-        let (header, payload) = (&self.hdr, &self.payload[..]);
+        let (header, payload) = (&self.hdr, self.payload_bytes());
         let (id, rev) = ((arc_ref >> 1) as usize, (arc_ref & 1) == 1);
         let mut pos = header.arc_data + read_u32(payload, header.arc_offsets + id * 4) as usize;
         let (vcount, after_vcount) = read_varint(payload, pos);
