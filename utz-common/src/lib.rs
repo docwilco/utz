@@ -4,7 +4,7 @@
 //! test/bench sampler (previously copy-pasted per crate).
 #![no_std]
 
-use scroll::{Pread, Pwrite, SizeWith};
+use scroll::{Pread, Pwrite};
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -27,7 +27,7 @@ pub const PAYLOAD_HEADER_LEN: usize = 56;
 /// Layout after the header: zone-string offsets + pool, the
 /// geometry-dependent sections at the stored offsets, the grid tables, and
 /// the TZBB release string at `release_off`.
-#[derive(Debug, Clone, Copy, PartialEq, Pread, Pwrite, SizeWith)]
+#[derive(Debug, Clone, Copy, PartialEq, Pread, Pwrite)]
 pub struct PayloadHeader {
     /// arc store (geom 0/1) / `EagerImage` coords (geom 2, 4-aligned)
     pub arcs_off: u32,
@@ -61,18 +61,6 @@ pub struct PayloadHeader {
     pub quant_bits: QuantBits,
     pub simplify_algo: SimplifyAlgo,
     pub geom: GeomEncoding,
-}
-
-/// `SizeWith` for the single-byte header types: the derive covers structs
-/// only, and `PayloadHeader`'s own `SizeWith` derive needs it per field.
-macro_rules! byte_size_with {
-    ($ty:ty) => {
-        impl scroll::ctx::SizeWith<scroll::Endian> for $ty {
-            fn size_with(_: &scroll::Endian) -> usize {
-                1
-            }
-        }
-    };
 }
 
 /// Coordinate quantization width: how many bits each stored coordinate
@@ -115,8 +103,6 @@ impl QuantBits {
         }
     }
 }
-
-byte_size_with!(QuantBits);
 
 /// Geometry encoding, recorded in the header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
@@ -173,8 +159,6 @@ impl GeomEncoding {
     }
 }
 
-byte_size_with!(GeomEncoding);
-
 /// Simplification algorithm: selects the simplifier the encoder runs, and
 /// is recorded in the header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
@@ -215,81 +199,74 @@ impl SimplifyAlgo {
     }
 }
 
-byte_size_with!(SimplifyAlgo);
-
 /// TZBB vintage a container was built from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
 pub enum Vintage {
     /// zones distinct today
-    Now = 0,
+    Now,
     /// zones distinct since 1970
-    Since1970 = 1,
+    Since1970,
     /// every distinct tzid
-    All = 2,
+    All,
 }
 
-/// The dataset byte: vintage in bits 0–1, bit 2 set = land-only
-/// (clear = with oceans).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Dataset {
-    pub vintage: Vintage,
-    pub land_only: bool,
+/// The dataset a container was built from: TZBB vintage × coverage.
+/// Discriminants keep the wire bitfield — vintage in bits 0–1, bit 2 set =
+/// land-only (clear = with oceans).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Pread, Pwrite)]
+#[repr(u8)]
+pub enum Dataset {
+    /// zones distinct today, with oceans
+    Now = 0,
+    /// zones distinct since 1970, with oceans
+    Since1970 = 1,
+    /// every distinct tzid, with oceans
+    All = 2,
+    /// zones distinct today, land only
+    NowLandOnly = 4,
+    /// zones distinct since 1970, land only
+    Since1970LandOnly = 5,
+    /// every distinct tzid, land only
+    AllLandOnly = 6,
 }
 
 impl Dataset {
     /// The dataset's header byte.
     #[must_use]
     pub const fn byte(self) -> u8 {
-        self.vintage as u8 | if self.land_only { 4 } else { 0 }
+        self as u8
     }
 
     /// The dataset a header byte names, if any.
     #[must_use]
     pub const fn from_byte(byte: u8) -> Option<Dataset> {
-        let vintage = match byte & 0b11 {
-            0 => Vintage::Now,
-            1 => Vintage::Since1970,
-            2 => Vintage::All,
-            _ => return None,
-        };
-        if byte & !0b111 != 0 {
-            return None; // reserved bits set
+        match byte {
+            0 => Some(Dataset::Now),
+            1 => Some(Dataset::Since1970),
+            2 => Some(Dataset::All),
+            4 => Some(Dataset::NowLandOnly),
+            5 => Some(Dataset::Since1970LandOnly),
+            6 => Some(Dataset::AllLandOnly),
+            _ => None,
         }
-        Some(Dataset {
-            vintage,
-            land_only: byte & 4 != 0,
-        })
+    }
+
+    /// The TZBB vintage.
+    #[must_use]
+    pub const fn vintage(self) -> Vintage {
+        match self {
+            Dataset::Now | Dataset::NowLandOnly => Vintage::Now,
+            Dataset::Since1970 | Dataset::Since1970LandOnly => Vintage::Since1970,
+            Dataset::All | Dataset::AllLandOnly => Vintage::All,
+        }
+    }
+
+    /// Whether the ocean zones are excluded.
+    #[must_use]
+    pub const fn land_only(self) -> bool {
+        (self as u8) & 4 != 0
     }
 }
-
-impl scroll::ctx::TryFromCtx<'_, scroll::Endian> for Dataset {
-    type Error = scroll::Error;
-    fn try_from_ctx(source: &[u8], ctx: scroll::Endian) -> Result<(Self, usize), scroll::Error> {
-        let byte: u8 = source.pread_with(0, ctx)?;
-        let value = Dataset::from_byte(byte).ok_or(scroll::Error::BadInput {
-            size: 1,
-            msg: "invalid dataset header byte",
-        })?;
-        Ok((value, 1))
-    }
-}
-
-impl scroll::ctx::TryIntoCtx<scroll::Endian> for Dataset {
-    type Error = scroll::Error;
-    fn try_into_ctx(self, target: &mut [u8], ctx: scroll::Endian) -> Result<usize, scroll::Error> {
-        target.pwrite_with(self.byte(), 0, ctx)
-    }
-}
-
-impl scroll::ctx::TryIntoCtx<scroll::Endian> for &Dataset {
-    type Error = scroll::Error;
-    fn try_into_ctx(self, target: &mut [u8], ctx: scroll::Endian) -> Result<usize, scroll::Error> {
-        (*self).try_into_ctx(target, ctx)
-    }
-}
-
-byte_size_with!(Dataset);
 
 /// A container's payload codec — the outer header's codec byte, shared
 /// between the encoder (which picks one) and the reader (which dispatches
@@ -378,8 +355,7 @@ mod tests {
     use scroll::{Pread, Pwrite, LE};
 
     use super::{
-        Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo, Vintage,
-        PAYLOAD_HEADER_LEN,
+        Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo, PAYLOAD_HEADER_LEN,
     };
 
     #[test]
@@ -401,10 +377,7 @@ mod tests {
             uniq: 12,
             release_len: 13,
             flags: 0,
-            dataset: Dataset {
-                vintage: Vintage::Now,
-                land_only: false,
-            },
+            dataset: Dataset::Now,
             quant_bits: QuantBits::Bits24,
             simplify_algo: SimplifyAlgo::Rdp,
             geom: GeomEncoding::Fixed,
@@ -439,10 +412,7 @@ mod tests {
             uniq: 0,
             release_len: 0,
             flags: 0,
-            dataset: Dataset {
-                vintage: Vintage::Now,
-                land_only: false,
-            },
+            dataset: Dataset::Now,
             quant_bits: QuantBits::Bits16,
             simplify_algo: SimplifyAlgo::None,
             geom: GeomEncoding::DeltaVarint,
