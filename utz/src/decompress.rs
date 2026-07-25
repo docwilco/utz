@@ -47,14 +47,13 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-/// The codec-1 arm of [`decompress`].
+/// Inflate straight into a `raw_len`-sized buffer: the output slice doubles
+/// as the DEFLATE history, so `miniz_oxide` needs no separate 32 KB window and
+/// decode RAM is decoded + ~10 K tables. `decompress_to_vec_zlib` would grow
+/// an unhinted Vec instead — realloc overlap peaks at ~1.4× decoded
+/// (measured by the window-sweep bench).
 #[cfg(feature = "gzip")]
 fn decompress_gzip(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
-    // Inflate straight into a raw_len-sized buffer: the output slice
-    // doubles as the DEFLATE history, so miniz_oxide needs no separate
-    // 32 KB window and decode RAM is decoded + ~10 K tables.
-    // decompress_to_vec_zlib would grow an unhinted Vec instead — realloc
-    // overlap peaks at ~1.4× decoded (measured by the window-sweep bench).
     let mut out = alloc::vec![0u8; raw_len];
     let n = miniz_oxide::inflate::decompress_slice_iter_to_slice(
         &mut out,
@@ -67,17 +66,15 @@ fn decompress_gzip(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-/// The codec-2 arm of [`decompress`] when the pure-Rust backend is the
-/// compiled-in zstd decoder.
+/// Drive the pure-Rust zstd decoder block-by-block, draining after each
+/// block: `decode_all_to_vec` batches up to 1 MiB in the internal decode
+/// buffer before draining, peaking at ~2× decoded regardless of the frame's
+/// window and defeating the window knob. This loop keeps the internal buffer
+/// at window + one block.
 #[cfg(all(feature = "ruzstd", not(feature = "zstd-sys")))]
 fn decompress_ruzstd(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use ruzstd::decoding::{BlockDecodingStrategy, FrameDecoder};
     use ruzstd::io::Read as _;
-    // Drive the decoder block-by-block, draining after each one:
-    // decode_all_to_vec batches up to 1 MiB in the internal decode
-    // buffer before draining, peaking at ~2× decoded regardless of
-    // the frame's window and defeating the window knob. This
-    // loop keeps the internal buffer at window + one block.
     let mut input = body;
     let mut dec = FrameDecoder::new();
     dec.init(&mut input)
@@ -101,7 +98,12 @@ fn decompress_ruzstd(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
     Ok(out)
 }
 
-/// The codec-3 arm of [`decompress`].
+/// Decode the whole input into an exact-size output in one call, making the
+/// two needs-more statuses terminal: input exhausted mid-frame is a truncated
+/// asset (best-effort — brotli is the only backend whose status separates
+/// truncation from corruption), output exhausted means the frame outgrows
+/// what `raw_len` declared. `ResultFailure` carries the specific libbrotli
+/// code from `state.error_code` (`BrotliResult` itself is a bare status).
 #[cfg(feature = "brotli")]
 fn decompress_brotli(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use brotli_decompressor::{BrotliDecompressStream, BrotliResult, BrotliState};
@@ -120,16 +122,9 @@ fn decompress_brotli(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
         &mut total,
         &mut state,
     ) {
-        // whole input + exact-size output in one call, so the two
-        // needs-more statuses are terminal here: input exhausted
-        // mid-frame is a truncated asset (best-effort — only brotli's
-        // status separates truncation from corruption), output
-        // exhausted means the frame outgrows what raw_len declared.
         BrotliResult::ResultSuccess => {}
         BrotliResult::NeedsMoreInput => return Err(Error::Truncated),
         BrotliResult::NeedsMoreOutput => return Err(Error::RawLengthMismatch),
-        // state.error_code holds the specific libbrotli code
-        // (BrotliResult itself is a bare status)
         BrotliResult::ResultFailure => {
             return Err(Error::decoder_failed(codec, format_args!("{:?}", state.error_code)))
         }
@@ -138,12 +133,11 @@ fn decompress_brotli(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
     Ok(out)
 }
 
-/// The codec-4 arm of [`decompress`].
+/// Decode via `lzma-rust2` in `no_std` mode. Its `std` feature must stay OFF
+/// tree-wide: with it on, the crate's Read/Write become `pub(crate)`
+/// re-exports of `std::io` and the `Read as _` import below breaks.
 #[cfg(feature = "xz")]
 fn decompress_xz(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
-    // lzma-rust2 in no_std mode. Its `std` feature must stay OFF
-    // tree-wide: with it on, the crate's Read/Write become
-    // pub(crate) re-exports of std::io and this import breaks.
     use lzma_rust2::Read as _;
     let mut out = alloc::vec![0u8; raw_len];
     let mut r = lzma_rust2::XzReader::new(body, false);
