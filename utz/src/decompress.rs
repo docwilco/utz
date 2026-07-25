@@ -29,92 +29,75 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     let out = match codec {
         0 => body.to_vec(),
         #[cfg(feature = "gzip")]
-        1 => {
-            // Inflate straight into a raw_len-sized buffer: the output slice
-            // doubles as the DEFLATE history, so miniz_oxide needs no separate
-            // 32 KB window and decode RAM is decoded + ~10 K tables.
-            // decompress_to_vec_zlib would grow an unhinted Vec instead — realloc
-            // overlap peaks at ~1.4× decoded (measured by the window-sweep bench).
-            let mut out = alloc::vec![0u8; raw_len];
-            let n = miniz_oxide::inflate::decompress_slice_iter_to_slice(
-                &mut out,
-                core::iter::once(body),
-                true,  // zlib header
-                false, // verify adler32
-            )
-            .map_err(|status| Error::decoder_failed(codec, format_args!("{status:?}")))?;
-            out.truncate(n);
-            out
-        }
+        1 => decompress_gzip(codec, raw_len, body)?,
         #[cfg(feature = "zstd-sys")]
         2 => zstd::stream::decode_all(body)
             .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?,
         #[cfg(all(feature = "ruzstd", not(feature = "zstd-sys")))]
-        2 => {
-            use ruzstd::decoding::{BlockDecodingStrategy, FrameDecoder};
-            use ruzstd::io::Read as _;
-            // Drive the decoder block-by-block, draining after each one:
-            // decode_all_to_vec batches up to 1 MiB in the internal decode
-            // buffer before draining, peaking at ~2× decoded regardless of
-            // the frame's window and defeating the window knob. This
-            // loop keeps the internal buffer at window + one block.
-            let mut input = body;
-            let mut dec = FrameDecoder::new();
-            dec.init(&mut input)
-                .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
-            let mut out = alloc::vec![0u8; raw_len];
-            let mut written = 0;
-            loop {
-                dec.decode_blocks(&mut input, BlockDecodingStrategy::UptoBlocks(1))
-                    .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
-                written += dec
-                    .read(&mut out[written..])
-                    .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
-                if dec.can_collect() != 0 {
-                    return Err(Error::RawLengthMismatch); // frame holds more than raw_len declared
-                }
-                if dec.is_finished() {
-                    break;
-                }
-            }
-            out.truncate(written);
-            out
-        }
+        2 => decompress_ruzstd(codec, raw_len, body)?,
         #[cfg(feature = "brotli")]
         3 => decompress_brotli(codec, raw_len, body)?,
         #[cfg(feature = "xz")]
-        4 => {
-            // lzma-rust2 in no_std mode. Its `std` feature must stay OFF
-            // tree-wide: with it on, the crate's Read/Write become
-            // pub(crate) re-exports of std::io and this import breaks.
-            use lzma_rust2::Read as _;
-            let mut out = alloc::vec![0u8; raw_len];
-            let mut r = lzma_rust2::XzReader::new(body, false);
-            let mut n = 0;
-            while n < raw_len {
-                match r
-                    .read(&mut out[n..])
-                    .map_err(|source| Error::decoder_failed(codec, format_args!("{source:?}")))?
-                {
-                    0 => break,
-                    k => n += k,
-                }
-            }
-            if n == raw_len
-                && r.read(&mut [0u8])
-                    .map_err(|source| Error::decoder_failed(codec, format_args!("{source:?}")))?
-                    != 0
-            {
-                return Err(Error::RawLengthMismatch); // stream longer than raw_len declared
-            }
-            out.truncate(n);
-            out
-        }
+        4 => decompress_xz(codec, raw_len, body)?,
         _ => return Err(Error::CodecNotCompiledIn(codec)),
     };
     if out.len() != raw_len {
         return Err(Error::RawLengthMismatch); // header lied about the payload size
     }
+    Ok(out)
+}
+
+/// The codec-1 arm of [`decompress`].
+#[cfg(feature = "gzip")]
+fn decompress_gzip(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
+    // Inflate straight into a raw_len-sized buffer: the output slice
+    // doubles as the DEFLATE history, so miniz_oxide needs no separate
+    // 32 KB window and decode RAM is decoded + ~10 K tables.
+    // decompress_to_vec_zlib would grow an unhinted Vec instead — realloc
+    // overlap peaks at ~1.4× decoded (measured by the window-sweep bench).
+    let mut out = alloc::vec![0u8; raw_len];
+    let n = miniz_oxide::inflate::decompress_slice_iter_to_slice(
+        &mut out,
+        core::iter::once(body),
+        true,  // zlib header
+        false, // verify adler32
+    )
+    .map_err(|status| Error::decoder_failed(codec, format_args!("{status:?}")))?;
+    out.truncate(n);
+    Ok(out)
+}
+
+/// The codec-2 arm of [`decompress`] when the pure-Rust backend is the
+/// compiled-in zstd decoder.
+#[cfg(all(feature = "ruzstd", not(feature = "zstd-sys")))]
+fn decompress_ruzstd(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
+    use ruzstd::decoding::{BlockDecodingStrategy, FrameDecoder};
+    use ruzstd::io::Read as _;
+    // Drive the decoder block-by-block, draining after each one:
+    // decode_all_to_vec batches up to 1 MiB in the internal decode
+    // buffer before draining, peaking at ~2× decoded regardless of
+    // the frame's window and defeating the window knob. This
+    // loop keeps the internal buffer at window + one block.
+    let mut input = body;
+    let mut dec = FrameDecoder::new();
+    dec.init(&mut input)
+        .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
+    let mut out = alloc::vec![0u8; raw_len];
+    let mut written = 0;
+    loop {
+        dec.decode_blocks(&mut input, BlockDecodingStrategy::UptoBlocks(1))
+            .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
+        written += dec
+            .read(&mut out[written..])
+            .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
+        if dec.can_collect() != 0 {
+            return Err(Error::RawLengthMismatch); // frame holds more than raw_len declared
+        }
+        if dec.is_finished() {
+            break;
+        }
+    }
+    out.truncate(written);
     Ok(out)
 }
 
@@ -152,6 +135,36 @@ fn decompress_brotli(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
         }
     }
     out.truncate(out_off);
+    Ok(out)
+}
+
+/// The codec-4 arm of [`decompress`].
+#[cfg(feature = "xz")]
+fn decompress_xz(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
+    // lzma-rust2 in no_std mode. Its `std` feature must stay OFF
+    // tree-wide: with it on, the crate's Read/Write become
+    // pub(crate) re-exports of std::io and this import breaks.
+    use lzma_rust2::Read as _;
+    let mut out = alloc::vec![0u8; raw_len];
+    let mut r = lzma_rust2::XzReader::new(body, false);
+    let mut n = 0;
+    while n < raw_len {
+        match r
+            .read(&mut out[n..])
+            .map_err(|source| Error::decoder_failed(codec, format_args!("{source:?}")))?
+        {
+            0 => break,
+            k => n += k,
+        }
+    }
+    if n == raw_len
+        && r.read(&mut [0u8])
+            .map_err(|source| Error::decoder_failed(codec, format_args!("{source:?}")))?
+            != 0
+    {
+        return Err(Error::RawLengthMismatch); // stream longer than raw_len declared
+    }
+    out.truncate(n);
     Ok(out)
 }
 
