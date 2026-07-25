@@ -66,7 +66,7 @@ pub use finder::{Finder, Position};
 /// ([`decompress`](decompress::decompress) dispatches on them), the
 /// geometry/quantization/provenance types the parsed
 /// [`PayloadLayout`](format::PayloadLayout) carries.
-pub use utz_common::{Codec, Dataset, GeomEncoding, QuantBits, SimplifyAlgo, Vintage};
+pub use utz_common::{Codec, Dataset, GeomEncoding, QuantBits, SimplifyAlgo};
 
 /// Preset assets baked in by the data-tier features. With exactly one
 /// preset enabled, `Finder::new` loads it; with several in the tree, pick

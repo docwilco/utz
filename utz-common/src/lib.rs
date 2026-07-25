@@ -144,7 +144,6 @@ impl GeomEncoding {
     pub const fn byte(self) -> u8 {
         self as u8
     }
-
 }
 
 /// Simplification algorithm: selects the simplifier the encoder runs, and
@@ -181,17 +180,6 @@ impl SimplifyAlgo {
     }
 }
 
-/// TZBB vintage a container was built from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Vintage {
-    /// zones distinct today
-    Now,
-    /// zones distinct since 1970
-    Since1970,
-    /// every distinct tzid
-    All,
-}
-
 /// The dataset a container was built from: TZBB vintage × coverage.
 /// Discriminants keep the wire bitfield — vintage in bits 0–1, bit 2 set =
 /// land-only (clear = with oceans).
@@ -225,22 +213,6 @@ impl Dataset {
             6 => Some(Dataset::AllLandOnly),
             _ => None,
         }
-    }
-
-    /// The TZBB vintage.
-    #[must_use]
-    pub const fn vintage(self) -> Vintage {
-        match self {
-            Dataset::Now | Dataset::NowLandOnly => Vintage::Now,
-            Dataset::Since1970 | Dataset::Since1970LandOnly => Vintage::Since1970,
-            Dataset::All | Dataset::AllLandOnly => Vintage::All,
-        }
-    }
-
-    /// Whether the ocean zones are excluded.
-    #[must_use]
-    pub const fn land_only(self) -> bool {
-        (self as u8) & 4 != 0
     }
 }
 
