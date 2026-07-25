@@ -133,8 +133,11 @@ pub mod caps {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
 pub enum Error {
-    /// The byte source is shorter than the outer container header.
-    #[display("container shorter than its outer header")]
+    /// The byte source ends before the container does: shorter than the
+    /// outer header, or a payload cut short. Payload truncation is detected
+    /// best-effort — codecs whose status can't separate a short stream from
+    /// a corrupt one report it as [`DecoderFailed`](Error::DecoderFailed).
+    #[display("byte source ends before the container does (truncated)")]
     Truncated,
     /// The magic bytes don't match — not a `μTZ` container.
     #[display("not a μTZ container (bad magic)")]

@@ -81,33 +81,7 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
             out
         }
         #[cfg(feature = "brotli")]
-        3 => {
-            use brotli_decompressor::{BrotliDecompressStream, BrotliResult, BrotliState};
-            let mut out = alloc::vec![0u8; raw_len];
-            let mut state = BrotliState::new(HeapAlloc, HeapAlloc, HeapAlloc);
-            let (mut avail_in, mut in_off) = (body.len(), 0usize);
-            let (mut avail_out, mut out_off) = (raw_len, 0usize);
-            let mut total = 0usize;
-            match BrotliDecompressStream(
-                &mut avail_in,
-                &mut in_off,
-                body,
-                &mut avail_out,
-                &mut out_off,
-                &mut out,
-                &mut total,
-                &mut state,
-            ) {
-                // whole input + exact-size output in one call: anything but
-                // success (incl. NeedsMoreInput/Output) is corrupt or a
-                // raw_len mismatch. state.error_code holds the specific
-                // libbrotli code (BrotliResult itself is a bare status).
-                BrotliResult::ResultSuccess => {}
-                _ => return Err(Error::decoder_failed(codec, format_args!("{:?}", state.error_code))),
-            }
-            out.truncate(out_off);
-            out
-        }
+        3 => decompress_brotli(codec, raw_len, body)?,
         #[cfg(feature = "xz")]
         4 => {
             // lzma-rust2 in no_std mode. Its `std` feature must stay OFF
@@ -141,6 +115,43 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     if out.len() != raw_len {
         return Err(Error::RawLengthMismatch); // header lied about the payload size
     }
+    Ok(out)
+}
+
+/// The codec-3 arm of [`decompress`].
+#[cfg(feature = "brotli")]
+fn decompress_brotli(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
+    use brotli_decompressor::{BrotliDecompressStream, BrotliResult, BrotliState};
+    let mut out = alloc::vec![0u8; raw_len];
+    let mut state = BrotliState::new(HeapAlloc, HeapAlloc, HeapAlloc);
+    let (mut avail_in, mut in_off) = (body.len(), 0usize);
+    let (mut avail_out, mut out_off) = (raw_len, 0usize);
+    let mut total = 0usize;
+    match BrotliDecompressStream(
+        &mut avail_in,
+        &mut in_off,
+        body,
+        &mut avail_out,
+        &mut out_off,
+        &mut out,
+        &mut total,
+        &mut state,
+    ) {
+        // whole input + exact-size output in one call, so the two
+        // needs-more statuses are terminal here: input exhausted
+        // mid-frame is a truncated asset (best-effort — only brotli's
+        // status separates truncation from corruption), output
+        // exhausted means the frame outgrows what raw_len declared.
+        BrotliResult::ResultSuccess => {}
+        BrotliResult::NeedsMoreInput => return Err(Error::Truncated),
+        BrotliResult::NeedsMoreOutput => return Err(Error::RawLengthMismatch),
+        // state.error_code holds the specific libbrotli code
+        // (BrotliResult itself is a bare status)
+        BrotliResult::ResultFailure => {
+            return Err(Error::decoder_failed(codec, format_args!("{:?}", state.error_code)))
+        }
+    }
+    out.truncate(out_off);
     Ok(out)
 }
 
@@ -240,6 +251,29 @@ mod tests {
         assert_decoder_failed(3, &err);
         // the detail is the specific libbrotli code, not the bare status
         assert!(alloc::format!("{err}").contains("BROTLI_DECODER_"));
+    }
+
+    /// A brotli stream of 64 bytes of ASCII text (produced by Node's
+    /// zlib.brotliCompressSync); truncating or under-declaring `raw_len`
+    /// exercises the two needs-more statuses.
+    #[cfg(feature = "brotli")]
+    const BROTLI_64: [u8; 60] = [
+        27, 63, 0, 16, 141, 84, 181, 127, 132, 74, 215, 27, 30, 215, 77, 26, 138, 246, 56, 208,
+        32, 59, 115, 121, 97, 3, 14, 28, 2, 123, 216, 7, 28, 207, 165, 52, 181, 12, 26, 11, 244,
+        196, 23, 34, 96, 193, 133, 51, 248, 37, 127, 70, 111, 159, 233, 163, 220, 56, 132, 4,
+    ];
+
+    #[cfg(feature = "brotli")]
+    #[test]
+    fn brotli_truncated_stream_is_truncated() {
+        assert_eq!(decompress(3, 64, &BROTLI_64).map(|out| out.len()), Ok(64));
+        assert_eq!(decompress(3, 64, &BROTLI_64[..30]), Err(Error::Truncated));
+    }
+
+    #[cfg(feature = "brotli")]
+    #[test]
+    fn brotli_size_lie_is_raw_length_mismatch() {
+        assert_eq!(decompress(3, 63, &BROTLI_64), Err(Error::RawLengthMismatch));
     }
 
     #[cfg(feature = "xz")]
