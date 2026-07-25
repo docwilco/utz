@@ -19,7 +19,11 @@ measure, test, benchmark, or ship the data it reads.
 | [`utz-encode`](utz-encode/) | container encoder library |
 | [`utz-build`](utz-build/) | encoder CLI, measurement commands, and the tuning viewer |
 | [`utz-simplify`](utz-simplify/) | boundary-simplification algorithms (native + wasm for the viewer) |
-| [`utz-data-*`](utz-data-tiny/) | preset data crates, each shipping one generated `.utz` asset |
+| [`utz-data-tiny`](utz-data-tiny/) | preset data crate: the generated `tiny` asset |
+| [`utz-data-tiny-static`](utz-data-tiny-static/) | preset data crate: the generated `tiny-static` asset |
+| [`utz-data-compact`](utz-data-compact/) | preset data crate: the generated `compact` asset |
+| [`utz-data-balanced`](utz-data-balanced/) | preset data crate: the generated `balanced` asset |
+| [`utz-data-accurate`](utz-data-accurate/) | preset data crate: the generated `accurate` asset |
 | [`utz-bench-common`](utz-bench-common/) | shared lookup-bench harness (`no_std`, used by the firmware) |
 | [`utz-bench-cli`](utz-bench-cli/) | host-side lookup bench |
 | [`utz-bench-firmware`](utz-bench-firmware/) | embedded lookup bench (own workspace, cross-compiled) |
