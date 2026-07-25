@@ -15,30 +15,38 @@
 
 use alloc::vec::Vec;
 
-use crate::{Error, Result};
+use crate::{Codec, Error, Result};
 
 /// Decompress `body` into an owned buffer of exactly `raw_len` bytes
-/// (`raw_len` comes from the outer header). Codec 0 copies.
+/// (`raw_len` comes from the outer header). [`Codec::Uncompressed`] copies.
 ///
 /// # Errors
 /// [`Error::CodecNotCompiledIn`] if the codec has no compiled-in backend;
 /// [`Error::DecoderFailed`] if the stream is corrupt (carries the backend's
 /// own diagnostic); [`Error::RawLengthMismatch`] if the decoded size
 /// disagrees with `raw_len`.
-pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
+pub fn decompress(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     let out = match codec {
-        0 => body.to_vec(),
+        Codec::Uncompressed => body.to_vec(),
         #[cfg(feature = "gzip")]
-        1 => decompress_gzip(codec, raw_len, body)?,
+        Codec::Gzip => decompress_gzip(codec.byte(), raw_len, body)?,
         #[cfg(feature = "zstd-sys")]
-        2 => decompress_zstd_sys(codec, body)?,
+        Codec::Zstd => decompress_zstd_sys(codec.byte(), body)?,
         #[cfg(all(feature = "ruzstd", not(feature = "zstd-sys")))]
-        2 => decompress_ruzstd(codec, raw_len, body)?,
+        Codec::Zstd => decompress_ruzstd(codec.byte(), raw_len, body)?,
         #[cfg(feature = "brotli")]
-        3 => decompress_brotli(codec, raw_len, body)?,
+        Codec::Brotli => decompress_brotli(codec.byte(), raw_len, body)?,
         #[cfg(feature = "xz")]
-        4 => decompress_xz(codec, raw_len, body)?,
-        _ => return Err(Error::CodecNotCompiledIn(codec)),
+        Codec::Xz => decompress_xz(codec.byte(), raw_len, body)?,
+        // arms for the codecs this build did not compile in
+        #[cfg(not(feature = "gzip"))]
+        Codec::Gzip => return Err(Error::CodecNotCompiledIn(codec.byte())),
+        #[cfg(not(any(feature = "ruzstd", feature = "zstd-sys")))]
+        Codec::Zstd => return Err(Error::CodecNotCompiledIn(codec.byte())),
+        #[cfg(not(feature = "brotli"))]
+        Codec::Brotli => return Err(Error::CodecNotCompiledIn(codec.byte())),
+        #[cfg(not(feature = "xz"))]
+        Codec::Xz => return Err(Error::CodecNotCompiledIn(codec.byte())),
     };
     if out.len() != raw_len {
         return Err(Error::RawLengthMismatch); // header lied about the payload size
@@ -282,19 +290,20 @@ mod tests {
     ];
 
     #[test]
-    fn unknown_codec_reports_its_byte() {
-        assert_eq!(decompress(9, 4, &[]), Err(Error::CodecNotCompiledIn(9)));
+    fn unknown_codec_bytes_name_no_codec() {
+        assert_eq!(Codec::from_byte(9), None);
+        assert_eq!(Codec::from_byte(255), None);
     }
 
-    #[test_case(0, DECODED_64; "memcpy")]
-    #[cfg_attr(feature = "gzip", test_case(1, &ZLIB_64; "gzip"))]
+    #[test_case(Codec::Uncompressed, DECODED_64; "memcpy")]
+    #[cfg_attr(feature = "gzip", test_case(Codec::Gzip, &ZLIB_64; "gzip"))]
     #[cfg_attr(
         any(feature = "ruzstd", feature = "zstd-sys"),
-        test_case(2, &ZSTD_64; "zstd")
+        test_case(Codec::Zstd, &ZSTD_64; "zstd")
     )]
-    #[cfg_attr(feature = "brotli", test_case(3, &BROTLI_64; "brotli"))]
-    #[cfg_attr(feature = "xz", test_case(4, &XZ_64; "xz"))]
-    fn decodes_the_vector(codec: u8, body: &[u8]) {
+    #[cfg_attr(feature = "brotli", test_case(Codec::Brotli, &BROTLI_64; "brotli"))]
+    #[cfg_attr(feature = "xz", test_case(Codec::Xz, &XZ_64; "xz"))]
+    fn decodes_the_vector(codec: Codec, body: &[u8]) {
         assert_eq!(decompress(codec, 64, body).as_deref(), Ok(&DECODED_64[..]));
     }
 
@@ -308,23 +317,23 @@ mod tests {
         feature = "brotli",
         feature = "xz"
     ))]
-    #[cfg_attr(feature = "gzip", test_case(1, ""; "gzip"))]
+    #[cfg_attr(feature = "gzip", test_case(Codec::Gzip, ""; "gzip"))]
     #[cfg_attr(
         any(feature = "ruzstd", feature = "zstd-sys"),
-        test_case(2, ""; "zstd")
+        test_case(Codec::Zstd, ""; "zstd")
     )]
-    #[cfg_attr(feature = "brotli", test_case(3, "BROTLI_DECODER_"; "brotli"))]
-    #[cfg_attr(feature = "xz", test_case(4, ""; "xz"))]
-    fn corrupt_stream_carries_detail(expected_codec: u8, detail_contains: &str) {
-        let err = decompress(expected_codec, 64, b"definitely not a valid stream...")
+    #[cfg_attr(feature = "brotli", test_case(Codec::Brotli, "BROTLI_DECODER_"; "brotli"))]
+    #[cfg_attr(feature = "xz", test_case(Codec::Xz, ""; "xz"))]
+    fn corrupt_stream_carries_detail(expected: Codec, detail_contains: &str) {
+        let err = decompress(expected, 64, b"definitely not a valid stream...")
             .expect_err("garbage must not decode");
         match &err {
             Error::DecoderFailed { codec, detail } => {
-                assert_eq!(*codec, expected_codec);
+                assert_eq!(*codec, expected.byte());
                 assert!(!detail.is_empty(), "backend diagnostic must not be empty");
                 assert!(detail.contains(detail_contains));
                 let text = alloc::format!("{err}");
-                assert!(text.contains(&alloc::format!("codec {expected_codec}")));
+                assert!(text.contains(&alloc::format!("codec {}", expected.byte())));
                 assert!(text.contains(detail.as_str()));
             }
             other => panic!("expected DecoderFailed, got {other:?}"),
@@ -339,33 +348,33 @@ mod tests {
         feature = "brotli",
         feature = "xz"
     ))]
-    #[cfg_attr(feature = "gzip", test_case(1, &ZLIB_64[..30]; "gzip"))]
-    #[cfg_attr(feature = "zstd-sys", test_case(2, &ZSTD_64[..36]; "zstd sys"))]
-    #[cfg_attr(feature = "brotli", test_case(3, &BROTLI_64[..30]; "brotli"))]
-    #[cfg_attr(feature = "xz", test_case(4, &XZ_64[..60]; "xz"))]
-    fn truncated_stream_is_truncated(codec: u8, body: &[u8]) {
+    #[cfg_attr(feature = "gzip", test_case(Codec::Gzip, &ZLIB_64[..30]; "gzip"))]
+    #[cfg_attr(feature = "zstd-sys", test_case(Codec::Zstd, &ZSTD_64[..36]; "zstd sys"))]
+    #[cfg_attr(feature = "brotli", test_case(Codec::Brotli, &BROTLI_64[..30]; "brotli"))]
+    #[cfg_attr(feature = "xz", test_case(Codec::Xz, &XZ_64[..60]; "xz"))]
+    fn truncated_stream_is_truncated(codec: Codec, body: &[u8]) {
         assert_eq!(decompress(codec, 64, body), Err(Error::Truncated));
     }
 
     /// The header's `raw_len` disagrees with the stream's true decoded size
     /// (64) in either direction.
-    #[test_case(0, 63, DECODED_64; "memcpy under declared")]
-    #[test_case(0, 65, DECODED_64; "memcpy over declared")]
-    #[cfg_attr(feature = "gzip", test_case(1, 63, &ZLIB_64; "gzip under declared"))]
-    #[cfg_attr(feature = "gzip", test_case(1, 65, &ZLIB_64; "gzip over declared"))]
+    #[test_case(Codec::Uncompressed, 63, DECODED_64; "memcpy under declared")]
+    #[test_case(Codec::Uncompressed, 65, DECODED_64; "memcpy over declared")]
+    #[cfg_attr(feature = "gzip", test_case(Codec::Gzip, 63, &ZLIB_64; "gzip under declared"))]
+    #[cfg_attr(feature = "gzip", test_case(Codec::Gzip, 65, &ZLIB_64; "gzip over declared"))]
     #[cfg_attr(
         any(feature = "ruzstd", feature = "zstd-sys"),
-        test_case(2, 63, &ZSTD_64; "zstd under declared")
+        test_case(Codec::Zstd, 63, &ZSTD_64; "zstd under declared")
     )]
     #[cfg_attr(
         any(feature = "ruzstd", feature = "zstd-sys"),
-        test_case(2, 65, &ZSTD_64; "zstd over declared")
+        test_case(Codec::Zstd, 65, &ZSTD_64; "zstd over declared")
     )]
-    #[cfg_attr(feature = "brotli", test_case(3, 63, &BROTLI_64; "brotli under declared"))]
-    #[cfg_attr(feature = "brotli", test_case(3, 65, &BROTLI_64; "brotli over declared"))]
-    #[cfg_attr(feature = "xz", test_case(4, 63, &XZ_64; "xz under declared"))]
-    #[cfg_attr(feature = "xz", test_case(4, 65, &XZ_64; "xz over declared"))]
-    fn size_lie_is_raw_length_mismatch(codec: u8, raw_len: usize, body: &[u8]) {
+    #[cfg_attr(feature = "brotli", test_case(Codec::Brotli, 63, &BROTLI_64; "brotli under declared"))]
+    #[cfg_attr(feature = "brotli", test_case(Codec::Brotli, 65, &BROTLI_64; "brotli over declared"))]
+    #[cfg_attr(feature = "xz", test_case(Codec::Xz, 63, &XZ_64; "xz under declared"))]
+    #[cfg_attr(feature = "xz", test_case(Codec::Xz, 65, &XZ_64; "xz over declared"))]
+    fn size_lie_is_raw_length_mismatch(codec: Codec, raw_len: usize, body: &[u8]) {
         assert_eq!(
             decompress(codec, raw_len, body),
             Err(Error::RawLengthMismatch)

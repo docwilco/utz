@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+default = ["alloc"]
+## The Vec-returning samplers; off leaves the codec vocabulary and LCG core
+## for bare-metal consumers.
+alloc = []
+
 [dependencies]
 
 [lints]

@@ -54,15 +54,7 @@ fn c16(n: usize) -> u16 {
     u16::try_from(n).expect("exceeds u16 format width")
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
-#[repr(u8)]
-pub enum Codec {
-    Uncompressed = 0,
-    Gzip = 1,
-    Zstd = 2,
-    Brotli = 3,
-    Xz = 4,
-}
+pub use utz_common::Codec;
 
 /// Simplification algorithm recorded in the header and applied by
 /// [`build_payload`]. RDP is the default; Imai–Iri gives provably minimum

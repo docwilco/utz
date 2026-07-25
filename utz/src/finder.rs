@@ -29,6 +29,8 @@ use crate::decompress;
 use crate::format::{
     self, fixed_bytes, read_fixed, read_u16, read_u32, read_varint, unzigzag, Header,
 };
+#[cfg(feature = "alloc")]
+use crate::Codec;
 use crate::{pip, Error, Result};
 
 const NO_ZONE: u16 = 0x7FFF;
@@ -306,10 +308,10 @@ impl Finder {
     #[cfg(feature = "alloc")]
     pub fn from_slice(bytes: &[u8]) -> Result<Finder> {
         let (codec, raw_len, start) = format::outer(bytes)?;
-        let payload = if codec == 0 {
-            bytes[start..].to_vec()
-        } else {
-            decompress::decompress(codec, raw_len, &bytes[start..])?
+        let payload = match Codec::from_byte(codec) {
+            Some(Codec::Uncompressed) => bytes[start..].to_vec(),
+            Some(codec) => decompress::decompress(codec, raw_len, &bytes[start..])?,
+            None => return Err(Error::CodecNotCompiledIn(codec)),
         };
         let hdr = format::parse(&payload)?;
         check_image(&payload, &hdr)?;
@@ -331,13 +333,15 @@ impl Finder {
     #[cfg(feature = "alloc")]
     pub fn from_vec(bytes: Vec<u8>) -> Result<Finder> {
         let (codec, raw_len, start) = format::outer(&bytes)?;
-        let payload = if codec == 0 {
-            let mut p = bytes;
-            p.copy_within(start.., 0); // reuse the allocation
-            p.truncate(p.len() - start);
-            p
-        } else {
-            decompress::decompress(codec, raw_len, &bytes[start..])?
+        let payload = match Codec::from_byte(codec) {
+            Some(Codec::Uncompressed) => {
+                let mut p = bytes;
+                p.copy_within(start.., 0); // reuse the allocation
+                p.truncate(p.len() - start);
+                p
+            }
+            Some(codec) => decompress::decompress(codec, raw_len, &bytes[start..])?,
+            None => return Err(Error::CodecNotCompiledIn(codec)),
         };
         let hdr = format::parse(&payload)?;
         check_image(&payload, &hdr)?;

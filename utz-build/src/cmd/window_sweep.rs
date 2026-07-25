@@ -120,8 +120,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         // decode through the shipped path; peak-RAM model: decoded + window + state
         let row =
             |name: &str, window: usize, codec: Codec, blob: Vec<u8>| -> utz_build::Result<()> {
-                let (out, peak, ms) =
-                    measure(|| utz::decompress::decompress(codec as u8, raw, &blob));
+                let (out, peak, ms) = measure(|| utz::decompress::decompress(codec, raw, &blob));
                 let out = out.map_err(|e| Error::Msg(format!("{name} decode: {e:?}")))?;
                 ensure!(
                     out == payload,

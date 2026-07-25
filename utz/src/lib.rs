@@ -62,6 +62,9 @@ pub mod pip;
 
 mod finder;
 pub use finder::{Finder, Position};
+/// The payload codec identifiers ([`decompress`](decompress::decompress)
+/// dispatches on them; `utz-build` writes them).
+pub use utz_common::Codec;
 
 /// Preset assets baked in by the data-tier features. With exactly one
 /// preset enabled, `Finder::new` loads it; with several in the tree, pick
