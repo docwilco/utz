@@ -49,19 +49,20 @@ fn c16(n: usize) -> u16 {
 
 pub use utz_common::{Codec, GeomEncoding, SimplifyAlgo};
 
-/// ε-driven `Simplify` for the topology builder.
-///
-/// # Errors
-///
-/// `Visvalingam` is rejected: its knob is an area, not ε (see the message
-/// for the workaround).
-pub fn to_simplify(algo: SimplifyAlgo, eps_deg: f64) -> crate::Result<utz_simplify::Simplify> {
-    Ok(match algo {
+/// ε-driven `Simplify` for the topology builder: ε is a max deviation in
+/// degrees for RDP / Imai–Iri; Visvalingam's area threshold is derived as
+/// ε² — the same convention the viewer uses, so parameters found in the
+/// viewer plug straight into build scripts.
+#[must_use]
+pub fn to_simplify(algo: SimplifyAlgo, eps_deg: f64) -> utz_simplify::Simplify {
+    match algo {
         SimplifyAlgo::None => utz_simplify::Simplify::None,
         SimplifyAlgo::Rdp => utz_simplify::Simplify::Rdp { eps: eps_deg },
         SimplifyAlgo::ImaiIri => utz_simplify::Simplify::ImaiIri { eps: eps_deg },
-        SimplifyAlgo::Visvalingam => return Err(Error::VisvalingamEps),
-    })
+        SimplifyAlgo::Visvalingam => utz_simplify::Simplify::Visvalingam {
+            min_area: eps_deg * eps_deg,
+        },
+    }
 }
 
 pub struct Params<'a> {
@@ -117,10 +118,9 @@ pub fn encode(feats: &[Feat], p: &Params) -> crate::Result<Vec<u8>> {
 ///
 /// # Errors
 ///
-/// `p.simplify == Visvalingam` (see [`to_simplify`]); otherwise
-/// as [`payload_from_topology`].
+/// As [`payload_from_topology`].
 pub fn build_payload(feats: &[Feat], p: &Params) -> crate::Result<Vec<u8>> {
-    let algo = to_simplify(p.simplify, p.eps_m / 111_320.0)?;
+    let algo = to_simplify(p.simplify, p.eps_m / 111_320.0);
     let t = topo::build_topology_algo(feats, algo);
     Ok(payload_from_topology(&t, &t.arc_coords, feats, p)?.0)
 }

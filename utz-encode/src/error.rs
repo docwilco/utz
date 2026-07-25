@@ -42,9 +42,6 @@ pub enum Error {
         "grid {deg}°: {n} interned list ids overflow the u16 offset table — coarsen the grid"
     )]
     GridListIds { deg: f64, n: usize },
-    #[from(skip)]
-    #[display("visvalingam's knob is an area, not ε — build the topology with topo::build_topology_algo and use payload_from_topology")]
-    VisvalingamEps,
 }
 
 /// anyhow-style guard returning a typed [`Error`].

@@ -203,15 +203,10 @@ fn simplified_arcs(
     w_min: f64,
     pre_snap_bits: Option<u32>,
 ) -> Vec<Arc> {
-    let eps_deg = eps_m / 111_320.0;
-    let algo = match algo {
-        0 => Simplify::Rdp { eps: eps_deg },
-        1 => Simplify::Visvalingam {
-            min_area: eps_deg * eps_deg,
-        },
-        2 => Simplify::ImaiIri { eps: eps_deg },
-        _ => Simplify::None,
-    };
+    let algo = crate::encode::to_simplify(
+        crate::encode::SimplifyAlgo::from_byte(algo).unwrap_or(crate::encode::SimplifyAlgo::None),
+        eps_m / 111_320.0,
+    );
     let model = DensityWeight::new(w_min);
     let weighted = w_min < 1.0 && !st.dens.is_empty();
     let qmax = pre_snap_bits.map(|b| ((1u64 << (b - 1)) - 1) as f64);

@@ -38,14 +38,13 @@ pub struct Args {
 pub fn run(a: Args) -> utz_build::Result<()> {
     let (ds, eps_m, w_min, algo_key) = (a.ds, a.eps_m, a.w_min, a.algo);
     let algo = |eps_deg: f64| -> Simplify {
-        match algo_key.as_str() {
-            "rdp" => Simplify::Rdp { eps: eps_deg },
-            "vw" => Simplify::Visvalingam {
-                min_area: eps_deg * eps_deg,
-            },
-            "ii" => Simplify::ImaiIri { eps: eps_deg },
+        let algo = match algo_key.as_str() {
+            "rdp" => utz_encode::encode::SimplifyAlgo::Rdp,
+            "vw" => utz_encode::encode::SimplifyAlgo::Visvalingam,
+            "ii" => utz_encode::encode::SimplifyAlgo::ImaiIri,
             k => panic!("unknown algo {k:?}: use rdp|vw|ii"),
-        }
+        };
+        utz_encode::encode::to_simplify(algo, eps_deg)
     };
 
     let feats = utz_build::load(&ds)?;
