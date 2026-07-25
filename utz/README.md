@@ -9,8 +9,9 @@
   arrays that borrow zero-copy from a flash partition. `no_std` capable.
 - **Tunable** — pick dataset, simplification parameters, data types,
   quantization grid, grid cell size, and compression codec to hit your
-  exact size / RAM / accuracy point, guided by a visualization tool. Or
-  use no compression for direct from flash.
+  exact size / RAM / accuracy point, guided by a
+  [visualization tool](https://docwilco.github.io/utz/live/index.html).
+  Or use no compression for direct from flash.
 - **DST-correct** — returns the IANA `tzid`; resolve offsets/DST
   downstream with [`jiff`](https://crates.io/crates/jiff) (whose
   compile-time static zones pair well with `μTZ`'s embedded story) or the
