@@ -60,7 +60,7 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
 fn decompress_gzip(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use miniz_oxide::inflate::TINFLStatus;
     let mut out = alloc::vec![0u8; raw_len];
-    let n = miniz_oxide::inflate::decompress_slice_iter_to_slice(
+    let decoded_len = miniz_oxide::inflate::decompress_slice_iter_to_slice(
         &mut out,
         core::iter::once(body),
         true,  // zlib header
@@ -71,7 +71,9 @@ fn decompress_gzip(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
         TINFLStatus::HasMoreOutput => Error::RawLengthMismatch,
         status => Error::decoder_failed(codec, format_args!("{status:?}")),
     })?;
-    out.truncate(n);
+    if decoded_len != raw_len {
+        return Err(Error::RawLengthMismatch); // stream shorter than raw_len declared
+    }
     Ok(out)
 }
 
@@ -95,6 +97,8 @@ fn decompress_ruzstd(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
             .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
         written += dec
             .read(&mut out[written..])
+            // We could detect Truncated, but it's a real PITA to catch all
+            // cases. Just trust that this provides enough detail.
             .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
         if dec.can_collect() != 0 {
             return Err(Error::RawLengthMismatch); // frame holds more than raw_len declared
@@ -103,7 +107,9 @@ fn decompress_ruzstd(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
             break;
         }
     }
-    out.truncate(written);
+    if written != raw_len {
+        return Err(Error::RawLengthMismatch); // frame shorter than raw_len declared
+    }
     Ok(out)
 }
 
@@ -141,7 +147,9 @@ fn decompress_brotli(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
             ))
         }
     }
-    out.truncate(out_off);
+    if out_off != raw_len {
+        return Err(Error::RawLengthMismatch); // frame shorter than raw_len declared
+    }
     Ok(out)
 }
 
@@ -159,18 +167,23 @@ fn decompress_xz(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
         source => Error::decoder_failed(codec, format_args!("{source:?}")),
     };
     let mut out = alloc::vec![0u8; raw_len];
-    let mut r = lzma_rust2::XzReader::new(body, false);
-    let mut n = 0;
-    while n < raw_len {
-        match r.read(&mut out[n..]).map_err(map_read_error)? {
+    let mut reader = lzma_rust2::XzReader::new(body, false);
+    let mut decoded_len = 0;
+    while decoded_len < raw_len {
+        match reader
+            .read(&mut out[decoded_len..])
+            .map_err(map_read_error)?
+        {
             0 => break,
-            k => n += k,
+            read_len => decoded_len += read_len,
         }
     }
-    if n == raw_len && r.read(&mut [0u8]).map_err(map_read_error)? != 0 {
+    if decoded_len != raw_len {
+        return Err(Error::RawLengthMismatch); // stream shorter than raw_len declared
+    }
+    if reader.read(&mut [0u8]).map_err(map_read_error)? != 0 {
         return Err(Error::RawLengthMismatch); // stream longer than raw_len declared
     }
-    out.truncate(n);
     Ok(out)
 }
 

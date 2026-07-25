@@ -142,14 +142,7 @@ pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize)> {
 /// [`Error::GeometryNotCompiledIn`] if the geometry encoding has no
 /// compiled-in decoder.
 pub fn parse(p: &[u8]) -> Result<Header> {
-    let need = |n: usize| {
-        if p.len() < n {
-            Err(Error::SectionOverrun)
-        } else {
-            Ok(())
-        }
-    };
-    need(14)?;
+    need(p, 14)?;
     let dataset = p[0];
     let quant_bits = p[1];
     let simplify_algo = p[2];
@@ -177,7 +170,7 @@ pub fn parse(p: &[u8]) -> Result<Header> {
     let eps_m = f32::from_le_bytes([p[9], p[10], p[11], p[12]]);
     let rel_len = p[13] as usize;
     let mut pos = 14 + rel_len; // tzbb_release skipped (read via header_release)
-    need(pos + 26)?;
+    need(p, pos + 26)?;
     let n_features = read_u16(p, pos);
     pos += 2;
     let arcs_off = read_u32(p, pos) as usize;
@@ -193,55 +186,22 @@ pub fn parse(p: &[u8]) -> Result<Header> {
 
     let n_polys = eager_polys as usize;
     let parent = rings_off;
-    let (n_arcs, arc_offsets, arc_data, poly_offsets, ring_data);
-    let (img_coords, img_ring_ends, img_polys);
-    if geom == 3 {
-        // coarse: no geometry sections at all — just parent + grid
-        need(parent + n_polys * 2)?;
-        (n_arcs, arc_offsets, arc_data) = (0, usize::MAX, usize::MAX);
-        (poly_offsets, ring_data) = (usize::MAX, usize::MAX);
-        (img_coords, img_ring_ends, img_polys) = (usize::MAX, usize::MAX, usize::MAX);
-    } else if geom == 2 {
-        // EagerImage: the preload-cache layout in place of arc store + ring
-        // records. Coords must be 4-aligned within the payload (encoder
-        // pads; the v6 12-byte outer header preserves it in flash).
-        img_coords = arcs_off;
-        if img_coords % 4 != 0 {
-            return Err(Error::ImageSectionMisaligned);
-        }
-        // coords at quant width (v7): 4 / 6 / 8 bytes per vertex
-        let vb = 2 * fixed_bytes(quant_bits);
-        img_ring_ends = img_coords + eager_coords as usize * vb;
-        img_polys = img_ring_ends + eager_rings as usize * 4;
-        need(img_polys + n_polys * 20)?;
-        // the flattened image is self-delimiting — the counts must agree
-        if eager_rings > 0
-            && read_u32(p, img_ring_ends + (eager_rings as usize - 1) * 4) != eager_coords
-        {
-            return Err(Error::ImageCountsDisagree);
-        }
-        (n_arcs, arc_offsets, arc_data) = (0, usize::MAX, usize::MAX);
-        (poly_offsets, ring_data) = (usize::MAX, usize::MAX);
-    } else {
-        need(arcs_off + 4)?;
-        n_arcs = read_u32(p, arcs_off);
-        arc_offsets = arcs_off + 4;
-        arc_data = arc_offsets + (n_arcs as usize + 1) * 4;
-        poly_offsets = parent + n_polys * 2;
-        ring_data = poly_offsets + (n_polys + 1) * 4;
-        (img_coords, img_ring_ends, img_polys) = (usize::MAX, usize::MAX, usize::MAX);
-    }
+    let sections = match geom {
+        3 => coarse_sections(p, parent, n_polys)?,
+        2 => image_sections(p, quant_bits, arcs_off, n_polys, eager_coords, eager_rings)?,
+        _ => arc_sections(p, arcs_off, parent, n_polys)?,
+    };
 
-    need(grid_off + 4)?;
+    need(p, grid_off + 4)?;
     let ncols = read_u16(p, grid_off);
     let nrows = read_u16(p, grid_off + 2);
     let primary = grid_off + 4;
     let after_primary = primary + ncols as usize * nrows as usize * 2;
-    need(after_primary + 2)?;
+    need(p, after_primary + 2)?;
     let uniq = read_u16(p, after_primary);
     let list_offsets = after_primary + 2;
     let list_ids = list_offsets + (uniq as usize + 1) * 2;
-    need(list_ids)?;
+    need(p, list_ids)?;
 
     Ok(Header {
         dataset,
@@ -254,15 +214,15 @@ pub fn parse(p: &[u8]) -> Result<Header> {
         n_features,
         str_offsets,
         pool,
-        n_arcs,
-        arc_offsets,
-        arc_data,
+        n_arcs: sections.n_arcs,
+        arc_offsets: sections.arc_offsets,
+        arc_data: sections.arc_data,
         parent,
-        poly_offsets,
-        ring_data,
-        img_coords,
-        img_ring_ends,
-        img_polys,
+        poly_offsets: sections.poly_offsets,
+        ring_data: sections.ring_data,
+        img_coords: sections.img_coords,
+        img_ring_ends: sections.img_ring_ends,
+        img_polys: sections.img_polys,
         eager_coords,
         eager_rings,
         eager_polys,
@@ -272,6 +232,105 @@ pub fn parse(p: &[u8]) -> Result<Header> {
         uniq,
         list_offsets,
         list_ids,
+    })
+}
+
+/// Reject a section end past the payload end.
+fn need(p: &[u8], end: usize) -> Result<()> {
+    if p.len() < end {
+        Err(Error::SectionOverrun)
+    } else {
+        Ok(())
+    }
+}
+
+/// Geometry-dependent section offsets for [`Header`]; the fields a given
+/// encoding doesn't use stay at [`GeometrySections::NONE`]'s markers.
+struct GeometrySections {
+    n_arcs: u32,
+    arc_offsets: usize,
+    arc_data: usize,
+    poly_offsets: usize,
+    ring_data: usize,
+    img_coords: usize,
+    img_ring_ends: usize,
+    img_polys: usize,
+}
+
+impl GeometrySections {
+    /// No sections present: zero arcs, every offset `usize::MAX`.
+    const NONE: GeometrySections = GeometrySections {
+        n_arcs: 0,
+        arc_offsets: usize::MAX,
+        arc_data: usize::MAX,
+        poly_offsets: usize::MAX,
+        ring_data: usize::MAX,
+        img_coords: usize::MAX,
+        img_ring_ends: usize::MAX,
+        img_polys: usize::MAX,
+    };
+}
+
+/// Coarse containers (geom 3) have no geometry sections at all — just the
+/// parent table + grid.
+fn coarse_sections(p: &[u8], parent: usize, n_polys: usize) -> Result<GeometrySections> {
+    need(p, parent + n_polys * 2)?;
+    Ok(GeometrySections::NONE)
+}
+
+/// `EagerImage` (geom 2): the preload-cache layout in place of arc store +
+/// ring records. Coords must be 4-aligned within the payload (encoder pads;
+/// the v6 12-byte outer header preserves it in flash).
+fn image_sections(
+    p: &[u8],
+    quant_bits: u8,
+    img_coords: usize,
+    n_polys: usize,
+    eager_coords: u32,
+    eager_rings: u32,
+) -> Result<GeometrySections> {
+    if !img_coords.is_multiple_of(4) {
+        return Err(Error::ImageSectionMisaligned);
+    }
+    // coords at quant width (v7): 4 / 6 / 8 bytes per vertex
+    let vertex_bytes = 2 * fixed_bytes(quant_bits);
+    let img_ring_ends = img_coords + eager_coords as usize * vertex_bytes;
+    let img_polys = img_ring_ends + eager_rings as usize * 4;
+    need(p, img_polys + n_polys * 20)?;
+    // the flattened image is self-delimiting — the counts must agree
+    if eager_rings > 0
+        && read_u32(p, img_ring_ends + (eager_rings as usize - 1) * 4) != eager_coords
+    {
+        return Err(Error::ImageCountsDisagree);
+    }
+    Ok(GeometrySections {
+        img_coords,
+        img_ring_ends,
+        img_polys,
+        ..GeometrySections::NONE
+    })
+}
+
+/// Arc-store encodings (geom 0/1): arc offsets + data, per-poly ring records.
+fn arc_sections(
+    p: &[u8],
+    arcs_off: usize,
+    parent: usize,
+    n_polys: usize,
+) -> Result<GeometrySections> {
+    need(p, arcs_off + 4)?;
+    let n_arcs = read_u32(p, arcs_off);
+    let arc_offsets = arcs_off + 4;
+    let arc_data = arc_offsets + (n_arcs as usize + 1) * 4;
+    let poly_offsets = parent + n_polys * 2;
+    let ring_data = poly_offsets + (n_polys + 1) * 4;
+    Ok(GeometrySections {
+        n_arcs,
+        arc_offsets,
+        arc_data,
+        poly_offsets,
+        ring_data,
+        ..GeometrySections::NONE
     })
 }
 
