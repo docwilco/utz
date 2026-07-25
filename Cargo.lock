@@ -1299,7 +1299,6 @@ dependencies = [
  "utz-data-compact",
  "utz-data-tiny",
  "utz-data-tiny-static",
- "zerocopy",
  "zstd",
 ]
 
