@@ -206,6 +206,10 @@ fn decompress_xz(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
 /// Global-allocator-backed allocator for the no-stdlib brotli decoder —
 /// mirrors alloc-stdlib's `StandardAlloc` (zero-initialized cells), which
 /// is `std`-only.
+// brotli-decompressor has an equivalent Vec-backed allocator
+// (brotli_alloc::BrotliAlloc), but it sits in a private module behind
+// cfg(feature = "std"); this shim can go if upstream ever exposes it on
+// no_std + alloc.
 #[cfg(feature = "brotli")]
 struct HeapAlloc;
 
