@@ -90,3 +90,21 @@ pub fn gen_pts(seed: u64, n: usize) -> Vec<(f64, f64)> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Codec;
+
+    #[test]
+    fn codec_bytes_round_trip() {
+        for codec in [
+            Codec::Uncompressed,
+            Codec::Gzip,
+            Codec::Zstd,
+            Codec::Brotli,
+            Codec::Xz,
+        ] {
+            assert_eq!(Codec::from_byte(codec.byte()), Some(codec));
+        }
+    }
+}
