@@ -9,18 +9,18 @@
 //! borrowed (`&'static`, zero-copy) and owned buffers.
 
 use scroll::Pread;
-use utz_common::{Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo};
-pub use utz_common::{MAGIC, PAYLOAD_HEADER_LEN, VERSION};
+use utz_common::{Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo};
+pub use utz_common::{MAGIC, PAYLOAD_HEADER_LEN, PROLOGUE_LEN, VERSION};
 
 use crate::{Error, Result};
-
-/// Outer container header length: magic4 + version + codec + `raw_len` u32
-/// + 2 reserved bytes so a 4-aligned container gives a 4-aligned payload.
-pub const OUTER_LEN: usize = 12;
 
 /// Parsed header: every section position needed for O(1) access.
 #[derive(Clone, Copy)]
 pub struct PayloadLayout {
+    /// the section blob's compression codec
+    pub codec: Codec,
+    /// the blob's decompressed size (every stored offset stays within it)
+    pub sections_len: usize,
     pub dataset: Dataset,
     pub quant_bits: QuantBits,
     pub geom: GeomEncoding,
@@ -112,14 +112,14 @@ pub fn unzigzag(v: u64) -> i64 {
     (v >> 1).cast_signed() ^ -((v & 1).cast_signed())
 }
 
-/// Validate the outer header; returns (codec, `raw_len`, `payload_start`).
-/// `raw_len` is the UNCOMPRESSED payload size (single exact allocation).
+/// Validate the prologue — format identity only (magic + version) — and
+/// return the payload header's offset.
 ///
 /// # Errors
 /// [`Error::Truncated`] / [`Error::BadMagic`] / [`Error::UnsupportedVersion`]
 /// if the bytes are too short or the magic/version don't match.
-pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize)> {
-    if bytes.len() < OUTER_LEN {
+pub fn outer(bytes: &[u8]) -> Result<usize> {
+    if bytes.len() < PROLOGUE_LEN {
         return Err(Error::Truncated);
     }
     if bytes[0..4] != MAGIC {
@@ -128,19 +128,20 @@ pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize)> {
     if bytes[4] != VERSION {
         return Err(Error::UnsupportedVersion(bytes[4]));
     }
-    Ok((bytes[5], read_u32(bytes, 6) as usize, OUTER_LEN))
+    Ok(PROLOGUE_LEN)
 }
 
-/// Parse the plaintext payload header against the section blob's length
-/// (`sections_len` — the decompressed size for compressed containers, so
-/// this validates before any decompression happens).
+/// Parse the plaintext payload header. Every section bound is validated
+/// against the header's own declared blob size, so a container is fully
+/// checked before any decompression happens.
 ///
 /// # Errors
 /// [`Error::Truncated`] if `header` is short; [`Error::InvalidHeaderField`]
-/// for invalid header fields; [`Error::SectionOverrun`] for a section
+/// for invalid header fields (including unknown codec / geometry /
+/// quantization / dataset bytes); [`Error::SectionOverrun`] for a section
 /// overrunning the blob; [`Error::GeometryNotCompiledIn`] if the geometry
 /// encoding has no compiled-in decoder.
-pub fn parse(header: &[u8], sections_len: usize) -> Result<PayloadLayout> {
+pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
     // an invalid enum byte (quant_bits/geom/simplify_algo/dataset) fails the
     // header read itself as BadInput; running out of bytes means the source
     // ends inside the header
@@ -150,9 +151,10 @@ pub fn parse(header: &[u8], sections_len: usize) -> Result<PayloadLayout> {
             scroll::Error::BadInput { .. } => Error::InvalidHeaderField,
             _ => Error::Truncated,
         })?;
-    if h.flags != 0 || h.grid_deg.is_nan() || h.grid_deg <= 0.0 {
+    if h.flags != 0 || h.reserved != [0; 3] || h.grid_deg.is_nan() || h.grid_deg <= 0.0 {
         return Err(Error::InvalidHeaderField);
     }
+    let sections_len = h.raw_len as usize;
     // a valid geom byte whose decoder isn't compiled in is refused loudly
     let compiled = match h.geom {
         GeomEncoding::DeltaVarint => cfg!(feature = "geom-varint"),
@@ -191,6 +193,8 @@ pub fn parse(header: &[u8], sections_len: usize) -> Result<PayloadLayout> {
     need(sections_len, release_off + release_len)?;
 
     Ok(PayloadLayout {
+        codec: h.codec,
+        sections_len,
         dataset: h.dataset,
         quant_bits: h.quant_bits,
         geom: h.geom,
@@ -221,19 +225,6 @@ pub fn parse(header: &[u8], sections_len: usize) -> Result<PayloadLayout> {
         release_off,
         release_len,
     })
-}
-
-/// Reject a section blob shorter than a declared length (the codec-0 load
-/// paths' analogue of the decompressors' `raw_len` check).
-///
-/// # Errors
-/// [`Error::RawLengthMismatch`] on disagreement.
-pub fn need_len(actual: usize, declared: usize) -> Result<()> {
-    if actual == declared {
-        Ok(())
-    } else {
-        Err(Error::RawLengthMismatch)
-    }
 }
 
 /// Reject a section end past the blob end.

@@ -24,10 +24,10 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
     );
     for path in &args.paths {
         let bytes = std::fs::read(path)?;
-        let (codec, _, start) = format::outer(&bytes).expect("not a utz container");
-        assert_eq!(codec, 0, "need codec-none");
+        let start = format::outer(&bytes).expect("not a utz container");
         let container_payload = &bytes[start + format::PAYLOAD_HEADER_LEN..];
-        let header = format::parse(&bytes[start..], container_payload.len()).unwrap();
+        let header = format::parse(&bytes[start..]).unwrap();
+        assert_eq!(header.codec, utz::Codec::Uncompressed, "need codec-none");
         assert_eq!(
             header.geom,
             GeomEncoding::EagerImage,

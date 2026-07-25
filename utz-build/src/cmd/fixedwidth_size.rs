@@ -74,10 +74,14 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
     );
     for path in &a.paths {
         let bytes = std::fs::read(path)?;
-        let (codec, _, start) = format::outer(&bytes).expect("not a utz container");
-        assert_eq!(codec, 0, "{path}: need a codec-none container");
+        let start = format::outer(&bytes).expect("not a utz container");
         let p = &bytes[start + format::PAYLOAD_HEADER_LEN..];
-        let h = format::parse(&bytes[start..], p.len()).unwrap();
+        let h = format::parse(&bytes[start..]).unwrap();
+        assert_eq!(
+            h.codec,
+            utz::Codec::Uncompressed,
+            "{path}: need a codec-none container"
+        );
         assert!(
             matches!(h.geom, GeomEncoding::DeltaVarint | GeomEncoding::Fixed),
             "arc-store containers only (geom 0/1)"

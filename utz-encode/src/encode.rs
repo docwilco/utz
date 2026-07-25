@@ -2,13 +2,13 @@
 //!
 //! Layout (all little-endian):
 //! ```text
-//! outer:  magic "uTZ1" | version u8 | codec u8 | raw_len u32 | payload…
-//!         (raw_len = UNCOMPRESSED payload size, so decoders allocate once)
-//! header:  one fixed [`PayloadHeader`] record (utz-common), PLAINTEXT —
-//!          every section offset and count; the encoder Pwrites it, the
-//!          reader Preads it (before decompressing anything), so the
-//!          field list IS the wire layout
-//! payload (compressed per codec):
+//! prologue: magic "uTZ1" | version u8 | 3 reserved bytes — format identity,
+//!           the only layout frozen across versions
+//! header:   one fixed [`PayloadHeader`] record (utz-common), PLAINTEXT —
+//!           codec, decompressed size, every section offset and count; the
+//!           encoder Pwrites it, the reader Preads it (before decompressing
+//!           anything), so the field list IS the wire layout
+//! sections (compressed per the header's codec):
 //!   zone table: str_offsets u16[n_features+1] | tzid pool bytes   (zone i = feature i)
 //!   arc store:  arc_offsets u32[n_arcs+1] (relative to arc data)
 //!               | per arc: varint vcount | first vertex i{16,24,32}×2
@@ -26,17 +26,13 @@
 //! Grid + bboxes are derived from the QUANTIZED geometry, so what the runtime
 //! PIPs is exactly what the grid indexed.
 
-use scroll::{Pwrite, LE};
-use utz_common::{Dataset, PayloadHeader, QuantBits, PAYLOAD_HEADER_LEN};
+use scroll::{Pread, Pwrite, LE};
+use utz_common::{Dataset, PayloadHeader, QuantBits, PAYLOAD_HEADER_LEN, PROLOGUE_LEN};
 pub use utz_common::{MAGIC, VERSION};
 
 use crate::error::ensure;
 use crate::grid::{self, Order};
 use crate::{clean, q_lat, q_lon, qmax_for, topo, Arc, Error, Feat};
-/// Outer container header length: magic4 + version + codec + `raw_len` u32
-/// + 2 reserved/pad bytes so a 4-aligned container gives a 4-aligned payload.
-pub const OUTER_LEN: usize = 12;
-
 /// Checked narrowing for serializer counts/offsets: the format stores these
 /// at fixed width and a wrap would silently corrupt the container, so panic.
 /// Data-dependent limits (feature count, tzid pool, CSR tables) are
@@ -218,6 +214,7 @@ pub fn payload_from_topology(
             GeomEncoding::DeltaVarint | GeomEncoding::Fixed => stats.n_arcs,
             GeomEncoding::EagerImage | GeomEncoding::Coarse => 0,
         },
+        raw_len: c32(o.len() - PAYLOAD_HEADER_LEN),
         grid_deg,
         eps_m,
         n_features: c16(feats.len()),
@@ -233,6 +230,8 @@ pub fn payload_from_topology(
         .expect("quant_bits guarded to 16/24/32"),
         simplify_algo: p.simplify,
         geom: p.geom,
+        codec: Codec::Uncompressed, // finish() records the actual codec
+        reserved: [0; 3],
     };
     o.pwrite_with(header, 0, LE)
         .expect("header buffer reserved at PAYLOAD_HEADER_LEN");
@@ -695,18 +694,26 @@ fn write_grid(o: &mut Vec<u8>, csr: &grid::Csr) {
 /// # Errors
 ///
 /// As [`compress`].
+///
+/// # Panics
+/// If `payload` is shorter than the header record or its header bytes are
+/// invalid — `payload` must come from [`build_payload`] /
+/// [`payload_from_topology`].
 pub fn finish(payload: &[u8], codec: Codec) -> crate::Result<Vec<u8>> {
     // the header stays plaintext; only the sections after it compress
-    let (header, sections) = payload.split_at(PAYLOAD_HEADER_LEN);
-    let raw_len = c32(sections.len());
+    let (header_bytes, sections) = payload.split_at(PAYLOAD_HEADER_LEN);
+    let mut header: PayloadHeader = header_bytes
+        .pread_with(0, LE)
+        .expect("build_payload wrote a valid header");
+    header.codec = codec;
     let body = compress(sections, codec)?;
-    let mut o = Vec::with_capacity(OUTER_LEN + PAYLOAD_HEADER_LEN + body.len());
+    let mut o = Vec::with_capacity(PROLOGUE_LEN + PAYLOAD_HEADER_LEN + body.len());
     o.extend_from_slice(&MAGIC);
     o.push(VERSION);
-    o.push(codec as u8);
-    o.extend_from_slice(&raw_len.to_le_bytes());
-    o.extend_from_slice(&[0u8; 2]); // reserved; pads the header start to +12
-    o.extend_from_slice(header);
+    o.extend_from_slice(&[0u8; 3]); // reserved; pads the header start to +8
+    o.resize(PROLOGUE_LEN + PAYLOAD_HEADER_LEN, 0);
+    o.pwrite_with(header, PROLOGUE_LEN, LE)
+        .expect("header space reserved");
     o.extend_from_slice(&body);
     Ok(o)
 }

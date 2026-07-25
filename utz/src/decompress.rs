@@ -29,24 +29,24 @@ pub fn decompress(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
     let out = match codec {
         Codec::Uncompressed => body.to_vec(),
         #[cfg(feature = "gzip")]
-        Codec::Gzip => decompress_gzip(codec.byte(), raw_len, body)?,
+        Codec::Gzip => decompress_gzip(codec, raw_len, body)?,
         #[cfg(feature = "zstd-sys")]
-        Codec::Zstd => decompress_zstd_sys(codec.byte(), body)?,
+        Codec::Zstd => decompress_zstd_sys(codec, body)?,
         #[cfg(all(feature = "ruzstd", not(feature = "zstd-sys")))]
-        Codec::Zstd => decompress_ruzstd(codec.byte(), raw_len, body)?,
+        Codec::Zstd => decompress_ruzstd(codec, raw_len, body)?,
         #[cfg(feature = "brotli")]
-        Codec::Brotli => decompress_brotli(codec.byte(), raw_len, body)?,
+        Codec::Brotli => decompress_brotli(codec, raw_len, body)?,
         #[cfg(feature = "xz")]
-        Codec::Xz => decompress_xz(codec.byte(), raw_len, body)?,
+        Codec::Xz => decompress_xz(codec, raw_len, body)?,
         // arms for the codecs this build did not compile in
         #[cfg(not(feature = "gzip"))]
-        Codec::Gzip => return Err(Error::CodecNotCompiledIn(codec.byte())),
+        Codec::Gzip => return Err(Error::CodecNotCompiledIn(codec)),
         #[cfg(not(any(feature = "ruzstd", feature = "zstd-sys")))]
-        Codec::Zstd => return Err(Error::CodecNotCompiledIn(codec.byte())),
+        Codec::Zstd => return Err(Error::CodecNotCompiledIn(codec)),
         #[cfg(not(feature = "brotli"))]
-        Codec::Brotli => return Err(Error::CodecNotCompiledIn(codec.byte())),
+        Codec::Brotli => return Err(Error::CodecNotCompiledIn(codec)),
         #[cfg(not(feature = "xz"))]
-        Codec::Xz => return Err(Error::CodecNotCompiledIn(codec.byte())),
+        Codec::Xz => return Err(Error::CodecNotCompiledIn(codec)),
     };
     if out.len() != raw_len {
         return Err(Error::RawLengthMismatch); // header lied about the payload size
@@ -63,7 +63,7 @@ pub fn decompress(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
 /// Status mapping: `FailedCannotMakeProgress` = input exhausted mid-stream
 /// (truncated); `HasMoreOutput` = the stream outgrows `raw_len` (header lied).
 #[cfg(feature = "gzip")]
-fn decompress_gzip(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
+fn decompress_gzip(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use miniz_oxide::inflate::TINFLStatus;
     let mut out = alloc::vec![0u8; raw_len];
     let decoded_len = miniz_oxide::inflate::decompress_slice_iter_to_slice(
@@ -87,7 +87,7 @@ fn decompress_gzip(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
 /// itself; the shared `raw_len` check in [`decompress`] validates it.
 /// libzstd reports a truncated input as `UnexpectedEof` ("incomplete frame").
 #[cfg(feature = "zstd-sys")]
-fn decompress_zstd_sys(codec: u8, body: &[u8]) -> Result<Vec<u8>> {
+fn decompress_zstd_sys(codec: Codec, body: &[u8]) -> Result<Vec<u8>> {
     zstd::stream::decode_all(body).map_err(|source| match source.kind() {
         std::io::ErrorKind::UnexpectedEof => Error::Truncated,
         _ => Error::decoder_failed(codec, format_args!("{source}")),
@@ -100,7 +100,7 @@ fn decompress_zstd_sys(codec: u8, body: &[u8]) -> Result<Vec<u8>> {
 /// window and defeating the window knob. This loop keeps the internal buffer
 /// at window + one block.
 #[cfg(all(feature = "ruzstd", not(feature = "zstd-sys")))]
-fn decompress_ruzstd(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
+fn decompress_ruzstd(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use ruzstd::decoding::{BlockDecodingStrategy, FrameDecoder};
     use ruzstd::io::Read as _;
     let mut input = body;
@@ -136,7 +136,7 @@ fn decompress_ruzstd(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
 /// `ResultFailure` carries the specific libbrotli code from
 /// `state.error_code` (`BrotliResult` itself is a bare status).
 #[cfg(feature = "brotli")]
-fn decompress_brotli(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
+fn decompress_brotli(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use brotli_decompressor::{BrotliDecompressStream, BrotliResult, BrotliState};
     let mut out = alloc::vec![0u8; raw_len];
     let mut state = BrotliState::new(HeapAlloc, HeapAlloc, HeapAlloc);
@@ -176,7 +176,7 @@ fn decompress_brotli(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
 /// A read failing with `Eof` means input exhausted mid-stream — a truncated
 /// asset.
 #[cfg(feature = "xz")]
-fn decompress_xz(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
+fn decompress_xz(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use lzma_rust2::Read as _;
     let map_read_error = |source: lzma_rust2::Error| match source {
         lzma_rust2::Error::Eof => Error::Truncated,
@@ -293,12 +293,6 @@ mod tests {
         64, 231, 35, 56, 36, 31, 182, 243, 125, 1, 0, 0, 0, 0, 4, 89, 90,
     ];
 
-    #[test]
-    fn unknown_codec_bytes_name_no_codec() {
-        assert_eq!(Codec::from_byte(9), None);
-        assert_eq!(Codec::from_byte(255), None);
-    }
-
     #[test_case(Codec::Uncompressed, DECODED_64; "memcpy")]
     #[cfg_attr(feature = "gzip", test_case(Codec::Gzip, &ZLIB_64; "gzip"))]
     #[cfg_attr(
@@ -333,11 +327,11 @@ mod tests {
             .expect_err("garbage must not decode");
         match &err {
             Error::DecoderFailed { codec, detail } => {
-                assert_eq!(*codec, expected.byte());
+                assert_eq!(*codec, expected);
                 assert!(!detail.is_empty(), "backend diagnostic must not be empty");
                 assert!(detail.contains(detail_contains));
                 let text = alloc::format!("{err}");
-                assert!(text.contains(&alloc::format!("codec {}", expected.byte())));
+                assert!(text.contains(&alloc::format!("codec {expected:?}")));
                 assert!(text.contains(detail.as_str()));
             }
             other => panic!("expected DecoderFailed, got {other:?}"),

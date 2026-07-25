@@ -15,10 +15,16 @@ use alloc::vec::Vec;
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
 // reject non-ASCII); the project brands as μTZ, the container as uTZ1
 pub const MAGIC: [u8; 4] = *b"uTZ1";
-pub const VERSION: u8 = 9;
+pub const VERSION: u8 = 10;
 
-/// [`PayloadHeader`]'s serialized size — the zone table starts here.
-pub const PAYLOAD_HEADER_LEN: usize = 56;
+/// The container prologue: `MAGIC` (4), `VERSION` (1), 3 reserved bytes.
+/// The only part of the format whose layout is frozen across versions —
+/// everything after it is [`VERSION`]-specific.
+pub const PROLOGUE_LEN: usize = 8;
+
+/// [`PayloadHeader`]'s serialized size — the section blob starts at
+/// `PROLOGUE_LEN + PAYLOAD_HEADER_LEN`.
+pub const PAYLOAD_HEADER_LEN: usize = 64;
 
 /// The primary grid table's "no zone covers this cell" marker (all 15 id
 /// bits set). Zone/feature ids stay strictly below it; the u16's high bit
@@ -52,6 +58,8 @@ pub struct PayloadHeader {
     pub eager_polys: u32,
     /// arc count (geom 0/1; zero when there is no arc store)
     pub n_arcs: u32,
+    /// the section blob's decompressed size (so readers allocate once)
+    pub raw_len: u32,
     /// grid cell size in degrees — fractional (e.g. 0.5) allowed
     pub grid_deg: f32,
     /// simplification tolerance the asset was built with (provenance)
@@ -69,6 +77,10 @@ pub struct PayloadHeader {
     pub quant_bits: QuantBits,
     pub simplify_algo: SimplifyAlgo,
     pub geom: GeomEncoding,
+    /// the section blob's compression codec
+    pub codec: Codec,
+    /// reserved, must be zero (pads the header to 64 bytes)
+    pub reserved: [u8; 3],
 }
 
 /// Coordinate quantization width: how many bits each stored coordinate
@@ -214,7 +226,7 @@ impl Dataset {
 /// A container's payload codec — the outer header's codec byte, shared
 /// between the encoder (which picks one) and the reader (which dispatches
 /// on it).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Pread, Pwrite)]
 #[repr(u8)]
 pub enum Codec {
     Uncompressed = 0,
@@ -222,27 +234,6 @@ pub enum Codec {
     Zstd = 2,
     Brotli = 3,
     Xz = 4,
-}
-
-impl Codec {
-    /// The codec's outer-header byte.
-    #[must_use]
-    pub const fn byte(self) -> u8 {
-        self as u8
-    }
-
-    /// The codec a header byte names, if any.
-    #[must_use]
-    pub const fn from_byte(byte: u8) -> Option<Codec> {
-        match byte {
-            0 => Some(Codec::Uncompressed),
-            1 => Some(Codec::Gzip),
-            2 => Some(Codec::Zstd),
-            3 => Some(Codec::Brotli),
-            4 => Some(Codec::Xz),
-            _ => None,
-        }
-    }
 }
 
 /// Knuth's MMIX LCG multiplier (TAOCP vol. 2, 3rd ed., §3.3.4 table 1).
@@ -312,6 +303,7 @@ mod tests {
             eager_rings: 6,
             eager_polys: 7,
             n_arcs: 8,
+            raw_len: 14,
             grid_deg: 0.5,
             eps_m: 50.0,
             n_features: 9,
@@ -324,6 +316,8 @@ mod tests {
             quant_bits: QuantBits::Bits24,
             simplify_algo: SimplifyAlgo::Rdp,
             geom: GeomEncoding::Fixed,
+            codec: Codec::Brotli,
+            reserved: [0; 3],
         };
         let mut bytes = [0u8; PAYLOAD_HEADER_LEN];
         let written = bytes
@@ -347,6 +341,7 @@ mod tests {
             eager_rings: 0,
             eager_polys: 0,
             n_arcs: 0,
+            raw_len: 0,
             grid_deg: 1.0,
             eps_m: 0.0,
             n_features: 0,
@@ -359,28 +354,20 @@ mod tests {
             quant_bits: QuantBits::Bits16,
             simplify_algo: SimplifyAlgo::None,
             geom: GeomEncoding::DeltaVarint,
+            codec: Codec::Uncompressed,
+            reserved: [0; 3],
         };
         let mut bytes = [0u8; PAYLOAD_HEADER_LEN];
         bytes
             .pwrite_with(header, 0, LE)
             .expect("buffer sized to the declared length");
-        bytes[53] = 17; // quant_bits: no such width
+        bytes[57] = 17; // quant_bits: no such width
         assert!(bytes.pread_with::<PayloadHeader>(0, LE).is_err());
-        bytes[53] = 16;
-        bytes[52] = 3; // dataset: vintage 3 is unassigned
+        bytes[57] = 16;
+        bytes[56] = 3; // dataset: vintage 3 is unassigned
         assert!(bytes.pread_with::<PayloadHeader>(0, LE).is_err());
-    }
-
-    #[test]
-    fn codec_bytes_round_trip() {
-        for codec in [
-            Codec::Uncompressed,
-            Codec::Gzip,
-            Codec::Zstd,
-            Codec::Brotli,
-            Codec::Xz,
-        ] {
-            assert_eq!(Codec::from_byte(codec.byte()), Some(codec));
-        }
+        bytes[56] = 0;
+        bytes[60] = 9; // codec: no such codec
+        assert!(bytes.pread_with::<PayloadHeader>(0, LE).is_err());
     }
 }

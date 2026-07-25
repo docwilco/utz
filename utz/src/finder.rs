@@ -27,9 +27,7 @@ use alloc::vec::Vec;
 #[cfg(feature = "alloc")]
 use crate::decompress;
 use crate::format::{self, read_fixed, read_u16, read_u32, read_varint, unzigzag, PayloadLayout};
-#[cfg(feature = "alloc")]
-use crate::Codec;
-use crate::{pip, Error, Result};
+use crate::{pip, Codec, Error, Result};
 use utz_common::{GeomEncoding, QuantBits, NO_ZONE};
 
 /// A geographic position in degrees — **order-neutral by design**:
@@ -273,14 +271,17 @@ impl Finder {
     /// for an invalid container; [`Error::Misaligned`] for unaligned
     /// `EagerImage` coords.
     pub fn from_static(bytes: &'static [u8]) -> Result<Finder> {
-        let (codec, _, start) = format::outer(bytes)?;
-        if codec != 0 {
+        let start = format::outer(bytes)?;
+        let layout = format::parse(&bytes[start..])?;
+        if layout.codec != Codec::Uncompressed {
             return Err(Error::StaticContainerCompressed);
         }
-        let header = &bytes[start..];
         let sections_start = start + format::PAYLOAD_HEADER_LEN;
-        let payload = bytes.get(sections_start..).unwrap_or(&[]);
-        let layout = format::parse(header, payload.len())?;
+        // trailing bytes (e.g. flash-partition padding) are fine; running
+        // out before the declared blob end is not
+        let payload = bytes
+            .get(sections_start..sections_start + layout.sections_len)
+            .ok_or(Error::Truncated)?;
         check_image(payload, &layout)?;
         Ok(Finder {
             #[cfg(feature = "alloc")]
@@ -318,19 +319,18 @@ impl Finder {
     /// [`Error::Misaligned`] for unaligned `EagerImage` coords.
     #[cfg(feature = "alloc")]
     pub fn from_slice(bytes: &[u8]) -> Result<Finder> {
-        let (codec, raw_len, start) = format::outer(bytes)?;
+        let start = format::outer(bytes)?;
         // the header is plaintext: validate it BEFORE any decompression
-        let layout = format::parse(&bytes[start..], raw_len)?;
+        let layout = format::parse(&bytes[start..])?;
         let sections = bytes
             .get(start + format::PAYLOAD_HEADER_LEN..)
             .ok_or(Error::Truncated)?;
-        let payload = match Codec::from_byte(codec) {
-            Some(Codec::Uncompressed) => {
-                format::need_len(sections.len(), raw_len)?;
-                sections.to_vec()
-            }
-            Some(codec) => decompress::decompress(codec, raw_len, sections)?,
-            None => return Err(Error::CodecNotCompiledIn(codec)),
+        let payload = match layout.codec {
+            Codec::Uncompressed => sections
+                .get(..layout.sections_len)
+                .ok_or(Error::Truncated)?
+                .to_vec(),
+            codec => decompress::decompress(codec, layout.sections_len, sections)?,
         };
         check_image(&payload, &layout)?;
         Ok(Finder {
@@ -350,23 +350,25 @@ impl Finder {
     /// As [`Finder::from_slice`].
     #[cfg(feature = "alloc")]
     pub fn from_vec(bytes: Vec<u8>) -> Result<Finder> {
-        let (codec, raw_len, start) = format::outer(&bytes)?;
+        let start = format::outer(&bytes)?;
         // the header is plaintext: validate it BEFORE any decompression
-        let layout = format::parse(&bytes[start..], raw_len)?;
+        let layout = format::parse(&bytes[start..])?;
         let sections_start = start + format::PAYLOAD_HEADER_LEN;
-        if bytes.len() < sections_start {
+        if bytes.len() < sections_start + layout.sections_len && layout.codec == Codec::Uncompressed
+        {
             return Err(Error::Truncated);
         }
-        let payload = match Codec::from_byte(codec) {
-            Some(Codec::Uncompressed) => {
-                format::need_len(bytes.len() - sections_start, raw_len)?;
+        let payload = match layout.codec {
+            Codec::Uncompressed => {
                 let mut p = bytes;
-                p.copy_within(sections_start.., 0); // reuse the allocation
-                p.truncate(p.len() - sections_start);
+                p.copy_within(sections_start..sections_start + layout.sections_len, 0);
+                p.truncate(layout.sections_len); // reuse the allocation
                 p
             }
-            Some(codec) => decompress::decompress(codec, raw_len, &bytes[sections_start..])?,
-            None => return Err(Error::CodecNotCompiledIn(codec)),
+            codec => {
+                let sections = bytes.get(sections_start..).ok_or(Error::Truncated)?;
+                decompress::decompress(codec, layout.sections_len, sections)?
+            }
         };
         check_image(&payload, &layout)?;
         Ok(Finder {

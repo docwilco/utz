@@ -56,10 +56,14 @@ fn arc_coords(payload: &[u8], header: &format::PayloadLayout, id: usize) -> Vec<
 
 /// Container → per-feature dequantized geometry (same dq as the encoder).
 fn load_feats(bytes: &[u8]) -> (format::PayloadLayout, Vec<Feat>) {
-    let (codec, _, start) = format::outer(bytes).expect("not a utz container");
-    assert_eq!(codec, 0, "need a codec-none container");
+    let start = format::outer(bytes).expect("not a utz container");
     let p = &bytes[start + format::PAYLOAD_HEADER_LEN..];
-    let h = format::parse(&bytes[start..], p.len()).unwrap();
+    let h = format::parse(&bytes[start..]).unwrap();
+    assert_eq!(
+        h.codec,
+        utz::Codec::Uncompressed,
+        "need a codec-none container"
+    );
     assert!(
         matches!(h.geom, GeomEncoding::DeltaVarint | GeomEncoding::Fixed),
         "arc-store containers only (geom 0/1)"

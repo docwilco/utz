@@ -161,16 +161,16 @@ pub enum Error {
     /// The decoded payload size disagrees with the outer header's raw length.
     #[display("decoded size disagrees with the header's raw length")]
     RawLengthMismatch,
-    /// The container's codec byte has no compiled-in backend — enable the
+    /// The container's codec has no compiled-in backend — enable the
     /// matching codec feature.
-    #[display("codec {_0} has no compiled-in backend")]
-    CodecNotCompiledIn(#[error(not(source))] u8),
+    #[display("codec {_0:?} has no compiled-in backend")]
+    CodecNotCompiledIn(#[error(not(source))] Codec),
     /// A compiled-in codec backend rejected the stream as corrupt.
     #[cfg(feature = "alloc")]
-    #[display("codec {codec} decoder reported: {detail}")]
+    #[display("codec {codec:?} decoder reported: {detail}")]
     DecoderFailed {
-        /// Codec byte of the backend that failed.
-        codec: u8,
+        /// The codec whose backend failed.
+        codec: Codec,
         /// The backend's own diagnostic text.
         detail: alloc::string::String,
     },
@@ -218,7 +218,7 @@ impl Error {
     /// `format_args!` over the source error — `{source}` where the backend
     /// implements `Display`, `{source:?}` otherwise (`Debug` is the one
     /// trait every backend's error type implements).
-    pub(crate) fn decoder_failed(codec: u8, detail: core::fmt::Arguments<'_>) -> Error {
+    pub(crate) fn decoder_failed(codec: Codec, detail: core::fmt::Arguments<'_>) -> Error {
         Error::DecoderFailed {
             codec,
             detail: alloc::fmt::format(detail),
