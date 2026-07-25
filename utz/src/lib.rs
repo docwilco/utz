@@ -4,7 +4,7 @@
 //! prefilter, then per-polygon integer PIP. Three memory modes, selected by
 //! how the container is loaded: **zero-copy** (uncompressed asset
 //! borrowed from any static source), **lazy** (payload decompressed into
-//! owned RAM, no decoded-geometry cache), **eager** ([`Finder::preload`]:
+//! owned RAM, no decoded-geometry cache), **eager** (`Finder::preload`:
 //! all rings decoded up front). `no_std`-first: API availability follows
 //! the environment ladder `core` ⊂ `alloc` ⊂ `std`.
 
@@ -63,7 +63,7 @@ pub mod pip;
 mod finder;
 pub use finder::{Finder, Position};
 /// The shared container vocabulary: the payload codec identifiers
-/// ([`decompress`](decompress::decompress) dispatches on them), the
+/// (`decompress` dispatches on them), the
 /// geometry/quantization/provenance types the parsed
 /// [`PayloadLayout`](format::PayloadLayout) carries.
 pub use utz_common::{Codec, Dataset, GeomEncoding, QuantBits, SimplifyAlgo};
@@ -142,7 +142,7 @@ pub enum Error {
     /// outer header, or a payload cut short. Payload truncation is detected
     /// best-effort — where a codec's failure status doesn't cleanly separate
     /// a short stream from a corrupt one, truncation surfaces as
-    /// [`DecoderFailed`](Error::DecoderFailed).
+    /// `DecoderFailed`.
     #[display("byte source ends before the container does (truncated)")]
     Truncated,
     /// The magic bytes don't match — not a `μTZ` container.

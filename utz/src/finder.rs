@@ -157,8 +157,7 @@ impl EagerCoord for (i16, i16) {
 /// [`from_static`](Finder::from_static) (zero-copy mode),
 /// [`lookup`](Finder::lookup) and [`lookup_coarse`](Finder::lookup_coarse);
 /// `alloc` adds owned/compressed containers (lazy mode) and
-/// [`preload`](Finder::preload) (eager mode); `std` adds
-/// [`from_reader`](Finder::from_reader).
+/// `preload` (eager mode); `std` adds `from_reader`.
 pub struct Finder {
     payload: Payload,
     layout: PayloadLayout,
@@ -544,7 +543,7 @@ impl Finder {
     /// Accurate lookup: grid cell → interior zone (O(1)) or candidates → PIP.
     ///
     /// Zero-copy/lazy Finders test candidates directly off the payload bytes
-    /// (zero alloc); eager ones (after [`preload`](Finder::preload)) scan
+    /// (zero alloc); eager ones (after `preload`) scan
     /// pre-decoded rings.
     #[must_use]
     pub fn lookup(&self, pos: Position) -> Option<&str> {

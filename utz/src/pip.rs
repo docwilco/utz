@@ -26,7 +26,7 @@
 //!
 //! The coordinate storage is a [`CoordPair`]: decoded `(i32, i32)` pairs,
 //! `(i16, i16)` pairs at quant width (i16-quant eager cache and image
-//! sections — half the RAM/flash traffic), or packed [`Pack24`]
+//! sections — half the RAM/flash traffic), or packed `Pack24`
 //! straight over image bytes. The kernel widens each vertex as it loads it;
 //! coordinate comparisons run at the narrow width.
 //!
@@ -62,7 +62,7 @@ pub trait Wide<N>: Copy + PartialOrd + From<N> + Sub<Output = Self> + Mul<Output
 impl<N, W: Copy + PartialOrd + From<N> + Sub<Output = W> + Mul<Output = W>> Wide<N> for W {}
 
 /// Coordinate-pair storage the kernels widen from: pairs are stored at quant
-/// width — i16/i32 as typed tuples, i24 packed ([`Pack24`]).
+/// width — i16/i32 as typed tuples, i24 packed (`Pack24`).
 pub trait CoordPair: Copy {
     /// The narrow in-memory coordinate type; widened to `W` per edge.
     type Narrow: Copy + Ord;
