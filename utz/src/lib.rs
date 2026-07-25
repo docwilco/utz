@@ -22,7 +22,7 @@
 //!
 //! ## How it reads
 //!
-//! Self-describing container (see [`format`](mod@format)) → one generic decoder: grid
+//! Self-describing container (see the `format` module) → one generic decoder: grid
 //! prefilter, then per-polygon integer PIP. Three memory modes, selected by
 //! how the container is loaded: **zero-copy** (uncompressed asset
 //! borrowed from any static source), **lazy** (payload decompressed into

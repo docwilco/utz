@@ -2,7 +2,7 @@
 name = "utz"
 version = "0.0.0"
 edition.workspace = true
-license.workspace = true
+license = "MIT"
 
 # Runtime crate — kept lean / no_std-friendly. geo is a DEV-dependency only
 # (PIP oracle). Codec features: each compiles in the decoder for

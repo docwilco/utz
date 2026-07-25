@@ -19,7 +19,6 @@ exclude = ["utz-bench-firmware"]
 
 [workspace.package]
 edition = "2021"
-license = "MIT"
 repository = "" # TBD
 
 [workspace.dependencies]
