@@ -9,6 +9,17 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Formatting only — no compilation, so no preset assets needed.
+  fmt:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --check
+
   # Preset assets are gitignored and regenerated (PLAN.md §5, §11) — every
   # job that compiles the utz-data-* crates needs them, so generate once and
   # pass them as an artifact.
