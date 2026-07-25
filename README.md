@@ -4,7 +4,7 @@ Tiny, embeddable latitude/longitude → IANA timezone lookup for Rust.
 
 The library is the [`utz`](utz/) crate — its [README](utz/README.md) covers
 features, preset bundles, and usage. Everything else here exists to build,
-measure, or ship the data it reads.
+measure, test, benchmark, or ship the data it reads.
 
 - [Interactive viewer](https://docwilco.github.io/utz/live/) — explore the
   size/accuracy tradeoff on a map
