@@ -72,7 +72,7 @@ pub fn resolve_release(cache_dir: &Path) -> crate::Result<String> {
 
 /// TZBB release asset for a dataset, pinned to `release` (so the bytes and
 /// the header tag can't skew). TZBB naming: the unsuffixed release is the
-/// "Comprehensive" set (`μTZ` `all`); `-1970` = "Same since 1970"; `-now` =
+/// "Comprehensive" set (μTZ `all`); `-1970` = "Same since 1970"; `-now` =
 /// "Same since now"; `with-oceans` selects ocean cover.
 #[must_use]
 pub fn dataset_url(d: Dataset, release: &str) -> String {

@@ -1,4 +1,4 @@
-//! `μTZ` — micro-timezone: tiny, embeddable lat/lon → IANA tzid lookup.
+//! μTZ — micro-timezone: tiny, embeddable lat/lon → IANA tzid lookup.
 //!
 //! - **Tiny** — OSM timezone data down from 60 MB to ~70 KB via shared-arc
 //!   topology, tunable map simplification, integer quantization, and general
@@ -12,7 +12,7 @@
 //!   Or use no compression for direct from flash.
 //! - **DST-correct** — returns the IANA `tzid`; resolve offsets/DST
 //!   downstream with [`jiff`](https://crates.io/crates/jiff) (whose
-//!   compile-time static zones pair well with `μTZ`'s embedded nature) or the
+//!   compile-time static zones pair well with μTZ's embedded nature) or the
 //!   prevalent `chrono-tz`.
 //!
 //! ```ignore
@@ -46,19 +46,19 @@
 //!
 //! ## Inspirations & credits
 //!
-//! `μTZ` stands on the shoulders of three excellent projects — it reuses
+//! μTZ stands on the shoulders of three excellent projects; it reuses
 //! their ideas and pushes on size and embeddability:
 //!
-//! - **[spatialtime](https://github.com/moranbw/spatialtime)** — the crate
-//!   `μTZ` grew out of. The `Reader`-style build-once/query-many API and the
+//! - **[spatialtime](https://github.com/moranbw/spatialtime)**: the crate
+//!   μTZ grew out of. The `Reader`-style build-once/query-many API and the
 //!   compression approach come from here.
-//! - **[rtz](https://github.com/twitchax/rtz)** — the 1°×1° grid prefilter.
-//! - **[tzf-rs](https://github.com/ringsaturn/tzf-rs)** — shared-edge
+//! - **[rtz](https://github.com/twitchax/rtz)**: the 1°×1° grid prefilter.
+//! - **[tzf-rs](https://github.com/ringsaturn/tzf-rs)**: shared-edge
 //!   (topology) boundary deduplication, the grid/preindex fast-path (its
-//!   "Fuzzy" finder, `μTZ`'s `lookup_coarse`), and delta+varint coordinate
+//!   "Fuzzy" finder, μTZ's `lookup_coarse`), and delta+varint coordinate
 //!   encoding.
 //!
-//! Where those ship fixed data tiers, `μTZ` makes the size/accuracy tradeoff
+//! Where those ship fixed data tiers, μTZ makes the size/accuracy tradeoff
 //! a build-time knob and adds general-purpose compression + integer
 //! quantization to go ~10× smaller, with a genuinely `no_std`/
 //! flash-embeddable format.
@@ -200,10 +200,10 @@ pub enum Error {
     /// `DecoderFailed`.
     #[display("byte source ends before the container does (truncated)")]
     Truncated,
-    /// The magic bytes don't match — not a `μTZ` container.
+    /// The magic bytes don't match — not a μTZ container.
     #[display("not a μTZ container (bad magic)")]
     BadMagic,
-    /// A `μTZ` container, but a format version this reader doesn't speak.
+    /// A μTZ container, but a format version this reader doesn't speak.
     #[display("unsupported container version {_0}")]
     UnsupportedVersion(#[error(not(source))] u8),
     /// A payload header field holds an invalid value (quantization bits,

@@ -1,4 +1,4 @@
-//! `μTZ` `accurate` preset asset: dataset `all` (the
+//! μTZ `accurate` preset asset: dataset `all` (the
 //! full Comprehensive zone set), RDP ε=10 m with pop-density weight floor
 //! 1e-1, i32, 0.5° grid, brotli.
 //!
