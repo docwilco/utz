@@ -198,9 +198,9 @@ pub enum Error {
     /// The geometry encoding byte has no compiled-in decoder — enable the
     /// matching `geom-*` feature.
     #[display(
-        "geometry encoding {_0} has no compiled-in decoder (enable the matching geom-* feature)"
+        "geometry encoding {_0:?} has no compiled-in decoder (enable the matching geom-* feature)"
     )]
-    GeometryNotCompiledIn(#[error(not(source))] u8),
+    GeometryNotCompiledIn(#[error(not(source))] GeomEncoding),
 }
 
 /// Shorthand for `Result` with this crate's [`Error`].

@@ -156,7 +156,7 @@ pub fn parse(p: &[u8]) -> Result<PayloadLayout> {
         GeomEncoding::Coarse => cfg!(feature = "geom-coarse"),
     };
     if !compiled {
-        return Err(Error::GeometryNotCompiledIn(h.geom.byte()));
+        return Err(Error::GeometryNotCompiledIn(h.geom));
     }
 
     let str_offsets = PAYLOAD_HEADER_LEN;

@@ -138,14 +138,6 @@ pub enum GeomEncoding {
     Coarse = 3,
 }
 
-impl GeomEncoding {
-    /// The encoding's header byte.
-    #[must_use]
-    pub const fn byte(self) -> u8 {
-        self as u8
-    }
-}
-
 /// Simplification algorithm: selects the simplifier the encoder runs, and
 /// is recorded in the header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
