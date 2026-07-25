@@ -1,4 +1,3 @@
-<!-- generated from utz/src/lib.rs + utz/README.tpl — edit those, not this file -->
 # μTZ — micro-timezone lookup
 
 {{readme}}
