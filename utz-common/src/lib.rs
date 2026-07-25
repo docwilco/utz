@@ -223,6 +223,8 @@ pub enum SimplifyAlgo {
     Rdp = 0,
     Visvalingam = 1,
     ImaiIri = 2,
+    /// No simplification — geometry stored as sourced.
+    None = 3,
 }
 
 impl SimplifyAlgo {
@@ -239,6 +241,7 @@ impl SimplifyAlgo {
             0 => Some(SimplifyAlgo::Rdp),
             1 => Some(SimplifyAlgo::Visvalingam),
             2 => Some(SimplifyAlgo::ImaiIri),
+            3 => Some(SimplifyAlgo::None),
             _ => None,
         }
     }

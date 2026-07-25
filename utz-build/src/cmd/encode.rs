@@ -29,7 +29,7 @@ pub struct Args {
     /// grid cell size in integer degrees
     #[arg(long, default_value_t = 2.0)]
     grid_deg: f64,
-    /// simplification algorithm: rdp|ii (visvalingam: builder API only)
+    /// simplification algorithm: none|rdp|ii (visvalingam: builder API only)
     #[arg(long, default_value = "rdp")]
     algo: String,
     /// geometry encoding: varint|fixed|eager (fixed: +flash, streaming lookups
@@ -58,11 +58,12 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         }
     };
     let simplify = match a.algo.as_str() {
+        "none" => encode::SimplifyAlgo::None,
         "rdp" => encode::SimplifyAlgo::Rdp,
         "ii" | "imai-iri" => encode::SimplifyAlgo::ImaiIri,
         c => {
             return Err(Error::Msg(format!(
-                "unknown algo {c:?}: use rdp|ii (visvalingam needs the builder API)"
+                "unknown algo {c:?}: use none|rdp|ii (visvalingam needs the builder API)"
             )))
         }
     };

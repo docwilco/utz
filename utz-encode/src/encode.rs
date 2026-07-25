@@ -57,6 +57,7 @@ pub use utz_common::{Codec, GeomEncoding, SimplifyAlgo};
 /// for the workaround).
 pub fn to_simplify(algo: SimplifyAlgo, eps_deg: f64) -> crate::Result<utz_simplify::Simplify> {
     Ok(match algo {
+        SimplifyAlgo::None => utz_simplify::Simplify::None,
         SimplifyAlgo::Rdp => utz_simplify::Simplify::Rdp { eps: eps_deg },
         SimplifyAlgo::ImaiIri => utz_simplify::Simplify::ImaiIri { eps: eps_deg },
         SimplifyAlgo::Visvalingam => return Err(Error::VisvalingamEps),
