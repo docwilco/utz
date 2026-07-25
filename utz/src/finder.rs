@@ -168,11 +168,7 @@ pub struct Finder {
 }
 
 impl Finder {
-    /// Load the preset selected by the (single) enabled preset feature.
-    /// Cfg'd out when several presets are in the tree — load explicitly with
-    /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
-    /// `tiny-static` is the zero-copy one (`from_static`, bare `core`); the
-    /// rest are compressed and load lazy (`from_slice`).
+    #[doc = include_str!("doc/preset_new.md")]
     ///
     /// # Errors
     /// As [`Finder::from_slice`] on the baked preset asset.
@@ -188,9 +184,7 @@ impl Finder {
     pub fn new() -> Result<Finder> {
         Finder::from_slice(crate::data::TINY)
     }
-    /// Load the preset selected by the (single) enabled preset feature.
-    /// Cfg'd out when several presets are in the tree — load explicitly with
-    /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
+    #[doc = include_str!("doc/preset_new.md")]
     ///
     /// # Errors
     /// As [`Finder::from_static`] on the baked preset asset.
@@ -206,9 +200,7 @@ impl Finder {
     pub fn new() -> Result<Finder> {
         Finder::from_static(crate::data::TINY_STATIC)
     }
-    /// Load the preset selected by the (single) enabled preset feature.
-    /// Cfg'd out when several presets are in the tree — load explicitly with
-    /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
+    #[doc = include_str!("doc/preset_new.md")]
     ///
     /// # Errors
     /// As [`Finder::from_slice`] on the baked preset asset.
@@ -224,9 +216,7 @@ impl Finder {
     pub fn new() -> Result<Finder> {
         Finder::from_slice(crate::data::COMPACT)
     }
-    /// Load the preset selected by the (single) enabled preset feature.
-    /// Cfg'd out when several presets are in the tree — load explicitly with
-    /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
+    #[doc = include_str!("doc/preset_new.md")]
     ///
     /// # Errors
     /// As [`Finder::from_slice`] on the baked preset asset.
@@ -242,9 +232,7 @@ impl Finder {
     pub fn new() -> Result<Finder> {
         Finder::from_slice(crate::data::BALANCED)
     }
-    /// Load the preset selected by the (single) enabled preset feature.
-    /// Cfg'd out when several presets are in the tree — load explicitly with
-    /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
+    #[doc = include_str!("doc/preset_new.md")]
     ///
     /// # Errors
     /// As [`Finder::from_slice`] on the baked preset asset.
