@@ -79,12 +79,6 @@ pub enum QuantBits {
 }
 
 impl QuantBits {
-    /// The width's header byte (= the bit count).
-    #[must_use]
-    pub const fn byte(self) -> u8 {
-        self as u8
-    }
-
     /// The width in bits.
     #[must_use]
     pub const fn bits(self) -> u32 {
@@ -151,17 +145,6 @@ impl GeomEncoding {
         self as u8
     }
 
-    /// The encoding a header byte names, if any.
-    #[must_use]
-    pub const fn from_byte(byte: u8) -> Option<GeomEncoding> {
-        match byte {
-            0 => Some(GeomEncoding::DeltaVarint),
-            1 => Some(GeomEncoding::Fixed),
-            2 => Some(GeomEncoding::EagerImage),
-            3 => Some(GeomEncoding::Coarse),
-            _ => None,
-        }
-    }
 }
 
 /// Simplification algorithm: selects the simplifier the encoder runs, and
@@ -185,12 +168,6 @@ pub enum SimplifyAlgo {
 }
 
 impl SimplifyAlgo {
-    /// The algorithm's header byte.
-    #[must_use]
-    pub const fn byte(self) -> u8 {
-        self as u8
-    }
-
     /// The algorithm a header byte names, if any.
     #[must_use]
     pub const fn from_byte(byte: u8) -> Option<SimplifyAlgo> {
@@ -236,12 +213,6 @@ pub enum Dataset {
 }
 
 impl Dataset {
-    /// The dataset's header byte.
-    #[must_use]
-    pub const fn byte(self) -> u8 {
-        self as u8
-    }
-
     /// The dataset a header byte names, if any.
     #[must_use]
     pub const fn from_byte(byte: u8) -> Option<Dataset> {
