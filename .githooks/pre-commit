@@ -1,18 +1,21 @@
 #!/bin/bash
 set -e
 
-# utz/README.md is generated from the utz crate docs. Refuse hand edits
-# (they would be overwritten); regenerate when the crate docs changed.
-if ! ./scripts/gen-readme.sh --check 2> /dev/null; then
-  if ! git diff --quiet HEAD -- utz/README.md; then
-    echo "error: utz/README.md was edited by hand, but it is a generated file." >&2
-    echo "Edit the doc comment in utz/src/lib.rs (or utz/README.tpl) instead;" >&2
-    echo "the hook regenerates utz/README.md from those." >&2
-    exit 1
+# Crate READMEs are generated from each crate's top doc comment. Refuse
+# hand edits (they would be overwritten); regenerate when the docs changed.
+for crate in $(./scripts/gen-readme.sh --list); do
+  readme="$crate/README.md"
+  if ! ./scripts/gen-readme.sh --check "$crate" 2> /dev/null; then
+    if ! git diff --quiet HEAD -- "$readme"; then
+      echo "error: $readme was edited by hand, but it is a generated file." >&2
+      echo "Edit the doc comment in $crate/src/lib.rs (or main.rs, or the" >&2
+      echo "crate's README.tpl) instead; the hook regenerates $readme." >&2
+      exit 1
+    fi
+    ./scripts/gen-readme.sh "$crate"
+    git add "$readme"
   fi
-  ./scripts/gen-readme.sh
-  git add utz/README.md
-fi
+done
 
 # Everything CI runs — single source: scripts/checks.sh
 ./scripts/checks.sh all

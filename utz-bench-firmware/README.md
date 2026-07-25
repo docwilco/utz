@@ -1,78 +1,29 @@
-# utz-bench-firmware — μTZ lookup bench on ESP32-S3
+# utz-bench-firmware
 
-Runs the shared `utz-bench-common` harness on real hardware, covering the
-PLAN §15 memory-mode matrix for each preset shape (tiny / compact / balanced):
+μTZ lookup bench on ESP32-S3 — the on-target flash-latency matrix.
 
-- **xip-flash** — uncompressed container borrowed zero-copy from
-  memory-mapped flash (`Finder::from_static`); payload never in RAM.
-- **ram** — the same container copied to heap (`from_vec`): streaming PIP
-  from RAM. Tiny runs twice, once from internal SRAM and once forced into
-  PSRAM, isolating the PSRAM access penalty.
-- **decode** — the preset's compressed asset decoded from flash into heap
-  (`from_slice`); the decode time doubles as a per-codec embedded speed number.
-- **eager** — `from_static` + `preload()`: payload in flash, geometry cache
-  in RAM.
-- **partition** — the tiny-static asset read back out of a dedicated
-  `utzdata` flash partition instead of the app image: the runner script
-  writes it with `espflash write-bin` (see `partitions.csv` +
-  `flash-with-data.sh`), the firmware finds it by label in the ESP-IDF
-  partition table at runtime, sizes the read from the container header, and
-  verifies the bytes against the embedded twin — the ship-the-dataset-
-  separately path.
+Embeds each preset shape (tiny / compact / balanced) twice — the preset's
+compressed asset and its uncompressed twin — and measures every memory
+mode the hardware supports:
 
-The bench uses the same deterministic points as `utz-bench-cli`; every leg's
-printed `checksum` must match the host run for the same shape and npts — a
-cross-platform correctness check as well as a speed number.
+- **xip-flash**: `Finder::from_static` on the uncompressed blob — lookups
+  stream straight out of memory-mapped flash, payload never in RAM.
+- **ram**: the uncompressed container copied into heap (`from_vec`) —
+  streaming PIP from RAM. Small payloads land in internal SRAM; a
+  sacrificial SRAM filler forces a second tiny run into PSRAM, isolating
+  the PSRAM access penalty.
+- **decode**: `from_slice` on the compressed asset — the buffered-decode
+  path (decode time printed separately = per-codec embedded decode speed).
+- **eager**: `from_static` + `preload` — geometry decoded to RAM once,
+  payload stays in flash.
+- **partition**: the same tiny-static asset read back out of a dedicated
+  `utzdata` flash partition (found by label in the ESP-IDF partition
+  table at runtime) instead of the app image — the ship-the-dataset-
+  separately path, e.g. for OTA-ing data without the firmware.
 
-## One-time setup
+Uses the same harness + points as utz-bench-cli: every leg's checksum must
+equal the host run of the same shape at npts=2000.
 
-Xtensa is not in mainline rustc; this crate is excluded from the workspace and
-built with the esp toolchain:
+Setup (once): see README.md. Then `cargo run --release` flashes + monitors.
 
-```sh
-cargo install espup espflash
-espup install            # installs the `esp` toolchain (rust-toolchain.toml picks it up)
-. ~/export-esp.sh        # or add to your shell profile
-```
-
-## The containers
-
-The six embedded blobs are the preset assets plus uncompressed twins of the
-compact/balanced shapes (`from_static` accepts only codec *none*). The
-presets come from the `utz-data-*` crates via `utz` preset features — their
-gitignored assets must exist first:
-
-```sh
-scripts/gen-presets.sh   # writes the utz-data-*/data/*.utz assets
-```
-
-The twins are generated automatically by `build.rs` through the `utz-build`
-consumer builder API (the PLAN §11 custom-tier path, dogfooded) — same
-recipes as `utz-bench-cli/build.rs`. First build fetches TZBB + GHS-POP into
-the workspace `cache/` if not already there.
-
-## Flash + monitor
-
-```sh
-cd utz-bench-firmware
-cargo run --release     # flash-with-data.sh: write-bin the utzdata
-                        # partition, then espflash flash --monitor
-```
-
-The runner uses the custom `partitions.csv` (via `espflash.toml`); offsets
-assume the N16R8's 16 MB flash.
-
-One `RESULT` line per leg (plus `INFO` decode/preload timings and payload
-placement, `SKIP` where a leg doesn't fit the detected memory), then `DONE`.
-Compare against the host at the same point count:
-
-```sh
-cargo run --release -p utz-bench-cli -- tiny 2000   # or compact-none, balanced, …
-```
-
-Note: expect two to three orders of magnitude slower than a desktop — not
-floats (PIP is integer i64; f64 only touches the ~20-op quantize/grid
-boundary, soft-float on the S3's f32-only FPU but negligible) but scalar
-integer throughput: a 240 MHz in-order 32-bit core doing 64-bit math and,
-in streaming modes, per-vertex varint decode. That gap, and how little the
-memory mode matters next to it, is what this firmware exists to measure.
+License: MIT

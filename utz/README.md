@@ -61,9 +61,8 @@ their ideas and pushes on size and embeddability:
   encoding.
 
 Where those ship fixed data tiers, μTZ makes the size/accuracy tradeoff
-a build-time knob and adds general-purpose compression + integer
-quantization to go ~10× smaller, with a genuinely `no_std`/
-flash-embeddable format.
+a build-time knob and adds integer quantization to go ~10× smaller,
+with a genuinely `no_std`/flash-embeddable format.
 
 ## License
 

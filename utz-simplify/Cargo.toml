@@ -11,6 +11,7 @@ publish = false
 # utz-encode/Cargo.toml):
 #   cargo rustc -p utz-simplify --release --target wasm32-unknown-unknown --crate-type cdylib
 [lib]
+path = "src/lib.rs" # explicit: cargo-readme cannot infer the default
 crate-type = ["lib"]
 
 [dependencies]

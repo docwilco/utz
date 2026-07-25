@@ -13,6 +13,7 @@ publish = false
 # collide when the workspace builds utz-encode twice: as a member and as a
 # build-dependency via utz-bench-cli's build.rs → utz-build)
 [lib]
+path = "src/lib.rs" # explicit: cargo-readme cannot infer the default
 crate-type = ["lib"]
 
 [features]
