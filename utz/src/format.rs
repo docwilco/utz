@@ -5,6 +5,9 @@
 //! payload (no self-referential slices), so the same code serves borrowed
 //! (`&'static`, zero-copy) and owned buffers.
 
+use zerocopy::byteorder::{LittleEndian, F32, U16, U32};
+use zerocopy::{FromBytes, Immutable, KnownLayout, Unaligned};
+
 use crate::{Error, Result};
 
 // on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
@@ -13,9 +16,67 @@ pub const MAGIC: [u8; 4] = *b"uTZ1";
 pub const VERSION: u8 = 7; // v7: flags byte + image coords at quant width
                            // (i24 packed, optional ring alignment); v6 12-byte
                            // outer + EagerImage; v5 bbox; v4 poly grid; v3 geom
-/// Outer container header length (v6): magic4 + version + codec + `raw_len` u32
-/// + 2 reserved bytes so a 4-aligned container gives a 4-aligned payload.
-pub const OUTER_LEN: usize = 12;
+/// Outer container header length (v6): 2 reserved bytes so a 4-aligned
+/// container gives a 4-aligned payload.
+pub const OUTER_LEN: usize = core::mem::size_of::<OuterHeader>();
+
+/// The outer container header.
+#[derive(FromBytes, KnownLayout, Immutable, Unaligned)]
+#[repr(C)]
+struct OuterHeader {
+    magic: [u8; 4],
+    version: u8,
+    codec: u8,
+    raw_len: U32<LittleEndian>,
+    reserved: [u8; 2],
+}
+
+/// The payload's fixed prefix; the TZBB release string
+/// (`release_len` bytes) and then the section directory follow it.
+#[derive(FromBytes, KnownLayout, Immutable, Unaligned)]
+#[repr(C)]
+struct PayloadPrefix {
+    dataset: u8,
+    quant_bits: u8,
+    simplify_algo: u8,
+    geom: u8,
+    flags: u8,
+    grid_deg: F32<LittleEndian>,
+    eps_m: F32<LittleEndian>,
+    release_len: u8,
+}
+
+/// The section directory: feature count, section offsets, eager-cache
+/// reservation counts.
+#[derive(FromBytes, KnownLayout, Immutable, Unaligned)]
+#[repr(C)]
+struct SectionDirectory {
+    n_features: U16<LittleEndian>,
+    arcs_off: U32<LittleEndian>,
+    rings_off: U32<LittleEndian>,
+    grid_off: U32<LittleEndian>,
+    eager_coords: U32<LittleEndian>,
+    eager_rings: U32<LittleEndian>,
+    eager_polys: U32<LittleEndian>,
+}
+
+/// The grid section's head; the primary cell table follows it.
+#[derive(FromBytes, KnownLayout, Immutable, Unaligned)]
+#[repr(C)]
+struct GridHeader {
+    ncols: U16<LittleEndian>,
+    nrows: U16<LittleEndian>,
+}
+
+/// The record of type `T` starting at `pos`, bounds-checked.
+fn record_at<T: FromBytes + KnownLayout + Immutable + Unaligned>(
+    p: &[u8],
+    pos: usize,
+) -> Result<&T> {
+    let bytes = p.get(pos..).ok_or(Error::SectionOverrun)?;
+    let (record, _) = T::ref_from_prefix(bytes).map_err(|_| Error::SectionOverrun)?;
+    Ok(record)
+}
 
 /// Parsed header: every section position needed for O(1) access.
 #[derive(Clone, Copy)]
@@ -122,16 +183,14 @@ pub fn unzigzag(v: u64) -> i64 {
 /// [`Error::Truncated`] / [`Error::BadMagic`] / [`Error::UnsupportedVersion`]
 /// if the bytes are too short or the magic/version don't match.
 pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize)> {
-    if bytes.len() < OUTER_LEN {
-        return Err(Error::Truncated);
-    }
-    if bytes[0..4] != MAGIC {
+    let (header, _) = OuterHeader::ref_from_prefix(bytes).map_err(|_| Error::Truncated)?;
+    if header.magic != MAGIC {
         return Err(Error::BadMagic);
     }
-    if bytes[4] != VERSION {
-        return Err(Error::UnsupportedVersion(bytes[4]));
+    if header.version != VERSION {
+        return Err(Error::UnsupportedVersion(header.version));
     }
-    Ok((bytes[5], read_u32(bytes, 6) as usize, OUTER_LEN))
+    Ok((header.codec, header.raw_len.get() as usize, OUTER_LEN))
 }
 
 /// Parse the payload header + section directory.
@@ -142,13 +201,9 @@ pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize)> {
 /// [`Error::GeometryNotCompiledIn`] if the geometry encoding has no
 /// compiled-in decoder.
 pub fn parse(p: &[u8]) -> Result<Header> {
-    need(p, 14)?;
-    let dataset = p[0];
-    let quant_bits = p[1];
-    let simplify_algo = p[2];
-    let geom = p[3];
-    let flags = p[4];
-    let grid_deg = f32::from_le_bytes([p[5], p[6], p[7], p[8]]);
+    let prefix: &PayloadPrefix = record_at(p, 0)?;
+    let (geom, quant_bits, flags) = (prefix.geom, prefix.quant_bits, prefix.flags);
+    let grid_deg = prefix.grid_deg.get();
     if !matches!(quant_bits, 16 | 24 | 32)
         || geom > 3
         || flags != 0
@@ -167,21 +222,19 @@ pub fn parse(p: &[u8]) -> Result<Header> {
     if !compiled {
         return Err(Error::GeometryNotCompiledIn(geom));
     }
-    let eps_m = f32::from_le_bytes([p[9], p[10], p[11], p[12]]);
-    let rel_len = p[13] as usize;
-    let mut pos = 14 + rel_len; // tzbb_release skipped (read via header_release)
-    need(p, pos + 26)?;
-    let n_features = read_u16(p, pos);
-    pos += 2;
-    let arcs_off = read_u32(p, pos) as usize;
-    let rings_off = read_u32(p, pos + 4) as usize;
-    let grid_off = read_u32(p, pos + 8) as usize;
-    let eager_coords = read_u32(p, pos + 12);
-    let eager_rings = read_u32(p, pos + 16);
-    let eager_polys = read_u32(p, pos + 20);
-    pos += 24;
+    // the release string sits between the prefix and the directory
+    // (skipped here; read via release())
+    let pos = core::mem::size_of::<PayloadPrefix>() + prefix.release_len as usize;
+    let directory: &SectionDirectory = record_at(p, pos)?;
+    let n_features = directory.n_features.get();
+    let arcs_off = directory.arcs_off.get() as usize;
+    let rings_off = directory.rings_off.get() as usize;
+    let grid_off = directory.grid_off.get() as usize;
+    let eager_coords = directory.eager_coords.get();
+    let eager_rings = directory.eager_rings.get();
+    let eager_polys = directory.eager_polys.get();
 
-    let str_offsets = pos;
+    let str_offsets = pos + core::mem::size_of::<SectionDirectory>();
     let pool = str_offsets + (n_features as usize + 1) * 2;
 
     let n_polys = eager_polys as usize;
@@ -192,10 +245,9 @@ pub fn parse(p: &[u8]) -> Result<Header> {
         _ => arc_sections(p, arcs_off, parent, n_polys)?,
     };
 
-    need(p, grid_off + 4)?;
-    let ncols = read_u16(p, grid_off);
-    let nrows = read_u16(p, grid_off + 2);
-    let primary = grid_off + 4;
+    let grid: &GridHeader = record_at(p, grid_off)?;
+    let (ncols, nrows) = (grid.ncols.get(), grid.nrows.get());
+    let primary = grid_off + core::mem::size_of::<GridHeader>();
     let after_primary = primary + ncols as usize * nrows as usize * 2;
     need(p, after_primary + 2)?;
     let uniq = read_u16(p, after_primary);
@@ -204,13 +256,13 @@ pub fn parse(p: &[u8]) -> Result<Header> {
     need(p, list_ids)?;
 
     Ok(Header {
-        dataset,
+        dataset: prefix.dataset,
         quant_bits,
         geom,
         flags,
-        simplify_algo,
+        simplify_algo: prefix.simplify_algo,
         grid_deg,
-        eps_m,
+        eps_m: prefix.eps_m.get(),
         n_features,
         str_offsets,
         pool,
