@@ -156,17 +156,19 @@ impl QuantBits {
 
 wire_byte!(QuantBits, "invalid quant_bits header byte");
 
-/// Arc-store encoding, recorded in the header.
-/// `DeltaVarint` is the flash-size default. `Fixed` stores
-/// absolute fixed-width coords: raw arcs +40–72%, best-compressed +24–32%
-/// (xz overtakes brotli) — bought: streaming lookups skip the per-vertex
-/// varint decode, the dominant cost on embedded (near-eager speed, zero
-/// RAM), so it suits XIP `-static` assets.
+/// Geometry encoding, recorded in the header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum GeomEncoding {
+    /// Shared arcs as delta + zigzag-varint streams — the flash-size
+    /// default.
     #[default]
     DeltaVarint = 0,
+    /// Shared arcs as absolute fixed-width coords: raw arcs +40–72%,
+    /// best-compressed +24–32% (xz overtakes brotli) — bought: streaming
+    /// lookups skip the per-vertex varint decode, the dominant cost on
+    /// embedded (near-eager speed, zero RAM), so it suits XIP `-static`
+    /// assets.
     Fixed = 1,
     /// The geometry section IS the preload cache: flattened per-ring
     /// `(i32, i32)` runs + ring/poly index tables, 4-aligned — the slice
