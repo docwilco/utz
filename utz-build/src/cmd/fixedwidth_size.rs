@@ -17,8 +17,9 @@
 //!     utz-build fixedwidth-size \
 //!         utz-data-tiny-static/data/tiny-static.utz <compact-none.utz> ...
 
-use utz::format::{self, fixed_bytes, read_fixed, read_u16, read_u32, read_varint, unzigzag};
+use utz::format::{self, read_fixed, read_u16, read_u32, read_varint, unzigzag};
 use utz_build::encode::{compress, Codec};
+use utz_common::GeomEncoding;
 
 fn write_varint(mut v: u64, out: &mut Vec<u8>) {
     loop {
@@ -37,8 +38,8 @@ fn write_fixed(v: i32, fb: usize, out: &mut Vec<u8>) {
 }
 
 /// Decode one arc (forward orientation) into (i32, i32) coords.
-fn arc_coords(payload: &[u8], header: &format::Header, id: usize) -> Vec<(i32, i32)> {
-    let coord_bytes = fixed_bytes(header.quant_bits);
+fn arc_coords(payload: &[u8], header: &format::PayloadLayout, id: usize) -> Vec<(i32, i32)> {
+    let coord_bytes = header.quant_bits.bytes();
     let mut pos = header.arc_data + read_u32(payload, header.arc_offsets + id * 4) as usize;
     let (vcount, after_vcount) = read_varint(payload, pos);
     pos = after_vcount;
@@ -77,8 +78,11 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         assert_eq!(codec, 0, "{path}: need a codec-none container");
         let p = &bytes[start..];
         let h = format::parse(p).unwrap();
-        assert!(h.geom <= 1, "arc-store containers only (geom 0/1)");
-        let fb = fixed_bytes(h.quant_bits);
+        assert!(
+            matches!(h.geom, GeomEncoding::DeltaVarint | GeomEncoding::Fixed),
+            "arc-store containers only (geom 0/1)"
+        );
+        let fb = h.quant_bits.bytes();
         let arcs_off = h.arc_offsets; // the arc block starts at its offsets table
         let grid_block = h.primary; // the grid starts at its primary cell table
 
@@ -115,7 +119,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
 
 /// Variant A: the arc store rewritten as absolute fixed-width coords,
 /// everything else unchanged.
-fn variant_fixed_arcs(p: &[u8], h: &format::Header, fb: usize, arcs_off: usize) -> Vec<u8> {
+fn variant_fixed_arcs(p: &[u8], h: &format::PayloadLayout, fb: usize, arcs_off: usize) -> Vec<u8> {
     let mut a_offsets: Vec<u32> = Vec::with_capacity(h.n_arcs as usize + 1);
     let mut a_data: Vec<u8> = Vec::new();
     for id in 0..h.n_arcs as usize {
@@ -142,7 +146,7 @@ fn variant_fixed_arcs(p: &[u8], h: &format::Header, fb: usize, arcs_off: usize) 
 /// `preload()` cache image), grid unchanged.
 fn variant_eager_image(
     p: &[u8],
-    h: &format::Header,
+    h: &format::PayloadLayout,
     fb: usize,
     arcs_off: usize,
     grid_block: usize,

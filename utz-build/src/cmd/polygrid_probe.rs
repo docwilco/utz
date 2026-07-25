@@ -16,18 +16,19 @@
 //!
 //!     utz-build polygrid-probe <none.utz>...
 
-use utz::format::{self, fixed_bytes, read_fixed, read_u16, read_u32, read_varint, unzigzag};
+use utz::format::{self, read_fixed, read_u16, read_u32, read_varint, unzigzag};
 use utz_build::grid::{self, Order};
 use utz_build::Feat;
+use utz_common::GeomEncoding;
 
 /// Decode one arc (forward orientation) into (i32, i32) coords.
-fn arc_coords(payload: &[u8], header: &format::Header, id: usize) -> Vec<(i32, i32)> {
-    let coord_bytes = fixed_bytes(header.quant_bits);
+fn arc_coords(payload: &[u8], header: &format::PayloadLayout, id: usize) -> Vec<(i32, i32)> {
+    let coord_bytes = header.quant_bits.bytes();
     let mut pos = header.arc_data + read_u32(payload, header.arc_offsets + id * 4) as usize;
     let (vcount, after_vcount) = read_varint(payload, pos);
     pos = after_vcount;
     let mut coords = Vec::with_capacity(usize::try_from(vcount).expect("vcount fits usize"));
-    if header.geom == 1 {
+    if header.geom == GeomEncoding::Fixed {
         for _ in 0..vcount {
             coords.push((
                 read_fixed(payload, pos, header.quant_bits),
@@ -54,17 +55,20 @@ fn arc_coords(payload: &[u8], header: &format::Header, id: usize) -> Vec<(i32, i
 }
 
 /// Container → per-feature dequantized geometry (same dq as the encoder).
-fn load_feats(bytes: &[u8]) -> (format::Header, Vec<Feat>) {
+fn load_feats(bytes: &[u8]) -> (format::PayloadLayout, Vec<Feat>) {
     let (codec, _, start) = format::outer(bytes).expect("not a utz container");
     assert_eq!(codec, 0, "need a codec-none container");
     let p = &bytes[start..];
     let h = format::parse(p).unwrap();
-    assert!(h.geom <= 1, "arc-store containers only (geom 0/1)");
+    assert!(
+        matches!(h.geom, GeomEncoding::DeltaVarint | GeomEncoding::Fixed),
+        "arc-store containers only (geom 0/1)"
+    );
     #[expect(
         clippy::cast_precision_loss,
         reason = "qmax = 2^(bits-1)-1 < 2^31, exact in f64"
     )]
-    let qmax = ((1u64 << (h.quant_bits - 1)) - 1) as f64;
+    let qmax = ((1u64 << (h.quant_bits.bits() - 1)) - 1) as f64;
     let dq = |v: i32, half: f64| f64::from(v) / qmax * half;
     let mut feats: Vec<Feat> = (0..h.n_features)
         .map(|_| Feat {
@@ -73,7 +77,7 @@ fn load_feats(bytes: &[u8]) -> (format::Header, Vec<Feat>) {
             polys: Vec::new(),
         })
         .collect();
-    let fb = fixed_bytes(h.quant_bits);
+    let fb = h.quant_bits.bytes();
     for pid in 0..h.eager_polys as usize {
         let fi = read_u16(p, h.parent + pid * 2) as usize;
         let mut pos = h.ring_data + read_u32(p, h.poly_offsets + pid * 4) as usize;
@@ -152,7 +156,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         let bytes = std::fs::read(path)?;
         let (h, feats) = load_feats(&bytes);
         let deg = f64::from(h.grid_deg);
-        let fb = fixed_bytes(h.quant_bits);
+        let fb = h.quant_bits.bytes();
         let npolys: usize = feats.iter().map(|f| f.polys.len()).sum();
         let polys_per_feat: Vec<usize> = feats.iter().map(|f| f.polys.len()).collect();
 

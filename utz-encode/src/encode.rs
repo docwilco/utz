@@ -26,7 +26,7 @@
 //! PIPs is exactly what the grid indexed.
 
 use scroll::{Pwrite, LE};
-use utz_common::{PayloadHeader, PAYLOAD_HEADER_LEN};
+use utz_common::{Dataset, PayloadHeader, QuantBits, PAYLOAD_HEADER_LEN};
 pub use utz_common::{MAGIC, VERSION};
 
 use crate::error::ensure;
@@ -47,64 +47,20 @@ fn c16(n: usize) -> u16 {
     u16::try_from(n).expect("exceeds u16 format width")
 }
 
-pub use utz_common::Codec;
+pub use utz_common::{Codec, GeomEncoding, SimplifyAlgo};
 
-/// Simplification algorithm recorded in the header and applied by
-/// [`build_payload`]. RDP is the default; Imai–Iri gives provably minimum
-/// vertices for the same ε bound (slower encode). Visvalingam has an area
-/// knob, not ε — reachable via `topo::build_topology_algo`, not this byte's
-/// eps-driven pipeline.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
-#[repr(u8)]
-pub enum SimplifyAlgo {
-    #[default]
-    Rdp = 0,
-    Visvalingam = 1,
-    ImaiIri = 2,
-}
-
-/// Arc-store encoding, recorded in the header.
-/// `DeltaVarint` is the flash-size default. `Fixed` stores
-/// absolute fixed-width coords: raw arcs +40–72%, best-compressed +24–32%
-/// (xz overtakes brotli) — bought: streaming lookups skip the per-vertex
-/// varint decode, the dominant cost on embedded (near-eager speed, zero
-/// RAM), so it suits XIP `-static` assets.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
-#[repr(u8)]
-pub enum GeomEncoding {
-    #[default]
-    DeltaVarint = 0,
-    Fixed = 1,
-    /// The geometry section IS the preload cache: flattened per-ring
-    /// `(i32, i32)` runs + ring/poly index tables, 4-aligned — the slice
-    /// kernels run straight off flash (`from_static`: eager speed, zero RAM,
-    /// zero boot) or straight off the decompressed buffer (`from_slice`:
-    /// no preload pass). No arc store; shared arcs duplicated per ring:
-    /// raw ~4.1–4.3× the varint payload, best-compressed +61–94% (xz).
-    EagerImage = 2,
-    /// Grid-only asset: header + tzid pool + parent + grid, no
-    /// geometry at all. `lookup()` answers at cell precision (== the
-    /// dominant-first coarse answer) — precision is an asset property, like
-    /// `eps_m`. Smallest flash by far (~⅓ of even the varint payload for
-    /// tiny); endianness-independent; the `geom-coarse` reader compiles no
-    /// PIP code.
-    Coarse = 3,
-}
-
-impl SimplifyAlgo {
-    /// ε-driven `Simplify` for the topology builder.
-    ///
-    /// # Errors
-    ///
-    /// `Visvalingam` is rejected: its knob is an area, not ε (see the message
-    /// for the workaround).
-    pub fn to_simplify(self, eps_deg: f64) -> crate::Result<utz_simplify::Simplify> {
-        Ok(match self {
-            SimplifyAlgo::Rdp => utz_simplify::Simplify::Rdp { eps: eps_deg },
-            SimplifyAlgo::ImaiIri => utz_simplify::Simplify::ImaiIri { eps: eps_deg },
-            SimplifyAlgo::Visvalingam => return Err(Error::VisvalingamEps),
-        })
-    }
+/// ε-driven `Simplify` for the topology builder.
+///
+/// # Errors
+///
+/// `Visvalingam` is rejected: its knob is an area, not ε (see the message
+/// for the workaround).
+pub fn to_simplify(algo: SimplifyAlgo, eps_deg: f64) -> crate::Result<utz_simplify::Simplify> {
+    Ok(match algo {
+        SimplifyAlgo::Rdp => utz_simplify::Simplify::Rdp { eps: eps_deg },
+        SimplifyAlgo::ImaiIri => utz_simplify::Simplify::ImaiIri { eps: eps_deg },
+        SimplifyAlgo::Visvalingam => return Err(Error::VisvalingamEps),
+    })
 }
 
 pub struct Params<'a> {
@@ -160,10 +116,10 @@ pub fn encode(feats: &[Feat], p: &Params) -> crate::Result<Vec<u8>> {
 ///
 /// # Errors
 ///
-/// `p.simplify == Visvalingam` (see [`SimplifyAlgo::to_simplify`]); otherwise
+/// `p.simplify == Visvalingam` (see [`to_simplify`]); otherwise
 /// as [`payload_from_topology`].
 pub fn build_payload(feats: &[Feat], p: &Params) -> crate::Result<Vec<u8>> {
-    let algo = p.simplify.to_simplify(p.eps_m / 111_320.0)?;
+    let algo = to_simplify(p.simplify, p.eps_m / 111_320.0)?;
     let t = topo::build_topology_algo(feats, algo);
     Ok(payload_from_topology(&t, &t.arc_coords, feats, p)?.0)
 }
@@ -225,43 +181,15 @@ pub fn payload_from_topology(
     let mut o = vec![0u8; PAYLOAD_HEADER_LEN];
     stats.header = c32(o.len());
     write_zone_table(&mut o, feats)?;
-
-    let (arcs_off, rings_off);
-    if p.geom == GeomEncoding::Coarse {
-        // ---- coarse (geom=3): no geometry sections, just the parent table
-        // (border-cell candidate poly ids still resolve to features) ----
-        arcs_off = c32(o.len());
-        stats.zones = arcs_off - stats.header;
-        rings_off = c32(o.len());
-        for &pf in &parent {
-            o.extend_from_slice(&pf.to_le_bytes());
-        }
-    } else if let Some(img) = &image {
-        // ---- eager-image geometry (geom=2): coords 4-aligned within the
-        // payload (the 12-byte outer header keeps it 4-aligned in flash) ----
-        while !o.len().is_multiple_of(4) {
-            o.push(0);
-        }
-        arcs_off = c32(o.len());
-        stats.zones = arcs_off - stats.header;
-        write_image(&mut o, img, p.quant_bits);
-        // ---- ring index reduces to the parent table ----
-        rings_off = c32(o.len());
-        stats.arcs = rings_off - arcs_off;
-        for &pf in &parent {
-            o.extend_from_slice(&pf.to_le_bytes());
-        }
-    } else {
-        arcs_off = c32(o.len());
-        stats.zones = arcs_off - stats.header;
-        write_arc_store(&mut o, &geom.arcs_q, p.geom, p.quant_bits);
-        rings_off = c32(o.len());
-        stats.arcs = rings_off - arcs_off;
-        for &pf in &parent {
-            o.extend_from_slice(&pf.to_le_bytes());
-        }
-        write_ring_index(&mut o, &geom, feats.len(), parent.len(), p.quant_bits);
-    }
+    let (arcs_off, rings_off) = write_geometry_sections(
+        &mut o,
+        p,
+        &geom,
+        image.as_ref(),
+        &parent,
+        feats.len(),
+        &mut stats,
+    );
 
     let grid_off = c32(o.len());
     stats.rings = grid_off - rings_off;
@@ -294,10 +222,13 @@ pub fn payload_from_topology(
         uniq: c16(csr.uniq_lists),
         release_len: c16(p.tzbb_release.len()),
         flags: 0, // reserved
-        dataset: p.dataset,
-        quant_bits: u8::try_from(p.quant_bits).expect("quant_bits guarded to 16/24/32"),
-        simplify_algo: p.simplify as u8,
-        geom: p.geom as u8,
+        dataset: Dataset::from_byte(p.dataset).expect("guarded by ensure_header_limits"),
+        quant_bits: QuantBits::from_byte(
+            u8::try_from(p.quant_bits).expect("quant_bits guarded to 16/24/32"),
+        )
+        .expect("quant_bits guarded to 16/24/32"),
+        simplify_algo: p.simplify,
+        geom: p.geom,
     };
     o.pwrite_with(header, 0, LE)
         .expect("header buffer reserved at PAYLOAD_HEADER_LEN");
@@ -510,6 +441,56 @@ fn eager_counts(
     }
 }
 
+/// The geometry-dependent sections between the zone table and the grid;
+/// returns `(arcs_off, rings_off)`.
+fn write_geometry_sections(
+    o: &mut Vec<u8>,
+    p: &Params,
+    geom: &CleanGeom,
+    image: Option<&EagerImage>,
+    parent: &[u16],
+    n_features: usize,
+    stats: &mut PayloadStats,
+) -> (u32, u32) {
+    let (arcs_off, rings_off);
+    if p.geom == GeomEncoding::Coarse {
+        // ---- coarse (geom=3): no geometry sections, just the parent table
+        // (border-cell candidate poly ids still resolve to features) ----
+        arcs_off = c32(o.len());
+        stats.zones = arcs_off - stats.header;
+        rings_off = c32(o.len());
+        for &pf in parent {
+            o.extend_from_slice(&pf.to_le_bytes());
+        }
+    } else if let Some(img) = image {
+        // ---- eager-image geometry (geom=2): coords 4-aligned within the
+        // payload (the 12-byte outer header keeps it 4-aligned in flash) ----
+        while !o.len().is_multiple_of(4) {
+            o.push(0);
+        }
+        arcs_off = c32(o.len());
+        stats.zones = arcs_off - stats.header;
+        write_image(o, img, p.quant_bits);
+        // ---- ring index reduces to the parent table ----
+        rings_off = c32(o.len());
+        stats.arcs = rings_off - arcs_off;
+        for &pf in parent {
+            o.extend_from_slice(&pf.to_le_bytes());
+        }
+    } else {
+        arcs_off = c32(o.len());
+        stats.zones = arcs_off - stats.header;
+        write_arc_store(o, &geom.arcs_q, p.geom, p.quant_bits);
+        rings_off = c32(o.len());
+        stats.arcs = rings_off - arcs_off;
+        for &pf in parent {
+            o.extend_from_slice(&pf.to_le_bytes());
+        }
+        write_ring_index(o, geom, n_features, parent.len(), p.quant_bits);
+    }
+    (arcs_off, rings_off)
+}
+
 /// Format-limit guards for the header fields (the header itself is written
 /// by `Pwrite` at the end of `payload_from_topology`, once offsets exist).
 fn ensure_header_limits(p: &Params, counts: (u64, u32, u32), n_parent: usize) -> crate::Result<()> {
@@ -536,6 +517,14 @@ fn ensure_header_limits(p: &Params, counts: (u64, u32, u32), n_parent: usize) ->
             what: "tzbb_release bytes",
             n: p.tzbb_release.len(),
             max: u16::MAX as usize
+        }
+    );
+    ensure!(
+        Dataset::from_byte(p.dataset).is_some(),
+        Error::FormatLimit {
+            what: "dataset byte (vintage 0-2, land-only bit)",
+            n: p.dataset as usize,
+            max: 0b110
         }
     );
     Ok(())

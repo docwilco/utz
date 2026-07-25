@@ -7,7 +7,9 @@
 //! (`&'static`, zero-copy) and owned buffers.
 
 use scroll::Pread;
-use utz_common::{PayloadHeader, PAYLOAD_HEADER_LEN};
+use utz_common::{
+    Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo, PAYLOAD_HEADER_LEN,
+};
 pub use utz_common::{MAGIC, VERSION};
 
 use crate::{Error, Result};
@@ -18,17 +20,14 @@ pub const OUTER_LEN: usize = 12;
 
 /// Parsed header: every section position needed for O(1) access.
 #[derive(Clone, Copy)]
-pub struct Header {
-    pub dataset: u8,
-    pub quant_bits: u8,
-    /// geometry encoding: 0 = delta+varint arcs, 1 = fixed-width arcs,
-    /// 2 = `EagerImage` (flattened per-ring coords at quant width, no arc store)
-    pub geom: u8,
+pub struct PayloadLayout {
+    pub dataset: Dataset,
+    pub quant_bits: QuantBits,
+    pub geom: GeomEncoding,
     /// reserved, must be zero (room for future format flags)
     pub flags: u16,
-    /// simplification algorithm the asset was built with:
-    /// 0 = RDP, 1 = Visvalingam, 2 = Imai–Iri — provenance, not decode logic
-    pub simplify_algo: u8,
+    /// provenance, not decode logic
+    pub simplify_algo: SimplifyAlgo,
     /// cell size in degrees — fractional (e.g. 0.5) allowed
     pub grid_deg: f32,
     pub eps_m: f32,
@@ -78,10 +77,10 @@ pub fn read_u32(b: &[u8], pos: usize) -> u32 {
 
 /// Fixed-width signed coord: 2/3/4 bytes little-endian, sign-extended.
 #[must_use]
-pub fn read_fixed(b: &[u8], pos: usize, qbits: u8) -> i32 {
-    match qbits {
-        16 => i32::from(read_u16(b, pos).cast_signed()),
-        24 => {
+pub fn read_fixed(b: &[u8], pos: usize, quant_bits: QuantBits) -> i32 {
+    match quant_bits {
+        QuantBits::Bits16 => i32::from(read_u16(b, pos).cast_signed()),
+        QuantBits::Bits24 => {
             let v =
                 i32::from(b[pos]) | (i32::from(b[pos + 1]) << 8) | (i32::from(b[pos + 2]) << 16);
             if v & 0x0080_0000 != 0 {
@@ -90,12 +89,8 @@ pub fn read_fixed(b: &[u8], pos: usize, qbits: u8) -> i32 {
                 v
             }
         }
-        _ => read_u32(b, pos).cast_signed(),
+        QuantBits::Bits32 => read_u32(b, pos).cast_signed(),
     }
-}
-#[must_use]
-pub const fn fixed_bytes(qbits: u8) -> usize {
-    (qbits as usize).div_ceil(8)
 }
 
 /// Varint; returns (value, `next_pos`).
@@ -143,27 +138,25 @@ pub fn outer(bytes: &[u8]) -> Result<(u8, usize, usize)> {
 /// [`Error::SectionOverrun`] for a section overrunning the payload;
 /// [`Error::GeometryNotCompiledIn`] if the geometry encoding has no
 /// compiled-in decoder.
-pub fn parse(p: &[u8]) -> Result<Header> {
-    let h: PayloadHeader = p
-        .pread_with(0, scroll::LE)
-        .map_err(|_| Error::SectionOverrun)?;
-    if !matches!(h.quant_bits, 16 | 24 | 32)
-        || h.geom > 3
-        || h.flags != 0
-        || h.grid_deg.is_nan()
-        || h.grid_deg <= 0.0
-    {
+pub fn parse(p: &[u8]) -> Result<PayloadLayout> {
+    // an invalid enum byte (quant_bits/geom/simplify_algo/dataset) fails the
+    // header read itself as BadInput; running out of bytes is an overrun
+    let h: PayloadHeader = p.pread_with(0, scroll::LE).map_err(|source| match source {
+        scroll::Error::BadInput { .. } => Error::InvalidHeaderField,
+        _ => Error::SectionOverrun,
+    })?;
+    if h.flags != 0 || h.grid_deg.is_nan() || h.grid_deg <= 0.0 {
         return Err(Error::InvalidHeaderField);
     }
     // a valid geom byte whose decoder isn't compiled in is refused loudly
     let compiled = match h.geom {
-        0 => cfg!(feature = "geom-varint"),
-        1 => cfg!(feature = "geom-fixed"),
-        2 => cfg!(feature = "geom-image"),
-        _ => cfg!(feature = "geom-coarse"),
+        GeomEncoding::DeltaVarint => cfg!(feature = "geom-varint"),
+        GeomEncoding::Fixed => cfg!(feature = "geom-fixed"),
+        GeomEncoding::EagerImage => cfg!(feature = "geom-image"),
+        GeomEncoding::Coarse => cfg!(feature = "geom-coarse"),
     };
     if !compiled {
-        return Err(Error::GeometryNotCompiledIn(h.geom));
+        return Err(Error::GeometryNotCompiledIn(h.geom.byte()));
     }
 
     let str_offsets = PAYLOAD_HEADER_LEN;
@@ -172,8 +165,8 @@ pub fn parse(p: &[u8]) -> Result<Header> {
     let n_polys = h.eager_polys as usize;
     let (arcs_off, parent) = (h.arcs_off as usize, h.rings_off as usize);
     let sections = match h.geom {
-        3 => coarse_sections(p, parent, n_polys)?,
-        2 => image_sections(
+        GeomEncoding::Coarse => coarse_sections(p, parent, n_polys)?,
+        GeomEncoding::EagerImage => image_sections(
             p,
             h.quant_bits,
             arcs_off,
@@ -181,7 +174,9 @@ pub fn parse(p: &[u8]) -> Result<Header> {
             h.eager_coords,
             h.eager_rings,
         )?,
-        _ => arc_sections(p, arcs_off, parent, n_polys, h.n_arcs)?,
+        GeomEncoding::DeltaVarint | GeomEncoding::Fixed => {
+            arc_sections(p, arcs_off, parent, n_polys, h.n_arcs)?
+        }
     };
 
     let primary = h.grid_off as usize;
@@ -191,7 +186,7 @@ pub fn parse(p: &[u8]) -> Result<Header> {
     let (release_off, release_len) = (h.release_off as usize, h.release_len as usize);
     need(p, release_off + release_len)?;
 
-    Ok(Header {
+    Ok(PayloadLayout {
         dataset: h.dataset,
         quant_bits: h.quant_bits,
         geom: h.geom,
@@ -234,7 +229,7 @@ fn need(p: &[u8], end: usize) -> Result<()> {
     }
 }
 
-/// Geometry-dependent section offsets for [`Header`]; the fields a given
+/// Geometry-dependent section offsets for [`PayloadLayout`]; the fields a given
 /// encoding doesn't use stay at [`GeometrySections::NONE`]'s markers.
 struct GeometrySections {
     n_arcs: u32,
@@ -273,7 +268,7 @@ fn coarse_sections(p: &[u8], parent: usize, n_polys: usize) -> Result<GeometrySe
 /// the v6 12-byte outer header preserves it in flash).
 fn image_sections(
     p: &[u8],
-    quant_bits: u8,
+    quant_bits: QuantBits,
     img_coords: usize,
     n_polys: usize,
     eager_coords: u32,
@@ -283,7 +278,7 @@ fn image_sections(
         return Err(Error::ImageSectionMisaligned);
     }
     // coords at quant width (v7): 4 / 6 / 8 bytes per vertex
-    let vertex_bytes = 2 * fixed_bytes(quant_bits);
+    let vertex_bytes = 2 * quant_bits.bytes();
     let img_ring_ends = img_coords + eager_coords as usize * vertex_bytes;
     let img_polys = img_ring_ends + eager_rings as usize * 4;
     need(p, img_polys + n_polys * 20)?;
@@ -326,6 +321,6 @@ fn arc_sections(
 
 /// TZBB release string recorded in the header.
 #[must_use]
-pub fn release<'p>(h: &Header, p: &'p [u8]) -> &'p [u8] {
+pub fn release<'p>(h: &PayloadLayout, p: &'p [u8]) -> &'p [u8] {
     &p[h.release_off..h.release_off + h.release_len]
 }

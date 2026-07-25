@@ -6,8 +6,9 @@
 //!
 //!     utz-build imagepack-size <eager.utz>...
 
-use utz::format::{self, fixed_bytes};
+use utz::format::{self};
 use utz_build::encode::{compress, Codec};
+use utz_common::GeomEncoding;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -27,8 +28,12 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
         assert_eq!(codec, 0, "need codec-none");
         let container_payload = &bytes[start..];
         let header = format::parse(container_payload).unwrap();
-        assert_eq!(header.geom, 2, "need an EagerImage container");
-        let coord_bytes = fixed_bytes(header.quant_bits);
+        assert_eq!(
+            header.geom,
+            GeomEncoding::EagerImage,
+            "need an EagerImage container"
+        );
+        let coord_bytes = header.quant_bits.bytes();
         let coord_count = header.eager_coords as usize;
 
         // packed variant: each i32 coord truncated to coord_bytes bytes (LE
@@ -47,7 +52,10 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
             .into_owned();
         for (label, payload) in [
             (format!("{name} i32 pairs"), container_payload.to_vec()),
-            (format!("{name} packed i{}", header.quant_bits), packed),
+            (
+                format!("{name} packed i{}", header.quant_bits.bits()),
+                packed,
+            ),
         ] {
             #[expect(
                 clippy::cast_precision_loss,

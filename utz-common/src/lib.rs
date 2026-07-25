@@ -61,16 +61,231 @@ pub struct PayloadHeader {
     pub release_len: u16,
     /// reserved, must be zero (room for future format flags)
     pub flags: u16,
-    pub dataset: u8,
-    /// coordinate quantization width: 16, 24, or 32 bits
-    pub quant_bits: u8,
-    /// simplification algorithm (provenance): 0 = RDP, 1 = Visvalingam,
-    /// 2 = Imai–Iri
-    pub simplify_algo: u8,
-    /// geometry encoding: 0 = delta+varint arcs, 1 = fixed-width arcs,
-    /// 2 = `EagerImage`, 3 = coarse (grid-only)
-    pub geom: u8,
+    pub dataset: Dataset,
+    pub quant_bits: QuantBits,
+    pub simplify_algo: SimplifyAlgo,
+    pub geom: GeomEncoding,
 }
+
+/// Implement the scroll wire traits for a single-byte header type with
+/// `byte()`/`from_byte()`: an invalid byte fails the header read itself.
+macro_rules! wire_byte {
+    ($ty:ty, $invalid:literal) => {
+        impl scroll::ctx::TryFromCtx<'_, scroll::Endian> for $ty {
+            type Error = scroll::Error;
+            fn try_from_ctx(
+                source: &[u8],
+                ctx: scroll::Endian,
+            ) -> Result<(Self, usize), scroll::Error> {
+                let byte: u8 = source.pread_with(0, ctx)?;
+                let value = <$ty>::from_byte(byte).ok_or(scroll::Error::BadInput {
+                    size: 1,
+                    msg: $invalid,
+                })?;
+                Ok((value, 1))
+            }
+        }
+        impl scroll::ctx::TryIntoCtx<scroll::Endian> for $ty {
+            type Error = scroll::Error;
+            fn try_into_ctx(
+                self,
+                target: &mut [u8],
+                ctx: scroll::Endian,
+            ) -> Result<usize, scroll::Error> {
+                target.pwrite_with(self.byte(), 0, ctx)
+            }
+        }
+        impl scroll::ctx::TryIntoCtx<scroll::Endian> for &$ty {
+            type Error = scroll::Error;
+            fn try_into_ctx(
+                self,
+                target: &mut [u8],
+                ctx: scroll::Endian,
+            ) -> Result<usize, scroll::Error> {
+                (*self).try_into_ctx(target, ctx)
+            }
+        }
+        impl scroll::ctx::SizeWith<scroll::Endian> for $ty {
+            fn size_with(_: &scroll::Endian) -> usize {
+                1
+            }
+        }
+    };
+}
+
+/// Coordinate quantization width: how many bits each stored coordinate
+/// occupies (the wire value IS the bit count).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum QuantBits {
+    Bits16 = 16,
+    Bits24 = 24,
+    Bits32 = 32,
+}
+
+impl QuantBits {
+    /// The width's header byte (= the bit count).
+    #[must_use]
+    pub const fn byte(self) -> u8 {
+        self as u8
+    }
+
+    /// The width in bits.
+    #[must_use]
+    pub const fn bits(self) -> u32 {
+        self as u32
+    }
+
+    /// Bytes per stored coordinate (2 / 3 / 4).
+    #[must_use]
+    pub const fn bytes(self) -> usize {
+        (self as usize) / 8
+    }
+
+    /// The width a header byte names, if any.
+    #[must_use]
+    pub const fn from_byte(byte: u8) -> Option<QuantBits> {
+        match byte {
+            16 => Some(QuantBits::Bits16),
+            24 => Some(QuantBits::Bits24),
+            32 => Some(QuantBits::Bits32),
+            _ => None,
+        }
+    }
+}
+
+wire_byte!(QuantBits, "invalid quant_bits header byte");
+
+/// Arc-store encoding, recorded in the header.
+/// `DeltaVarint` is the flash-size default. `Fixed` stores
+/// absolute fixed-width coords: raw arcs +40–72%, best-compressed +24–32%
+/// (xz overtakes brotli) — bought: streaming lookups skip the per-vertex
+/// varint decode, the dominant cost on embedded (near-eager speed, zero
+/// RAM), so it suits XIP `-static` assets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum GeomEncoding {
+    #[default]
+    DeltaVarint = 0,
+    Fixed = 1,
+    /// The geometry section IS the preload cache: flattened per-ring
+    /// `(i32, i32)` runs + ring/poly index tables, 4-aligned — the slice
+    /// kernels run straight off flash (`from_static`: eager speed, zero RAM,
+    /// zero boot) or straight off the decompressed buffer (`from_slice`:
+    /// no preload pass). No arc store; shared arcs duplicated per ring:
+    /// raw ~4.1–4.3× the varint payload, best-compressed +61–94% (xz).
+    EagerImage = 2,
+    /// Grid-only asset: header + tzid pool + parent + grid, no
+    /// geometry at all. `lookup()` answers at cell precision (== the
+    /// dominant-first coarse answer) — precision is an asset property, like
+    /// `eps_m`. Smallest flash by far (~⅓ of even the varint payload for
+    /// tiny); endianness-independent; the coarse reader compiles no
+    /// PIP code.
+    Coarse = 3,
+}
+
+impl GeomEncoding {
+    /// The encoding's header byte.
+    #[must_use]
+    pub const fn byte(self) -> u8 {
+        self as u8
+    }
+
+    /// The encoding a header byte names, if any.
+    #[must_use]
+    pub const fn from_byte(byte: u8) -> Option<GeomEncoding> {
+        match byte {
+            0 => Some(GeomEncoding::DeltaVarint),
+            1 => Some(GeomEncoding::Fixed),
+            2 => Some(GeomEncoding::EagerImage),
+            3 => Some(GeomEncoding::Coarse),
+            _ => None,
+        }
+    }
+}
+
+wire_byte!(GeomEncoding, "invalid geometry-encoding header byte");
+
+/// Simplification algorithm recorded in the header — provenance, not decode
+/// logic. RDP is the default; Imai–Iri gives provably minimum vertices for
+/// the same ε bound (slower encode). Visvalingam has an area knob, not ε.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum SimplifyAlgo {
+    #[default]
+    Rdp = 0,
+    Visvalingam = 1,
+    ImaiIri = 2,
+}
+
+impl SimplifyAlgo {
+    /// The algorithm's header byte.
+    #[must_use]
+    pub const fn byte(self) -> u8 {
+        self as u8
+    }
+
+    /// The algorithm a header byte names, if any.
+    #[must_use]
+    pub const fn from_byte(byte: u8) -> Option<SimplifyAlgo> {
+        match byte {
+            0 => Some(SimplifyAlgo::Rdp),
+            1 => Some(SimplifyAlgo::Visvalingam),
+            2 => Some(SimplifyAlgo::ImaiIri),
+            _ => None,
+        }
+    }
+}
+
+wire_byte!(SimplifyAlgo, "invalid simplify-algorithm header byte");
+
+/// TZBB vintage a container was built from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Vintage {
+    /// zones distinct today
+    Now = 0,
+    /// zones distinct since 1970
+    Since1970 = 1,
+    /// every distinct tzid
+    All = 2,
+}
+
+/// The dataset byte: vintage in bits 0–1, bit 2 set = land-only
+/// (clear = with oceans).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Dataset {
+    pub vintage: Vintage,
+    pub land_only: bool,
+}
+
+impl Dataset {
+    /// The dataset's header byte.
+    #[must_use]
+    pub const fn byte(self) -> u8 {
+        self.vintage as u8 | if self.land_only { 4 } else { 0 }
+    }
+
+    /// The dataset a header byte names, if any.
+    #[must_use]
+    pub const fn from_byte(byte: u8) -> Option<Dataset> {
+        let vintage = match byte & 0b11 {
+            0 => Vintage::Now,
+            1 => Vintage::Since1970,
+            2 => Vintage::All,
+            _ => return None,
+        };
+        if byte & !0b111 != 0 {
+            return None; // reserved bits set
+        }
+        Some(Dataset {
+            vintage,
+            land_only: byte & 4 != 0,
+        })
+    }
+}
+
+wire_byte!(Dataset, "invalid dataset header byte");
 
 /// A container's payload codec — the outer header's codec byte, shared
 /// between the encoder (which picks one) and the reader (which dispatches
@@ -158,7 +373,10 @@ pub fn gen_pts(seed: u64, n: usize) -> Vec<(f64, f64)> {
 mod tests {
     use scroll::{Pread, Pwrite, LE};
 
-    use super::{Codec, PayloadHeader, PAYLOAD_HEADER_LEN};
+    use super::{
+        Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo, Vintage,
+        PAYLOAD_HEADER_LEN,
+    };
 
     #[test]
     fn payload_header_round_trips_at_declared_length() {
@@ -179,10 +397,13 @@ mod tests {
             uniq: 12,
             release_len: 13,
             flags: 0,
-            dataset: 14,
-            quant_bits: 24,
-            simplify_algo: 0,
-            geom: 1,
+            dataset: Dataset {
+                vintage: Vintage::Now,
+                land_only: false,
+            },
+            quant_bits: QuantBits::Bits24,
+            simplify_algo: SimplifyAlgo::Rdp,
+            geom: GeomEncoding::Fixed,
         };
         let mut bytes = [0u8; PAYLOAD_HEADER_LEN];
         let written = bytes

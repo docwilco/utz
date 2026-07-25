@@ -114,7 +114,7 @@ pub fn encode_weighted(
     model: utz_simplify::DensityWeight,
 ) -> crate::Result<Vec<u8>> {
     let eps_deg = p.eps_m / 111_320.0;
-    let algo = p.simplify.to_simplify(eps_deg)?;
+    let algo = utz_encode::encode::to_simplify(p.simplify, eps_deg)?;
     let t = topo::build_topology_weighted(feats, algo, &|a, b| model.weight(grid.max_along(a, b)));
     Ok(encode::finish(
         &encode::payload_from_topology(&t, &t.arc_coords, feats, p)?.0,
