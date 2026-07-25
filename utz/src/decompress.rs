@@ -236,60 +236,15 @@ impl<T: Clone + Default> brotli_decompressor::Allocator<T> for HeapAlloc {
 
 #[cfg(test)]
 mod tests {
+    use test_case::test_case;
+
     use super::*;
-
-    /// A corrupt stream must surface the backend's own diagnostic, and
-    /// Display must compose the codec byte with that detail.
-    #[cfg(any(
-        feature = "gzip",
-        feature = "ruzstd",
-        feature = "zstd-sys",
-        feature = "brotli",
-        feature = "xz"
-    ))]
-    fn assert_decoder_failed(expected_codec: u8, err: &Error) {
-        match err {
-            Error::DecoderFailed { codec, detail } => {
-                assert_eq!(*codec, expected_codec);
-                assert!(!detail.is_empty(), "backend diagnostic must not be empty");
-                let text = alloc::format!("{err}");
-                assert!(text.contains(&alloc::format!("codec {expected_codec}")));
-                assert!(text.contains(detail.as_str()));
-            }
-            other => panic!("expected DecoderFailed, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn unknown_codec_reports_its_byte() {
-        assert_eq!(decompress(9, 4, &[]), Err(Error::CodecNotCompiledIn(9)));
-    }
 
     /// What every codec's test vector decodes to.
     const DECODED_64: &[u8; 64] =
         b"the quick brown fox jumps over the lazy dog; pack my box with fi";
 
-    #[test]
-    fn memcpy_copies_the_body() {
-        assert_eq!(
-            decompress(0, 64, DECODED_64).as_deref(),
-            Ok(&DECODED_64[..])
-        );
-    }
-
-    #[test]
-    fn memcpy_size_lie_is_raw_length_mismatch() {
-        assert_eq!(decompress(0, 5, b"abc"), Err(Error::RawLengthMismatch));
-    }
-
-    #[cfg(feature = "gzip")]
-    #[test]
-    fn gzip_corrupt_stream_carries_detail() {
-        let err = decompress(1, 64, b"not a zlib stream").expect_err("garbage must not inflate");
-        assert_decoder_failed(1, &err);
-    }
-
-    /// A zlib stream that decodes to 64 bytes.
+    /// A zlib stream that decodes to [`DECODED_64`].
     #[cfg(feature = "gzip")]
     const ZLIB_64: [u8; 64] = [
         120, 156, 5, 193, 129, 1, 128, 16, 20, 64, 193, 85, 222, 30, 77, 131, 136, 196, 151, 8, 77,
@@ -298,32 +253,7 @@ mod tests {
         248, 23, 46,
     ];
 
-    #[cfg(feature = "gzip")]
-    #[test]
-    fn gzip_decodes_the_vector() {
-        assert_eq!(decompress(1, 64, &ZLIB_64).as_deref(), Ok(&DECODED_64[..]));
-    }
-
-    #[cfg(feature = "gzip")]
-    #[test]
-    fn gzip_truncated_stream_is_truncated() {
-        assert_eq!(decompress(1, 64, &ZLIB_64[..30]), Err(Error::Truncated));
-    }
-
-    #[cfg(feature = "gzip")]
-    #[test]
-    fn gzip_size_lie_is_raw_length_mismatch() {
-        assert_eq!(decompress(1, 63, &ZLIB_64), Err(Error::RawLengthMismatch));
-    }
-
-    #[cfg(any(feature = "ruzstd", feature = "zstd-sys"))]
-    #[test]
-    fn zstd_corrupt_stream_carries_detail() {
-        let err = decompress(2, 64, b"not a zstd frame").expect_err("garbage must not decode");
-        assert_decoder_failed(2, &err);
-    }
-
-    /// A zstd frame that decodes to 64 bytes.
+    /// A zstd frame that decodes to [`DECODED_64`].
     #[cfg(any(feature = "ruzstd", feature = "zstd-sys"))]
     const ZSTD_64: [u8; 73] = [
         40, 181, 47, 253, 32, 64, 1, 2, 0, 116, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114,
@@ -332,31 +262,7 @@ mod tests {
         121, 32, 98, 111, 120, 32, 119, 105, 116, 104, 32, 102, 105,
     ];
 
-    #[cfg(any(feature = "ruzstd", feature = "zstd-sys"))]
-    #[test]
-    fn zstd_decodes_the_vector() {
-        assert_eq!(decompress(2, 64, &ZSTD_64).as_deref(), Ok(&DECODED_64[..]));
-    }
-
-    /// Truncation mapping is zstd-sys-only: ruzstd's truncation signal is a
-    /// nested read error left in `DecoderFailed` text.
-    #[cfg(feature = "zstd-sys")]
-    #[test]
-    fn zstd_sys_truncated_stream_is_truncated() {
-        assert_eq!(decompress(2, 64, &ZSTD_64[..36]), Err(Error::Truncated));
-    }
-
-    #[cfg(feature = "brotli")]
-    #[test]
-    fn brotli_corrupt_stream_carries_libbrotli_code() {
-        let err = decompress(3, 64, b"not a brotli stream").expect_err("garbage must not decode");
-        assert_decoder_failed(3, &err);
-        // the detail is the specific libbrotli code, not the bare status
-        assert!(alloc::format!("{err}").contains("BROTLI_DECODER_"));
-    }
-
-    /// A brotli stream that decodes to 64 bytes; truncating it or
-    /// under-declaring `raw_len` exercises the two needs-more statuses.
+    /// A brotli stream that decodes to [`DECODED_64`].
     #[cfg(feature = "brotli")]
     const BROTLI_64: [u8; 60] = [
         27, 63, 0, 16, 141, 84, 181, 127, 132, 74, 215, 27, 30, 215, 77, 26, 138, 246, 56, 208, 32,
@@ -364,35 +270,7 @@ mod tests {
         23, 34, 96, 193, 133, 51, 248, 37, 127, 70, 111, 159, 233, 163, 220, 56, 132, 4,
     ];
 
-    #[cfg(feature = "brotli")]
-    #[test]
-    fn brotli_decodes_the_vector() {
-        assert_eq!(
-            decompress(3, 64, &BROTLI_64).as_deref(),
-            Ok(&DECODED_64[..])
-        );
-    }
-
-    #[cfg(feature = "brotli")]
-    #[test]
-    fn brotli_truncated_stream_is_truncated() {
-        assert_eq!(decompress(3, 64, &BROTLI_64[..30]), Err(Error::Truncated));
-    }
-
-    #[cfg(feature = "brotli")]
-    #[test]
-    fn brotli_size_lie_is_raw_length_mismatch() {
-        assert_eq!(decompress(3, 63, &BROTLI_64), Err(Error::RawLengthMismatch));
-    }
-
-    #[cfg(feature = "xz")]
-    #[test]
-    fn xz_corrupt_stream_carries_detail() {
-        let err = decompress(4, 64, b"not an xz stream").expect_err("garbage must not decode");
-        assert_decoder_failed(4, &err);
-    }
-
-    /// An xz stream that decodes to 64 bytes.
+    /// An xz stream that decodes to [`DECODED_64`].
     #[cfg(feature = "xz")]
     const XZ_64: [u8; 120] = [
         253, 55, 122, 88, 90, 0, 0, 4, 230, 214, 180, 70, 2, 0, 33, 1, 22, 0, 0, 0, 116, 47, 229,
@@ -403,15 +281,79 @@ mod tests {
         64, 231, 35, 56, 36, 31, 182, 243, 125, 1, 0, 0, 0, 0, 4, 89, 90,
     ];
 
-    #[cfg(feature = "xz")]
     #[test]
-    fn xz_decodes_the_vector() {
-        assert_eq!(decompress(4, 64, &XZ_64).as_deref(), Ok(&DECODED_64[..]));
+    fn unknown_codec_reports_its_byte() {
+        assert_eq!(decompress(9, 4, &[]), Err(Error::CodecNotCompiledIn(9)));
     }
 
-    #[cfg(feature = "xz")]
-    #[test]
-    fn xz_truncated_stream_is_truncated() {
-        assert_eq!(decompress(4, 64, &XZ_64[..60]), Err(Error::Truncated));
+    #[test_case(0, DECODED_64; "memcpy")]
+    #[cfg_attr(feature = "gzip", test_case(1, &ZLIB_64; "gzip"))]
+    #[cfg_attr(
+        any(feature = "ruzstd", feature = "zstd-sys"),
+        test_case(2, &ZSTD_64; "zstd")
+    )]
+    #[cfg_attr(feature = "brotli", test_case(3, &BROTLI_64; "brotli"))]
+    #[cfg_attr(feature = "xz", test_case(4, &XZ_64; "xz"))]
+    fn decodes_the_vector(codec: u8, body: &[u8]) {
+        assert_eq!(decompress(codec, 64, body).as_deref(), Ok(&DECODED_64[..]));
+    }
+
+    /// A corrupt stream must surface the backend's own diagnostic, and
+    /// Display must compose the codec byte with that detail. Brotli's
+    /// diagnostic must be the specific libbrotli code, not the bare status.
+    #[cfg(any(
+        feature = "gzip",
+        feature = "ruzstd",
+        feature = "zstd-sys",
+        feature = "brotli",
+        feature = "xz"
+    ))]
+    #[cfg_attr(feature = "gzip", test_case(1, ""; "gzip"))]
+    #[cfg_attr(
+        any(feature = "ruzstd", feature = "zstd-sys"),
+        test_case(2, ""; "zstd")
+    )]
+    #[cfg_attr(feature = "brotli", test_case(3, "BROTLI_DECODER_"; "brotli"))]
+    #[cfg_attr(feature = "xz", test_case(4, ""; "xz"))]
+    fn corrupt_stream_carries_detail(expected_codec: u8, detail_contains: &str) {
+        let err = decompress(expected_codec, 64, b"definitely not a valid stream...")
+            .expect_err("garbage must not decode");
+        match &err {
+            Error::DecoderFailed { codec, detail } => {
+                assert_eq!(*codec, expected_codec);
+                assert!(!detail.is_empty(), "backend diagnostic must not be empty");
+                assert!(detail.contains(detail_contains));
+                let text = alloc::format!("{err}");
+                assert!(text.contains(&alloc::format!("codec {expected_codec}")));
+                assert!(text.contains(detail.as_str()));
+            }
+            other => panic!("expected DecoderFailed, got {other:?}"),
+        }
+    }
+
+    /// ruzstd has no case: its truncation signal is a nested read error
+    /// left in `DecoderFailed` text.
+    #[cfg(any(
+        feature = "gzip",
+        feature = "zstd-sys",
+        feature = "brotli",
+        feature = "xz"
+    ))]
+    #[cfg_attr(feature = "gzip", test_case(1, &ZLIB_64[..30]; "gzip"))]
+    #[cfg_attr(feature = "zstd-sys", test_case(2, &ZSTD_64[..36]; "zstd sys"))]
+    #[cfg_attr(feature = "brotli", test_case(3, &BROTLI_64[..30]; "brotli"))]
+    #[cfg_attr(feature = "xz", test_case(4, &XZ_64[..60]; "xz"))]
+    fn truncated_stream_is_truncated(codec: u8, body: &[u8]) {
+        assert_eq!(decompress(codec, 64, body), Err(Error::Truncated));
+    }
+
+    #[test_case(0, 5, b"abc"; "memcpy")]
+    #[cfg_attr(feature = "gzip", test_case(1, 63, &ZLIB_64; "gzip"))]
+    #[cfg_attr(feature = "brotli", test_case(3, 63, &BROTLI_64; "brotli"))]
+    fn size_lie_is_raw_length_mismatch(codec: u8, raw_len: usize, body: &[u8]) {
+        assert_eq!(
+            decompress(codec, raw_len, body),
+            Err(Error::RawLengthMismatch)
+        );
     }
 }

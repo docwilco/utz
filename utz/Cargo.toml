@@ -87,6 +87,7 @@ include_bytes_aligned = { workspace = true }
 utz-common = { path = "../utz-common" }
 geo = { workspace = true }
 geo-types = { workspace = true }
+test-case = "3.3"
 
 # No build.rs / build-dependencies by design: preset data ships
 # as utz-data-* crates; custom assets are generated consumer-side via utz-build.
