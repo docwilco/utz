@@ -211,12 +211,13 @@ var WASM_P = fetch('utz_encode.wasm').then(function (r) {
 });
 
 var ALGO = [
-  { id: 0, key: 'rdp', name: 'RDP' },
-  { id: 1, key: 'vw', name: 'Visvalingam' },
-  { id: 2, key: 'ii', name: 'Imai–Iri' },
-  // id 255 hits utz_simplify's unknown-algo path: coords pass through
-  // unchanged — quantization (and nothing else) applies
-  { id: 255, key: 'raw', name: 'None' },
+  // ids match utz_common::SimplifyAlgo's header bytes
+  { id: 1, key: 'rdp', name: 'RDP' },
+  { id: 2, key: 'vw', name: 'Visvalingam' },
+  { id: 3, key: 'ii', name: 'Imai–Iri' },
+  // None: coords pass through unchanged — quantization (and nothing
+  // else) applies
+  { id: 0, key: 'raw', name: 'None' },
 ];
 var EPS_M = [10, 25, 50, 100, 250, 500, 1000, 2000, 5000];
 var QUANT = [

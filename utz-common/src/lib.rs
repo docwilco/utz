@@ -213,18 +213,24 @@ impl GeomEncoding {
 
 wire_byte!(GeomEncoding, "invalid geometry-encoding header byte");
 
-/// Simplification algorithm recorded in the header — provenance, not decode
-/// logic. RDP is the default; Imai–Iri gives provably minimum vertices for
-/// the same ε bound (slower encode). Visvalingam has an area knob, not ε.
+/// Simplification algorithm: selects the simplifier the encoder runs, and
+/// is recorded in the header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum SimplifyAlgo {
-    #[default]
-    Rdp = 0,
-    Visvalingam = 1,
-    ImaiIri = 2,
     /// No simplification — geometry stored as sourced.
-    None = 3,
+    None = 0,
+    /// Ramer–Douglas–Peucker: keeps every point within a maximum deviation
+    /// of ε. The default.
+    #[default]
+    Rdp = 1,
+    /// Visvalingam–Whyatt: repeatedly drops the vertex spanning the
+    /// smallest triangle; the ε-driven pipeline derives its area threshold
+    /// as ε², matching the viewer.
+    Visvalingam = 2,
+    /// Imai–Iri: provably minimum vertices for the same ε bound as RDP,
+    /// at a slower encode.
+    ImaiIri = 3,
 }
 
 impl SimplifyAlgo {
@@ -238,10 +244,10 @@ impl SimplifyAlgo {
     #[must_use]
     pub const fn from_byte(byte: u8) -> Option<SimplifyAlgo> {
         match byte {
-            0 => Some(SimplifyAlgo::Rdp),
-            1 => Some(SimplifyAlgo::Visvalingam),
-            2 => Some(SimplifyAlgo::ImaiIri),
-            3 => Some(SimplifyAlgo::None),
+            0 => Some(SimplifyAlgo::None),
+            1 => Some(SimplifyAlgo::Rdp),
+            2 => Some(SimplifyAlgo::Visvalingam),
+            3 => Some(SimplifyAlgo::ImaiIri),
             _ => None,
         }
     }

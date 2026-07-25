@@ -18,9 +18,12 @@
 
 use crate::{simplify, simplify_weighted, DensityWeight, Simplify};
 
-pub const ALGO_RDP: u32 = 0;
-pub const ALGO_VISVALINGAM: u32 = 1;
-pub const ALGO_IMAI_IRI: u32 = 2;
+// ids match utz_common::SimplifyAlgo's header bytes; any other value
+// simplifies as None (coords pass through unchanged)
+pub const ALGO_NONE: u32 = 0;
+pub const ALGO_RDP: u32 = 1;
+pub const ALGO_VISVALINGAM: u32 = 2;
+pub const ALGO_IMAI_IRI: u32 = 3;
 
 /// Allocate space for `n_f64` doubles; pair every call with [`utz_free`].
 #[no_mangle]
