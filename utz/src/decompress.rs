@@ -52,9 +52,8 @@ pub fn decompress(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
 /// an unhinted Vec instead — realloc overlap peaks at ~1.4× decoded
 /// (measured by the window-sweep bench).
 ///
-/// Status mapping (best-effort, like the other codecs'):
-/// `FailedCannotMakeProgress` = input exhausted mid-stream (truncated);
-/// `HasMoreOutput` = the stream outgrows `raw_len` (header lied).
+/// Status mapping: `FailedCannotMakeProgress` = input exhausted mid-stream
+/// (truncated); `HasMoreOutput` = the stream outgrows `raw_len` (header lied).
 #[cfg(feature = "gzip")]
 fn decompress_gzip(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use miniz_oxide::inflate::TINFLStatus;
@@ -78,8 +77,7 @@ fn decompress_gzip(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
 
 /// Decode via C libzstd (the `zstd` crate). `decode_all` sizes the output
 /// itself; the shared `raw_len` check in [`decompress`] validates it.
-/// libzstd reports a truncated input as `UnexpectedEof` ("incomplete frame")
-/// — mapped to `Truncated` (best-effort, like the other codecs).
+/// libzstd reports a truncated input as `UnexpectedEof` ("incomplete frame").
 #[cfg(feature = "zstd-sys")]
 fn decompress_zstd_sys(codec: u8, body: &[u8]) -> Result<Vec<u8>> {
     zstd::stream::decode_all(body).map_err(|source| match source.kind() {
@@ -126,10 +124,9 @@ fn decompress_ruzstd(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
 
 /// Decode the whole input into an exact-size output in one call, making the
 /// two needs-more statuses terminal: input exhausted mid-frame is a truncated
-/// asset, output exhausted means the frame outgrows what `raw_len` declared
-/// (both best-effort, like the other codecs'). `ResultFailure` carries the
-/// specific libbrotli code from `state.error_code` (`BrotliResult` itself is
-/// a bare status).
+/// asset, output exhausted means the frame outgrows what `raw_len` declared.
+/// `ResultFailure` carries the specific libbrotli code from
+/// `state.error_code` (`BrotliResult` itself is a bare status).
 #[cfg(feature = "brotli")]
 fn decompress_brotli(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use brotli_decompressor::{BrotliDecompressStream, BrotliResult, BrotliState};
@@ -169,7 +166,7 @@ fn decompress_brotli(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
 /// re-exports of `std::io` and the `Read as _` import below breaks.
 ///
 /// A read failing with `Eof` means input exhausted mid-stream — a truncated
-/// asset (best-effort, like the other codecs' truncation mapping).
+/// asset.
 #[cfg(feature = "xz")]
 fn decompress_xz(codec: u8, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use lzma_rust2::Read as _;
