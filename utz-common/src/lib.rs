@@ -63,44 +63,10 @@ pub struct PayloadHeader {
     pub geom: GeomEncoding,
 }
 
-/// Implement the scroll wire traits for a single-byte header type with
-/// `byte()`/`from_byte()`: an invalid byte fails the header read itself.
-macro_rules! wire_byte {
-    ($ty:ty, $invalid:literal) => {
-        impl scroll::ctx::TryFromCtx<'_, scroll::Endian> for $ty {
-            type Error = scroll::Error;
-            fn try_from_ctx(
-                source: &[u8],
-                ctx: scroll::Endian,
-            ) -> Result<(Self, usize), scroll::Error> {
-                let byte: u8 = source.pread_with(0, ctx)?;
-                let value = <$ty>::from_byte(byte).ok_or(scroll::Error::BadInput {
-                    size: 1,
-                    msg: $invalid,
-                })?;
-                Ok((value, 1))
-            }
-        }
-        impl scroll::ctx::TryIntoCtx<scroll::Endian> for $ty {
-            type Error = scroll::Error;
-            fn try_into_ctx(
-                self,
-                target: &mut [u8],
-                ctx: scroll::Endian,
-            ) -> Result<usize, scroll::Error> {
-                target.pwrite_with(self.byte(), 0, ctx)
-            }
-        }
-        impl scroll::ctx::TryIntoCtx<scroll::Endian> for &$ty {
-            type Error = scroll::Error;
-            fn try_into_ctx(
-                self,
-                target: &mut [u8],
-                ctx: scroll::Endian,
-            ) -> Result<usize, scroll::Error> {
-                (*self).try_into_ctx(target, ctx)
-            }
-        }
+/// `SizeWith` for the single-byte header types: the derive covers structs
+/// only, and `PayloadHeader`'s own `SizeWith` derive needs it per field.
+macro_rules! byte_size_with {
+    ($ty:ty) => {
         impl scroll::ctx::SizeWith<scroll::Endian> for $ty {
             fn size_with(_: &scroll::Endian) -> usize {
                 1
@@ -111,7 +77,7 @@ macro_rules! wire_byte {
 
 /// Coordinate quantization width: how many bits each stored coordinate
 /// occupies (the wire value IS the bit count).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Pread, Pwrite)]
 #[repr(u8)]
 pub enum QuantBits {
     Bits16 = 16,
@@ -150,10 +116,10 @@ impl QuantBits {
     }
 }
 
-wire_byte!(QuantBits, "invalid quant_bits header byte");
+byte_size_with!(QuantBits);
 
 /// Geometry encoding, recorded in the header.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
 #[repr(u8)]
 pub enum GeomEncoding {
     /// Shared arcs as delta + zigzag-varint streams — the default, for
@@ -207,11 +173,11 @@ impl GeomEncoding {
     }
 }
 
-wire_byte!(GeomEncoding, "invalid geometry-encoding header byte");
+byte_size_with!(GeomEncoding);
 
 /// Simplification algorithm: selects the simplifier the encoder runs, and
 /// is recorded in the header.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
 #[repr(u8)]
 pub enum SimplifyAlgo {
     /// No simplification — geometry stored as sourced.
@@ -249,7 +215,7 @@ impl SimplifyAlgo {
     }
 }
 
-wire_byte!(SimplifyAlgo, "invalid simplify-algorithm header byte");
+byte_size_with!(SimplifyAlgo);
 
 /// TZBB vintage a container was built from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -297,7 +263,33 @@ impl Dataset {
     }
 }
 
-wire_byte!(Dataset, "invalid dataset header byte");
+impl scroll::ctx::TryFromCtx<'_, scroll::Endian> for Dataset {
+    type Error = scroll::Error;
+    fn try_from_ctx(source: &[u8], ctx: scroll::Endian) -> Result<(Self, usize), scroll::Error> {
+        let byte: u8 = source.pread_with(0, ctx)?;
+        let value = Dataset::from_byte(byte).ok_or(scroll::Error::BadInput {
+            size: 1,
+            msg: "invalid dataset header byte",
+        })?;
+        Ok((value, 1))
+    }
+}
+
+impl scroll::ctx::TryIntoCtx<scroll::Endian> for Dataset {
+    type Error = scroll::Error;
+    fn try_into_ctx(self, target: &mut [u8], ctx: scroll::Endian) -> Result<usize, scroll::Error> {
+        target.pwrite_with(self.byte(), 0, ctx)
+    }
+}
+
+impl scroll::ctx::TryIntoCtx<scroll::Endian> for &Dataset {
+    type Error = scroll::Error;
+    fn try_into_ctx(self, target: &mut [u8], ctx: scroll::Endian) -> Result<usize, scroll::Error> {
+        (*self).try_into_ctx(target, ctx)
+    }
+}
+
+byte_size_with!(Dataset);
 
 /// A container's payload codec — the outer header's codec byte, shared
 /// between the encoder (which picks one) and the reader (which dispatches
@@ -426,6 +418,44 @@ mod tests {
             .pread_with(0, LE)
             .expect("round-trip read of a full buffer");
         assert_eq!(read, header);
+    }
+
+    #[test]
+    fn invalid_header_byte_fails_the_read() {
+        let header = PayloadHeader {
+            arcs_off: 0,
+            rings_off: 0,
+            grid_off: 0,
+            release_off: 0,
+            eager_coords: 0,
+            eager_rings: 0,
+            eager_polys: 0,
+            n_arcs: 0,
+            grid_deg: 1.0,
+            eps_m: 0.0,
+            n_features: 0,
+            ncols: 0,
+            nrows: 0,
+            uniq: 0,
+            release_len: 0,
+            flags: 0,
+            dataset: Dataset {
+                vintage: Vintage::Now,
+                land_only: false,
+            },
+            quant_bits: QuantBits::Bits16,
+            simplify_algo: SimplifyAlgo::None,
+            geom: GeomEncoding::DeltaVarint,
+        };
+        let mut bytes = [0u8; PAYLOAD_HEADER_LEN];
+        bytes
+            .pwrite_with(header, 0, LE)
+            .expect("buffer sized to the declared length");
+        bytes[53] = 17; // quant_bits: no such width
+        assert!(bytes.pread_with::<PayloadHeader>(0, LE).is_err());
+        bytes[53] = 16;
+        bytes[52] = 3; // dataset: vintage 3 is unassigned
+        assert!(bytes.pread_with::<PayloadHeader>(0, LE).is_err());
     }
 
     #[test]
