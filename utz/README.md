@@ -17,9 +17,10 @@
   compile-time static zones pair well with μTZ's embedded nature) or the
   prevalent `chrono-tz`.
 
-## Getting started
+# Getting started
 
-Pick an environment and a preset in `Cargo.toml`:
+A quick start needs just two choices, picked as cargo features: an
+[environment](#environments) and a [preset](#preset-bundles).
 
 ```toml
 [dependencies]
@@ -39,9 +40,11 @@ let tz = finder.lookup(utz::Position { lon: -0.1278, lat: 51.5074 });
 With several presets in the tree, pick explicitly via the statics in
 the `data` module: `Finder::from_slice(utz::data::TINY)` (compressed)
 or `Finder::from_static(utz::data::TINY_STATIC)` (uncompressed,
-zero-copy).
+zero-copy). Everything beyond the presets (your own simplification /
+quantization / codec / dataset point) goes through
+[Building a custom dataset](#building-a-custom-dataset).
 
-## Preset bundles
+# Preset bundles
 
 One Cargo feature picks a ready-made size/accuracy point; `custom`
 instead generates your own asset with `utz-build`:
@@ -54,31 +57,73 @@ instead generates your own asset with `utz-build`:
 | `balanced`    | ε 50 m, i24    | ~1.3 MB | brotli |
 | `accurate`    | ε 10 m, i32    | ~8.3 MB | brotli: full zone set (every distinct tzid); the others merge zones identical since now |
 
-## Configuring with features
+# Configuring
 
-Every build makes three choices; forgetting one is a compile error
-whose message explains the options.
+A build configures itself entirely through cargo features. Three
+choices are mandatory, and forgetting one is a compile error whose
+message explains the options: a data tier (a
+[preset](#preset-bundles) or `custom`), an
+[environment](#environments), and at least one
+[geometry decoder](#geometry-decoders) (presets enable their own).
+[Compression codecs](#compression-codecs) are additive on top. The
+[dataset](#datasets) is a property of the asset rather than of the
+build. The `caps` module exposes at compile time what a build can
+read.
 
-1. **Data tier**: a preset from the table above, or `custom` (bring
-   your own asset, generated with `utz-build`).
-2. **Environment**: `std`, `alloc` (`no_std` with an allocator), or
-   `core` (bare metal: uncompressed assets only, near-zero heap). The
-   ladder is strict (`core` ⊂ `alloc` ⊂ `std`), so feature unions
-   across a dependency tree resolve upward.
-3. **Geometry decoder**: one `geom-*` feature per encoding
-   (`geom-varint-arcs`, `geom-fixed-width-arcs`, `geom-full-rings`,
-   `geom-coarse`; the `GeomEncoding` docs carry the size/speed
-   ladder). Presets enable the decoder their recipe uses; `custom`
-   users pick the one(s) their assets use. A container whose encoding
-   has no compiled decoder is refused at load.
+## Environments
 
-Codec features are additive: each of `gzip`, `ruzstd`, `zstd-sys`,
-`brotli`, and `xz` compiles the decoder for one payload codec (all
-but `zstd-sys` are pure Rust and `no_std`-clean; see the `decompress`
-module). Uncompressed assets need none of them. The `caps` module
-exposes at compile time what a build can read.
+Strict supersets (`core` ⊂ `alloc` ⊂ `std`), so feature unions
+across a dependency tree resolve upward:
 
-## Building a custom dataset
+| feature | environment                              | can load |
+|---------|------------------------------------------|----------|
+| `core`  | bare metal: no allocator, ~zero heap     | uncompressed assets, zero-copy from flash |
+| `alloc` | `no_std` plus an allocator               | compressed assets too, decoded into RAM |
+| `std`   | full standard library (implies `alloc`)  | adds file/reader loading |
+
+## Geometry decoders
+
+One feature per geometry encoding; a container whose encoding has no
+compiled decoder is refused at load. Presets enable the decoder
+their recipe uses; `custom` users pick the one(s) their assets use.
+The measured size/speed ladder is the table on `GeomEncoding`.
+
+| feature                 | decodes                             | notes |
+|-------------------------|-------------------------------------|-------|
+| `geom-varint-arcs`      | shared arcs, delta + zigzag varints | the preset encoding; smallest |
+| `geom-fixed-width-arcs` | shared arcs, fixed-width coords     | faster streaming reads from flash |
+| `geom-full-rings`       | whole rings, read in place          | fastest; little-endian hosts only |
+| `geom-coarse`           | grid-only assets                    | cell precision; compiles no point-in-polygon code |
+
+## Compression codecs
+
+Additive; each compiles the decoder for one payload codec.
+Uncompressed assets need none of them. Backend crates and codec
+bytes are in the `decompress` module docs.
+
+| feature    | codec  | environment |
+|------------|--------|-------------|
+| `gzip`     | gzip   | `alloc` (pure Rust) |
+| `ruzstd`   | zstd   | `alloc` (pure Rust) |
+| `zstd-sys` | zstd   | `std` (C libzstd; wins over `ruzstd` when both are enabled) |
+| `brotli`   | brotli | `alloc` (pure Rust) |
+| `xz`       | xz     | `alloc` (pure Rust) |
+
+## Datasets
+
+The dataset is baked into an asset when it is generated (every
+preset except `accurate` uses `now`; custom builds choose). It picks
+the merge vintage: zones whose rules are identical from that point
+on are merged, so older vintages keep more zones. Oceans are covered
+by default; a `land-` prefix selects the land-only releases.
+
+| dataset | zones | merge |
+|---------|------:|-------|
+| `now`   |    65 | zones identical from today onward merged |
+| `1970`  |   304 | zones identical since 1970 merged |
+| `all`   |   444 | every distinct tzid kept |
+
+# Building a custom dataset
 
 The `custom` tier pairs with the `utz-build` crate. In a `build.rs`
 (with `utz-build` as a build-dependency), the typed builder fetches
@@ -97,9 +142,25 @@ utz_build::Config::new()
 
 Preset recipes double as starting points for one-knob variants:
 `Config::tiny().codec(Codec::Uncompressed)` is exactly the
-`tiny-static` recipe. Then embed the asset and `include!` the guard
-file, which turns a feature mismatch into a compile error instead of
-a load error:
+`tiny-static` recipe.
+
+The features must then match the asset: `custom`, an
+[environment](#environments), the [geometry decoder](#geometry-decoders)
+for its encoding (`geom-varint-arcs` for the default), and the
+[codec feature](#compression-codecs) for its compression (none for
+`Codec::Uncompressed`):
+
+```toml
+[dependencies]
+utz = { version = "0.1", features = ["std", "custom", "gzip", "geom-varint-arcs"] }
+
+[build-dependencies]
+utz-build = "0.1"
+```
+
+The generated guard file asserts exactly this match. Embed the asset
+and `include!` the guard next to it, and a feature mismatch becomes
+a compile error instead of a load error:
 
 ```rust
 include!(concat!(env!("OUT_DIR"), "/tz.utz.guard.rs"));
@@ -113,7 +174,7 @@ embed those with the re-exported `include_bytes_aligned!`). Outside a
 `build.rs`, the `utz-build` CLI writes the same containers:
 `utz-build gen now 500 --qbits 24 --codec gzip -o tz.utz`.
 
-## How it works
+# How it works
 
 Self-describing container (see the `format` module) → one generic decoder: grid
 prefilter, then per-polygon integer PIP. Three memory modes, selected by
@@ -123,7 +184,7 @@ owned RAM, no decoded-geometry cache), **eager** (`Finder::preload`:
 all rings decoded up front). `no_std`-first: API availability follows
 the environment ladder `core` ⊂ `alloc` ⊂ `std`.
 
-## Inspirations & credits
+# Inspirations & credits
 
 μTZ stands on the shoulders of three excellent projects; it reuses
 their ideas and pushes on size and embeddability:
