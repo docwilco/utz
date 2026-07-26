@@ -57,7 +57,7 @@ pub fn decompress(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
 /// Inflate straight into a `raw_len`-sized buffer: the output slice doubles
 /// as the DEFLATE history, so `miniz_oxide` needs no separate 32 KB window and
 /// decode RAM is decoded + ~10 K tables. `decompress_to_vec_zlib` would grow
-/// an unhinted Vec instead — realloc overlap peaks at ~1.4× decoded
+/// an unhinted Vec instead: realloc overlap peaks at ~1.4× decoded
 /// (measured by the window-sweep bench).
 ///
 /// Status mapping: `FailedCannotMakeProgress` = input exhausted mid-stream
@@ -173,7 +173,7 @@ fn decompress_brotli(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8
 /// tree-wide: with it on, the crate's Read/Write become `pub(crate)`
 /// re-exports of `std::io` and the `Read as _` import below breaks.
 ///
-/// A read failing with `Eof` means input exhausted mid-stream — a truncated
+/// A read failing with `Eof` means input exhausted mid-stream: a truncated
 /// asset.
 #[cfg(feature = "xz")]
 fn decompress_xz(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
@@ -203,7 +203,7 @@ fn decompress_xz(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-/// Global-allocator-backed allocator for the no-stdlib brotli decoder —
+/// Global-allocator-backed allocator for the no-stdlib brotli decoder:
 /// mirrors alloc-stdlib's `StandardAlloc` (zero-initialized cells), which
 /// is `std`-only.
 // brotli-decompressor has an equivalent Vec-backed allocator

@@ -18,11 +18,11 @@ pub const MAGIC: [u8; 4] = *b"uTZ1";
 pub const VERSION: u8 = 10;
 
 /// The container prologue: `MAGIC` (4), `VERSION` (1), 3 reserved bytes.
-/// The only part of the format whose layout is frozen across versions —
+/// The only part of the format whose layout is frozen across versions:
 /// everything after it is [`VERSION`]-specific.
 pub const PROLOGUE_LEN: usize = 8;
 
-/// [`PayloadHeader`]'s serialized size — the section blob starts at
+/// [`PayloadHeader`]'s serialized size: the section blob starts at
 /// `PROLOGUE_LEN + PAYLOAD_HEADER_LEN`.
 pub const PAYLOAD_HEADER_LEN: usize = 64;
 
@@ -31,7 +31,7 @@ pub const PAYLOAD_HEADER_LEN: usize = 64;
 /// flags a border cell carrying a candidate-list index instead.
 pub const NO_ZONE: u16 = 0x7FFF;
 
-/// The container's one fixed header record — everything the reader needs to
+/// The container's one fixed header record: everything the reader needs to
 /// locate every section. It sits in PLAINTEXT right after the outer header
 /// (only the section blob after it is compressed), so any container is
 /// inspectable and validated before decompression. The encoder `Pwrite`s
@@ -52,7 +52,7 @@ pub struct PayloadHeader {
     /// TZBB release string (`release_len` bytes at the payload tail)
     pub release_off: u32,
     /// eager-cache reservation counts: exact Vec sizes for `preload`
-    /// (coords is Σ referenced-arc vcounts — may only over-estimate)
+    /// (coords is Σ referenced-arc vcounts; may only over-estimate)
     pub eager_coords: u32,
     pub eager_rings: u32,
     pub eager_polys: u32,
@@ -60,7 +60,7 @@ pub struct PayloadHeader {
     pub n_arcs: u32,
     /// the section blob's decompressed size (so readers allocate once)
     pub raw_len: u32,
-    /// grid cell size in degrees — fractional (e.g. 0.5) allowed
+    /// grid cell size in degrees; fractional (e.g. 0.5) allowed
     pub grid_deg: f32,
     /// simplification tolerance the asset was built with (provenance)
     pub eps_m: f32,
@@ -125,7 +125,7 @@ impl QuantBits {
 /// for lookup speed. `Coarse` alone trades precision instead: it drops the
 /// polygons and answers at grid-cell precision.
 ///
-/// The measured cost/speed ladder lives here — every other doc site links
+/// The measured cost/speed ladder lives here. Every other doc site links
 /// back to this table rather than restating numbers. Size columns are
 /// whole containers relative to the `VarintArcs` build of the same preset;
 /// lookup speed is the flash-XIP (execute-in-place, zero RAM) leg of the
@@ -144,11 +144,11 @@ impl QuantBits {
 ///
 /// **TODO(verify):** these figures date to the 2026-07 `fixedwidth_size` /
 /// `imagepack_size` sweeps and bench-firmware runs on earlier payload
-/// revisions — re-run them against the current format.
+/// revisions; re-run them against the current format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
 #[repr(u8)]
 pub enum GeomEncoding {
-    /// Shared arcs as delta + zigzag-varint streams — the default, for
+    /// Shared arcs as delta + zigzag-varint streams: the default, for
     /// minimal storage size.
     #[default]
     VarintArcs = 0,
@@ -158,13 +158,13 @@ pub enum GeomEncoding {
     /// RAM cache, suited to uncompressed `-static` assets read in place
     /// from memory-mapped flash. Costs storage (table above).
     FixedWidthArcs = 1,
-    /// Each ring stored in full — coordinates flattened per ring as
+    /// Each ring stored in full: coordinates flattened per ring as
     /// quant-width pairs plus ring/poly index tables, 4-byte aligned; the
     /// preload cache serialized. Slice kernels read it in place: from
     /// memory-mapped flash via `from_static` (eager-lookup speed with no
     /// RAM cache and no preload pass at boot) or from the decompressed
     /// buffer via `from_slice`. There is no arc store, so borders shared
-    /// between zones are duplicated per ring — the largest encoding
+    /// between zones are duplicated per ring, the largest encoding
     /// (table above). Little-endian hosts only.
     FullRings = 2,
     /// Grid-only asset: header, tzid pool, parent table, and grid — no
@@ -181,7 +181,7 @@ pub enum GeomEncoding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
 #[repr(u8)]
 pub enum SimplifyAlgo {
-    /// No simplification — geometry stored as sourced.
+    /// No simplification: geometry stored as sourced.
     None = 0,
     /// Ramer–Douglas–Peucker: keeps every point within a maximum deviation
     /// of ε. The default.
@@ -211,7 +211,7 @@ impl SimplifyAlgo {
 }
 
 /// The dataset a container was built from: TZBB vintage × coverage.
-/// Discriminants keep the wire bitfield — vintage in bits 0–1, bit 2 set =
+/// Discriminants keep the wire bitfield: vintage in bits 0–1, bit 2 set =
 /// land-only (clear = with oceans).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Pread, Pwrite)]
 #[repr(u8)]
@@ -246,7 +246,7 @@ impl Dataset {
     }
 }
 
-/// A container's payload codec — the outer header's codec byte, shared
+/// A container's payload codec: the outer header's codec byte, shared
 /// between the encoder (which picks one) and the reader (which dispatches
 /// on it).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Pread, Pwrite)]
@@ -290,7 +290,7 @@ impl Lcg {
     }
 }
 
-/// `n` uniform world points `(lon, lat)` from `seed` — the shared sampler
+/// `n` uniform world points `(lon, lat)` from `seed`: the shared sampler
 /// behind the measurement commands and benches (same seed → same points, so
 /// numbers stay comparable across tools).
 #[cfg(feature = "alloc")]

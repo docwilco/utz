@@ -1,16 +1,16 @@
-//! μTZ — micro-timezone: tiny, embeddable lat/lon → IANA tzid lookup.
+//! μTZ (micro-timezone): tiny, tunable, embeddable lat/lon → IANA timezone-id lookup.
 //!
-//! - **Tiny** — OSM timezone data down from 60 MB to ~70 KB via shared-arc
+//! - **Tiny**: OSM timezone data down from 60 MB to ~70 KB via shared-arc
 //!   topology, tunable map simplification, integer quantization, and general
 //!   compression. Larger more accurate options available as well.
-//! - **Embeddable** — pure-Rust codecs, integer point-in-polygon, flat
+//! - **Embeddable**: pure-Rust codecs, integer point-in-polygon, flat
 //!   arrays that borrow zero-copy from a flash partition. `no_std` capable.
-//! - **Tunable** — pick dataset, simplification parameters, data types,
+//! - **Tunable**: pick dataset, simplification parameters, data types,
 //!   quantization grid, grid cell size, and compression codec to hit your
 //!   exact size / RAM / accuracy point, guided by a
 //!   [visualization tool](https://docwilco.github.io/utz/live/index.html).
 //!   Or use no compression for direct from flash.
-//! - **DST-correct** — returns the IANA `tzid`; resolve offsets/DST
+//! - **DST-correct**: returns the IANA `tzid`; resolve offsets/DST
 //!   downstream with [`jiff`](https://crates.io/crates/jiff) (whose
 //!   compile-time static zones pair well with μTZ's embedded nature) or the
 //!   prevalent `chrono-tz`.
@@ -38,11 +38,11 @@
 //!
 //! | feature | simplification | size | notes |
 //! |---|---|---|---|
-//! | `tiny` | ε 10 km, i16 | ~71 KB | gzip — ~125 KB RAM to decode |
+//! | `tiny` | ε 10 km, i16 | ~71 KB | gzip: ~125 KB RAM to decode |
 //! | `tiny-static` | ε 10 km, i16 | ~125 KB | `tiny` uncompressed: zero-copy from flash, ~0 RAM, runs on bare-metal `core` |
 //! | `compact` | ε 1 km, i24 | ~445 KB | xz |
 //! | `balanced` | ε 50 m, i24 | ~1.3 MB | brotli |
-//! | `accurate` | ε 10 m, i32 | ~8.3 MB | brotli — full zone set (every distinct tzid); the others merge zones identical since now |
+//! | `accurate` | ε 10 m, i32 | ~8.3 MB | brotli: full zone set (every distinct tzid); the others merge zones identical since now |
 //!
 //! ## Inspirations & credits
 //!
@@ -147,10 +147,10 @@ pub mod data {
     #[cfg(feature = "compact")]
     pub use utz_data_compact::COMPACT;
     /// tiny preset: dataset `now`, RDP ε=10 000 m (pop-density floor 1e-3),
-    /// i16, 2° grid, gzip — ~71 K flash, peak decode RAM 125 K.
+    /// i16, 2° grid, gzip; ~71 K flash, peak decode RAM 125 K.
     #[cfg(feature = "tiny")]
     pub use utz_data_tiny::TINY;
-    /// tiny-static preset: tiny's decoded container shipped flat — ~125 K
+    /// tiny-static preset: tiny's decoded container shipped flat; ~125 K
     /// flash, zero-copy via [`Finder::from_static`](crate::Finder::from_static),
     /// ~0 RAM, no decoder, bare-`core` capable.
     #[cfg(feature = "tiny-static")]
@@ -160,7 +160,7 @@ pub mod data {
 /// Compile-time capabilities of THIS utz build (its resolved features).
 ///
 /// For asset guards: `utz_build::Config::generate` writes a
-/// `<asset>.guard.rs` next to each asset, asserting the caps it needs —
+/// `<asset>.guard.rs` next to each asset, asserting the caps it needs.
 /// `include!` it beside the `include_bytes!` and a feature mismatch becomes
 /// a compile error in your crate instead of a load error in the field.
 /// Also useful directly for OTA/file-loaded assets:
@@ -194,12 +194,12 @@ pub mod caps {
 pub enum Error {
     /// The byte source ends before the container does: shorter than the
     /// outer header, or a payload cut short. Payload truncation is detected
-    /// best-effort — where a codec's failure status doesn't cleanly separate
+    /// best-effort: where a codec's failure status doesn't cleanly separate
     /// a short stream from a corrupt one, truncation surfaces as
     /// `DecoderFailed`.
     #[display("byte source ends before the container does (truncated)")]
     Truncated,
-    /// The magic bytes don't match — not a μTZ container.
+    /// The magic bytes don't match: not a μTZ container.
     #[display("not a μTZ container (bad magic)")]
     BadMagic,
     /// A μTZ container, but a format version this reader doesn't speak.
@@ -215,7 +215,7 @@ pub enum Error {
     /// The decoded payload size disagrees with the outer header's raw length.
     #[display("decoded size disagrees with the header's raw length")]
     RawLengthMismatch,
-    /// The container's codec has no compiled-in backend — enable the
+    /// The container's codec has no compiled-in backend. Enable the
     /// matching codec feature.
     #[display("codec {_0:?} has no compiled-in backend")]
     CodecNotCompiledIn(#[error(not(source))] Codec),
@@ -232,24 +232,24 @@ pub enum Error {
     #[cfg(feature = "std")]
     #[display("reading the container failed: {_0}")]
     ReadFailed(#[error(not(source))] alloc::string::String),
-    /// [`Finder::from_static`] was handed a compressed container —
-    /// decompression needs an owned buffer (use `from_slice`/`from_vec`).
+    /// [`Finder::from_static`] was handed a compressed container.
+    /// Decompression needs an owned buffer (use `from_slice`/`from_vec`).
     #[display("compressed container passed to from_static")]
     StaticContainerCompressed,
     /// A `FullRings` container's coordinate section is not 4-byte aligned
-    /// in memory — embed static assets with [`include_bytes_aligned!`]`(4, ..)`
+    /// in memory. Embed static assets with [`include_bytes_aligned!`]`(4, ..)`
     /// instead of a bare `include_bytes!`.
     #[display("FullRings container not 4-byte aligned (use include_bytes_aligned!(4, ..))")]
     Misaligned,
     /// A `FullRings` coordinate section is misaligned within the payload
-    /// itself — the container is corrupt or came from a broken encoder.
+    /// itself: the container is corrupt or came from a broken encoder.
     #[display("FullRings coordinate section misaligned within the payload")]
     FullRingsSectionMisaligned,
     /// A `FullRings` container's ring-end table disagrees with its declared
     /// coordinate count.
     #[display("FullRings ring-end table disagrees with the coordinate count")]
     FullRingsCountsDisagree,
-    /// The geometry encoding byte has no compiled-in decoder — enable the
+    /// The geometry encoding byte has no compiled-in decoder. Enable the
     /// matching `geom-*` feature.
     #[display(
         "geometry encoding {_0:?} has no compiled-in decoder (enable the matching geom-* feature)"
@@ -269,7 +269,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 ))]
 impl Error {
     /// A `DecoderFailed` capturing the backend's diagnostic. Callers pass
-    /// `format_args!` over the source error — `{source}` where the backend
+    /// `format_args!` over the source error: `{source}` where the backend
     /// implements `Display`, `{source:?}` otherwise (`Debug` is the one
     /// trait every backend's error type implements).
     pub(crate) fn decoder_failed(codec: Codec, detail: core::fmt::Arguments<'_>) -> Error {
@@ -281,7 +281,7 @@ impl Error {
 }
 
 /// Embed a `.utz` container with `include_bytes_aligned!(4, path)`. Required
-/// for [`Finder::from_static`] on `FullRings` assets — the PIP kernels read
+/// for [`Finder::from_static`] on `FullRings` assets: the PIP kernels read
 /// `(i32, i32)` pairs straight from the embedded bytes, and a bare
 /// `include_bytes!` guarantees no alignment. Harmless for any other asset.
 // Re-exported so consumers don't need their own copy of the dependency. Both

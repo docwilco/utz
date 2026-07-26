@@ -71,7 +71,7 @@ pub unsafe extern "C" fn utz_simplify(algo: u32, xy: *mut f64, n_pts: usize, par
 
 /// [`utz_simplify`] with population-density weighting: `dens` points at
 /// `n_pts` per-vertex densities (people/km²), mapped through
-/// [`DensityWeight::new`]`(w_min)` — so the browser's weighting slider runs
+/// [`DensityWeight::new`]`(w_min)`, so the browser's weighting slider runs
 /// the exact map the builder uses, not a JS reimplementation. `w_min ≥ 1`
 /// turns weighting off (identical to [`utz_simplify`]).
 ///

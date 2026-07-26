@@ -5,9 +5,9 @@
 //!     cargo run --release -p utz-bench-cli -- <shape|container.utz> [npts] [rounds]
 //!
 //! A shape name picks an embedded container: the presets (`tiny`,
-//! `tiny-static`, `compact`, `balanced`, `accurate` — the utz-data-* crates,
+//! `tiny-static`, `compact`, `balanced`, `accurate`; the utz-data-* crates,
 //! via the `utz` preset features) or a generated custom shape
-//! (`compact-none`, `balanced-none`, and `tiny-fixed-static` — tiny-static
+//! (`compact-none`, `balanced-none`, and `tiny-fixed-static`: tiny-static
 //! with fixed-width arcs, the XIP speed tier). Anything else is read as a
 //! `.utz` file path.
 

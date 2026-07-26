@@ -3,7 +3,7 @@
 //! Rebuilds the grid from a codec-*none* container's geometry twice with the
 //! real builder (`grid::build` + `intern_csr`): once per feature (today's
 //! format) and once with each polygon exploded into its own pseudo-feature
-//! (the "purely grid" design — border-cell lists reference polys directly,
+//! (the "purely grid" design: border-cell lists reference polys directly,
 //! so lazy PIP jumps straight to the polys that touch the cell and the
 //! per-poly bbox becomes redundant).
 //!

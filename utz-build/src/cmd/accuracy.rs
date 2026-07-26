@@ -8,7 +8,7 @@
 //!   - max deviation (m, same flat 111 320 m/deg convention as `eps_m`)
 //!   - misassigned area (km², sum of |pocket|)
 //!   - misassigned population (people: pocket area × GHS-POP density at the
-//!     pocket — pockets are ≤ ε wide, far below the 4′ grid, so one sample
+//!     pocket; pockets are ≤ ε wide, far below the 4′ grid, so one sample
 //!     per pocket is essentially exact)
 //!
 //!     utz-build accuracy [ds] [`eps_m`] [`w_min`] [rdp|vw|ii]

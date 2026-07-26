@@ -1,18 +1,18 @@
 # μTZ — micro-timezone lookup
 
-μTZ — micro-timezone: tiny, embeddable lat/lon → IANA tzid lookup.
+μTZ (micro-timezone): tiny, tunable, embeddable lat/lon → IANA timezone-id lookup.
 
-- **Tiny** — OSM timezone data down from 60 MB to ~70 KB via shared-arc
+- **Tiny**: OSM timezone data down from 60 MB to ~70 KB via shared-arc
   topology, tunable map simplification, integer quantization, and general
   compression. Larger more accurate options available as well.
-- **Embeddable** — pure-Rust codecs, integer point-in-polygon, flat
+- **Embeddable**: pure-Rust codecs, integer point-in-polygon, flat
   arrays that borrow zero-copy from a flash partition. `no_std` capable.
-- **Tunable** — pick dataset, simplification parameters, data types,
+- **Tunable**: pick dataset, simplification parameters, data types,
   quantization grid, grid cell size, and compression codec to hit your
   exact size / RAM / accuracy point, guided by a
   [visualization tool](https://docwilco.github.io/utz/live/index.html).
   Or use no compression for direct from flash.
-- **DST-correct** — returns the IANA `tzid`; resolve offsets/DST
+- **DST-correct**: returns the IANA `tzid`; resolve offsets/DST
   downstream with [`jiff`](https://crates.io/crates/jiff) (whose
   compile-time static zones pair well with μTZ's embedded nature) or the
   prevalent `chrono-tz`.
@@ -40,11 +40,11 @@ instead generates your own asset with `utz-build`:
 
 | feature | simplification | size | notes |
 |---|---|---|---|
-| `tiny` | ε 10 km, i16 | ~71 KB | gzip — ~125 KB RAM to decode |
+| `tiny` | ε 10 km, i16 | ~71 KB | gzip: ~125 KB RAM to decode |
 | `tiny-static` | ε 10 km, i16 | ~125 KB | `tiny` uncompressed: zero-copy from flash, ~0 RAM, runs on bare-metal `core` |
 | `compact` | ε 1 km, i24 | ~445 KB | xz |
 | `balanced` | ε 50 m, i24 | ~1.3 MB | brotli |
-| `accurate` | ε 10 m, i32 | ~8.3 MB | brotli — full zone set (every distinct tzid); the others merge zones identical since now |
+| `accurate` | ε 10 m, i32 | ~8.3 MB | brotli: full zone set (every distinct tzid); the others merge zones identical since now |
 
 ## Inspirations & credits
 

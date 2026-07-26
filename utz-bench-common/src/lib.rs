@@ -21,7 +21,7 @@ pub struct BenchResult {
     /// points that resolved to a zone (all of them on with-oceans datasets)
     pub hits: u32,
     pub elapsed_us: u64,
-    /// sum of resolved tzid lengths — consumed so the compiler can't elide
+    /// sum of resolved tzid lengths: consumed so the compiler can't elide
     /// the lookups; also a cheap cross-platform answer checksum
     pub checksum: u64,
 }

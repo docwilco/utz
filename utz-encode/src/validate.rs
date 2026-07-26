@@ -51,7 +51,7 @@ pub fn measure(rings: impl Iterator<Item = Ring<i32>>) -> Bad {
     b
 }
 
-/// A surviving defect of one feature's geometry, in degrees — what the
+/// A surviving defect of one feature's geometry, in degrees: what the
 /// viewer's problems panel lists.
 #[derive(Clone, Copy, Debug)]
 pub struct Problem {
@@ -104,7 +104,7 @@ pub fn find_problems(t: &Topology, arc_coords: &[Vec<(f64, f64)>], qbits: u32) -
 }
 
 /// Count non-adjacent segment pairs of one ring that intersect, split by
-/// kind. Sweep over min-x-sorted segments — O(n log n + pairs-in-x-overlap),
+/// kind. Sweep over min-x-sorted segments: O(n log n + pairs-in-x-overlap),
 /// fine at report scale. Crossing/overlap spots land in `bad.locs`.
 ///
 /// # Panics

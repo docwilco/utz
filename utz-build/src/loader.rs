@@ -1,6 +1,6 @@
 //! Source loading. The source is OSM timezone-boundary-builder; datasets
-//! pick the merge vintage — `now` (65 zones, default), `1970` (304 zones),
-//! or `all` (444 zones) — and ocean cover (with-oceans or land-only).
+//! pick ocean cover (with-oceans or land-only) and the merge vintage:
+//! `now` (65 zones, default), `1970` (304 zones), or `all` (444 zones).
 //!
 //! Download the `GeoJSON` zip (conditional GET) → parse.
 
@@ -14,11 +14,11 @@ use crate::{download, Dataset, Error, Feat, Poly, Ring};
 const REPO: &str = "https://github.com/evansiroky/timezone-boundary-builder";
 
 /// Resolve the tag `releases/latest` points at by reading its redirect
-/// (`…/releases/tag/<tag>`) — no API, no auth. The tag is cached in
+/// (`…/releases/tag/<tag>`): no API, no auth. The tag is cached in
 /// `<cache_dir>/tzbb-release.tag` so offline regeneration keeps it;
 /// `UTZ_TZBB_RELEASE` pins a tag explicitly (skips the probe). With no
-/// network and no cached tag, falls back to `"dev"` with a warning — the
-/// zip cache may still serve the data.
+/// network and no cached tag, falls back to `"dev"` with a warning (the
+/// zip cache may still serve the data).
 ///
 /// # Errors
 /// I/O failure caching the freshly probed tag (probe failures themselves

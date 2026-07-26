@@ -62,7 +62,7 @@ pub fn run(_a: Args) -> utz_build::Result<()> {
     Ok(())
 }
 
-/// First zone whose polygon contains `pt` — one lookup for every width.
+/// First zone whose polygon contains `pt`: one lookup for every width.
 fn look<T: geo::GeoNum>(polys: &[(String, Polygon<T>)], pt: Point<T>) -> String {
     polys
         .iter()

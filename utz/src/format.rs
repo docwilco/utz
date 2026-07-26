@@ -1,5 +1,5 @@
 //! Self-describing container parsing. The payload header is the shared
-//! [`PayloadHeader`] record (utz-common) — the encoder in utz-encode
+//! [`PayloadHeader`] record (utz-common): the encoder in utz-encode
 //! serializes the same struct, so the two cannot drift. It sits in
 //! plaintext after the outer header, so a container is validated BEFORE
 //! any decompression; only the section blob after it is compressed.
@@ -28,7 +28,7 @@ pub struct PayloadLayout {
     pub flags: u16,
     /// provenance, not decode logic
     pub simplify_algo: SimplifyAlgo,
-    /// cell size in degrees — fractional (e.g. 0.5) allowed
+    /// cell size in degrees; fractional (e.g. 0.5) allowed
     pub grid_deg: f32,
     pub eps_m: f32,
     pub n_features: u16,
@@ -112,7 +112,7 @@ pub fn unzigzag(v: u64) -> i64 {
     (v >> 1).cast_signed() ^ -((v & 1).cast_signed())
 }
 
-/// Validate the prologue — format identity only (magic + version) — and
+/// Validate the prologue (format identity only: magic + version) and
 /// return the payload header's offset.
 ///
 /// # Errors
@@ -263,7 +263,7 @@ impl GeometrySections {
     };
 }
 
-/// Coarse containers (geom 3) have no geometry sections at all — just the
+/// Coarse containers (geom 3) have no geometry sections at all: just the
 /// parent table + grid.
 fn coarse_sections(sections_len: usize, parent: usize, n_polys: usize) -> Result<GeometrySections> {
     need(sections_len, parent + n_polys * 2)?;

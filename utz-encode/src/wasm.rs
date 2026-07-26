@@ -6,7 +6,7 @@
 //! (`utz_enc_init` parses the topology section written by
 //! `utz_build::viz::dataset_bin`), then every parameter change is one cheap
 //! `utz_enc_payload` call (simplify → quantize → clean → grid → serialize)
-//! followed by one `utz_enc_compress` call per codec — so the JS can post
+//! followed by one `utz_enc_compress` call per codec, so the JS can post
 //! stats after every step instead of waiting for the slowest codec.
 //! Cancellation is the worker's job: terminate + respawn + re-init.
 //!
@@ -27,7 +27,7 @@ use utz_simplify::{simplify_weighted, DensityWeight, Simplify};
 
 struct State {
     topo: Topology,
-    /// per-vertex density (people/km², arc order) — empty when not shipped
+    /// per-vertex density (people/km², arc order); empty when not shipped
     dens: Vec<f32>,
     /// tzid/offset metadata only (empty polys); geometry lives in `topo`
     feats: Vec<Feat>,
@@ -284,7 +284,7 @@ pub extern "C" fn utz_enc_payload(
 }
 
 /// Stats of the last [`utz_enc_payload`] (0 for an unknown index):
-/// 0 header, 1 zone-table, 2 arc-store, 3 ring-index, 4 grid — section bytes;
+/// 0 header, 1 zone-table, 2 arc-store, 3 ring-index, 4 grid (section bytes);
 /// 5 arcs, 6 verts (post-simplify+clean counts);
 /// 7 dups, 8 spikes, 9 collinear, 10 rings dropped, 11 polys dropped,
 /// 12 arcs dropped (cleanup removals).
@@ -313,7 +313,7 @@ pub extern "C" fn utz_enc_stat(i: u32) -> u32 {
 }
 
 /// Pointer to the resident payload of the last [`utz_enc_payload`] (whose
-/// return value is its length; null if none) — lets the JS read the exact
+/// return value is its length; null if none), letting the JS read the exact
 /// bytes back, e.g. to offer a `.utz` download or diff against the builder.
 #[no_mangle]
 pub extern "C" fn utz_enc_payload_ptr() -> *const u8 {
@@ -324,12 +324,12 @@ pub extern "C" fn utz_enc_payload_ptr() -> *const u8 {
 }
 
 /// Locate problematic geometry (surviving ring self-crossings / collinear
-/// overlaps) for the given knobs — the viewer's problems panel. Runs
+/// overlaps) for the given knobs: the viewer's problems panel. Runs
 /// simplify (Q→S when `pre` != 0: arcs snap to the `quant_bits` grid first)
 /// → quantize → clean → drop, then sweeps every ring. Returns the record
 /// count; records via [`utz_enc_problems_ptr`], 12 bytes each:
 /// f32 lon | f32 lat | u16 kind (0 cross, 1 overlap) | u16 feature.
-/// A spot on a shared border yields one record per owning ring — the JS
+/// A spot on a shared border yields one record per owning ring; the JS
 /// dedupes by location and joins the zone names.
 #[no_mangle]
 pub extern "C" fn utz_enc_problems(
@@ -371,7 +371,7 @@ pub extern "C" fn utz_enc_problems_ptr() -> *const u8 {
     }
 }
 
-/// tzid of feature `i` as (ptr, len) — for labelling problem records.
+/// tzid of feature `i` as (ptr, len), for labelling problem records.
 #[no_mangle]
 pub extern "C" fn utz_enc_tzid_ptr(i: u32) -> *const u8 {
     match unsafe { &*core::ptr::addr_of!(STATE) } {
@@ -396,7 +396,7 @@ pub extern "C" fn utz_enc_tzid_len(i: u32) -> u32 {
 }
 
 /// Stage 2: compress the resident payload with one codec byte (1 gzip/zlib,
-/// 3 brotli, 4 xz — zstd is feature-gated off in the wasm build) and return
+/// 3 brotli, 4 xz; zstd is feature-gated off in the wasm build) and return
 /// the compressed size in bytes; the shipped `.utz` adds a 10-byte outer
 /// header. Returns 0 on error / unsupported codec / no payload.
 #[no_mangle]

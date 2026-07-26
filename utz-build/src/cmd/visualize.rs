@@ -109,7 +109,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     Ok(())
 }
 
-/// Density grid loaded once, on first demand — density is optional for the
+/// Density grid loaded once, on first demand. Density is optional for the
 /// viewer, so a failed load warns once and yields `None` thereafter.
 enum LazyDensity {
     Unprobed,
@@ -145,7 +145,7 @@ fn fresh(stamp_path: &Path, want: &str, outputs: &[&Path]) -> bool {
         && std::fs::read_to_string(stamp_path).is_ok_and(|have| have == want)
 }
 
-/// Content hash (std `SipHash`) — identifies the generating binary in stamps,
+/// Content hash (std `SipHash`): identifies the generating binary in stamps,
 /// so a rebuilt utz-build invalidates every blob its code could shape.
 fn hash_file(path: &Path) -> String {
     use std::hash::Hasher as _;
@@ -177,8 +177,8 @@ fn file_fp(path: &Path) -> String {
 }
 
 /// Cached-zip fingerprint: the conditional-GET validators (`ETag` /
-/// `Last-Modified`) stored beside the file — a 304 revalidation leaves both
-/// untouched — falling back to len+mtime when no validators were stored.
+/// `Last-Modified`) stored beside the file (a 304 revalidation leaves both
+/// untouched), falling back to len+mtime when no validators were stored.
 fn zip_fp(zip: &Path) -> String {
     let name = zip.file_name().and_then(|n| n.to_str()).unwrap_or_default();
     let meta = zip.with_file_name(format!("{name}.headers"));

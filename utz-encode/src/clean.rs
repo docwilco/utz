@@ -5,8 +5,8 @@
 //! entirely. Left in, the spurs self-overlap and flip the runtime's even-odd
 //! PIP parity inside the fold.
 //!
-//! Every fix runs on the shared arcs (or drops whole rings) — never on one
-//! polygon in isolation — so neighbouring zones stay stitched by
+//! Every fix runs on the shared arcs (or drops whole rings), never on one
+//! polygon in isolation, so neighbouring zones stay stitched by
 //! construction; cleaning a border cleans it identically for both owners.
 
 use crate::{Arc, Ring};
@@ -54,7 +54,7 @@ fn classify(p: (i32, i32), q: (i32, i32), r: (i32, i32)) -> Kind {
 /// multi-vertex spurs unwind fully), or when it lies collinearly between its
 /// neighbours. `closed` arcs (cut-free rings, stored with first == last) are
 /// cleaned cyclically so artifacts at the arbitrary start vertex are caught
-/// too; open arcs never lose their endpoints — those are junctions shared
+/// too; open arcs never lose their endpoints: those are junctions shared
 /// with other arcs.
 pub fn clean_arc(a: &mut Arc<i32>, closed: bool, st: &mut CleanStats) {
     if closed {
@@ -142,7 +142,7 @@ fn clean_cyclic(arc: &mut Arc<i32>, stats: &mut CleanStats) {
     }
 }
 
-/// Assemble one ring's quantized coords from its signed arc refs — the
+/// Assemble one ring's quantized coords from its signed arc refs: the
 /// integer twin of `Topology::reconstruct`'s ring assembly.
 #[must_use]
 pub fn ring_coords_q(refs: &[u32], arcs: &[Arc<i32>]) -> Ring<i32> {
@@ -167,7 +167,7 @@ pub fn ring_coords_q(refs: &[u32], arcs: &[Arc<i32>]) -> Ring<i32> {
 /// Ring collapsed under quantization: fewer than 3 vertices, or shoelace
 /// area exactly 0 with no proper self-crossing. The crossing exemption
 /// matters: a bowtie with equal opposite lobes has signed area 0 yet still
-/// covers both lobes under the runtime's even-odd rule — dropping it would
+/// covers both lobes under the runtime's even-odd rule. Dropping it would
 /// lose real coverage. Exact in i128 for all qbits.
 #[must_use]
 pub fn ring_degenerate(c: &[(i32, i32)]) -> bool {
@@ -217,7 +217,7 @@ pub type CleanedTopo = (Vec<Vec<u32>>, Vec<Vec<Vec<usize>>>, Vec<Arc<i32>>);
 /// vanishes alone, a degenerate exterior takes its holes with it. Arcs no
 /// surviving ring references are removed and arc ids compacted. Returns the
 /// filtered `(ring_refs, structure, arcs)` mirroring `Topology`'s fields.
-/// Dropping a zero-area ring can't open a crack with a neighbour — there was
+/// Dropping a zero-area ring can't open a crack with a neighbour: there was
 /// no area to disagree about.
 ///
 /// # Panics

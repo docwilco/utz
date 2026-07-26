@@ -4,9 +4,9 @@
 //! and the measurement commands. Also hosts the viz tool.
 //!
 //! The source is OSM timezone-boundary-builder. Datasets pick the merge
-//! vintage — `now` (65 zones, default), `1970` (304 zones), or `all`
-//! (444 zones) — with oceans by default; a `land-` prefix selects the
-//! land-only releases.
+//! vintage: `now` (65 zones, default), `1970` (304 zones), or `all`
+//! (444 zones). Oceans are included by default; a `land-` prefix selects
+//! the land-only releases.
 
 // encoder core (types, topo, grid, encode) lives in utz-encode (WASM-shared);
 // re-export it all so `utz_build::topo::…` paths keep working
@@ -89,7 +89,7 @@ pub fn load(ds: &str) -> crate::Result<Vec<Feat>> {
     Ok(load_with_release(ds)?.0)
 }
 
-/// [`load`] plus the TZBB release tag the features came from — for stamping
+/// [`load`] plus the TZBB release tag the features came from, for stamping
 /// container headers (provenance). `"dev"` when the source isn't a
 /// pinned release (offline fallback).
 ///
@@ -101,7 +101,7 @@ pub fn load_with_release(ds: &str) -> crate::Result<(Vec<Feat>, String)> {
 
 /// `encode::encode` with population-density-weighted simplification: the
 /// per-edge ε multiplier is a simplification knob, so it lives here with the
-/// density code — utz-encode itself stays density-agnostic (see the
+/// density code; utz-encode itself stays density-agnostic (see the
 /// `encode::encode` docs).
 ///
 /// # Errors

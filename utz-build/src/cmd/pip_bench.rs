@@ -233,7 +233,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
 }
 
 /// Linear first-hit scan of every contender poly with the shared hoisted
-/// bbox precheck — the scan shell every contender pays identically; `hit`
+/// bbox precheck: the scan shell every contender pays identically; `hit`
 /// is the per-candidate containment kernel. Returns per-point first hit
 /// (as feature index) + wall time.
 fn timed_scan(

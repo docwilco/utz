@@ -121,7 +121,7 @@ pub fn build_topology_algo(feats: &[Feat], algo: Simplify) -> Topology {
 /// [`build_topology_algo`] with spatially varying tolerance: `edge_weight(a, b)`
 /// returns the tolerance multiplier for one arc edge (in practice
 /// `DensityWeight::weight(DensityGrid::max_along(a, b))`), and each vertex
-/// simplifies under the *smallest* multiplier of its incident edges — so a
+/// simplifies under the *smallest* multiplier of its incident edges, so a
 /// long edge crossing a dense area pins both flanking vertices. Weights are a
 /// pure function of arc geometry and every shared arc is simplified exactly
 /// once, so neighbouring zones stay stitched by construction.
@@ -467,7 +467,7 @@ mod tests {
         vec![f(left), f(right)]
     }
 
-    /// An island whose outline is also the hole of the zone around it — the
+    /// An island whose outline is also the hole of the zone around it: the
     /// same closed ring, but each feature starts it at a different vertex and
     /// winds it the opposite way (exactly the Cyprus case). The topology must
     /// intern that ring as ONE arc, not two rotated copies.
@@ -520,7 +520,7 @@ mod tests {
 
     /// A pinched (figure-eight) ring passes through its smallest vertex
     /// twice, so the lexicographically smallest FORWARD rotation differs
-    /// between the two windings — canonicalization must consider both walk
+    /// between the two windings. Canonicalization must consider both walk
     /// directions or the two features intern two different arcs.
     #[test]
     fn shared_pinched_ring_interns_once() {

@@ -1,4 +1,4 @@
-//! Encode a container to disk — the input for utz-bench-cli and the
+//! Encode a container to disk: the input for utz-bench-cli and the
 //! ESP32-S3 firmware (which embeds an *uncompressed* container and borrows
 //! it zero-copy from flash via `Finder::from_static`).
 //!

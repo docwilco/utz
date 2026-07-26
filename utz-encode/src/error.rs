@@ -1,16 +1,16 @@
-//! Encoder error type — the workspace error pattern (see `utz::Error`):
-//! `derive_more` derives, foreign errors enter via `derive_more::From`,
-//! domain variants are `#[from(skip)]`.
+//! Encoder error type, following the workspace error pattern (see
+//! `utz::Error`): `derive_more` derives, foreign errors enter via
+//! `derive_more::From`, domain variants are `#[from(skip)]`.
 
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, derive_more::Display, derive_more::Error, derive_more::From)]
 pub enum Error {
-    /// zstd/brotli compressor I/O failure — they write to memory, so this
+    /// zstd/brotli compressor I/O failure: they write to memory, so this
     /// signals a codec bug rather than an environment problem
     #[display("compression failed: {_0}")]
     Compress(std::io::Error),
-    /// `no_std` `lzma_rust2::Error` isn't `core::error::Error` — stringified
+    /// `no_std` `lzma_rust2::Error` isn't `core::error::Error` (stringified)
     #[from(skip)]
     #[display("xz compression failed: {_0}")]
     Xz(#[error(not(source))] String),
@@ -24,7 +24,7 @@ pub enum Error {
     #[display("grid_deg must be within 0.1\u{2013}45 (got {deg})")]
     GridDeg { deg: f64 },
     /// A count or byte length exceeds the width the container format stores
-    /// it at — fail loudly instead of an `as` wrap silently corrupting tables.
+    /// it at. Fail loudly instead of an `as` wrap silently corrupting tables.
     #[from(skip)]
     #[display("{what} ({n}) exceeds format limit {max}")]
     FormatLimit {

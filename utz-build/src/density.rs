@@ -1,6 +1,6 @@
 //! Population density for density-weighted simplification (GHS-POP R2023A).
 //!
-//! Source: JRC's Global Human Settlement Layer population grid — a single
+//! Source: JRC's Global Human Settlement Layer population grid. A single
 //! global `GeoTIFF`, WGS84, 30 arc-seconds (~1 km), population *count* per
 //! cell, free direct download. One-time: fetch the ~460 MB zip through the
 //! [`crate::download`] cache, stream-decode the tif tile by tile summing 8×8
@@ -30,7 +30,7 @@ const DOWNSAMPLE: usize = 8;
 const SIDECAR_MAGIC: &[u8; 4] = b"uTZd";
 const SIDECAR_NAME: &str = "ghs_pop_e2020_4326_ds8.bin";
 
-/// Path of the decoded density sidecar inside `cache_dir` — lets callers
+/// Path of the decoded density sidecar inside `cache_dir`: lets callers
 /// fingerprint the density data without loading it (webdist blob cache).
 #[must_use]
 pub fn sidecar_path(cache_dir: &Path) -> PathBuf {

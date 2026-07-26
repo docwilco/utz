@@ -1,22 +1,22 @@
-//! μTZ lookup bench on ESP32-S3 — the on-target flash-latency matrix.
+//! μTZ lookup bench on ESP32-S3: the on-target flash-latency matrix.
 //!
-//! Embeds each preset shape (tiny / compact / balanced) twice — the preset's
-//! compressed asset and its uncompressed twin — and measures every memory
+//! Embeds each preset shape (tiny / compact / balanced) twice (the preset's
+//! compressed asset and its uncompressed twin) and measures every memory
 //! mode the hardware supports:
 //!
-//! - **xip-flash**: `Finder::from_static` on the uncompressed blob — lookups
+//! - **xip-flash**: `Finder::from_static` on the uncompressed blob; lookups
 //!   stream straight out of memory-mapped flash, payload never in RAM.
-//! - **ram**: the uncompressed container copied into heap (`from_vec`) —
+//! - **ram**: the uncompressed container copied into heap (`from_vec`);
 //!   streaming PIP from RAM. Small payloads land in internal SRAM; a
 //!   sacrificial SRAM filler forces a second tiny run into PSRAM, isolating
 //!   the PSRAM access penalty.
-//! - **decode**: `from_slice` on the compressed asset — the buffered-decode
+//! - **decode**: `from_slice` on the compressed asset, the buffered-decode
 //!   path (decode time printed separately = per-codec embedded decode speed).
-//! - **eager**: `from_static` + `preload` — geometry decoded to RAM once,
+//! - **eager**: `from_static` + `preload`; geometry decoded to RAM once,
 //!   payload stays in flash.
 //! - **partition**: the same tiny-static asset read back out of a dedicated
 //!   `utzdata` flash partition (found by label in the ESP-IDF partition
-//!   table at runtime) instead of the app image — the ship-the-dataset-
+//!   table at runtime) instead of the app image: the ship-the-dataset-
 //!   separately path, e.g. for OTA-ing data without the firmware.
 //!
 //! Uses the same harness + points as utz-bench-cli: every leg's checksum must
@@ -176,7 +176,7 @@ fn eager_leg(label: &str, blob: &'static [u8], pts: &[(f64, f64)]) {
     bench(label, &f, pts);
 }
 
-/// partition leg: the dataset is NOT in the app image — it sits in its own
+/// partition leg: the dataset is NOT in the app image. It sits in its own
 /// `utzdata` flash partition (partitions.csv), written by flash-with-data.sh.
 /// At runtime: parse the ESP-IDF partition table, find the partition by
 /// label, size the read from the container's outer header (the partition is
@@ -261,7 +261,7 @@ fn partition_leg(
 }
 
 /// eager_from_slice leg: compressed asset decoded straight to eager, the
-/// geometry sections dropped — steady-state heap is the eager cache plus
+/// geometry sections dropped: steady-state heap is the eager cache plus
 /// header/tzid/grid only (compare against decode + preload's payload+cache)
 fn eager_slice_leg(label: &str, blob: &'static [u8], pts: &[(f64, f64)]) {
     let (s0, p0) = (free_sram() as isize, free_psram() as isize);
@@ -385,9 +385,9 @@ fn main() -> ! {
 
 /// PIP kernel comparison, no container involved: one synthetic i24-range
 /// ring folded through each arithmetic width on the identical slice.
-/// Random vertices are fine — even-odd parity is well-defined on any closed
+/// Random vertices are fine: even-odd parity is well-defined on any closed
 /// polyline and all three kernels implement the same rule, so verdicts must
-/// agree exactly (f64 is bit-exact at i24 — pip.rs module docs). Branch mix
+/// agree exactly (f64 is bit-exact at i24; pip.rs module docs). Branch mix
 /// differs from real geometry (~50% y-span hits), so read it as a kernel
 /// ratio, not an absolute lookup cost.
 fn kernel_bench() {
@@ -439,7 +439,7 @@ fn kernel_bench() {
 }
 
 /// The i32-quant kernel matrix: sign-split u64 vs the i128 kernel over a
-/// FULL-i32-range ring — the only two exact kernels at this width (i64
+/// FULL-i32-range ring, the only two exact kernels at this width (i64
 /// overflows, f64 is inexact), so the pair must agree and their ratio is
 /// the "retire i128 on 32-bit cores" answer.
 fn kernel_bench_i32() {
@@ -484,11 +484,11 @@ fn kernel_bench_i32() {
 }
 
 /// The i16 kernel matrix: the shipped sign-split kernel
-/// (`pip::ring_hit_split` — what i16-quant eager/image lookups dispatch)
+/// (`pip::ring_hit_split`: what i16-quant eager/image lookups dispatch)
 /// vs the generic i64 kernel on the identical `(i16, i16)` slice, plus the
 /// same geometry widened to `(i32, i32)` pairs for the load-width effect.
 /// Full-range i16 ring so worst-case products are exercised (65535² just
-/// fits u32 — see `pip::edge_split`); ring-level verdicts must agree
+/// fits u32; see `pip::edge_split`); ring-level verdicts must agree
 /// exactly (the sign-split kernel may flag Boundary via a different edge of
 /// the same vertex, but Boundary short-circuits the ring either way).
 fn kernel_bench_i16() {
@@ -546,7 +546,7 @@ fn kernel_bench_i16() {
 
 /// The 15-bit-quant question: quantizing one bit shy of the storage
 /// width (|coord| ≤ 2^14) makes the plain compare-form kernel exact at
-/// `W = i32` — differences fit 15 bits, each cross-product half fits 2^30 —
+/// `W = i32` (differences fit 15 bits, each cross-product half fits 2^30)
 /// with no swap and no sign classification. Races it against the i64 kernel
 /// and the sign-split kernel on the identical 15-bit-range `(i16, i16)`
 /// slice; all three are exact here, so verdicts must agree.

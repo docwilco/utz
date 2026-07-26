@@ -1,6 +1,6 @@
-//! Consumer-facing builder API for the `custom` tier: the
-//! typed config IS the build config — rustdoc'd, IDE-completable, no file
-//! discovery. Meant for a consumer `build.rs` with `utz-build` as a
+//! Consumer-facing builder API for the `custom` tier: the typed config IS
+//! the build config (rustdoc'd, IDE-completable, no file discovery). Meant
+//! for a consumer `build.rs` with `utz-build` as a
 //! build-dependency (`prost-build` pattern):
 //!
 //! ```no_run
@@ -19,7 +19,7 @@
 //! into the cache, never committed; downloads are cond-GET-cached so
 //! regeneration is cheap.
 //!
-//! The preset recipes double as constructors — start from one and
+//! The preset recipes double as constructors. Start from one and
 //! override a single knob instead of spelling the whole recipe:
 //! `Config::compact().codec(Codec::Uncompressed)`.
 
@@ -66,7 +66,7 @@ impl Config {
 
     /// The `tiny` preset recipe: RDP ε=10 000 m with pop-density
     /// floor 1e-3, i16, 2° grid, gzip. A preset constructor is a starting
-    /// point for one-knob variants — `tiny-static` is
+    /// point for one-knob variants: `tiny-static` is
     /// `Config::tiny().codec(Codec::Uncompressed)`.
     #[must_use]
     pub fn tiny() -> Self {
@@ -103,7 +103,7 @@ impl Config {
     }
 
     /// The `accurate` preset recipe: dataset `all` (the full
-    /// Comprehensive zone set — the other presets use `now`), RDP ε=10 m
+    /// Comprehensive zone set; the other presets use `now`), RDP ε=10 m
     /// with pop-density floor 1e-1, i32, 0.5° grid, brotli.
     #[must_use]
     pub fn accurate() -> Self {
@@ -186,7 +186,7 @@ impl Config {
     }
 
     /// Fetch sources (cached), build the container, write it, return the
-    /// path. Also writes `<out>.guard.rs` — a compile-time assertion of the
+    /// path. Also writes `<out>.guard.rs`: a compile-time assertion of the
     /// `utz` features this asset needs (via [`utz::caps`]); `include!` it
     /// next to the `include_bytes!` so a feature mismatch fails the build
     /// instead of the first load.

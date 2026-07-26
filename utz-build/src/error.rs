@@ -1,7 +1,8 @@
-//! Builder error type — the workspace error pattern (see `utz::Error`):
-//! `derive_more` derives, foreign errors enter via `derive_more::From`,
-//! domain variants are `#[from(skip)]`. Library paths use typed variants;
-//! the cmd/* measurement tools may use [`Error::Msg`] for one-off messages.
+//! Builder error type, following the workspace error pattern (see
+//! `utz::Error`): `derive_more` derives, foreign errors enter via
+//! `derive_more::From`, domain variants are `#[from(skip)]`. Library paths
+//! use typed variants; the cmd/* measurement tools may use [`Error::Msg`]
+//! for one-off messages.
 
 use std::path::PathBuf;
 

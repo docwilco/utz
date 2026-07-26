@@ -4,10 +4,10 @@
 //! For a codec-*none* container, rebuilds the payload in two variants and
 //! compresses all three with the preset encoders (`utz_encode::compress`):
 //!
-//! - **A — fixed-width arcs**: the interned arc store re-emitted as absolute
+//! - **A (fixed-width arcs)**: the interned arc store re-emitted as absolute
 //!   fixed-width coords (no deltas, no varints). Streaming/XIP lookups would
-//!   skip the per-vertex varint decode — near-eager speed, zero RAM cache.
-//! - **B — eager layout**: geometry flattened per ring as i32 pairs — the
+//!   skip the per-vertex varint decode: near-eager speed, zero RAM cache.
+//! - **B (eager layout)**: geometry flattened per ring as i32 pairs, the
 //!   exact `preload()` cache image, so after decompression the buffer IS the
 //!   eager cache (shared arcs duplicated, like preload does).
 //!

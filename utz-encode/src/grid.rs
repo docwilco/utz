@@ -1,9 +1,9 @@
 //! Grid + interned-CSR builder.
 //!
 //! Two passes over the geometry:
-//! 1. edge walk — every cell a ring passes through collects that feature id
+//! 1. edge walk: every cell a ring passes through collects that feature id
 //!    (candidate sets; ≥2 candidates = border cell needing PIP);
-//! 2. scanline fill on a sub×sub-finer grid — even-odd span fill per polygon
+//! 2. scanline fill on a sub×sub-finer grid: even-odd span fill per polygon
 //!    gives per-subcell ownership, aggregated to a dominant zone per cell
 //!    (interior fill for the primary array + the `lookup_coarse` answer).
 
@@ -14,7 +14,7 @@ use ndarray::Array2;
 use crate::Feat;
 use utz_common::NO_ZONE;
 
-/// Cell arrays are `[row, col]`-indexed and iterate row-major — the same
+/// Cell arrays are `[row, col]`-indexed and iterate row-major, the same
 /// order the primary table serializes in.
 pub struct CellGrid {
     pub deg: f64,
@@ -96,7 +96,7 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
     }
 }
 
-/// Pass 1: walk every ring edge in `deg`-sized steps — every cell an edge
+/// Pass 1: walk every ring edge in `deg`-sized steps. Every cell an edge
 /// passes through collects that feature id (candidate sets; ≥2 candidates =
 /// border cell needing PIP).
 fn edge_walk(feats: &[Feat], deg: f64, ncols: usize, nrows: usize) -> Array2<HashSet<u16>> {
@@ -143,8 +143,9 @@ fn edge_walk(feats: &[Feat], deg: f64, ncols: usize, nrows: usize) -> Array2<Has
     sets
 }
 
-/// Pass 2: even-odd scanline fill per polygon on the `sub`×-finer grid —
-/// per-subcell ownership (later aggregated to a dominant zone per cell).
+/// Pass 2: even-odd scanline fill per polygon on the `sub`×-finer grid,
+/// yielding per-subcell ownership (later aggregated to a dominant zone per
+/// cell).
 ///
 /// # Panics
 /// If any coordinate is NaN (crossing xs become unsortable).
@@ -249,11 +250,11 @@ fn subcell_owners(feats: &[Feat], deg: f64, sub: usize, fcols: usize, frows: usi
 /// Candidate-list ordering inside the interned CSR.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Order {
-    /// ascending feature id — maximal interning (baseline)
+    /// ascending feature id: maximal interning (baseline)
     IdSorted,
-    /// descending global zone area — deterministic per set, same interning as `IdSorted`
+    /// descending global zone area: deterministic per set, same interning as `IdSorted`
     AreaDesc,
-    /// this cell's dominant zone first, rest id-sorted — best early-exit, breaks interning
+    /// this cell's dominant zone first, rest id-sorted: best early-exit, breaks interning
     CellDominantFirst,
 }
 

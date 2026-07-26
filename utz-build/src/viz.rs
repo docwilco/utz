@@ -1,6 +1,6 @@
 //! Webdist viewer emission: one static Leaflet page plus binary
 //! data blobs per TZBB dataset (arcs + per-vertex densities) and a shared
-//! heat raster. Everything is generated on demand — never a committed asset.
+//! heat raster. Everything is generated on demand, never a committed asset.
 
 fn template_path(name: &str) -> String {
     format!("{}/templates/{name}", env!("CARGO_MANIFEST_DIR"))
@@ -22,8 +22,8 @@ pub fn webdist_index() -> crate::Result<String> {
 /// | u32 n_verts | u32 offs[n_arcs+1] | pad to 8 | f64 xy[2·n_verts]
 /// | f32 dens[n_verts] | topology`.
 /// Densities are per-vertex, flat in arc order: max of the vertex's incident
-/// edges via `max_along` — the same edge sampling the builder's weighted path
-/// uses, so the browser only maps density → weight (in WASM), never
+/// edges via `max_along` (the same edge sampling the builder's weighted path
+/// uses), so the browser only maps density → weight (in WASM), never
 /// re-samples geometry.
 ///
 /// The topology section carries everything `payload_from_topology` needs
@@ -32,8 +32,8 @@ pub fn webdist_index() -> crate::Result<String> {
 /// `u8 dataset_code | u8 rel_len | release bytes | u16 n_features
 /// | per feature: f32 offset | u8 len | tzid bytes
 /// | u32 n_rings | per ring: u32 nrefs | u32 refs (id<<1|rev)
-/// | per feature: u16 npolys | per poly: u16 nrings | u32 ring_idx[nrings]`
-/// — byte-packed, no alignment (the WASM parser reads bytewise).
+/// | per feature: u16 npolys | per poly: u16 nrings | u32 ring_idx[nrings]`.
+/// All byte-packed, no alignment (the WASM parser reads bytewise).
 ///
 /// # Panics
 /// If `release` or any tzid is 256 bytes or longer (they're stored with
@@ -149,7 +149,7 @@ pub fn dataset_bin(
 
 /// Heat raster for the viewer's density layer (little-endian):
 /// `"uTZh" | u32 w | u32 h | u32 pad | f64 lon0, lat0, dlon, dlat
-/// | u8 cells[w·h]` — the grid max-pooled 4× and log-quantized
+/// | u8 cells[w·h]`. Cells are the grid max-pooled 4× and log-quantized
 /// (0 = unpopulated → transparent, 255 ≈ 50k p/km²); the JS reprojects
 /// rows to Mercator when drawing.
 ///

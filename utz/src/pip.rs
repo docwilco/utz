@@ -1,6 +1,6 @@
 //! Per-polygon integer point-in-polygon.
 //!
-//! Even-odd ray cast (ray toward +x) over ONE polygon's rings — exterior
+//! Even-odd ray cast (ray toward +x) over ONE polygon's rings: exterior
 //! first, holes after; parity XORs across rings, so a point inside a hole
 //! comes out `false`. Exact integer arithmetic, no division: one cross
 //! product `(b-a)×(p-a)` in a wide type decides crossing direction AND
@@ -9,13 +9,13 @@
 //! One generic kernel, two type axes:
 //!
 //! `W` is the wide product type (overflow bound: product ≤ `4·coord_max²`):
-//! - `i64` — safe for i16/i24 grids (|coord| ≤ 2^23 → products ≤ 2^48).
+//! - `i64`: safe for i16/i24 grids (|coord| ≤ 2^23 → products ≤ 2^48).
 //!   Note i16-narrow storage does NOT relax this to i32: |coord| ≤ 2^15
-//!   still means differences up to 2^16 and a cross up to 2^33 — the narrow
+//!   still means differences up to 2^16 and a cross up to 2^33: the narrow
 //!   win is memory and load width, not product width.
-//! - `i128` — for i32-fine grids (deg×1e7 overflows i64)
-//! - `f64` — **test/bench only**, never dispatched by lookup.
-//!   Bit-exact for i16/i24 (products ≤ 2^48 < 2^53 — every product and
+//! - `i128`: for i32-fine grids (deg×1e7 overflows i64)
+//! - `f64`: **test/bench only**, never dispatched by lookup.
+//!   Bit-exact for i16/i24 (products ≤ 2^48 < 2^53: every product and
 //!   difference representable), silently inexact near boundaries at i32
 //!   (products ~2^62; the same failure mode as geometry-rs's float
 //!   tests). Trade-off in one line: integer buys exact sign decisions at every
@@ -26,14 +26,14 @@
 //!
 //! The coordinate storage is a [`CoordPair`]: decoded `(i32, i32)` pairs,
 //! `(i16, i16)` pairs at quant width (i16-quant eager cache and full-rings
-//! sections — half the RAM/flash traffic), or packed `Pack24`
+//! sections; half the RAM/flash traffic), or packed `Pack24`
 //! straight over full-rings section bytes. The kernel widens each vertex as it loads it;
 //! coordinate comparisons run at the narrow width.
 //!
 //! There is also a second kernel family, sign-split ([`edge_split`] /
 //! [`ring_hit_split`], generic over [`Narrow`]): the wide type disappears
 //! into an exact unsigned magnitude compare at 2b bits (u32 products for
-//! i16 coords, u64 for i24/i32). Strictly for 32-bit cores — there a wide
+//! i16 coords, u64 for i24/i32). Strictly for 32-bit cores: there a wide
 //! multiply isn't one instruction and the W kernels' (b+1)-bit differences
 //! force full-width multiplies, while sign-split magnitudes are true b-bit
 //! `abs_diff`s (one widening multiply each); on 64-bit hosts the same
@@ -45,24 +45,24 @@
 //! are ambiguous between adjacent zones, and claiming them keeps lookup
 //! deterministic (first candidate polygon wins).
 //!
-//! Three granularities, one kernel — one per memory mode:
-//! - [`contains`] — whole polygon from ring slices.
-//! - [`ring_hit`] — one ring (eager cache / full-rings sections).
-//! - [`edge`] — one edge, the streaming unit: the test is
+//! Three granularities, one kernel (one per memory mode):
+//! - [`contains`]: whole polygon from ring slices.
+//! - [`ring_hit`]: one ring (eager cache / full-rings sections).
+//! - [`edge`]: one edge, the streaming unit. The test is
 //!   per-segment, endpoint-symmetric, and parity accumulation is
 //!   order-independent, so lazy/static lookups fold arcs through it straight
 //!   off the container bytes with O(1) state and no decode buffer.
 
 use core::ops::{Mul, Sub};
 
-/// Trait alias for the kernel's wide product type — all pure core traits,
+/// Trait alias for the kernel's wide product type: all pure core traits,
 /// blanket-implemented, so `i64`/`i128`/`f64` qualify wherever the
 /// narrow coordinate type `N` converts in losslessly.
 pub trait Wide<N>: Copy + PartialOrd + From<N> + Sub<Output = Self> + Mul<Output = Self> {}
 impl<N, W: Copy + PartialOrd + From<N> + Sub<Output = W> + Mul<Output = W>> Wide<N> for W {}
 
 /// Coordinate-pair storage the kernels widen from: pairs are stored at quant
-/// width — i16/i32 as typed tuples, i24 packed (`Pack24`).
+/// width, i16/i32 as typed tuples, i24 packed (`Pack24`).
 pub trait CoordPair: Copy {
     /// The narrow in-memory coordinate type; widened to `W` per edge.
     type Narrow: Copy + Ord;
@@ -157,7 +157,7 @@ where
 ///
 /// Compute the cross product for any edge whose y-span touches the
 /// scanline; collinear + x-in-span = exactly on the edge (covers
-/// interior points, vertices, and horizontal edges — every vertex is
+/// interior points, vertices, and horizontal edges: every vertex is
 /// the endpoint of some touching edge). Crossing rules (each crossing
 /// vertex counted once): an upward edge excludes its final endpoint,
 /// a downward edge excludes its starting endpoint, horizontal edges
@@ -206,10 +206,10 @@ where
 }
 
 /// Sign-split arithmetic of a narrow coordinate type: the unsigned product
-/// type one cross-product half fits EXACTLY — `(2^b−1)² ≤ 2^2b − 1`, i.e.
+/// type one cross-product half fits EXACTLY (`(2^b−1)² ≤ 2^2b − 1`), i.e.
 /// the compare form needs only 2b bits where [`edge`]'s subtract form needs
 /// 2b+2. The magnitudes are true b-bit `abs_diff`s, so each
-/// product is one widening multiply even on cores whose word is b bits —
+/// product is one widening multiply even on cores whose word is b bits,
 /// unlike the W kernels, whose (b+1)-bit differences force full wide
 /// multiplies there.
 pub trait Narrow: Copy + Ord {
@@ -241,7 +241,7 @@ impl Narrow for i32 {
     }
 }
 
-/// [`ring_hit`] fold over the sign-split [`edge_split`] kernel — what
+/// [`ring_hit`] fold over the sign-split [`edge_split`] kernel: what
 /// lookups dispatch on 32-bit targets (module docs; the finder keeps the
 /// per-target policy).
 #[must_use]
@@ -272,13 +272,13 @@ where
     }
 }
 
-/// The sign-split edge kernel — [`edge`] without the wide type:
+/// The sign-split edge kernel ([`edge`] without the wide type):
 /// each cross-product half becomes a sign (narrow comparisons) times an
 /// exact unsigned magnitude product ([`Narrow::magnitude_product`]). Strictly a
-/// 32-bit-core kernel — the i16 instantiation measured 0.75× the i64
+/// 32-bit-core kernel: the i16 instantiation measured 0.75× the i64
 /// kernel on a 32-bit core but 2.3× (slower) on a 64-bit host, where a
-/// wide multiply is one instruction and the extra branches only cost —
-/// which is why lookups use it on 32-bit targets alone.
+/// wide multiply is one instruction and the extra branches only cost.
+/// That is why lookups use it on 32-bit targets alone.
 ///
 /// Normalizes the edge upward first: swapping endpoints negates the cross
 /// product, folding [`edge`]'s up/down branches into one, and the upward
@@ -332,10 +332,10 @@ pub fn edge_split<N: Narrow>(a: (N, N), b: (N, N), px: N, py: N) -> EdgeHit {
 }
 
 /// Packed little-endian i24 pair (6 bytes, align 1): `&[Pack24]` is a valid
-/// slice over the section bytes at ANY address — i24 sections have no alignment
+/// slice over the section bytes at ANY address: i24 sections have no alignment
 /// requirement. The unpack compiles to whatever the target does best
 /// (single unaligned-style loads where hardware allows, byte assembly on
-/// strict-alignment cores — measured a tie with hand-blocked aligned
+/// strict-alignment cores; measured a tie with hand-blocked aligned
 /// loads there).
 #[derive(Clone, Copy)]
 #[repr(transparent)]
@@ -427,7 +427,7 @@ mod tests {
     }
 
     /// i16-narrow pairs through the i64 kernel AND the 32-bit sign-split
-    /// kernel must agree with the identical geometry widened to i32 pairs —
+    /// kernel must agree with the identical geometry widened to i32 pairs:
     /// full i16 range, so the worst-case cross (2^33 in the subtract form,
     /// 65535² in [`edge_split`]'s compare form) is exercised.
     #[test]
@@ -471,7 +471,7 @@ mod tests {
 
     /// At 15-bit quantization (|coord| ≤ 2^14) the plain kernel is exact at
     /// `W = i32`: differences fit 15 bits, each cross-product half fits
-    /// 2^30. Agreement with the i64 kernel over that range is the proof —
+    /// 2^30. Agreement with the i64 kernel over that range is the proof,
     /// and this test runs in debug, where an overflow would panic rather
     /// than wrap, so it also guards the bound itself.
     #[test]
@@ -503,7 +503,7 @@ mod tests {
     }
 
     /// The i32 sign-split instantiation vs the i128 kernel over the FULL
-    /// i32 range — products up to `(2^32−1)²`, the u64 exactness bound at
+    /// i32 range: products up to `(2^32−1)²`, the u64 exactness bound at
     /// its edge.
     #[test]
     fn split_i32_matches_i128() {
@@ -528,7 +528,7 @@ mod tests {
         }
     }
 
-    /// f64 is bit-exact at i24 range (products ≤ 2^48 < 2^53 — module docs),
+    /// f64 is bit-exact at i24 range (products ≤ 2^48 < 2^53; module docs),
     /// so agreement with i64 over full-range random polygons is a hard
     /// assertion, boundaries included.
     #[test]
@@ -577,7 +577,7 @@ mod tests {
     }
 
     /// cross-validate against the geo i64 oracle on random
-    /// integer polygons — interiors must agree everywhere off-boundary.
+    /// integer polygons: interiors must agree everywhere off-boundary.
     #[test]
     #[expect(
         clippy::cast_possible_truncation,
