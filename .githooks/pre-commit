@@ -10,6 +10,9 @@ for crate in $(./scripts/gen-readme.sh --list); do
       echo "error: $readme was edited by hand, but it is a generated file." >&2
       echo "Edit the doc comment in $crate/src/lib.rs (or main.rs, or the" >&2
       echo "crate's README.tpl) instead; the hook regenerates $readme." >&2
+      echo "(Leftover from an aborted commit? A failed check after the hook" >&2
+      echo "regenerated it looks the same; restore the generated state with" >&2
+      echo "\`git checkout HEAD -- $readme\` and commit again.)" >&2
       exit 1
     fi
     ./scripts/gen-readme.sh "$crate"
