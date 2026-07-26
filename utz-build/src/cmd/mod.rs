@@ -1,4 +1,4 @@
-//! One module per `utz-build` subcommand (formerly the crate's examples).
+//! One module per `utz-build` subcommand.
 
 pub mod accuracy;
 pub mod amscan;

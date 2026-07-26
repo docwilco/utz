@@ -1,5 +1,5 @@
 //! μTZ build & measurement CLI. Each subcommand lives in its own module
-//! under [`cmd`] (these were formerly cargo examples).
+//! under [`cmd`].
 
 use clap::Parser;
 
@@ -42,7 +42,7 @@ enum Cmd {
     GridBench(cmd::grid_bench::Args),
     /// Candidate-list ordering cost/benefit (id-sorted vs dominant-first)
     DominantCost(cmd::dominant_cost::Args),
-    /// Hand-rolled i64 PIP vs geo vs geometry-rs: correctness + speed
+    /// μTZ's i64 PIP vs geo vs geometry-rs: correctness + speed
     PipBench(cmd::pip_bench::Args),
     /// geo integer PIP vs f64 PIP agreement (i32 overflow check)
     Geoquant(cmd::geoquant::Args),

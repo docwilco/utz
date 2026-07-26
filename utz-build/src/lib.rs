@@ -1,8 +1,7 @@
 //! μTZ build + exploration crate.
 //!
-//! Home of the encoder (topology + RDP + quantization + grid + container) and
-//! the measurement examples ported from the old `formatlab` prototype. Also
-//! hosts the viz tool.
+//! Home of the encoder (topology + RDP + quantization + grid + container)
+//! and the measurement commands. Also hosts the viz tool.
 //!
 //! The source is always OSM timezone-boundary-builder **with-oceans** (NED
 //! was evaluated and dropped). The only dataset choice is the merge vintage:

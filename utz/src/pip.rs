@@ -1,4 +1,4 @@
-//! Hand-rolled per-polygon integer point-in-polygon.
+//! Per-polygon integer point-in-polygon.
 //!
 //! Even-odd ray cast (ray toward +x) over ONE polygon's rings — exterior
 //! first, holes after; parity XORs across rings, so a point inside a hole
