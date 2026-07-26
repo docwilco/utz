@@ -1,4 +1,4 @@
-# μTZ — micro-timezone lookup
+# μTZ
 
 {{readme}}
 

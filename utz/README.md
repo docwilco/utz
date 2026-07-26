@@ -1,4 +1,4 @@
-# μTZ — micro-timezone lookup
+# μTZ
 
 μTZ (micro-timezone): tiny, tunable, embeddable lat/lon → IANA timezone-id lookup.
 
