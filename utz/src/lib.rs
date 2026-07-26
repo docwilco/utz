@@ -78,8 +78,10 @@
 //!
 //! ## Environments
 //!
-//! Strict supersets (`core` ⊂ `alloc` ⊂ `std`), so feature unions
-//! across a dependency tree resolve upward:
+//! Each level adds API on top of the one below without changing it,
+//! which makes the choice safe to leave to cargo's feature merging:
+//! when one crate in your dependency tree asks for `core` and another
+//! for `std`, the build gets `std` and both keep working.
 //!
 //! | feature | environment                              | can load |
 //! |---------|------------------------------------------|----------|
@@ -337,10 +339,14 @@ pub mod pip;
 
 mod finder;
 pub use finder::{Finder, Position};
-/// Container header types, shared with the encoder: the payload codec
-/// identifiers (`decompress` dispatches on them) and the
-/// geometry/quantization/provenance types the parsed
-/// [`PayloadLayout`](format::PayloadLayout) carries.
+/// What an asset says about itself: which codec compressed it
+/// ([`Codec`]), how its geometry is encoded ([`GeomEncoding`]), its
+/// coordinate width ([`QuantBits`]), and which dataset and simplifier
+/// built it ([`Dataset`], [`SimplifyAlgo`]). You meet these in the
+/// parsed header ([`PayloadLayout`](format::PayloadLayout)) and in
+/// errors: [`Error::CodecNotCompiledIn`] and
+/// [`Error::GeometryNotCompiledIn`] carry one to name the decoder this
+/// build lacks.
 pub use utz_common::{Codec, Dataset, GeomEncoding, QuantBits, SimplifyAlgo};
 
 /// Preset assets baked in by the data-tier features. With exactly one

@@ -80,8 +80,10 @@ read.
 
 ## Environments
 
-Strict supersets (`core` ⊂ `alloc` ⊂ `std`), so feature unions
-across a dependency tree resolve upward:
+Each level adds API on top of the one below without changing it,
+which makes the choice safe to leave to cargo's feature merging:
+when one crate in your dependency tree asks for `core` and another
+for `std`, the build gets `std` and both keep working.
 
 | feature | environment                              | can load |
 |---------|------------------------------------------|----------|
