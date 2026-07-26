@@ -3,9 +3,10 @@
 //! Home of the encoder (topology + RDP + quantization + grid + container)
 //! and the measurement commands. Also hosts the viz tool.
 //!
-//! The source is always OSM timezone-boundary-builder **with-oceans** (NED
-//! was evaluated and dropped). The only dataset choice is the merge vintage:
-//! `now` (65 zones, default), `1970` (304 zones), or `all` (444 zones).
+//! The source is OSM timezone-boundary-builder. Datasets pick the merge
+//! vintage — `now` (65 zones, default), `1970` (304 zones), or `all`
+//! (444 zones) — with oceans by default; a `land-` prefix selects the
+//! land-only releases.
 
 // encoder core (types, topo, grid, encode) lives in utz-encode (WASM-shared);
 // re-export it all so `utz_build::topo::…` paths keep working
