@@ -131,12 +131,12 @@ impl QuantBits {
 /// lookup speed is the flash-XIP (execute-in-place, zero RAM) leg of the
 /// embedded bench, same baseline.
 ///
-/// | encoding | geometry section | raw | best-compressed | XIP lookup |
-/// |---|---|---|---|---|
-/// | `VarintArcs` | shared arcs, delta + zigzag-varint coords | 1× | 1× | 1× |
-/// | `FixedWidthArcs` | shared arcs, absolute quant-width coords | +40–72% | +24–32% (xz) | 1.3–1.5× |
-/// | `FullRings` | whole rings, absolute quant-width coords | 2.1–3.2× | +61–94% (xz) | 2.0–3.3× |
-/// | `Coarse` | none (grid only) | ~⅓× | ~⅓× | grid probe only |
+/// | encoding         | geometry section                          |      raw | best-compressed | XIP lookup      |
+/// |------------------|-------------------------------------------|---------:|----------------:|-----------------|
+/// | `VarintArcs`     | shared arcs, delta + zigzag-varint coords |       1× |              1× | 1×              |
+/// | `FixedWidthArcs` | shared arcs, absolute quant-width coords  |  +40–72% |    +24–32% (xz) | 1.3–1.5×        |
+/// | `FullRings`      | whole rings, absolute quant-width coords  | 2.1–3.2× |    +61–94% (xz) | 2.0–3.3×        |
+/// | `Coarse`         | none (grid only)                          |      ~⅓× |             ~⅓× | grid probe only |
 ///
 /// Narrow-quant `FullRings` XIP even outran the RAM preload cache on the
 /// embedded bench. On fixed-width payloads the codec ranking flips: xz

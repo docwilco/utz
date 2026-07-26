@@ -2,16 +2,22 @@
 //! for one outer-header codec byte; a container whose codec is not compiled
 //! in fails with [`Error::CodecNotCompiledIn`]. Backends:
 //!
-//! | feature    | codec byte | crate                | needs `std`? |
-//! |------------|-----------:|----------------------|--------------|
-//! | (always)   | 0          | — (memcpy)           | no           |
-//! | `gzip`     | 1          | [`miniz_oxide`](https://docs.rs/miniz_oxide) | no (alloc)   |
-//! | `ruzstd`   | 2          | [`ruzstd`](https://docs.rs/ruzstd) (pure Rust) | no (alloc)   |
-//! | `zstd-sys` | 2          | [`zstd`](https://docs.rs/zstd) (C libzstd) | yes          |
-//! | `brotli`   | 3          | [`brotli-decompressor`](https://docs.rs/brotli-decompressor) (no-stdlib) | no (alloc) |
-//! | `xz`       | 4          | [`lzma-rust2`](https://docs.rs/lzma-rust2) (`no_std`) | no (alloc) |
+//! | feature    | codec byte | crate                               | needs `std`? |
+//! |------------|-----------:|-------------------------------------|--------------|
+//! | (always)   |          0 | — (memcpy)                          | no           |
+//! | `gzip`     |          1 | [`miniz_oxide`]                     | no (alloc)   |
+//! | `ruzstd`   |          2 | [`ruzstd`] (pure Rust)              | no (alloc)   |
+//! | `zstd-sys` |          2 | [`zstd`] (C libzstd)                | yes          |
+//! | `brotli`   |          3 | [`brotli-decompressor`] (no-stdlib) | no (alloc)   |
+//! | `xz`       |          4 | [`lzma-rust2`] (`no_std`)           | no (alloc)   |
 //!
 //! If both zstd backends are enabled, `zstd-sys` wins (faster).
+//!
+//! [`miniz_oxide`]: https://docs.rs/miniz_oxide
+//! [`ruzstd`]: https://docs.rs/ruzstd
+//! [`zstd`]: https://docs.rs/zstd
+//! [`brotli-decompressor`]: https://docs.rs/brotli-decompressor
+//! [`lzma-rust2`]: https://docs.rs/lzma-rust2
 
 use alloc::vec::Vec;
 
