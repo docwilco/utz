@@ -7,7 +7,7 @@ publish = false
 
 [features]
 default = ["alloc"]
-## The Vec-returning samplers; off leaves the codec vocabulary and LCG core
+## The Vec-returning samplers; off leaves the codec types and LCG core
 ## for bare-metal consumers.
 alloc = []
 

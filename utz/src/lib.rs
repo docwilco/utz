@@ -337,8 +337,8 @@ pub mod pip;
 
 mod finder;
 pub use finder::{Finder, Position};
-/// The shared container vocabulary: the payload codec identifiers
-/// (`decompress` dispatches on them), the
+/// Container header types, shared with the encoder: the payload codec
+/// identifiers (`decompress` dispatches on them) and the
 /// geometry/quantization/provenance types the parsed
 /// [`PayloadLayout`](format::PayloadLayout) carries.
 pub use utz_common::{Codec, Dataset, GeomEncoding, QuantBits, SimplifyAlgo};

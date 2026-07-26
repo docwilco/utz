@@ -89,7 +89,7 @@ version = "0.13"
 default-features = false
 
 [dependencies.utz-common]
-# the shared Codec vocabulary; no alloc — the enum must exist on the core rung
+# the shared Codec types; no alloc — the enum must exist on the core rung
 path = "../utz-common"
 default-features = false
 
