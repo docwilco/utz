@@ -11,7 +11,9 @@
 //!     pocket; pockets are ≤ ε wide, far below the 4′ grid, so one sample
 //!     per pocket is essentially exact)
 //!
-//!     utz-build accuracy [ds] [`eps_m`] [`w_min`] [rdp|vw|ii]
+//! ```text
+//! utz-build accuracy [ds] [eps_m] [w_min] [rdp|vw|ii]
+//! ```
 
 use utz_build::density::DensityGrid;
 use utz_build::topo::{self, Simplify, Topology};

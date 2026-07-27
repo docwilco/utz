@@ -2,8 +2,10 @@
 //! ESP32-S3 firmware (which embeds an *uncompressed* container and borrows
 //! it zero-copy from flash via `Finder::from_static`).
 //!
-//! usage: utz-build encode [ds] [`eps_m`] [--codec none|gzip|zstd|brotli|xz]
-//!        [--qbits 24] [--grid-deg 2] [--w-min 0.052] [-o out.utz]
+//! ```text
+//! utz-build encode [ds] [eps_m] [--codec none|gzip|zstd|brotli|xz]
+//!     [--qbits 24] [--grid-deg 2] [--w-min 0.052] [-o out.utz]
+//! ```
 
 use std::path::PathBuf;
 
@@ -39,7 +41,7 @@ pub struct Args {
     /// enable population weighting with this floor multiplier (e.g. 0.052)
     #[arg(long)]
     w_min: Option<f64>,
-    /// output path (default: <ds>-<eps>m[-w<min>]-<codec>.utz)
+    /// output path (default: `<ds>-<eps>m[-w<min>]-<codec>.utz`)
     #[arg(long, short)]
     out: Option<PathBuf>,
 }

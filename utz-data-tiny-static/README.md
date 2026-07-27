@@ -9,7 +9,7 @@ rung.
 Regenerate (writes `data/tiny-static.utz`, gitignored):
 
 ```
-cargo run --release -p utz-build -- gen now 10000 --qbits 16 \
+cargo run --release -p utz-build-cli -- gen now 10000 --qbits 16 \
     --w-min 0.001 --codec none -o utz-data-tiny-static/data/tiny-static.utz
 ```
 

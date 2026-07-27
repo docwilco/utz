@@ -7,7 +7,7 @@ full Comprehensive zone set), RDP ε=10 m with pop-density weight floor
 Regenerate (writes `data/accurate.utz`, gitignored):
 
 ```
-cargo run --release -p utz-build -- gen all 10 --qbits 32 \
+cargo run --release -p utz-build-cli -- gen all 10 --qbits 32 \
     --w-min 0.10 --grid-deg 0.5 --codec brotli \
     -o utz-data-accurate/data/accurate.utz
 ```

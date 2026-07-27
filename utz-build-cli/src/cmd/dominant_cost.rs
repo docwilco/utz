@@ -73,7 +73,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     Ok(())
 }
 
-/// P(subcell owner == list[0]) over owned subcells in border cells.
+/// P(subcell owner == `list[0]`) over owned subcells in border cells.
 fn early_exit(g: &grid::CellGrid, csr: &grid::Csr) -> f64 {
     let (mut hit, mut tot) = (0u64, 0u64);
     // row-major zip: primary cell c ↔ tallies cell c

@@ -187,7 +187,7 @@ impl Config {
 
     /// Fetch sources (cached), build the container, write it, return the
     /// path. Also writes `<out>.guard.rs`: a compile-time assertion of the
-    /// `utz` features this asset needs (via [`utz::caps`]); `include!` it
+    /// `utz` features this asset needs (via `utz::caps`); `include!` it
     /// next to the `include_bytes!` so a feature mismatch fails the build
     /// instead of the first load.
     ///
@@ -232,7 +232,7 @@ impl Config {
     }
 }
 
-/// Emit `<asset>.guard.rs`: `const _` assertions against [`utz::caps`] for
+/// Emit `<asset>.guard.rs`: `const _` assertions against `utz::caps` for
 /// the geometry decoder and codec the asset needs (shared by
 /// [`Config::generate`] and the `gen` CLI).
 ///

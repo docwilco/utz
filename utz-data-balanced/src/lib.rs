@@ -4,7 +4,7 @@
 //! Regenerate (writes `data/balanced.utz`, gitignored):
 //!
 //! ```text
-//! cargo run --release -p utz-build -- gen now 50 --qbits 24 \
+//! cargo run --release -p utz-build-cli -- gen now 50 --qbits 24 \
 //!     --w-min 0.020 --grid-deg 0.6666666666666666 --codec brotli \
 //!     -o utz-data-balanced/data/balanced.utz
 //! ```

@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-gen() { cargo run --release -p utz-build -- gen "$@"; }
+gen() { cargo run --release -p utz-build-cli -- gen "$@"; }
 
 gen now 10000 --qbits 16 --w-min 0.001 --codec gzip -o utz-data-tiny/data/tiny.utz
 gen now 10000 --qbits 16 --w-min 0.001 --codec none -o utz-data-tiny-static/data/tiny-static.utz

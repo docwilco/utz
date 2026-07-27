@@ -17,7 +17,8 @@ measure, test, benchmark, or ship the data it reads.
 | [`utz`](utz/) | the runtime lookup library (lat/lon → IANA tzid) |
 | [`utz-common`](utz-common/) | container header types shared by reader and encoder |
 | [`utz-encode`](utz-encode/) | container encoder library |
-| [`utz-build`](utz-build/) | encoder CLI, measurement commands, and the tuning viewer |
+| [`utz-build`](utz-build/) | builder library: encoder pipeline, source loading, density weighting, viz generation |
+| [`utz-build-cli`](utz-build-cli/) | the `utz-build` binary: `gen` plus the measurement and bench subcommands |
 | [`utz-simplify`](utz-simplify/) | boundary-simplification algorithms (native + wasm for the viewer) |
 | [`utz-data-tiny`](utz-data-tiny/) | preset data crate: the generated `tiny` asset |
 | [`utz-data-tiny-static`](utz-data-tiny-static/) | preset data crate: the generated `tiny-static` asset |

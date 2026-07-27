@@ -5,26 +5,26 @@ edition.workspace = true
 license = "MIT"
 publish = false
 
-# Build/exploration crate: encoder, measurements, viz. Deps here do NOT leak into
-# the runtime `utz` crate (which stays lean / no_std-friendly).
+# Builder library: encoder pipeline, source loading, density weighting, viz
+# generation. The CLI lives in utz-build-cli; keeping the runtime reader out
+# of this crate's default graph means build scripts using the builder are
+# not rebuilt (and bench assets not re-encoded) by reader-only changes.
+# Deps here do NOT leak into the runtime `utz` crate (which stays lean /
+# no_std-friendly).
+[features]
+# the Error::Utz variant, for callers that mix builder and reader calls
+# (the utz-build-cli verify/bench subcommands)
+utz-error = ["dep:utz"]
+
 [dependencies]
 utz-common = { path = "../utz-common" }
 derive_more = { workspace = true }
 geo = { workspace = true }
-geo-types = { workspace = true }
-# tzf-rs's PIP crate (tidwall/geometry port) — pip_bench contender
-geometry-rs = "0.3"
 # polyline simplification menu, shared with the viz HTML via WASM
 utz-simplify = { path = "../utz-simplify" }
 # encoder core (topology + quantization + grid + container), split out so it
 # also compiles to WASM for the webdist viewer (see utz-encode/src/lib.rs)
 utz-encode = { path = "../utz-encode", features = ["zstd"] }
-# codecs for the size measurements
-zstd = "0.13"
-brotli = "8.0"
-lzma-rust2 = { version = "0.16", default-features = false, features = ["xz", "encoder", "optimization"] }
-miniz_oxide = "0.8"
-
 
 # GeoJSON pipeline (replaced the temporary FGB loader)
 ureq = "2.12"
@@ -32,12 +32,7 @@ zip = { version = "2.4", default-features = false, features = ["deflate"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tiff = "0.11"
-# the utz-build CLI (src/main.rs, one module per subcommand under src/cmd/)
-clap = { version = "4", features = ["derive"] }
-# runtime crate, exercised by roundtrip/visualize/bench subcommands; pure-Rust
-# zstd backend (ruzstd) here — the zstd-sys backend is compile-checked
-# separately (cargo check -p utz --features std,zstd-sys)
-utz = { path = "../utz", features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint-arcs", "geom-fixed-width-arcs", "geom-full-rings", "geom-coarse"] }
+utz = { path = "../utz", features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint-arcs", "geom-fixed-width-arcs", "geom-full-rings", "geom-coarse"], optional = true }
 
 [lints]
 workspace = true

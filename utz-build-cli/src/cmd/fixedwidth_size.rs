@@ -14,8 +14,10 @@
 //! Section splicing only rewrites the geometry blocks; header offset fields
 //! go stale, which is fine for a size measurement.
 //!
-//!     utz-build fixedwidth-size \
-//!         utz-data-tiny-static/data/tiny-static.utz <compact-none.utz> ...
+//! ```text
+//! utz-build fixedwidth-size \
+//!     utz-data-tiny-static/data/tiny-static.utz <compact-none.utz> ...
+//! ```
 
 use utz::format::{self, read_fixed, read_u16, read_u32, read_varint, unzigzag};
 use utz_build::encode::{compress, Codec};

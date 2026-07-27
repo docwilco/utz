@@ -7,7 +7,7 @@
 Regenerate (writes `data/tiny.utz`, gitignored):
 
 ```
-cargo run --release -p utz-build -- gen now 10000 --qbits 16 \
+cargo run --release -p utz-build-cli -- gen now 10000 --qbits 16 \
     --w-min 0.001 --codec gzip -o utz-data-tiny/data/tiny.utz
 ```
 

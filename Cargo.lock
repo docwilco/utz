@@ -1410,19 +1410,33 @@ dependencies = [
 name = "utz-build"
 version = "0.1.0+2026c"
 dependencies = [
- "brotli",
- "clap",
  "derive_more",
  "geo",
- "geo-types",
- "geometry-rs",
- "lzma-rust2",
- "miniz_oxide",
  "serde",
  "serde_json",
  "tiff",
  "ureq",
  "utz",
+ "utz-common",
+ "utz-encode",
+ "utz-simplify",
+ "zip",
+]
+
+[[package]]
+name = "utz-build-cli"
+version = "0.1.0+2026c"
+dependencies = [
+ "brotli",
+ "clap",
+ "geo",
+ "geo-types",
+ "geometry-rs",
+ "lzma-rust2",
+ "miniz_oxide",
+ "tiff",
+ "utz",
+ "utz-build",
  "utz-common",
  "utz-encode",
  "utz-simplify",

@@ -4,7 +4,7 @@
 //! Regenerate (writes `data/compact.utz`, gitignored):
 //!
 //! ```text
-//! cargo run --release -p utz-build -- gen now 1000 --qbits 24 \
+//! cargo run --release -p utz-build-cli -- gen now 1000 --qbits 24 \
 //!     --w-min 0.001 --grid-deg 1.3333333333333333 --codec xz \
 //!     -o utz-data-compact/data/compact.utz
 //! ```

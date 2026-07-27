@@ -10,7 +10,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CRATES=(
-  utz utz-common utz-encode utz-build utz-simplify
+  utz utz-common utz-encode utz-build utz-build-cli utz-simplify
   utz-data-tiny utz-data-tiny-static utz-data-compact
   utz-data-balanced utz-data-accurate
   utz-bench-common utz-bench-cli utz-bench-firmware

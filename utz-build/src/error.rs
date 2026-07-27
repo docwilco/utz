@@ -17,6 +17,7 @@ pub enum Error {
     Http(Box<ureq::Error>),
     Tiff(tiff::TiffError),
     Encode(utz_encode::Error),
+    #[cfg(feature = "utz-error")]
     Utz(utz::Error),
     #[from(skip)]
     #[display("unknown dataset {ds:?}: use [land-]now|1970|all")]

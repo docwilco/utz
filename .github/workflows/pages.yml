@@ -48,7 +48,7 @@ jobs:
           key: webdist-${{ github.run_id }}
           restore-keys: webdist-
       - name: Build webdist (viewer + dataset blobs)
-        run: cargo run --release -p utz-build -- visualize webdist
+        run: cargo run --release -p utz-build-cli -- visualize webdist
       # rustdoc compiles the utz-data-* crates, whose assets are gitignored
       # and regenerated (§5, §11)
       - name: Generate preset assets
