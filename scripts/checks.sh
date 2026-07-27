@@ -12,6 +12,10 @@ ensure_target() {
   rustup target list --installed | grep -qx "$1" || rustup target add "$1"
 }
 
+ensure_nightly() {
+  rustup toolchain list | grep -q '^nightly' || rustup toolchain install nightly --profile minimal
+}
+
 # Preset assets are gitignored and regenerated, never committed. CI's gen
 # job builds them once per run and hands them to the other jobs as an
 # artifact; locally, regenerate only if some are missing.
@@ -84,7 +88,12 @@ stage_no_std() {
   cargo build -p utz-bench-common --target "$BARE_METAL"
 }
 
-stage_docs() { RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps; }
+# nightly + --cfg docsrs: feature-gate banners render (doc_cfg), and
+# target/doc matches what docs.rs and the Pages site publish
+stage_docs() {
+  ensure_nightly
+  RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo +nightly doc --workspace --no-deps
+}
 
 run() {
   echo "==> checks: $1"

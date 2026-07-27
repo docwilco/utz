@@ -53,7 +53,9 @@ and rejects hand edits.
 
 Rustdoc with the feature-gate banners ("Available on crate feature X
 only") needs nightly plus the `docsrs` cfg — plain `cargo doc` builds
-without banners:
+without banners. `./scripts/checks.sh docs` (also run by the hook and
+CI) builds exactly this, so `target/doc` always matches the published
+docs:
 
 ```sh
 RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --workspace --no-deps

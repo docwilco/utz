@@ -53,12 +53,11 @@ jobs:
       # and regenerated (§5, §11)
       - name: Generate preset assets
         run: ./scripts/gen-presets.sh
-      # nightly from here on: doc_auto_cfg (feature-gate banners) needs it
+      # nightly: doc_cfg (feature-gate banners) needs it; the checks stage
+      # pins the same flags everywhere (pre-commit, CI, here)
       - uses: dtolnay/rust-toolchain@nightly
       - name: Build API docs
-        env:
-          RUSTDOCFLAGS: -D warnings --cfg docsrs
-        run: cargo doc --workspace --no-deps
+        run: ./scripts/checks.sh docs
       - name: Assemble site (viewer at /live, rustdoc at /docs)
         run: |
           mkdir -p site
