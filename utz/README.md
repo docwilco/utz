@@ -231,19 +231,22 @@ memory-mapped flash.
 
 ## Decoding and lookup
 
-The reader validates before it decodes: magic, version, and the
-plaintext header are checked (including whether this build compiled
-the needed [geometry decoder](#geometry-decoders) and
-[codec](#compression-codecs)) before any payload work. Compressed
-payloads decompress into a single exactly-sized buffer. From there,
-the memory mode follows from how the container was loaded:
+An asset this build cannot read (a missing
+[geometry decoder](#geometry-decoders) or
+[codec](#compression-codecs)) is refused with a typed error before
+any decoding starts. Decompression allocates exactly one buffer:
+the header states the decompressed size up front. RAM use then
+follows from how the container was loaded:
 
 - **zero-copy** ([`Finder::from_static`]): the container is borrowed
-  in place; lookups stream geometry straight off the stored bytes.
-- **lazy** ([`Finder::from_slice`] and friends): the payload lives
-  in owned RAM, still with no decoded-geometry cache.
-- **eager** ([`Finder::preload`]): all rings are decoded up front
-  into a flat cache, the fastest mode when there is RAM to spare.
+  in place and lookups stream geometry straight off the stored
+  bytes; no heap allocation at all.
+- **lazy** ([`Finder::from_slice`] and friends): the decompressed
+  payload lives in owned RAM and nothing else is cached (the RAM
+  notes in the [preset table](#preset-bundles) are this buffer).
+- **eager** ([`Finder::preload`]): all rings are additionally
+  decoded up front into a flat cache, the fastest mode;
+  [`preload_bytes`] tells you the exact cost before you pay it.
 
 A lookup quantizes the query point and indexes the grid cell; in the
 common case that already answers it. On a border cell it walks the
@@ -278,6 +281,7 @@ with a genuinely `no_std`/flash-embeddable format.
 [`Finder::from_slice`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_slice
 [`Finder::from_static`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_static
 [`Finder::preload`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload
+[`preload_bytes`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload_bytes
 [`lookup_coarse`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.lookup_coarse
 [`data`]: https://docwilco.github.io/utz/docs/utz/data/index.html
 [`caps`]: https://docwilco.github.io/utz/docs/utz/caps/index.html
