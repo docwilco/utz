@@ -227,6 +227,19 @@ impl Finder {
             ))
         )
     ))]
+    // override the inferred banner: the OR-of-exclusions above renders as
+    // an unreadable wall; "any preset" is the readable truth, and the
+    // exactly-one rule is documented prose
+    #[cfg_attr(
+        docsrs,
+        doc(cfg(any(
+            feature = "tiny",
+            feature = "tiny-static",
+            feature = "compact",
+            feature = "balanced",
+            feature = "accurate"
+        )))
+    )]
     pub fn new() -> Result<Finder> {
         // Exactly one arm is compiled in real builds. Under `doc` several
         // presets may be enabled at once, so the arms exclude each other;
