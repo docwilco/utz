@@ -51,6 +51,14 @@ Every crate's `README.md` is generated from its top doc comment
 (or the crate's `README.tpl`), not the README; the hook regenerates them
 and rejects hand edits.
 
+Rustdoc with the feature-gate banners ("Available on crate feature X
+only") needs nightly plus the `docsrs` cfg — plain `cargo doc` builds
+without banners:
+
+```sh
+RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --workspace --no-deps
+```
+
 ## License
 
 Code: MIT. Timezone data is derived from
