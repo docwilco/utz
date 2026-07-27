@@ -454,9 +454,11 @@ impl Finder {
         core::str::from_utf8(format::release(&self.layout, self.payload_bytes())).unwrap_or("")
     }
 
-    /// Heap bytes [`preload`](Finder::preload) will reserve: the eager-cache
-    /// size, straight from the header counts. O(1); lets a constrained
-    /// caller check fit before committing.
+    /// Heap bytes [`preload`](Finder::preload) will reserve: the exact
+    /// eager-cache size. The asset records how many coordinates, rings,
+    /// and polygons its geometry decodes to, so this is pure arithmetic
+    /// (no trial decode); a constrained caller can check fit before
+    /// committing.
     #[cfg(feature = "alloc")]
     #[must_use]
     pub fn preload_bytes(&self) -> usize {
@@ -482,9 +484,10 @@ impl Finder {
     /// then skip the per-arc varint decode. Costs
     /// [`preload_bytes`](Finder::preload_bytes)
     /// (≈ uncompressed geometry at quant-nearest width: i16 pairs for
-    /// i16-quant assets — half the cache — i32 otherwise) in heap,
-    /// reserved exactly up front from the header counts: peak = final,
-    /// no growth doubling. A no-op if already preloaded.
+    /// i16-quant assets — half the cache — i32 otherwise) in heap. The
+    /// whole cache is reserved exactly up front, so peak use equals the
+    /// final size: no reallocation on the way. A no-op if already
+    /// preloaded.
     #[cfg(feature = "alloc")]
     pub fn preload(&mut self) {
         if self.eager.is_some()
