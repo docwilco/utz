@@ -278,6 +278,10 @@
 //! [`utz_build::Config`]: https://docwilco.github.io/utz/docs/utz_build/struct.Config.html
 
 #![cfg_attr(not(feature = "std"), no_std)]
+// docs.rs and the Pages docs build pass `--cfg docsrs` on nightly, which
+// turns every feature gate into an "Available on crate feature X only"
+// banner; stable builds compile this attribute away.
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 // Three mandatory, at-least-one-of feature choices. "At least one of"
 // errors can only be *silenced* by feature union, never triggered — safe

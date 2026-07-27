@@ -8,6 +8,8 @@
 //! Everything here is pure Rust with no filesystem/network access; the one
 //! C-backed codec (zstd) sits behind the `zstd` cargo feature.
 
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 mod error;
 pub use error::{Error, Result};
 

@@ -3,6 +3,7 @@
 //! serialize through, and the deterministic LCG behind every reproducible
 //! test/bench sampler.
 #![no_std]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 use scroll::{Pread, Pwrite};
 
