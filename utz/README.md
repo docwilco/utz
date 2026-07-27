@@ -219,7 +219,7 @@ of polygons) and is reduced in stages when it is generated:
 
 ## Shipping the asset
 
-The result is one self-describing container (the [`format`] module
+The result is one self-describing container (the [`format`][`crate::format`] module
 documents it): the header records every knob, so the decoder is
 fully generic and one binary reads any variant handed to it. The
 container reaches the reader either compiled in (a preset's data
@@ -246,14 +246,14 @@ follows from how the container was loaded:
   notes in the [preset table](#preset-bundles) are this buffer).
 - **eager** ([`Finder::preload`]): all rings are additionally
   decoded up front into a flat cache, the fastest mode;
-  [`preload_bytes`] tells you the exact cost before you pay it.
+  [`Finder::preload_bytes`] tells you the exact cost before you pay it.
 
 A lookup quantizes the query point and indexes the grid cell; in the
 common case that already answers it. On a border cell it walks the
 candidate polygons: a bounding-box gate first, then an exact integer
 even-odd point-in-polygon test. There is no floating point in the
 path, so results are identical on every target, and points exactly
-on a border are claimed deterministically. [`lookup_coarse`] skips
+on a border are claimed deterministically. [`Finder::lookup_coarse`] skips
 geometry entirely and answers at cell precision from any asset.
 
 `no_std`-first: API availability follows the
@@ -277,18 +277,6 @@ Where those ship fixed data tiers, μTZ makes the size/accuracy tradeoff
 a build-time knob and adds integer quantization to go ~10× smaller,
 with a genuinely `no_std`/flash-embeddable format.
 
-[`Finder::new`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.new
-[`Finder::from_slice`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_slice
-[`Finder::from_static`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_static
-[`Finder::preload`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload
-[`preload_bytes`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload_bytes
-[`lookup_coarse`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.lookup_coarse
-[`data`]: https://docwilco.github.io/utz/docs/utz/data/index.html
-[`caps`]: https://docwilco.github.io/utz/docs/utz/caps/index.html
-[`format`]: https://docwilco.github.io/utz/docs/utz/format/index.html
-[`decompress`]: https://docwilco.github.io/utz/docs/utz/decompress/index.html
-[`GeomEncoding`]: https://docwilco.github.io/utz/docs/utz/enum.GeomEncoding.html
-[`include_bytes_aligned!`]: https://docwilco.github.io/utz/docs/utz/macro.include_bytes_aligned.html
 [`utz_build::Config`]: https://docwilco.github.io/utz/docs/utz_build/struct.Config.html
 
 ## License
@@ -296,3 +284,16 @@ with a genuinely `no_std`/flash-embeddable format.
 Code: MIT. Timezone data is derived from
 [timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder)
 (OpenStreetMap, **ODbL**)
+
+[`Finder::new`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.new
+[`Finder::from_slice`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_slice
+[`Finder::from_static`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_static
+[`Finder::preload`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload
+[`Finder::preload_bytes`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload_bytes
+[`Finder::lookup_coarse`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.lookup_coarse
+[`data`]: https://docwilco.github.io/utz/docs/utz/data/index.html
+[`caps`]: https://docwilco.github.io/utz/docs/utz/caps/index.html
+[`crate::format`]: https://docwilco.github.io/utz/docs/utz/format/index.html
+[`decompress`]: https://docwilco.github.io/utz/docs/utz/decompress/index.html
+[`GeomEncoding`]: https://docwilco.github.io/utz/docs/utz/enum.GeomEncoding.html
+[`include_bytes_aligned!`]: https://docwilco.github.io/utz/docs/utz/macro.include_bytes_aligned.html

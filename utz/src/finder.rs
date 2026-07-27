@@ -169,82 +169,96 @@ impl Finder {
     #[doc = include_str!("doc/preset_new.md")]
     ///
     /// # Errors
-    /// As [`Finder::from_slice`] on the baked preset asset.
-    #[cfg(all(
-        feature = "tiny",
-        not(any(
+    /// As [`Finder::from_slice`] (or [`Finder::from_static`] for
+    /// `tiny-static`) on the baked preset asset.
+    // `doc` is in the cfg so the method appears in rustdoc output, which
+    // is built with several presets unified (workspace docs) or none
+    // (docs.rs); in real builds it exists only with exactly one preset.
+    #[cfg(any(
+        doc,
+        all(
+            feature = "tiny",
+            not(any(
+                feature = "tiny-static",
+                feature = "compact",
+                feature = "balanced",
+                feature = "accurate"
+            ))
+        ),
+        all(
+            feature = "tiny-static",
+            not(any(
+                feature = "tiny",
+                feature = "compact",
+                feature = "balanced",
+                feature = "accurate"
+            ))
+        ),
+        all(
+            feature = "compact",
+            not(any(
+                feature = "tiny",
+                feature = "tiny-static",
+                feature = "balanced",
+                feature = "accurate"
+            ))
+        ),
+        all(
+            feature = "balanced",
+            not(any(
+                feature = "tiny",
+                feature = "tiny-static",
+                feature = "compact",
+                feature = "accurate"
+            ))
+        ),
+        all(
+            feature = "accurate",
+            not(any(
+                feature = "tiny",
+                feature = "tiny-static",
+                feature = "compact",
+                feature = "balanced"
+            ))
+        )
+    ))]
+    pub fn new() -> Result<Finder> {
+        // Exactly one arm is compiled in real builds. Under `doc` several
+        // presets may be enabled at once, so the arms exclude each other;
+        // the last arm covers doc builds with no preset at all.
+        #[cfg(feature = "tiny")]
+        let finder = Finder::from_slice(crate::data::TINY);
+        #[cfg(all(feature = "tiny-static", not(feature = "tiny")))]
+        let finder = Finder::from_static(crate::data::TINY_STATIC);
+        #[cfg(all(
+            feature = "compact",
+            not(any(feature = "tiny", feature = "tiny-static"))
+        ))]
+        let finder = Finder::from_slice(crate::data::COMPACT);
+        #[cfg(all(
+            feature = "balanced",
+            not(any(feature = "tiny", feature = "tiny-static", feature = "compact"))
+        ))]
+        let finder = Finder::from_slice(crate::data::BALANCED);
+        #[cfg(all(
+            feature = "accurate",
+            not(any(
+                feature = "tiny",
+                feature = "tiny-static",
+                feature = "compact",
+                feature = "balanced"
+            ))
+        ))]
+        let finder = Finder::from_slice(crate::data::ACCURATE);
+        #[cfg(not(any(
+            feature = "tiny",
             feature = "tiny-static",
             feature = "compact",
             feature = "balanced",
             feature = "accurate"
-        ))
-    ))]
-    pub fn new() -> Result<Finder> {
-        Finder::from_slice(crate::data::TINY)
-    }
-    #[doc = include_str!("doc/preset_new.md")]
-    ///
-    /// # Errors
-    /// As [`Finder::from_static`] on the baked preset asset.
-    #[cfg(all(
-        feature = "tiny-static",
-        not(any(
-            feature = "tiny",
-            feature = "compact",
-            feature = "balanced",
-            feature = "accurate"
-        ))
-    ))]
-    pub fn new() -> Result<Finder> {
-        Finder::from_static(crate::data::TINY_STATIC)
-    }
-    #[doc = include_str!("doc/preset_new.md")]
-    ///
-    /// # Errors
-    /// As [`Finder::from_slice`] on the baked preset asset.
-    #[cfg(all(
-        feature = "compact",
-        not(any(
-            feature = "tiny",
-            feature = "tiny-static",
-            feature = "balanced",
-            feature = "accurate"
-        ))
-    ))]
-    pub fn new() -> Result<Finder> {
-        Finder::from_slice(crate::data::COMPACT)
-    }
-    #[doc = include_str!("doc/preset_new.md")]
-    ///
-    /// # Errors
-    /// As [`Finder::from_slice`] on the baked preset asset.
-    #[cfg(all(
-        feature = "balanced",
-        not(any(
-            feature = "tiny",
-            feature = "tiny-static",
-            feature = "compact",
-            feature = "accurate"
-        ))
-    ))]
-    pub fn new() -> Result<Finder> {
-        Finder::from_slice(crate::data::BALANCED)
-    }
-    #[doc = include_str!("doc/preset_new.md")]
-    ///
-    /// # Errors
-    /// As [`Finder::from_slice`] on the baked preset asset.
-    #[cfg(all(
-        feature = "accurate",
-        not(any(
-            feature = "tiny",
-            feature = "tiny-static",
-            feature = "compact",
-            feature = "balanced"
-        ))
-    ))]
-    pub fn new() -> Result<Finder> {
-        Finder::from_slice(crate::data::ACCURATE)
+        )))]
+        let finder = Finder::from_static(&[]);
+        finder
     }
 
     /// Borrow a container from `&'static` bytes (flash partition,
