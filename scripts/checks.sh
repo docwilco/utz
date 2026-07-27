@@ -116,12 +116,16 @@ run_compile_stages_concurrently() {
   local stages=(clippy test no-std docs) pids=() logs=() failed=0 i
   for i in "${!stages[@]}"; do
     logs[i]=$(mktemp)
-    run "${stages[$i]}" > "${logs[$i]}" 2>&1 &
+    (
+      t0=$SECONDS
+      run "${stages[$i]}"
+      echo "stage wall: $((SECONDS - t0))s"
+    ) > "${logs[$i]}" 2>&1 &
     pids[i]=$!
   done
   for i in "${!stages[@]}"; do
     if wait "${pids[$i]}"; then
-      echo "==> checks: ${stages[$i]} ok"
+      echo "==> checks: ${stages[$i]} ok ($(tail -1 "${logs[$i]}" | grep -o '[0-9]*s$'))"
     else
       failed=1
       echo "==> checks: ${stages[$i]} FAILED"
