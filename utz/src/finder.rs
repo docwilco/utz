@@ -152,11 +152,14 @@ impl EagerCoord for (i16, i16) {
 
 /// A loaded timezone index. Build once, query many.
 ///
-/// Availability follows the environment ladder: `core` gets
-/// [`from_static`](Finder::from_static) (zero-copy mode),
-/// [`lookup`](Finder::lookup) and [`lookup_coarse`](Finder::lookup_coarse);
-/// `alloc` adds owned/compressed containers (lazy mode) and
-/// `preload` (eager mode); `std` adds `from_reader`.
+/// Availability follows the environment ladder; each row adds to the
+/// ones above it:
+///
+/// | feature | adds mode    | API |
+/// |---------|--------------|-----|
+/// | `core`  | zero-copy    | [`from_static`](Finder::from_static), [`lookup`](Finder::lookup), [`lookup_coarse`](Finder::lookup_coarse) |
+/// | `alloc` | lazy + eager | [`from_slice`](Finder::from_slice), [`from_vec`](Finder::from_vec), [`eager_from_slice`](Finder::eager_from_slice), [`preload`](Finder::preload), [`preload_bytes`](Finder::preload_bytes) |
+/// | `std`   |              | [`from_reader`](Finder::from_reader) |
 pub struct Finder {
     payload: Payload,
     layout: PayloadLayout,
