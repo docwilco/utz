@@ -329,6 +329,7 @@ extern crate alloc;
 extern crate std;
 
 #[cfg(feature = "alloc")]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
 pub mod decompress;
 pub mod format;
 pub mod pip;
@@ -349,7 +350,11 @@ pub use utz_common::{Codec, Dataset, GeomEncoding, QuantBits, SimplifyAlgo};
 /// preset enabled, `Finder::new` loads it; with several in the tree, pick
 /// explicitly: `Finder::from_slice(utz::data::TINY)` /
 /// `Finder::from_static(utz::data::TINY_STATIC)`.
+// `doc` keeps the module (and intra-doc links to it) present in rustdoc
+// builds without preset features, e.g. docs.rs; the statics inside stay
+// gated on their preset (their data crates only exist with it).
 #[cfg(any(
+    doc,
     feature = "tiny",
     feature = "tiny-static",
     feature = "compact",

@@ -336,6 +336,7 @@ impl Finder {
     /// [`Error::DecoderFailed`] if the payload can't be decoded;
     /// [`Error::Misaligned`] for unaligned `FullRings` coords.
     #[cfg(feature = "alloc")]
+    #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     pub fn from_slice(bytes: &[u8]) -> Result<Finder> {
         let start = format::outer(bytes)?;
         // the header is plaintext: validate it BEFORE any decompression
@@ -367,6 +368,7 @@ impl Finder {
     /// # Errors
     /// As [`Finder::from_slice`].
     #[cfg(feature = "alloc")]
+    #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     pub fn from_vec(bytes: Vec<u8>) -> Result<Finder> {
         let start = format::outer(&bytes)?;
         // the header is plaintext: validate it BEFORE any decompression
@@ -411,6 +413,7 @@ impl Finder {
     /// # Errors
     /// As [`Finder::from_slice`], which performs the load.
     #[cfg(feature = "alloc")]
+    #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     pub fn eager_from_slice(bytes: &[u8]) -> Result<Finder> {
         let mut f = Finder::from_slice(bytes)?;
         if matches!(
@@ -473,6 +476,7 @@ impl Finder {
     /// (no trial decode); a constrained caller can check fit before
     /// committing.
     #[cfg(feature = "alloc")]
+    #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     #[must_use]
     pub fn preload_bytes(&self) -> usize {
         if matches!(
@@ -502,6 +506,7 @@ impl Finder {
     /// final size: no reallocation on the way. A no-op if already
     /// preloaded.
     #[cfg(feature = "alloc")]
+    #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     pub fn preload(&mut self) {
         if self.eager.is_some()
             || matches!(
