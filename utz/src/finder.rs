@@ -105,7 +105,7 @@ struct Eager {
     coords: EagerCoords,
     /// exclusive end into `coords` per ring
     ring_ends: Vec<u32>,
-    /// per polygon (indexed by poly id): bbox (read from the v5 record) +
+    /// per polygon (indexed by poly id): bbox (read from the poly record) +
     /// exclusive end into `ring_ends`. The bbox skips whole-ring folds for
     /// candidates that touch the cell but not the point.
     polys: Vec<([i32; 4], u32)>,
@@ -455,7 +455,7 @@ impl Finder {
     }
 
     /// Heap bytes [`preload`](Finder::preload) will reserve: the eager-cache
-    /// size, straight from the v2 header counts. O(1); lets a constrained
+    /// size, straight from the header counts. O(1); lets a constrained
     /// caller check fit before committing.
     #[cfg(feature = "alloc")]
     #[must_use]
@@ -483,7 +483,7 @@ impl Finder {
     /// [`preload_bytes`](Finder::preload_bytes)
     /// (≈ uncompressed geometry at quant-nearest width: i16 pairs for
     /// i16-quant assets — half the cache — i32 otherwise) in heap,
-    /// reserved exactly up front from the v2 header counts: peak = final,
+    /// reserved exactly up front from the header counts: peak = final,
     /// no growth doubling. A no-op if already preloaded.
     #[cfg(feature = "alloc")]
     pub fn preload(&mut self) {
@@ -604,7 +604,7 @@ impl Finder {
             v if v & 0x8000 == 0 => self.tzid(v),
             v => {
                 let (s, _) = self.list_bounds(v & 0x7FFF);
-                // dominant-first head (a poly id in v4)
+                // dominant-first head (a poly id)
                 self.tzid(self.parent_of(read_u16(self.payload_bytes(), s)))
             }
         }
@@ -663,7 +663,7 @@ impl Finder {
             .filter(|t| !t.is_empty())
     }
 
-    /// poly id → feature id (v4 parent table).
+    /// poly id → feature id (parent table).
     fn parent_of(&self, pid: u16) -> u16 {
         read_u16(self.payload_bytes(), self.layout.parent + pid as usize * 2)
     }
