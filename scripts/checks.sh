@@ -95,15 +95,48 @@ stage_docs() {
   RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo +nightly doc --workspace --no-deps
 }
 
+# The compile stages run concurrently under `all`; a private target dir
+# per stage keeps them off each other's cargo build lock. `docs` keeps
+# the default dir so target/doc stays the canonical rendered docs.
+stage_dir() {
+  case "$1" in
+    clippy | test | no-std) export CARGO_TARGET_DIR="target/checks/$1" ;;
+  esac
+}
+
 run() {
   echo "==> checks: $1"
-  "stage_${1//-/_}"
+  (
+    stage_dir "$1"
+    "stage_${1//-/_}"
+  )
+}
+
+run_compile_stages_concurrently() {
+  local stages=(clippy test no-std docs) pids=() logs=() failed=0 i
+  for i in "${!stages[@]}"; do
+    logs[i]=$(mktemp)
+    run "${stages[$i]}" > "${logs[$i]}" 2>&1 &
+    pids[i]=$!
+  done
+  for i in "${!stages[@]}"; do
+    if wait "${pids[$i]}"; then
+      echo "==> checks: ${stages[$i]} ok"
+    else
+      failed=1
+      echo "==> checks: ${stages[$i]} FAILED"
+      cat "${logs[$i]}"
+    fi
+    rm -f "${logs[$i]}"
+  done
+  return "$failed"
 }
 
 case "${1:-all}" in
   presets | fmt | readme | clippy | test | no-std | docs) run "$1" ;;
   all)
-    for s in presets fmt readme clippy test no-std docs; do run "$s"; done
+    for s in presets fmt readme; do run "$s"; done
+    run_compile_stages_concurrently
     ;;
   *)
     echo "usage: scripts/checks.sh [presets|fmt|readme|clippy|test|no-std|docs|all]" >&2
