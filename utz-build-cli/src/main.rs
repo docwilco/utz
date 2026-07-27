@@ -24,6 +24,8 @@ enum Cmd {
     Roundtrip(cmd::roundtrip::Args),
     /// Full-container size table: eps × quant × codec
     SizeTable(cmd::size_table::Args),
+    /// Per-stage pipeline size reduction on the preset recipes
+    Whittle(cmd::whittle::Args),
     /// Ratio vs window/dict size per codec + measured peak decode RAM
     WindowSweep(cmd::window_sweep::Args),
     /// Arc-store encoding shootout (delta+varint vs abs-fixed)
@@ -75,6 +77,7 @@ fn run() -> utz_build::Result<()> {
         Cmd::DensityProbe(a) => cmd::density_probe::run(a),
         Cmd::Roundtrip(a) => cmd::roundtrip::run(a),
         Cmd::SizeTable(a) => cmd::size_table::run(a),
+        Cmd::Whittle(a) => cmd::whittle::run(&a),
         Cmd::WindowSweep(a) => cmd::window_sweep::run(&a),
         Cmd::QuantSize(a) => cmd::quant_size::run(a),
         Cmd::QuantClean(a) => cmd::quant_clean::run(&a),

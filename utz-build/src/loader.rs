@@ -1,6 +1,6 @@
 //! Source loading. The source is OSM timezone-boundary-builder; datasets
 //! pick ocean cover (with-oceans or land-only) and the merge vintage:
-//! `now` (65 zones, default), `1970` (304 zones), or `all` (444 zones).
+//! `now` (64 zones, default), `1970` (304 zones), or `all` (444 zones).
 //!
 //! Download the `GeoJSON` zip (conditional GET) → parse.
 

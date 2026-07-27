@@ -2,7 +2,7 @@
 
 μTZ (micro-timezone): tiny, tunable, embeddable lat/lon → IANA timezone-id lookup.
 
-- **Tiny**: OSM timezone data down from 60 MB to ~70 KB via shared-arc
+- **Tiny**: OSM timezone data down from ~80 MB to ~70 KB via shared-arc
   topology, tunable map simplification, integer quantization, and general
   compression. Larger more accurate options available as well.
 - **Embeddable**: pure-Rust codecs, integer point-in-polygon, flat
@@ -54,8 +54,8 @@ instead generates your own asset with `utz-build`:
 | `tiny`        | ε 10 km, i16   |  ~71 KB | gzip: ~125 KB RAM to decode |
 | `tiny-static` | ε 10 km, i16   | ~125 KB | `tiny` uncompressed: zero-copy from flash, ~0 RAM, runs on bare-metal `core` |
 | `compact`     | ε 1 km, i24    | ~445 KB | xz |
-| `balanced`    | ε 50 m, i24    | ~1.3 MB | brotli |
-| `accurate`    | ε 10 m, i32    | ~8.3 MB | brotli: full zone set (every distinct tzid); the others merge zones identical since now |
+| `balanced`    | ε 50 m, i24    | ~1.2 MB | brotli |
+| `accurate`    | ε 10 m, i32    | ~8.1 MB | brotli: full zone set (every distinct tzid); the others merge zones identical since now |
 
 Preset features are additive across the whole dependency tree, and
 [`Finder::new`] exists only while exactly one preset is enabled:
@@ -129,7 +129,7 @@ by default; a `land-` prefix selects the land-only releases.
 
 | dataset | zones | merge |
 |---------|------:|-------|
-| `now`   |    65 | zones identical from today onward merged |
+| `now`   |    64 | zones identical from today onward merged |
 | `1970`  |   304 | zones identical since 1970 merged |
 | `all`   |   444 | every distinct tzid kept |
 
@@ -188,17 +188,17 @@ a `build.rs`, the `utz-build` CLI writes the same containers:
 
 ## Whittling the data down
 
-An asset starts as the timezone-boundary-builder `GeoJSON` (~60 MB
-of polygons) and is reduced in stages when it is generated:
+An asset starts as the timezone-boundary-builder `GeoJSON` (~80 MB for
+the default dataset) and is reduced in stages when it is generated
+(the `utz-build whittle` command measures every stage per preset):
 
 1. **Merge vintage**: the [dataset](#datasets) choice alone removes
    most zones, by merging ones whose rules are identical from the
    chosen point in time onward.
 2. **Topology**: borders shared between adjacent zones are cut into
    arcs at junction points and each arc is stored once; rings become
-   lists of arc references. Roughly half to three quarters of all
-   coordinates lie on shared borders, and this removes that
-   duplication.
+   lists of arc references. Half of all coordinates lie on shared
+   borders, and this removes that duplication.
 3. **Simplification**: each arc is simplified once (RDP by default)
    to the configured tolerance, so neighboring zones stay perfectly
    stitched. Optional population-density weighting keeps

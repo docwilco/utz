@@ -21,4 +21,5 @@ pub mod rdp_sweep;
 pub mod roundtrip;
 pub mod size_table;
 pub mod visualize;
+pub mod whittle;
 pub mod window_sweep;
