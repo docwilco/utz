@@ -59,6 +59,9 @@
   .slot select, .st select { background: #0d1117; color: #e6edf3; border: 1px solid #2a3542; border-radius: 5px;
     font: 11px system-ui, sans-serif; padding: 2px 3px; max-width: 92px; }
   .slot select:disabled { opacity: 0.4; }
+  .st button.xbtn { background: #0d1117; color: #e6edf3; border: 1px solid #2a3542; border-radius: 5px;
+    font: inherit; font-size: 11px; cursor: pointer; padding: 1px 8px; }
+  .st button.xbtn:hover { border-color: #4a5562; }
   .slot .raw-label { font-size: 12px; }
   .slot .rawv { color: #8b98a8; font-size: 11px; margin-left: auto; font-variant-numeric: tabular-nums; }
   .slot input.val, .st input.val { background: #0d1117; color: #e6edf3; border: 1px solid #2a3542; border-radius: 4px;
@@ -320,7 +323,11 @@ function syncHash() {
   if (heatCb.checked) parts.push('h=' + heatOp.value);
   if (gridCb.checked) parts.push('g=' + (Math.round(gridDeg * 1000) / 1000) + ',' + gridLayerSel.selectedIndex);
   if (encCb.checked) {
-    parts.push('e=' + encSlots.map(function (s) { return s.gridDeg; }).join(','));
+    // <grid°>[~<geom id>] per slot; parseFloat stops at '~', so old parsers
+    // still read the grid° and drop the geom
+    parts.push('e=' + encSlots.map(function (s) {
+      return s.gridDeg + (s.geomId ? '~' + s.geomId : '');
+    }).join(','));
   }
   history.replaceState(null, '', '#' + parts.join('&'));
 }
@@ -474,7 +481,7 @@ function Layer(idx, color, def) {
   this.cb = document.createElement('input'); this.cb.type = 'checkbox'; this.cb.checked = this.on;
   var sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = color;
   this.selDs = mkSelect(DS_LIST, this.dsi);
-  this.selDs.title = 'TZBB dataset: merge vintage × land-only / with-oceans';
+  this.selDs.title = 'TZBB dataset: zone set × land-only / with-oceans';
   this.selAlgo = mkSelect(ALGO.map(function (a) { return a.name; }), this.algo);
   this.selEps = mkSelect(
     EPS_M.map(function (e) { return 'ε ' + e + ' m'; }).concat(['ε custom…']),
@@ -917,7 +924,7 @@ function encWorkerBody() {
       });
     } else if (m.type === 'run') {
       var t0 = Date.now();
-      var plen = W.utz_enc_payload(m.algoId, m.epsM, m.wmin, m.qbits, m.gridDeg);
+      var plen = W.utz_enc_payload(m.algoId, m.epsM, m.wmin, m.qbits, m.gridDeg, m.geom);
       if (!plen) { postMessage({ type: 'encerr', gen: m.gen }); return; }
       var st = [];
       for (var i = 0; i <= 12; i++) st.push(W.utz_enc_stat(i));
@@ -959,6 +966,23 @@ var ENC_CODECS = [
   { id: 3, name: 'brotli' },
   { id: 4, name: 'xz' },
 ];
+// geometry encodings, indexed by the GeomEncoding header byte the wasm
+// takes; `payload` labels the stat row, `cfg` the utz_build::Config variant
+var ENC_GEOMS = [
+  { key: 'varint-arcs', name: 'varint arcs', payload: 'delta+varint payload', cfg: null },
+  { key: 'fixed-width-arcs', name: 'fixed-width arcs', payload: 'fixed-width payload', cfg: 'GeomEncoding::FixedWidthArcs' },
+  { key: 'full-rings', name: 'full rings', payload: 'full-rings payload', cfg: 'GeomEncoding::FullRings' },
+  { key: 'coarse', name: 'coarse (grid only)', payload: 'coarse payload', cfg: 'GeomEncoding::Coarse' },
+];
+// export-only codec list: zstd encodes fine in the builder, it just has no
+// in-browser size preview (feature-gated out of the wasm)
+var EXPORT_CODECS = [
+  { key: 'none', cfg: 'Codec::Uncompressed' },
+  { key: 'gzip', cfg: 'Codec::Gzip' },
+  { key: 'zstd', cfg: 'Codec::Zstd' },
+  { key: 'brotli', cfg: 'Codec::Brotli' },
+  { key: 'xz', cfg: 'Codec::Xz' },
+];
 var encCb = document.getElementById('encb'), encSpin = document.getElementById('encspin');
 // one encode slot per layer: worker + progress + last stats + a persistent
 // DOM block — the header row (swatch, params, per-layer grid° select) is
@@ -986,6 +1010,15 @@ var encSlots = layers.map(function (ly) {
   // the bundle recipes to match the default layer slots; the slider snaps
   // to the nearest detent, the box keeps the exact value.
   s.gridDeg = PRESETS[ly.idx].grid;
+  s.geomId = 0;
+  s.geomSel = document.createElement('select');
+  ENC_GEOMS.forEach(function (g) {
+    var o = document.createElement('option');
+    o.textContent = g.name;
+    s.geomSel.appendChild(o);
+  });
+  s.geomSel.style.marginLeft = 'auto';
+  s.geomSel.title = 'geometry encoding: how lookups read the polygons (size/speed ladder on GeomEncoding’s docs); coarse drops them for grid-cell precision';
   s.gridSl = document.createElement('input');
   s.gridSl.type = 'range';
   s.gridSl.min = 0;
@@ -997,7 +1030,6 @@ var encSlots = layers.map(function (ly) {
   s.gridSl.value = nearest;
   s.gridSl.style.width = '64px';
   s.gridSl.style.flex = 'none';
-  s.gridSl.style.marginLeft = 'auto';
   s.gridSl.title = 'prefilter grid cell size for this layer';
   s.gridIn = document.createElement('input');
   s.gridIn.type = 'text';
@@ -1005,10 +1037,50 @@ var encSlots = layers.map(function (ly) {
   s.gridIn.value = fmtDeg(s.gridDeg);
   s.gridIn.title = 'grid cell size in degrees (editable, 0.1–45)';
   head.appendChild(sw); head.appendChild(s.label);
-  head.appendChild(s.gridSl); head.appendChild(s.gridIn);
+  head.appendChild(s.geomSel); head.appendChild(s.gridSl); head.appendChild(s.gridIn);
   s.body = document.createElement('div');
-  s.box.appendChild(head); s.box.appendChild(s.body);
+  // export row: pick a codec, copy the CLI line or build.rs Config code
+  // that reproduces this layer's asset outside the browser
+  s.exp = document.createElement('div');
+  s.exp.className = 'st';
+  var xlbl = document.createElement('span');
+  xlbl.style.color = '#8b98a8';
+  xlbl.style.marginLeft = '22px';
+  xlbl.textContent = 'export';
+  s.expCodec = document.createElement('select');
+  EXPORT_CODECS.forEach(function (c) {
+    var o = document.createElement('option');
+    o.textContent = c.key;
+    s.expCodec.appendChild(o);
+  });
+  s.expCodec.title = 'codec for the exported recipe (zstd has no size preview above, the builder supports it fine)';
+  var mkCopy = function (text, build) {
+    var b = document.createElement('button');
+    b.className = 'xbtn';
+    b.textContent = text;
+    b.addEventListener('mouseenter', function () { b.title = build(); });
+    b.addEventListener('click', function () {
+      var v = build();
+      var done = function (ok) {
+        b.textContent = ok ? 'copied!' : 'copy failed';
+        setTimeout(function () { b.textContent = text; }, 900);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(v).then(function () { done(true); }, function () { done(false); });
+      } else { done(false); }
+    });
+    return b;
+  };
+  s.exp.appendChild(xlbl);
+  s.exp.appendChild(s.expCodec);
+  s.exp.appendChild(mkCopy('cli', function () { return encExportCli(s); }));
+  s.exp.appendChild(mkCopy('build.rs', function () { return encExportConfig(s); }));
+  s.box.appendChild(head); s.box.appendChild(s.body); s.box.appendChild(s.exp);
   encStatsEl.appendChild(s.box);
+  s.geomSel.addEventListener('change', function () {
+    s.geomId = s.geomSel.selectedIndex;
+    encRequestSlot(s); syncHash();
+  });
   s.gridSl.addEventListener('input', function () { s.gridIn.value = fmtDeg(GRID_DEG[s.gridSl.value]); });
   s.gridSl.addEventListener('change', function () {
     s.gridDeg = GRID_DEG[s.gridSl.value];
@@ -1083,17 +1155,51 @@ function encParams(s) {
   return {
     name: DS_LIST[ly.dsi],
     algoId: ALGO[ly.algo].id,
+    algoKey: ALGO[ly.algo].key,
     epsM: ly.eps,
     wmin: ly.wmin(),
     qbits: encQbits(QUANT[ly.quant].key),
     gridDeg: s.gridDeg,
+    geom: s.geomId,
   };
 }
 function encSend(s) {
   var p = encParams(s);
   s.worker.postMessage({ type: 'run', gen: s.gen, algoId: p.algoId, epsM: p.epsM,
-    wmin: p.wmin, qbits: p.qbits, gridDeg: p.gridDeg,
+    wmin: p.wmin, qbits: p.qbits, gridDeg: p.gridDeg, geom: p.geom,
     codecs: ENC_CODECS.map(function (c) { return c.id; }) });
+}
+// a number as a Rust f64 literal ("2" would be an integer literal)
+function fmtF64(x) {
+  var v = String(x);
+  return v.indexOf('.') < 0 && v.indexOf('e') < 0 ? v + '.0' : v;
+}
+// the `utz-build gen` line reproducing this layer's asset (the CLI's --algo
+// names: rdp | vw | ii | none)
+function encExportCli(s) {
+  var p = encParams(s);
+  var out = ['utz-build gen', p.name, String(p.epsM)];
+  if (p.algoKey !== 'rdp') out.push('--algo ' + (p.algoKey === 'raw' ? 'none' : p.algoKey));
+  out.push('--qbits ' + p.qbits, '--grid-deg ' + p.gridDeg);
+  if (p.wmin < 1) out.push('--w-min ' + p.wmin);
+  if (p.geom) out.push('--geom ' + ENC_GEOMS[p.geom].key);
+  out.push('--codec ' + EXPORT_CODECS[s.expCodec.selectedIndex].key, '-o tz.utz');
+  return out.join(' ');
+}
+// the equivalent build.rs snippet (utz_build::Config)
+function encExportConfig(s) {
+  var p = encParams(s);
+  var out = ['utz_build::Config::new()', '    .dataset("' + p.name + '")',
+    '    .rdp_meters(' + fmtF64(p.epsM) + ')'];
+  if (p.algoKey === 'vw') out.push('    .simplify_algo(utz_build::SimplifyAlgo::Visvalingam)');
+  if (p.algoKey === 'ii') out.push('    .simplify_algo(utz_build::SimplifyAlgo::ImaiIri)');
+  if (p.algoKey === 'raw') out.push('    .simplify_algo(utz_build::SimplifyAlgo::None)');
+  if (p.wmin < 1) out.push('    .density_weight_floor(' + fmtF64(p.wmin) + ')');
+  out.push('    .quant_bits(' + p.qbits + ')', '    .grid_deg(' + fmtF64(p.gridDeg) + ')',
+    '    .codec(utz_build::' + EXPORT_CODECS[s.expCodec.selectedIndex].cfg + ')');
+  if (p.geom) out.push('    .geom(utz_build::' + ENC_GEOMS[p.geom].cfg + ')');
+  out.push('    .generate()?;');
+  return out.join('\n');
 }
 // (re)start one layer's encode when its effective parameters changed; a
 // change mid-encode kills that worker (a WASM call can't be interrupted) and
@@ -1104,7 +1210,7 @@ function encRequestSlot(s, force) {
     return;
   }
   var p = encParams(s);
-  var sig = [p.name, p.algoId, p.epsM, p.wmin, p.qbits, p.gridDeg].join('|');
+  var sig = [p.name, p.algoId, p.epsM, p.wmin, p.qbits, p.gridDeg, p.geom].join('|');
   if (!force && sig === s.sig) return;
   s.sig = sig;
   s.gen++;
@@ -1150,22 +1256,26 @@ function encRender() {
     var p = v.params;
     s.label.textContent = !p ? '' : p.name + ' ' + ALGO[s.ly.algo].name +
       (ALGO[s.ly.algo].key === 'raw' ? '' : ' ε' + p.epsM) + ' @ i' + p.qbits +
-      (p.wmin < 1 ? ' pop×' + (p.wmin < 0.1 ? p.wmin.toFixed(3) : p.wmin.toFixed(2)) : '');
+      (p.wmin < 1 ? ' pop×' + (p.wmin < 0.1 ? p.wmin.toFixed(3) : p.wmin.toFixed(2)) : '') +
+      (p.geom ? ' · ' + ENC_GEOMS[p.geom].name : '');
     if (v.error) {
       s.body.innerHTML = '<div class="st"><span style="color:#ff6b6b;margin-left:22px">' + v.error + '</span></div>';
       return;
     }
     var h = '';
+    var glabel = ENC_GEOMS[p.geom || 0].payload;
     if (!v.payload) {
-      h += '<div class="st"><span style="margin-left:22px">delta+varint payload</span><span class="num">…</span></div>';
+      h += '<div class="st"><span style="margin-left:22px">' + glabel + '</span><span class="num">…</span></div>';
     } else {
       var st = v.payload.st;
       // ratio vs the same container with fixed-width verts instead of the
       // delta+varint arc stream — what stage 1's entropy coding buys
+      // (varint arcs only; the other encodings ARE their stored form)
       var fixed = v.payload.len - st[2] + st[6] * 2 * (p.qbits / 8);
-      h += '<div class="st"><span style="margin-left:22px">delta+varint payload</span><span class="num">' +
+      h += '<div class="st"><span style="margin-left:22px">' + glabel + '</span><span class="num">' +
         fmtB(v.payload.len) +
-        ' <span class="pct">(' + (100 * v.payload.len / fixed).toFixed(1) + '%)</span></span></div>';
+        (p.geom ? '' : ' <span class="pct">(' + (100 * v.payload.len / fixed).toFixed(1) + '%)</span>') +
+        '</span></div>';
       h += '<div class="st" style="color:#8b98a8"><span style="margin-left:22px">hdr ' + fmtB(st[0]) +
         ' · zones ' + fmtB(st[1]) + ' · arcs ' + fmtB(st[2]) + ' · rings ' + fmtB(st[3]) +
         ' · grid ' + fmtB(st[4]) + '</span></div>';
@@ -1843,11 +1953,18 @@ if (HASH.g) {
   gridCb.checked = true;
 }
 if (HASH.e) {
-  // e=<g0>,<g1>,… (grid° per layer, fractional ok); a single value (old
+  // e=<g0>[~<geom0>],<g1>[~<geom1>],… (grid° per layer, fractional ok; the
+  // ~<geom id> suffix picks the geometry encoding); a single value (old
   // links) applies to every layer
-  var ep = HASH.e.split(',').map(parseFloat);
+  var ep = HASH.e.split(',');
   encSlots.forEach(function (s, i) {
-    var gv = ep.length === 1 ? ep[0] : ep[i];
+    var f = (ep.length === 1 ? ep[0] : ep[i] || '').split('~');
+    var gv = parseFloat(f[0]);
+    var geom = parseInt(f[1], 10);
+    if (geom >= 1 && geom < ENC_GEOMS.length) {
+      s.geomId = geom;
+      s.geomSel.selectedIndex = geom;
+    }
     if (!(gv >= 0.1 && gv <= 45)) return;
     s.gridDeg = gv;
     s.gridIn.value = fmtDeg(gv);

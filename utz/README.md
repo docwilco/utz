@@ -181,6 +181,12 @@ those with the re-exported [`include_bytes_aligned!`]). Outside a
 `build.rs`, the `utz-build` CLI writes the same containers: `utz-build gen
 now 500 --qbits 24 --codec gzip -o tz.utz`.
 
+What the built asset then costs at runtime is set by which constructor
+loads it: [Decoding and lookup](#decoding-and-lookup) explains the
+modes, and [Pairing assets with
+constructors](#pairing-assets-with-constructors) tabulates the
+worthwhile knob combinations, each row a `Config` one-liner.
+
 # How it works
 
 ## Whittling the data down
@@ -226,6 +232,14 @@ lie: [`Finder::from_static()`] borrows them zero-copy straight from
 memory-mapped flash.
 
 ## Decoding and lookup
+
+Loading is build-once/query-many: a constructor validates the header
+and decompresses and decodes exactly once, up front, and the returned
+[`Finder`] never repeats any of it. Lookups borrow the `Finder`
+immutably and allocate nothing, so construct one at startup (or lazily
+behind e.g. `std::sync::OnceLock`), keep it alive, and route every
+query through it; constructing per query would repay the whole decode
+cost each time.
 
 An asset this build cannot read (a missing [geometry
 decoder](#geometry-decoders) or [codec](#compression-codecs)) is refused

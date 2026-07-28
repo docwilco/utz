@@ -16,7 +16,7 @@
 //! const ptr = utz_enc_alloc(blob.byteLength);
 //! new Uint8Array(memory.buffer).set(blob, ptr);
 //! if (!utz_enc_init(ptr, blob.byteLength)) throw 'bad blob';   // frees ptr
-//! const payloadLen = utz_enc_payload(algo, epsM, wMin, qbits, gridDeg);
+//! const payloadLen = utz_enc_payload(algo, epsM, wMin, qbits, gridDeg, geom);
 //! const sections = [...Array(12)].map((_, i) => utz_enc_stat(i));
 //! const brotliLen = utz_enc_compress(3);
 //! ```
@@ -291,6 +291,8 @@ fn len_u32(n: usize) -> u32 {
     n as u32
 }
 
+/// `geom` is a [`GeomEncoding`] header byte (0 varint arcs, 1 fixed-width
+/// arcs, 2 full rings, 3 coarse); unknown values fall back to varint arcs.
 #[no_mangle]
 pub extern "C" fn utz_enc_payload(
     algo: u32,
@@ -298,6 +300,7 @@ pub extern "C" fn utz_enc_payload(
     w_min: f64,
     quant_bits: u32,
     grid_deg: f64,
+    geom: u32,
 ) -> u32 {
     let Some(st) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else {
         return 0;
@@ -310,13 +313,17 @@ pub extern "C" fn utz_enc_payload(
         quant_bits,
         grid_deg,
         codec: Codec::Uncompressed,
-        geom: GeomEncoding::default(),
-        // same 0/1/2 byte convention as the viewer's algo knob
-        simplify: match algo {
-            1 => utz_encode::encode::SimplifyAlgo::Visvalingam,
-            2 => utz_encode::encode::SimplifyAlgo::ImaiIri,
-            _ => utz_encode::encode::SimplifyAlgo::Rdp,
+        geom: match geom {
+            1 => GeomEncoding::FixedWidthArcs,
+            2 => GeomEncoding::FullRings,
+            3 => GeomEncoding::Coarse,
+            _ => GeomEncoding::VarintArcs,
         },
+        // the viewer's algo knob sends SimplifyAlgo header bytes
+        simplify: u8::try_from(algo)
+            .ok()
+            .and_then(utz_encode::encode::SimplifyAlgo::from_byte)
+            .unwrap_or(utz_encode::encode::SimplifyAlgo::Rdp),
     };
     match encode::payload_from_topology(&st.topo, &arcs, &st.feats, &p) {
         Ok((payload, stats)) => {
