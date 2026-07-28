@@ -69,14 +69,16 @@
 //!
 //! # Configuring
 //!
-//! A build configures itself entirely through cargo features. Three choices are
-//! mandatory, and forgetting one is a compile error whose message explains the
-//! options: a data tier (a [preset](#preset-bundles) or `custom`), an
+//! Everything about a build is chosen through cargo features. Three are
+//! mandatory: a data tier (a [preset](#preset-bundles) or `custom`), an
 //! [environment](#environments), and at least one [geometry
-//! decoder](#geometry-decoders) (presets enable their own). [Compression
-//! codecs](#compression-codecs) are additive on top. The [dataset](#datasets)
-//! is a property of the asset rather than of the build. The [`caps`] module
-//! exposes at compile time what a build can read.
+//! decoder](#geometry-decoders); only `custom` builds pick the decoder by
+//! hand, presets enable their own. Missing any of the three is a compile
+//! error that lists the options. [Compression
+//! codecs](#compression-codecs) are additive on top. The
+//! [dataset](#datasets) is not a feature: it belongs to the asset, baked
+//! in when the asset is generated. The [`caps`] module exposes at compile
+//! time what a build can read.
 //!
 //! ## Environments
 //!
@@ -112,7 +114,7 @@
 //! assets need none of them. The backend crates are listed in the
 //! [`decompress`] module docs.
 //!
-//! | feature    | codec  | minimal environment |
+//! | feature    | codec  | minimum environment |
 //! |------------|--------|---------------------|
 //! | `gzip`     | gzip   | `alloc` (pure Rust) |
 //! | `ruzstd`   | zstd   | `alloc` (pure Rust) |
@@ -274,15 +276,15 @@
 //! first column); the relative ladder holds for the other recipes and is
 //! quantified on [`GeomEncoding`].
 //!
-//! | asset | loaded with | asset size | steady-state RAM | lookup speed |
-//! |-------|-------------|-----------:|-----------------:|--------------|
-//! | <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)</code> | [`Finder::from_static()`] | ~608 KB | none | baseline |
-//! | <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)<br>&nbsp;&nbsp;.geom(GeomEncoding::FixedWidthArcs)</code> | [`Finder::from_static()`] | ~1.0 MB | none | near-eager |
-//! | <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)<br>&nbsp;&nbsp;.geom(GeomEncoding::FullRings)</code> | [`Finder::from_static()`] | ~1.9 MB | none | eager |
-//! | <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)</code> | [`Finder::from_static()`] + [`Finder::preload()`] | ~608 KB | ~2.4 MB | eager |
-//! | <code>Config::compact()</code> | [`Finder::from_slice()`] / [`Finder::from_vec()`] | ~445 KB | ~608 KB | baseline |
-//! | <code>Config::compact()</code> | [`Finder::eager_from_slice()`] | ~445 KB | ~2.5 MB | eager |
-//! | <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)<br>&nbsp;&nbsp;.geom(GeomEncoding::Coarse)</code> | [`Finder::from_static()`] | ~81 KB | none | grid probe |
+//! | asset | loaded with | minimum environment | asset size | steady-state RAM | lookup speed |
+//! |-------|-------------|---------------------|-----------:|-----------------:|--------------|
+//! | <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)</code> | [`Finder::from_static()`] | `core` | ~608 KB | none | baseline |
+//! | <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)<br>&nbsp;&nbsp;.geom(GeomEncoding::FixedWidthArcs)</code> | [`Finder::from_static()`] | `core` | ~1.0 MB | none | near-eager |
+//! | <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)<br>&nbsp;&nbsp;.geom(GeomEncoding::FullRings)</code> | [`Finder::from_static()`] | `core` | ~1.9 MB | none | eager |
+//! | <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)</code> | [`Finder::from_static()`] + [`Finder::preload()`] | `alloc` | ~608 KB | ~2.4 MB | eager |
+//! | <code>Config::compact()</code> | [`Finder::from_slice()`] / [`Finder::from_vec()`] | `alloc` | ~445 KB | ~608 KB | baseline |
+//! | <code>Config::compact()</code> | [`Finder::eager_from_slice()`] | `alloc` | ~445 KB | ~2.5 MB | eager |
+//! | <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)<br>&nbsp;&nbsp;.geom(GeomEncoding::Coarse)</code> | [`Finder::from_static()`] | `core` | ~81 KB | none | grid probe |
 //!
 //! All rows share the `compact` recipe's simplification and quantization
 //! (RDP ε 1 km, population-weighted, i24 coordinates); sizes measured on

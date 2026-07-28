@@ -2,7 +2,7 @@
 //! payload [`Codec`]; a container whose codec is not compiled in fails
 //! with [`Error::CodecNotCompiledIn`]. Backends:
 //!
-//! | feature    | codec                   | crate                               | minimal environment |
+//! | feature    | codec                   | crate                               | minimum environment |
 //! |------------|-------------------------|-------------------------------------|---------------------|
 //! | (always)   | [`Codec::Uncompressed`] | — (memcpy)                          | `alloc`             |
 //! | `gzip`     | [`Codec::Gzip`]         | [`miniz_oxide`]                     | `alloc`             |
