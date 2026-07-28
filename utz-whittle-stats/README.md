@@ -9,4 +9,8 @@ The ladder mirrors the utz crate docs' "How it works" stages: parsed
 f64 coordinates → shared-arc topology → simplification → quantized +
 serialized sections → compressed container.
 
+The [`misassign`] module is the accuracy side of the same story: the
+misassigned-area/population pricing the viewer's simplify worker runs
+(through the `wasm` exports) and the accuracy CLI shares natively.
+
 License: MIT

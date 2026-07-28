@@ -370,100 +370,15 @@ document.querySelectorAll('#pbody .qsec').forEach(function (sec) {
   });
 });
 
-// worker: instantiate utz-simplify WASM, simplify every arc on request, and
-// price the misassignment (pocket decomposition between each raw sub-chain
-// and its shortcut — subset simplifiers make output verts bit-exact copies,
-// so they map back to raw indices). Killed and respawned to abort — never
-// blocks the page.
+// worker: instantiate utz-whittle-stats WASM and run the whole per-arc
+// pipeline in it (misassign.rs): optional pre-snap, simplify, walk-match of
+// kept verts back to raw indices, pocket + display-snap misassignment
+// pricing, per-segment deviations — no JS math reimplementation. Killed and
+// respawned to abort — never blocks the page.
 function workerBody() {
   var W = null, buf = 0, dbuf = 0, COORDS = null, OFFS = null, DENS = null;
-  function qc(v, m, span) {
-    if (m === 'f32') return Math.fround(v);
-    if (m === 'i32') return Math.round(v * 1e7) / 1e7;
-    if (m === 'i24') return Math.round(v / span * 8388607) / 8388607 * span;
-    if (m === 'i16') return Math.round(v / span * 32767) / 32767 * span;
-    return v;
-  }
-  // pockets between raw sub-chain [i0..i1] (indices within arc at base s)
-  // and its shortcut; splits at chain/shortcut-line crossings. People are
-  // priced with the mean per-vertex density over the pocket's chain — DENS
-  // hugs the boundary exactly where pockets live. Always priced on raw
-  // COORDS, so the misassigned stat stays "vs raw ε=0, pre-quant" in both
-  // orders — for Q→S this prices the vertex selection the snapped input
-  // produced, not the snap displacement itself (quantization is excluded
-  // by design, same as S→Q's display snap).
-  function pockets(s, i0, i1, acc) {
-    var X = function (i) { return COORDS[(s + i) * 2]; };
-    var Y = function (i) { return COORDS[(s + i) * 2 + 1]; };
-    var D = function (i) { return DENS ? DENS[s + i] : 0; };
-    var ax = X(i0), ay = Y(i0), dx = X(i1) - ax, dy = Y(i1) - ay;
-    var len2 = dx * dx + dy * dy;
-    var pocket = 0, clat = ay, dsum = D(i0), np = 1;
-    var flush = function () {
-      var km2 = Math.abs(pocket) * 111.32 * 111.32 * Math.cos(clat / np * Math.PI / 180);
-      acc.area += km2;
-      acc.people += km2 * dsum / np;
-    };
-    var px = ax, py = ay, sp = 0;
-    for (var k = i0; k < i1; k++) {
-      var qx = X(k + 1), qy = Y(k + 1);
-      var sq = dx * (qy - ay) - dy * (qx - ax);
-      if (len2 > 0 && sp * sq < 0) {
-        var t = sp / (sp - sq);
-        var xx = px + t * (qx - px), xy = py + t * (qy - py);
-        pocket += ((px - ax) * (xy - ay) - (py - ay) * (xx - ax)) / 2;
-        flush();
-        pocket = ((xx - ax) * (qy - ay) - (xy - ay) * (qx - ax)) / 2;
-        clat = xy + qy; dsum = D(k) + D(k + 1); np = 2;
-      } else {
-        pocket += ((px - ax) * (qy - ay) - (py - ay) * (qx - ax)) / 2;
-        clat += qy; dsum += D(k + 1); np++;
-      }
-      px = qx; py = qy; sp = sq;
-    }
-    flush();
-  }
-  // area (km²) and people between a pre-snap segment a→b and its drawn
-  // (quantized) counterpart qa→qb — the misassignment the display snap adds
-  // on top of the simplification pockets. Split at the crossing when the two
-  // segments intersect (snap usually moves the ends to opposite sides).
-  function quantQuad(ax, ay, bx, by, qax, qay, qbx, qby, dens, acc) {
-    var tri = function (x1, y1, x2, y2, x3, y3) {
-      return Math.abs((x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1)) / 2;
-    };
-    var rx = bx - ax, ry = by - ay, sx = qbx - qax, sy = qby - qay;
-    var den = rx * sy - ry * sx, area;
-    var t = den ? ((qax - ax) * sy - (qay - ay) * sx) / den : -1;
-    var u = den ? ((qax - ax) * ry - (qay - ay) * rx) / den : -1;
-    if (t > 0 && t < 1 && u > 0 && u < 1) {
-      var xx = ax + t * rx, xy = ay + t * ry;
-      area = tri(ax, ay, xx, xy, qax, qay) + tri(bx, by, xx, xy, qbx, qby);
-    } else {
-      area = Math.abs(ax * (by - qay) + bx * (qby - ay) + qbx * (qay - by) + qax * (ay - qby)) / 2;
-    }
-    var km2 = area * 111.32 * 111.32 * Math.cos((ay + by) / 2 * Math.PI / 180);
-    acc.area += km2;
-    acc.people += km2 * dens;
-  }
-  // max perpendicular deviation (meters) of raw verts (i0..i1) from the raw
-  // chord i0→i1 (indices within arc at base s) — same "vs raw ε=0, pre-quant"
-  // reference as the misassigned stat, so divergence highlighting shows where
-  // the simplifier spent its error budget
-  function devMax(s, i0, i1) {
-    var kx = Math.cos((COORDS[(s + i0) * 2 + 1] + COORDS[(s + i1) * 2 + 1]) / 2 * Math.PI / 180);
-    var ax = COORDS[(s + i0) * 2] * kx, ay = COORDS[(s + i0) * 2 + 1];
-    var bx = COORDS[(s + i1) * 2] * kx, by = COORDS[(s + i1) * 2 + 1];
-    var dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy, mx = 0;
-    for (var i = i0 + 1; i < i1; i++) {
-      var px = COORDS[(s + i) * 2] * kx, py = COORDS[(s + i) * 2 + 1];
-      var t = l2 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0;
-      t = t < 0 ? 0 : t > 1 ? 1 : t;
-      var ex = px - (ax + t * dx), ey = py - (ay + t * dy);
-      var d2 = ex * ex + ey * ey;
-      if (d2 > mx) mx = d2;
-    }
-    return Math.sqrt(mx) * 111320;
-  }
+  // quant-knob codes of misassign::Quant::from_code (QUANT order)
+  var QCODE = { f64: 0, f32: 1, i32: 2, i24: 3, i16: 4 };
   onmessage = function (e) {
     var m = e.data;
     if (m.type === 'init') {
@@ -484,77 +399,23 @@ function workerBody() {
       // wherever nothing was dropped
       var devsAll = new Float32Array(COORDS.length / 2);
       var kept = 0;
-      var weighted = DENS && m.wmin < 1;
-      var pre = m.pre && m.quant !== 'f64'; // Q→S: snap before simplifying
-      var acc = { area: 0, people: 0 };
-      var qacc = { area: 0, people: 0 }; // display-snap misassignment
+      W.utz_ws_reset();
       for (var a = 0; a + 1 < OFFS.length; a++) {
         var s = OFFS[a], n = OFFS[a + 1] - s;
-        // `src` is exactly what the simplifier eats — the walk-match and
-        // pocket pricing below must compare against it, not raw COORDS
-        var src = COORDS, base = s;
-        if (pre) {
-          src = new Float64Array(n * 2); base = 0;
-          for (var i = 0; i < n; i++) {
-            src[i * 2] = qc(COORDS[(s + i) * 2], m.quant, 180);
-            src[i * 2 + 1] = qc(COORDS[(s + i) * 2 + 1], m.quant, 90);
-          }
-        }
-        var f = new Float64Array(W.memory.buffer, buf, n * 2);
-        if (pre) { f.set(src); } else { f.set(COORDS.subarray(s * 2, (s + n) * 2)); }
-        var k;
-        if (weighted) {
-          new Float64Array(W.memory.buffer, dbuf, n).set(DENS.subarray(s, s + n));
-          k = W.utz_simplify_w(m.algoId, buf, n, m.param, dbuf, m.wmin);
-        } else {
-          k = W.utz_simplify(m.algoId, buf, n, m.param);
-        }
-        var res = new Float64Array(W.memory.buffer, buf, k * 2);
-        out.set(res, kept * 2);
-        var rawIdx = null;
-        if (k < n) {
-          // walk-match kept verts to input indices (exact equality, so it
-          // must scan `src` — what the simplifier ate); snapping is 1:1 per
-          // vertex, so those indices ARE raw indices and pockets price the
-          // raw chain
-          rawIdx = new Int32Array(k);
-          var j = 0, prev = -1;
-          for (var v = 0; v < k; v++) {
-            while (src[(base + j) * 2] !== res[v * 2] || src[(base + j) * 2 + 1] !== res[v * 2 + 1]) j++;
-            rawIdx[v] = j;
-            if (prev >= 0 && j > prev + 1) {
-              pockets(s, prev, j, acc);
-              devsAll[kept + v] = devMax(s, prev, j);
-            }
-            prev = j; j++;
-          }
-        }
-        if (m.quant !== 'f64') {
-          // price the display snap per drawn segment, on top of the pockets
-          // (which deliberately exclude quantization)
-          for (var v2 = 1; v2 < k; v2++) {
-            var iA = rawIdx ? rawIdx[v2 - 1] : v2 - 1, iB = rawIdx ? rawIdx[v2] : v2;
-            var ax2, ay2, bx2, by2, qax, qay, qbx, qby;
-            if (pre) { // Q→S: drawn = output (already snapped); pre-snap = raw
-              ax2 = COORDS[(s + iA) * 2]; ay2 = COORDS[(s + iA) * 2 + 1];
-              bx2 = COORDS[(s + iB) * 2]; by2 = COORDS[(s + iB) * 2 + 1];
-              qax = res[(v2 - 1) * 2]; qay = res[(v2 - 1) * 2 + 1];
-              qbx = res[v2 * 2]; qby = res[v2 * 2 + 1];
-            } else { // S→Q: output is raw copies; drawn = display snap of it
-              ax2 = res[(v2 - 1) * 2]; ay2 = res[(v2 - 1) * 2 + 1];
-              bx2 = res[v2 * 2]; by2 = res[v2 * 2 + 1];
-              qax = qc(ax2, m.quant, 180); qay = qc(ay2, m.quant, 90);
-              qbx = qc(bx2, m.quant, 180); qby = qc(by2, m.quant, 90);
-            }
-            quantQuad(ax2, ay2, bx2, by2, qax, qay, qbx, qby,
-              DENS ? (DENS[s + iA] + DENS[s + iB]) / 2 : 0, qacc);
-          }
-        }
+        // raw coords in, simplified (Q→S: already snapped) coords back in
+        // the same buffer; DENS goes along whenever shipped — it prices the
+        // pockets and quant quads even with weighting off
+        new Float64Array(W.memory.buffer, buf, n * 2).set(COORDS.subarray(s * 2, (s + n) * 2));
+        if (DENS) new Float64Array(W.memory.buffer, dbuf, n).set(DENS.subarray(s, s + n));
+        var k = W.utz_ws_arc(m.algoId, m.param, m.wmin, QCODE[m.quant], m.pre ? 1 : 0, buf, n, DENS ? dbuf : 0);
+        out.set(new Float64Array(W.memory.buffer, buf, k * 2), kept * 2);
+        var dp = W.utz_ws_devs_ptr();
+        if (dp) devsAll.set(new Float32Array(W.memory.buffer, dp, k), kept);
         kept += k; outOffs[a + 1] = kept;
       }
       var coords = out.slice(0, kept * 2);
       var devs = devsAll.slice(0, kept);
-      postMessage({ type: 'done', gen: m.gen, kept: kept, ms: Date.now() - t0, coords: coords, offs: outOffs, devs: devs, area: acc.area, people: acc.people, qarea: qacc.area, qpeople: qacc.people },
+      postMessage({ type: 'done', gen: m.gen, kept: kept, ms: Date.now() - t0, coords: coords, offs: outOffs, devs: devs, area: W.utz_ws_stat(0), people: W.utz_ws_stat(1), qarea: W.utz_ws_stat(2), qpeople: W.utz_ws_stat(3) },
         [coords.buffer, outOffs.buffer, devs.buffer]);
     }
   };

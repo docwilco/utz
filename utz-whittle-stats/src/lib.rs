@@ -6,11 +6,16 @@
 //! The ladder mirrors the utz crate docs' "How it works" stages: parsed
 //! f64 coordinates → shared-arc topology → simplification → quantized +
 //! serialized sections → compressed container.
+//!
+//! The [`misassign`] module is the accuracy side of the same story: the
+//! misassigned-area/population pricing the viewer's simplify worker runs
+//! (through the `wasm` exports) and the accuracy CLI shares natively.
 
 use utz_encode::encode::PayloadStats;
 use utz_encode::topo::Topology;
 use utz_encode::Feat;
 
+pub mod misassign;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 

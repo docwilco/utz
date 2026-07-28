@@ -4,7 +4,8 @@
 //! each output segment covers a contiguous run of raw vertices and the
 //! misassigned region decomposes exactly into "pockets" between the raw
 //! sub-chain and its shortcut (split where the chain crosses the shortcut
-//! line). Per config this reports:
+//! line; the decomposition itself is `utz_whittle_stats::misassign`, shared
+//! with the viewer's simplify worker). Per config this reports:
 //!   - max deviation (m, same flat 111 320 m/deg convention as `eps_m`)
 //!   - misassigned area (km², sum of |pocket|)
 //!   - misassigned population (people: pocket area × GHS-POP density at the
@@ -18,6 +19,7 @@
 use utz_build::density::DensityGrid;
 use utz_build::topo::{self, Simplify, Topology};
 use utz_simplify::DensityWeight;
+use utz_whittle_stats::misassign;
 
 const KM_PER_DEG: f64 = 111.32;
 
@@ -118,63 +120,38 @@ fn measure(t0: &Topology, t: &Topology, grid: &DensityGrid) -> Acc {
             j += 1;
         }
         for w in idx.windows(2) {
-            pocket_scan(&orig[w[0]..=w[1]], grid, &mut acc);
+            let chain = &orig[w[0]..=w[1]];
+            acc.max_dev_deg = acc.max_dev_deg.max(max_dev_deg(chain));
+            // shared pocket decomposition; people priced here with one
+            // GHS-POP grid sample at the pocket's chain centroid (the
+            // viewer instead averages its shipped per-vertex densities)
+            misassign::pocket_scan(chain, None, |p| {
+                let (lonc, latc) = (p.lon_sum / p.count, p.lat_sum / p.count);
+                let km2 = p.area.abs() * KM_PER_DEG * KM_PER_DEG * latc.to_radians().cos();
+                acc.area_km2 += km2;
+                acc.people += km2 * grid.sample(lonc, latc);
+            });
         }
     }
     acc
 }
 
-/// Decompose the region between a raw sub-chain and its shortcut
-/// (`chain.first()` → `chain.last()`) into pockets, splitting the anchored
-/// shoelace accumulation wherever the chain crosses the shortcut line.
-fn pocket_scan(chain: &[(f64, f64)], grid: &DensityGrid, acc: &mut Acc) {
+/// Max perpendicular deviation of the chain's interior vertices from the
+/// clamped shortcut chord (`chain.first()` → `chain.last()`), in flat
+/// degrees (same convention as `eps_m`).
+fn max_dev_deg(chain: &[(f64, f64)]) -> f64 {
     let (start, end) = (chain[0], *chain.last().unwrap());
     let (dx, dy) = (end.0 - start.0, end.1 - start.1);
-    let cross_anchored = |from: (f64, f64), to: (f64, f64)| {
-        (from.0 - start.0) * (to.1 - start.1) - (from.1 - start.1) * (to.0 - start.0)
-    };
-    let side = |point: (f64, f64)| dx * (point.1 - start.1) - dy * (point.0 - start.0);
     let len2 = dx * dx + dy * dy;
-
-    let flush = |area_deg2: f64, lonc: f64, latc: f64, acc: &mut Acc| {
-        let km2 = area_deg2.abs() * KM_PER_DEG * KM_PER_DEG * latc.to_radians().cos();
-        acc.area_km2 += km2;
-        acc.people += km2 * grid.sample(lonc, latc);
-    };
-
-    // signed pocket accumulator + running centroid of its chain vertices
-    let (mut pocket, mut clon, mut clat, mut npts) = (0.0, start.0, start.1, 1.0);
-    for seg_idx in 0..chain.len() - 1 {
-        let (curr, next) = (chain[seg_idx], chain[seg_idx + 1]);
-        // max deviation (perpendicular distance to the clamped shortcut)
-        if seg_idx > 0 {
-            let dist2 = if len2 == 0.0 {
-                (curr.0 - start.0).powi(2) + (curr.1 - start.1).powi(2)
-            } else {
-                let frac =
-                    (((curr.0 - start.0) * dx + (curr.1 - start.1) * dy) / len2).clamp(0.0, 1.0);
-                (curr.0 - start.0 - frac * dx).powi(2) + (curr.1 - start.1 - frac * dy).powi(2)
-            };
-            acc.max_dev_deg = acc.max_dev_deg.max(dist2.sqrt());
-        }
-        let (side_curr, side_next) = (side(curr), side(next));
-        if len2 > 0.0 && side_curr * side_next < 0.0 {
-            // chain crosses the shortcut line: split the step at the crossing
-            let cross_frac = side_curr / (side_curr - side_next);
-            let crossing = (
-                curr.0 + cross_frac * (next.0 - curr.0),
-                curr.1 + cross_frac * (next.1 - curr.1),
-            );
-            pocket += cross_anchored(curr, crossing) / 2.0;
-            flush(pocket, clon / npts, clat / npts, acc);
-            pocket = cross_anchored(crossing, next) / 2.0;
-            (clon, clat, npts) = (crossing.0 + next.0, crossing.1 + next.1, 2.0);
+    let mut max_dev = 0.0f64;
+    for &curr in &chain[1..chain.len() - 1] {
+        let dist2 = if len2 == 0.0 {
+            (curr.0 - start.0).powi(2) + (curr.1 - start.1).powi(2)
         } else {
-            pocket += cross_anchored(curr, next) / 2.0;
-            clon += next.0;
-            clat += next.1;
-            npts += 1.0;
-        }
+            let frac = (((curr.0 - start.0) * dx + (curr.1 - start.1) * dy) / len2).clamp(0.0, 1.0);
+            (curr.0 - start.0 - frac * dx).powi(2) + (curr.1 - start.1 - frac * dy).powi(2)
+        };
+        max_dev = max_dev.max(dist2.sqrt());
     }
-    flush(pocket, clon / npts, clat / npts, acc);
+    max_dev
 }

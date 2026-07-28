@@ -1,5 +1,6 @@
 //! Raw `extern "C"` surface for the webdist viewer's live container encode
-//! (wasm32 only). Same no-bindgen style as utz-simplify/src/wasm.rs (whose
+//! and simplify-worker misassignment stats (wasm32 only). Same no-bindgen
+//! style as utz-simplify/src/wasm.rs (whose
 //! `utz_alloc`/`utz_simplify`/`utz_simplify_w` exports this cdylib links in).
 //!
 //! Stateful by design: the encode worker uploads the `<ds>.bin.z` blob once
@@ -19,11 +20,32 @@
 //! const sections = [...Array(12)].map((_, i) => utz_enc_stat(i));
 //! const brotliLen = utz_enc_compress(3);
 //! ```
+//!
+//! The simplify worker's per-arc surface (`utz_ws_*`, backed by
+//! [`crate::misassign`]) replaces what used to be JS math: upload one arc's
+//! raw coords (and densities) into `utz_alloc` buffers, call [`utz_ws_arc`],
+//! read the simplified coords back from the same buffer and the per-vertex
+//! deviations via [`utz_ws_devs_ptr`]; the four misassignment accumulators
+//! run across arcs ([`utz_ws_stat`]) until [`utz_ws_reset`].
+//!
+//! JS usage sketch (inside the simplify worker, per run):
+//! ```js
+//! utz_ws_reset();
+//! for (each arc) {
+//!   new Float64Array(memory.buffer, buf, n * 2).set(rawXy);
+//!   if (dens) new Float64Array(memory.buffer, dbuf, n).set(dens);
+//!   const k = utz_ws_arc(algo, epsDeg, wMin, quantCode, pre, buf, n, dens ? dbuf : 0);
+//!   const xy = new Float64Array(memory.buffer, buf, k * 2);
+//!   const devs = new Float32Array(memory.buffer, utz_ws_devs_ptr(), k);
+//! }
+//! const [area, people, qarea, qpeople] = [0, 1, 2, 3].map(utz_ws_stat);
+//! ```
 
+use crate::misassign::{self, Acc, ArcParams, Quant};
 use utz_encode::encode::{self, Codec, GeomEncoding, Params, PayloadStats};
 use utz_encode::topo::Topology;
 use utz_encode::{validate, Arc, Feat};
-use utz_simplify::{simplify_weighted, DensityWeight};
+use utz_simplify::{simplify_weighted, DensityWeight, Simplify};
 
 struct State {
     topo: Topology,
@@ -438,4 +460,111 @@ pub extern "C" fn utz_enc_compress(codec: u32) -> u32 {
         _ => return 0,
     };
     encode::compress(&st.payload, codec).map_or(0, |z| len_u32(z.len()))
+}
+
+/// Simplify-worker misassignment state: the last arc's deviations plus the
+/// accumulators running across arcs (single-threaded wasm32, same `static
+/// mut` convention as `STATE`).
+struct WsState {
+    deviations: Vec<f32>,
+    acc: Acc,
+    qacc: Acc,
+}
+
+static mut WS: WsState = WsState {
+    deviations: Vec::new(),
+    acc: Acc {
+        area: 0.0,
+        people: 0.0,
+    },
+    qacc: Acc {
+        area: 0.0,
+        people: 0.0,
+    },
+};
+
+/// Zero the four running misassignment accumulators (start of a run).
+#[no_mangle]
+pub extern "C" fn utz_ws_reset() {
+    let ws = unsafe { &mut *core::ptr::addr_of_mut!(WS) };
+    ws.acc = Acc::default();
+    ws.qacc = Acc::default();
+    ws.deviations.clear();
+}
+
+/// One arc through the whole simplify-worker pipeline
+/// ([`misassign::arc_misassign`]): pre-snap when `pre` != 0 (Q→S), simplify
+/// (`algo` ids and `param` as in `utz_simplify`; density-weighted when
+/// `dens` is non-null and `w_min` < 1), pocket + display-snap pricing into
+/// the running accumulators. `quant` codes are the viewer's quant-knob
+/// indices (0 f64, 1 f32, 2 i32, 3 i24, 4 i16). Returns the kept count:
+/// the simplified coords overwrite the first `kept * 2` doubles of `xy`
+/// (already display-snapped in Q→S order, raw copies otherwise), and the
+/// per-kept-vertex deviations are readable via [`utz_ws_devs_ptr`].
+///
+/// # Safety
+/// `xy` must point at `n_pts * 2` valid doubles and `dens` at `n_pts` valid
+/// doubles or be null (e.g. from `utz_alloc`).
+#[no_mangle]
+pub unsafe extern "C" fn utz_ws_arc(
+    algo: u32,
+    param: f64,
+    w_min: f64,
+    quant: u32,
+    pre: u32,
+    xy: *mut f64,
+    n_pts: usize,
+    dens: *const f64,
+) -> usize {
+    let ws = &mut *core::ptr::addr_of_mut!(WS);
+    let buf = core::slice::from_raw_parts_mut(xy, n_pts * 2);
+    let arc: Vec<(f64, f64)> = buf.chunks_exact(2).map(|c| (c[0], c[1])).collect();
+    let dens = (!dens.is_null()).then(|| core::slice::from_raw_parts(dens, n_pts));
+    let params = ArcParams {
+        // same ids as utz-simplify's wasm exports; unknown ids pass through
+        algo: match algo {
+            1 => Simplify::Rdp { eps: param },
+            2 => Simplify::Visvalingam { min_area: param },
+            3 => Simplify::ImaiIri { eps: param },
+            _ => Simplify::None,
+        },
+        w_min,
+        quant: Quant::from_code(quant),
+        pre: pre != 0,
+    };
+    let r = misassign::arc_misassign(&arc, dens, &params, &mut ws.acc, &mut ws.qacc);
+    for (i, (x, y)) in r.kept.iter().enumerate() {
+        buf[i * 2] = *x;
+        buf[i * 2 + 1] = *y;
+    }
+    ws.deviations = r.deviations;
+    r.kept.len()
+}
+
+/// Pointer to the last [`utz_ws_arc`]'s deviations (one f32 per kept
+/// vertex; null if none). `devs[v]` prices the output segment `v-1`→`v`; 0
+/// at the arc start and wherever nothing was dropped.
+#[no_mangle]
+pub extern "C" fn utz_ws_devs_ptr() -> *const f32 {
+    let ws = unsafe { &*core::ptr::addr_of!(WS) };
+    if ws.deviations.is_empty() {
+        core::ptr::null()
+    } else {
+        ws.deviations.as_ptr()
+    }
+}
+
+/// A running misassignment accumulator (0 for an unknown index):
+/// 0 simplification area (km²), 1 simplification people,
+/// 2 display-snap area (km²), 3 display-snap people.
+#[no_mangle]
+pub extern "C" fn utz_ws_stat(i: u32) -> f64 {
+    let ws = unsafe { &*core::ptr::addr_of!(WS) };
+    match i {
+        0 => ws.acc.area,
+        1 => ws.acc.people,
+        2 => ws.qacc.area,
+        3 => ws.qacc.people,
+        _ => 0.0,
+    }
 }
