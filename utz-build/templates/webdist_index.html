@@ -1771,7 +1771,9 @@ function renderReduction() {
     if (v && v.payload) {
       row('payload ' + q.label + ' · grid ' + fmtBytes(v.payload.st[4]), v.payload.len, simp);
       Object.keys(v.codecs || {}).forEach(function (c) {
-        row('.utz ' + c, v.codecs[c].bytes, v.payload.len);
+        var cname = null;
+        ENC_CODECS.forEach(function (ec) { if (ec.id === +c) cname = ec.name; });
+        row('.utz ' + (cname || c), v.codecs[c].bytes, v.payload.len);
       });
     }
     el.innerHTML += rows;
