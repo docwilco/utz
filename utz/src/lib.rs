@@ -30,7 +30,7 @@
 //! enabled preset:
 //!
 //! ```ignore
-//! let finder = utz::Finder::new()?;              // or ::from_static(flash_bytes)
+//! let finder = utz::Finder::new()?;
 //! let tz = finder.lookup(utz::Position { lon: -0.1278, lat: 51.5074 });
 //! // Some("Europe/London")
 //! ```
