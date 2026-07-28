@@ -444,17 +444,19 @@ impl Finder {
         })
     }
 
-    /// Decode straight to eager mode, then drop the geometry sections:
+    /// Decode straight to eager mode: all polygons decoded up front into
+    /// a flat in-RAM cache so lookups never touch the encoded geometry,
+    /// the fastest mode (what [`preload()`](Finder::preload) switches a
+    /// `Finder` into). The geometry sections are then dropped:
     /// steady-state RAM is the eager cache plus only the
-    /// header/tzid/grid tables, less than `from_slice` +
-    /// [`preload`](Finder::preload)
-    /// keeping the full decoded payload (−17% on the compact preset), with
-    /// no separate preload pass. Peak RAM during construction is unchanged
-    /// (decoded payload and cache briefly coexist; the arc store must be
-    /// resident to flatten rings). For a compressed asset in flash this is
-    /// the eager entry point; for uncompressed assets prefer
-    /// [`from_static`](Finder::from_static) + [`preload`](Finder::preload),
-    /// which keeps the payload in flash entirely.
+    /// header/tzid/grid tables, less than
+    /// [`from_slice()`](Finder::from_slice) + `preload()` keeping the full
+    /// decoded payload (−17% on the compact preset). Peak RAM during
+    /// construction is unchanged (decoded payload and cache briefly
+    /// coexist; the arc store must be resident to flatten rings). For
+    /// uncompressed `&'static` assets,
+    /// [`from_static()`](Finder::from_static) + `preload()` is better
+    /// still: the payload stays in flash.
     ///
     /// # Errors
     /// As [`Finder::from_slice()`], which performs the load.
