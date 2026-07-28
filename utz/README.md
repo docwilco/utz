@@ -128,18 +128,11 @@ listed in the [`decompress`] module docs.
 # Datasets
 
 Not a feature: the dataset picks which timezone-boundary-builder
-release an asset is generated from, baked in at generation time
-(every preset except `accurate` uses `now`; custom builds choose).
-It sets the merge vintage: zones whose rules are identical from
-that point on are merged, so older vintages keep more zones. Oceans
-are covered by default; a `land-` prefix selects the land-only
-releases.
-
-| dataset | zones | merge |
-|---------|------:|-------|
-| `now`   |    64 | zones identical from today onward merged |
-| `1970`  |   304 | zones identical since 1970 merged |
-| `all`   |   444 | every distinct tzid kept |
+release an asset is generated from, baked in at generation time.
+It sets the merge vintage (zones whose rules are identical from
+that point on are merged): every preset except `accurate` uses
+`now`, the smallest; custom builds choose. Vintages, zone counts,
+and ocean coverage are documented with [`utz_build`].
 
 # Building a custom asset
 
@@ -289,7 +282,8 @@ Where those ship fixed data tiers, μTZ makes the size/accuracy tradeoff
 a build-time knob and adds integer quantization to go ~10× smaller,
 with a genuinely `no_std`/flash-embeddable format.
 
-[`utz_build::Config`]: https://docwilco.github.io/utz/docs/utz_build/struct.Config.html
+[`utz_build::Config`]: https://docwilco.github.io/utz/docs/utz_build/config/struct.Config.html
+[`utz_build`]: https://docwilco.github.io/utz/docs/utz_build/index.html#datasets
 
 ## License
 
