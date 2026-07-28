@@ -51,8 +51,8 @@ instead generates your own asset with `utz-build`:
 
 | feature       | simplification | geometry    | codec  | size    | notes |
 |---------------|----------------|-------------|--------|--------:|-------|
-| `tiny`        | ε 10 km, i16   | varint arcs | gzip   |  ~71 KB | ~125 KB RAM to decode |
-| `tiny-static` | ε 10 km, i16   | varint arcs | none   | ~125 KB | `tiny` uncompressed: zero-copy from flash, ~0 RAM, runs on bare-metal `core` |
+| `tiny`        | ε 10 km, i16   | varint arcs | gzip   |  ~71 KB | Needs ~125 KB RAM to hold the uncompressed data, brotli/xz would be smaller, but need more RAM for the decompression process |
+| `tiny-static` | ε 10 km, i16   | varint arcs | none   | ~125 KB | `tiny` uncompressed: doesn't need additional RAM to hold the data, meant for use straight from flash, runs on bare-metal `core` |
 | `compact`     | ε 1 km, i24    | varint arcs | xz     | ~445 KB | |
 | `balanced`    | ε 50 m, i24    | varint arcs | brotli | ~1.2 MB | |
 | `accurate`    | ε 10 m, i32    | varint arcs | brotli | ~8.1 MB | full zone set (every distinct tzid); the others merge zones identical since now |
@@ -63,7 +63,13 @@ with several in the union there is no single default to load, so
 `new()` is compiled out and its call sites fail to build. Every
 enabled preset's asset stays available as a static in [`data`];
 load one explicitly with [`Finder::from_slice()`] or
-[`Finder::from_static()`].
+[`Finder::from_static()`]:
+
+```rust
+// with both `tiny` and `tiny-static` enabled:
+let lazy = utz::Finder::from_slice(utz::data::TINY)?; // decoded into RAM
+let flat = utz::Finder::from_static(utz::data::TINY_STATIC)?; // zero-copy
+```
 
 # Configuring
 
