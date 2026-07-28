@@ -132,20 +132,22 @@ impl QuantBits {
 /// lookup speed is the flash-XIP (execute-in-place, zero RAM) leg of the
 /// embedded bench, same baseline.
 ///
-/// | encoding         | geometry section                          |      raw | best-compressed | XIP lookup      |
-/// |------------------|-------------------------------------------|---------:|----------------:|-----------------|
-/// | `VarintArcs`     | shared arcs, delta + zigzag-varint coords |       1× |              1× | 1×              |
-/// | `FixedWidthArcs` | shared arcs, absolute quant-width coords  |  +40–72% |    +24–32% (xz) | 1.3–1.5×        |
-/// | `FullRings`      | whole rings, absolute quant-width coords  | 2.1–3.2× |    +61–94% (xz) | 2.0–3.3×        |
-/// | `Coarse`         | none (grid only)                          |      ~⅓× |             ~⅓× | grid probe only |
+/// | encoding         | geometry section                          |        raw | best-compressed | XIP lookup      |
+/// |------------------|-------------------------------------------|-----------:|----------------:|-----------------|
+/// | `VarintArcs`     | shared arcs, delta + zigzag-varint coords |         1× |              1× | 1×              |
+/// | `FixedWidthArcs` | shared arcs, absolute quant-width coords  |   1.4–1.7× |   1.15–1.3× (xz) | 1.3–1.5×        |
+/// | `FullRings`      | whole rings, absolute quant-width coords  |   2.1–3.2× |    1.4–2.1× (xz) | 2.0–3.3×        |
+/// | `Coarse`         | none (grid only)                          | 0.05–0.33× |     0.01–0.14× | grid probe only |
 ///
 /// Narrow-quant `FullRings` XIP even outran the RAM preload cache on the
 /// embedded bench. On fixed-width payloads the codec ranking flips: xz
-/// overtakes brotli at every shape.
+/// overtakes brotli at every shape. `Coarse` shrinks with preset fineness
+/// twice over: the grid is all it keeps, and grids compress extremely well.
 ///
-/// **TODO(verify):** these figures date to the 2026-07 `fixedwidth_size` /
-/// `imagepack_size` sweeps and bench-firmware runs on earlier payload
-/// revisions; re-run them against the current format.
+/// Size columns: `utz-build whittle --extended` (2026-07, TZBB 2026c),
+/// full containers per preset recipe vs the `VarintArcs` build.
+/// **TODO(verify):** the XIP lookup column still dates to the 2026-07
+/// bench-firmware runs on earlier payload revisions; re-run on target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
 #[repr(u8)]
 pub enum GeomEncoding {

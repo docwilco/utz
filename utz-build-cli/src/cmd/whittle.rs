@@ -3,14 +3,16 @@
 //! shared-arc topology → density-weighted simplification → quantized +
 //! serialized sections → compressed container. The stages mirror the utz
 //! crate docs' "How it works" list; this is the command that keeps those
-//! numbers honest.
+//! numbers honest. `--extended` adds the geometry-encodings matrix (raw
+//! payload, recipe-codec container, and xz container per `GeomEncoding`),
+//! the size columns of the ladder table on `GeomEncoding`.
 //!
 //! ```text
-//! utz-build whittle [tiny|compact|balanced|accurate|all]
+//! utz-build whittle [--extended] [tiny|compact|balanced|accurate|all]
 //! ```
 
 use utz_build::density::DensityGrid;
-use utz_build::encode::{self, Codec, Params, SimplifyAlgo};
+use utz_build::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgo};
 use utz_build::{download, loader, topo, Feat};
 use utz_simplify::DensityWeight;
 
@@ -20,6 +22,9 @@ pub struct Args {
     /// (tiny-static is tiny with codec none; reported with tiny)
     #[arg(default_value = "all")]
     preset: String,
+    /// also measure every geometry encoding per preset
+    #[arg(long)]
+    extended: bool,
 }
 
 /// One preset recipe, mirroring `utz_build::Config::{tiny,compact,balanced,
@@ -129,6 +134,71 @@ fn geojson_entry_size(zip_path: &std::path::Path) -> utz_build::Result<u64> {
     Ok(0)
 }
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "byte counts ≪ 2^53; ratio display"
+)]
+fn ratio(n: u64, d: u64) -> f64 {
+    n as f64 / d as f64
+}
+
+/// Raw payload + compressed container per geometry encoding, with ratios
+/// vs `VarintArcs`: the size columns of the `GeomEncoding` ladder table.
+fn encodings_matrix(
+    r: &Recipe,
+    t: &topo::Topology,
+    feats: &[Feat],
+    release: &str,
+) -> utz_build::Result<()> {
+    println!(
+        "  {:<18} {:>10} {:<7} {:>10} {:<7} {:>10} {:<7}",
+        "encoding",
+        "payload",
+        "×va",
+        format!("{:?}", r.codec),
+        "×va",
+        "xz",
+        "×va"
+    );
+    let mut base: Option<(u64, u64, u64)> = None;
+    for (geom, label) in [
+        (GeomEncoding::VarintArcs, "varint-arcs"),
+        (GeomEncoding::FixedWidthArcs, "fixed-width-arcs"),
+        (GeomEncoding::FullRings, "full-rings"),
+        (GeomEncoding::Coarse, "coarse"),
+    ] {
+        let p = Params {
+            dataset: utz_build::dataset(r.ds)?.code(),
+            tzbb_release: release,
+            eps_m: r.eps_m,
+            quant_bits: r.quant_bits,
+            grid_deg: r.grid_deg,
+            codec: Codec::Uncompressed,
+            simplify: SimplifyAlgo::Rdp,
+            geom,
+        };
+        let (payload, _) = encode::payload_from_topology(t, &t.arc_coords, feats, &p)?;
+        let container = encode::finish(&payload, r.codec)?;
+        let xz = encode::finish(&payload, Codec::Xz)?;
+        let sizes = (
+            payload.len() as u64,
+            container.len() as u64,
+            xz.len() as u64,
+        );
+        let b = *base.get_or_insert(sizes);
+        println!(
+            "  {label:<18} {:>10} ×{:<6.2} {:>10} ×{:<6.2} {:>10} ×{:<6.2}",
+            human(sizes.0),
+            ratio(sizes.0, b.0),
+            human(sizes.1),
+            ratio(sizes.1, b.1),
+            human(sizes.2),
+            ratio(sizes.2, b.2),
+        );
+    }
+    Ok(())
+}
+
 pub fn run(a: &Args) -> utz_build::Result<()> {
     let cache = utz_build::cache_dir();
     let density = DensityGrid::load(&cache)?;
@@ -232,6 +302,10 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
                 coords,
                 coords,
             );
+        }
+
+        if a.extended {
+            encodings_matrix(&r, &t, &feats, &release)?;
         }
         println!();
     }

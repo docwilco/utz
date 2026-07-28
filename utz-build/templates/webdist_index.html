@@ -133,10 +133,6 @@
     <canvas id="gridhist" height="46" style="width:100%; height:46px; display:none"
       title="candidate tzids per boundary-crossed cell"></canvas>
   </div>
-  <div class="qsec" data-sec="red">
-    <div class="qtitle">Reduction</div>
-    <div id="stats"></div>
-  </div>
   <div class="qsec" data-sec="mis">
     <div class="qtitle">Misassigned <span>· vs raw ε=0 · display snap priced separately as “quant”</span></div>
     <div id="mstats"></div>
@@ -144,11 +140,15 @@
   <div class="qsec" data-sec="enc">
     <div class="qtitle">Container encode</div>
     <div class="slot" title="live .utz size per enabled layer (always S→Q, the builder's order)">
-      <input type="checkbox" id="encb">
+      <input type="checkbox" id="encb" checked>
       <span class="raw-label">encode</span>
       <span class="spin" id="encspin"></span>
     </div>
     <div id="encstats"></div>
+  </div>
+  <div class="qsec" data-sec="red">
+    <div class="qtitle">Reduction</div>
+    <div id="stats"></div>
   </div>
   </div>
 </div>
