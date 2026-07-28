@@ -369,7 +369,10 @@ impl Finder {
     /// Decode a borrowed container into an owned `Finder` (lazy mode),
     /// decompressing as needed. For compressed assets already in
     /// memory/flash (preset statics, OTA blobs): no copy of the compressed
-    /// input is made.
+    /// input is made. An uncompressed container is copied into owned RAM
+    /// wholesale; if you own the buffer, [`Finder::from_vec()`] reuses its
+    /// allocation instead, and for `&'static` data
+    /// [`Finder::from_static()`] borrows it with no copy at all.
     ///
     /// # Errors
     /// The header-validation errors of [`format::outer()`]/[`format::parse()`]
