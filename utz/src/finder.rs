@@ -400,11 +400,13 @@ impl Finder {
         })
     }
 
-    /// Take ownership of a container buffer (e.g. an OTA blob), decompressing
-    /// if the container's codec is compiled in. The `no_std` entry
-    /// point for compressed containers. Lazy mode either way: even an
-    /// uncompressed owned buffer keeps the payload in RAM. Zero-copy needs
-    /// [`from_static`](Finder::from_static).
+    /// Take ownership of a container buffer: the entry point when the asset
+    /// arrives at runtime (an OTA download, a network fetch) or when you
+    /// bring your own decompression and hand over the result. A compressed
+    /// container is decompressed if its codec is compiled in; an
+    /// uncompressed one is adopted in place, reusing the allocation. Lazy
+    /// mode either way: even an uncompressed owned buffer keeps the payload
+    /// in RAM. Zero-copy needs [`from_static`](Finder::from_static).
     ///
     /// # Errors
     /// As [`Finder::from_slice()`].
