@@ -256,28 +256,31 @@ answers at cell precision from any asset.
 The asset's codec, its [geometry encoding](#geometry-decoders), and the
 constructor it is handed to combine into distinct RAM/speed points. The
 recurring trade: spending storage (a larger encoding, no compression)
-removes lookup work and RAM; the size and speed columns are quantified
-on [`GeomEncoding`].
+removes lookup work and RAM. Every row below is a one- or two-knob
+variant of the `compact` recipe ([`utz_build::Config`] code in the
+first column; sizes measured on TZBB 2026c); the relative ladder holds
+for the other recipes and is quantified on [`GeomEncoding`].
 
-| asset                         | loaded with                                       | steady-state RAM     | lookup speed |
-|-------------------------------|---------------------------------------------------|----------------------|--------------|
-| uncompressed `VarintArcs`     | [`Finder::from_static()`]                         | none                 | baseline     |
-| uncompressed `FixedWidthArcs` | [`Finder::from_static()`]                         | none                 | near-eager   |
-| uncompressed `FullRings`      | [`Finder::from_static()`]                         | none                 | eager        |
-| uncompressed arc encodings    | [`Finder::from_static()`] + [`Finder::preload()`] | eager cache          | eager        |
-| compressed `VarintArcs`       | [`Finder::from_slice()`] / [`Finder::from_vec()`] | decoded payload      | baseline     |
-| compressed `VarintArcs`       | [`Finder::eager_from_slice()`]                    | eager cache + tables | eager        |
-| uncompressed `Coarse`         | [`Finder::from_static()`]                         | none                 | grid probe   |
+| asset | simplification | asset size | loaded with | steady-state RAM | lookup speed |
+|-------|----------------|-----------:|-------------|-----------------:|--------------|
+| `Config::compact().codec(Codec::Uncompressed)`                                | ε 1 km, i24 | ~608 KB | [`Finder::from_static()`]                         | none    | baseline   |
+| `Config::compact().codec(Codec::Uncompressed).geom(GeomEncoding::FixedWidthArcs)` | ε 1 km, i24 | ~1.0 MB | [`Finder::from_static()`]                     | none    | near-eager |
+| `Config::compact().codec(Codec::Uncompressed).geom(GeomEncoding::FullRings)`  | ε 1 km, i24 | ~1.9 MB | [`Finder::from_static()`]                         | none    | eager      |
+| `Config::compact().codec(Codec::Uncompressed)`                                | ε 1 km, i24 | ~608 KB | [`Finder::from_static()`] + [`Finder::preload()`] | ~2.4 MB | eager      |
+| `Config::compact()`                                                           | ε 1 km, i24 | ~445 KB | [`Finder::from_slice()`] / [`Finder::from_vec()`] | ~608 KB | baseline   |
+| `Config::compact()`                                                           | ε 1 km, i24 | ~445 KB | [`Finder::eager_from_slice()`]                    | ~2.5 MB | eager      |
+| `Config::compact().codec(Codec::Uncompressed).geom(GeomEncoding::Coarse)`     | ε 1 km, i24 | ~81 KB  | [`Finder::from_static()`]                         | none    | grid probe |
 
 `FullRings` + [`Finder::from_static()`] is the standout: the encoding is
 the preload cache serialized, so lookups run at eager speed straight off
 flash with no heap and no preload pass at boot; it just costs the most
-storage. Compression pulls the other way: the smallest container, but
-the decoded payload (or after [`Finder::eager_from_slice()`], the eager
-cache) must live in RAM. `Coarse` sidesteps the trade entirely by
-dropping the polygons: near-nothing to store, and via
-[`Finder::from_static()`] no RAM either (the floor of both ladders), at
-cell precision.
+storage (and less than the cache it replaces: flash coordinates stay
+quant-width while the RAM cache rounds up to i32). Compression pulls
+the other way: the smallest container, but the decoded payload (or
+after [`Finder::eager_from_slice()`], the eager cache) must live in
+RAM. `Coarse` sidesteps the trade entirely by dropping the polygons:
+near-nothing to store, and via [`Finder::from_static()`] no RAM either
+(the floor of both ladders), at cell precision.
 
 `no_std`-first: API availability follows the [environment
 ladder](#environments) `core` ⊂ `alloc` ⊂ `std`.
