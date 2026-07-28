@@ -82,10 +82,11 @@ exposes at compile time what a build can read.
 
 ## Environments
 
-Each level adds API on top of the one below without changing it, which makes
-the choice safe to leave to cargo's feature merging: when one crate in your
-dependency tree asks for `core` and another for `std`, the build gets `std`
-and both keep working.
+μTZ is `no_std`-first: API availability follows the environment ladder
+`core` ⊂ `alloc` ⊂ `std`. Each level adds API on top of the one below
+without changing it, which makes the choice safe to leave to cargo's
+feature merging: when one crate in your dependency tree asks for `core`
+and another for `std`, the build gets `std` and both keep working.
 
 | feature | environment                              | can load |
 |---------|------------------------------------------|----------|
@@ -299,9 +300,6 @@ after [`Finder::eager_from_slice()`], the eager cache) must live in
 RAM. `Coarse` sidesteps the trade entirely by dropping the polygons:
 near-nothing to store, and via [`Finder::from_static()`] no RAM either
 (the floor of both ladders), at cell precision.
-
-`no_std`-first: API availability follows the [environment
-ladder](#environments) `core` ⊂ `alloc` ⊂ `std`.
 
 # Inspirations & credits
 
