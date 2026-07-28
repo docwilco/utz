@@ -105,10 +105,10 @@ pub fn load_with_release(ds: &str) -> crate::Result<(Vec<Feat>, String)> {
     loader::load_tzbb(dataset(ds)?, &cache_dir())
 }
 
-/// `encode::encode` with population-density-weighted simplification: the
+/// `encode::encode()` with population-density-weighted simplification: the
 /// per-edge ε multiplier is a simplification knob, so it lives here with the
 /// density code; utz-encode itself stays density-agnostic (see the
-/// `encode::encode` docs).
+/// `encode::encode()` docs).
 ///
 /// # Errors
 /// Payload encoding failure.

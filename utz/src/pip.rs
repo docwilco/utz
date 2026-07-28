@@ -274,7 +274,7 @@ where
 
 /// The sign-split edge kernel ([`edge`] without the wide type):
 /// each cross-product half becomes a sign (narrow comparisons) times an
-/// exact unsigned magnitude product ([`Narrow::magnitude_product`]). Strictly a
+/// exact unsigned magnitude product ([`Narrow::magnitude_product()`]). Strictly a
 /// 32-bit-core kernel: the i16 instantiation measured 0.75× the i64
 /// kernel on a 32-bit core but 2.3× (slower) on a 64-bit host, where a
 /// wide multiply is one instruction and the extra branches only cost.

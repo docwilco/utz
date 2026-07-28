@@ -10,7 +10,7 @@
 //!   owned RAM, typically because the asset is compressed and flash can't
 //!   fit it uncompressed. No decoded-geometry cache: RAM = the decompressed
 //!   payload, nothing more.
-//! - **eager** ([`Finder::preload`], `alloc`): additionally decode all rings
+//! - **eager** ([`Finder::preload()`], `alloc`): additionally decode all rings
 //!   into RAM once; lookups then scan decoded slices. Most RAM, fastest
 //!   repeat lookups.
 //!
@@ -19,7 +19,7 @@
 //! the per-edge kernel, O(1) state, no allocation. They differ only in
 //! where the payload resides (borrowed static vs owned RAM), i.e. the
 //! `Cow` variant of [`Payload`]. Interior cells touch zero geometry in every
-//! mode, and [`Finder::lookup_coarse`] never touches geometry at all.
+//! mode, and [`Finder::lookup_coarse()`] never touches geometry at all.
 
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
@@ -177,7 +177,7 @@ impl Finder {
     /// rest are compressed and load lazy (`from_slice`).
     ///
     /// # Errors
-    /// As [`Finder::from_slice`] (or [`Finder::from_static`] for
+    /// As [`Finder::from_slice()`] (or [`Finder::from_static()`] for
     /// `tiny-static`) on the baked preset asset.
     // `doc` is in the cfg so the method appears in rustdoc output, which
     // is built with several presets unified (workspace docs) or none
@@ -288,7 +288,7 @@ impl Finder {
     ///
     /// # Errors
     /// [`Error::StaticContainerCompressed`] if the container is compressed;
-    /// the header-validation errors of [`format::outer`]/[`format::parse`]
+    /// the header-validation errors of [`format::outer()`]/[`format::parse()`]
     /// for an invalid container; [`Error::Misaligned`] for unaligned
     /// `FullRings` coords.
     pub fn from_static(bytes: &'static [u8]) -> Result<Finder> {
@@ -334,7 +334,7 @@ impl Finder {
     /// input is made.
     ///
     /// # Errors
-    /// The header-validation errors of [`format::outer`]/[`format::parse`]
+    /// The header-validation errors of [`format::outer()`]/[`format::parse()`]
     /// for an invalid container; [`Error::CodecNotCompiledIn`] /
     /// [`Error::DecoderFailed`] if the payload can't be decoded;
     /// [`Error::Misaligned`] for unaligned `FullRings` coords.
@@ -369,7 +369,7 @@ impl Finder {
     /// [`from_static`](Finder::from_static).
     ///
     /// # Errors
-    /// As [`Finder::from_slice`].
+    /// As [`Finder::from_slice()`].
     #[cfg(feature = "alloc")]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     pub fn from_vec(bytes: Vec<u8>) -> Result<Finder> {
@@ -414,7 +414,7 @@ impl Finder {
     /// which keeps the payload in flash entirely.
     ///
     /// # Errors
-    /// As [`Finder::from_slice`], which performs the load.
+    /// As [`Finder::from_slice()`], which performs the load.
     #[cfg(feature = "alloc")]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     pub fn eager_from_slice(bytes: &[u8]) -> Result<Finder> {
@@ -458,7 +458,7 @@ impl Finder {
     ///
     /// # Errors
     /// [`Error::ReadFailed`] if reading fails; otherwise as
-    /// [`Finder::from_vec`].
+    /// [`Finder::from_vec()`].
     #[cfg(feature = "std")]
     pub fn from_reader(mut r: impl std::io::Read) -> Result<Finder> {
         let mut bytes = Vec::new();

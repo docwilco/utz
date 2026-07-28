@@ -4,7 +4,7 @@
 //! compressed asset and its uncompressed twin) and measures every memory
 //! mode the hardware supports:
 //!
-//! - **xip-flash**: `Finder::from_static` on the uncompressed blob; lookups
+//! - **xip-flash**: `Finder::from_static()` on the uncompressed blob; lookups
 //!   stream straight out of memory-mapped flash, payload never in RAM.
 //! - **ram**: the uncompressed container copied into heap (`from_vec`);
 //!   streaming PIP from RAM. Small payloads land in internal SRAM; a
@@ -484,11 +484,11 @@ fn kernel_bench_i32() {
 }
 
 /// The i16 kernel matrix: the shipped sign-split kernel
-/// (`pip::ring_hit_split`: what i16-quant eager/image lookups dispatch)
+/// (`pip::ring_hit_split()`: what i16-quant eager/image lookups dispatch)
 /// vs the generic i64 kernel on the identical `(i16, i16)` slice, plus the
 /// same geometry widened to `(i32, i32)` pairs for the load-width effect.
 /// Full-range i16 ring so worst-case products are exercised (65535² just
-/// fits u32; see `pip::edge_split`); ring-level verdicts must agree
+/// fits u32; see `pip::edge_split()`); ring-level verdicts must agree
 /// exactly (the sign-split kernel may flag Boundary via a different edge of
 /// the same vertex, but Boundary short-circuits the ring either way).
 fn kernel_bench_i16() {

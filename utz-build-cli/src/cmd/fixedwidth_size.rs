@@ -2,7 +2,7 @@
 //! fixed-width-arcs / streaming-eager question.)
 //!
 //! For a codec-*none* container, rebuilds the payload in two variants and
-//! compresses all three with the preset encoders (`utz_encode::compress`):
+//! compresses all three with the preset encoders (`utz_encode::compress()`):
 //!
 //! - **A (fixed-width arcs)**: the interned arc store re-emitted as absolute
 //!   fixed-width coords (no deltas, no varints). Streaming/XIP lookups would

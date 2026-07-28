@@ -234,7 +234,7 @@ impl Config {
 
 /// Emit `<asset>.guard.rs`: `const _` assertions against `utz::caps` for
 /// the geometry decoder and codec the asset needs (shared by
-/// [`Config::generate`] and the `gen` CLI).
+/// [`Config::generate()`] and the `gen` CLI).
 ///
 /// # Errors
 /// I/O failure writing `<out>.guard.rs`.

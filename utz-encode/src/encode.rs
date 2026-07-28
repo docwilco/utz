@@ -64,7 +64,7 @@ pub fn to_simplify(algo: SimplifyAlgo, eps_deg: f64) -> utz_simplify::Simplify {
 
 pub struct Params<'a> {
     /// bits 0–1: vintage (0 = now, 1 = 1970, 2 = all/comprehensive);
-    /// bit 2 set = land-only (clear = with-oceans). See `utz_build::Dataset::code`.
+    /// bit 2 set = land-only (clear = with-oceans). See `utz_build::Dataset::code()`.
     pub dataset: u8,
     /// TZBB release tag recorded in the header (DST vintage / cache key)
     pub tzbb_release: &'a str,
@@ -100,7 +100,7 @@ pub struct PayloadStats {
 /// Full uniform-ε pipeline: topology → RDP → quantize → grid → serialize →
 /// compress. Spatially varying tolerance (population weighting) is a
 /// simplification concern, not a serialization one: build the topology
-/// yourself (`topo::build_topology_weighted`) and use
+/// yourself (`topo::build_topology_weighted()`) and use
 /// [`payload_from_topology`] + [`finish`] (see utz-build's wrapper).
 ///
 /// # Errors

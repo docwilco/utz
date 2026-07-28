@@ -26,13 +26,44 @@
 //! ```
 //!
 //! A preset is a complete build: it bakes its asset into the binary and
-//! enables the decoder features it needs. [`Finder::new`] loads the one
+//! enables the decoder features it needs. [`Finder::new()`] loads the one
 //! enabled preset:
 //!
-//! ```ignore
+// The fence toggles so the example runs as a real doctest in the one
+// feature row where `Finder::new()` exists and loads tiny (exactly one
+// preset enabled); every other row keeps it `ignore`, because doctests
+// link the regular library build of whatever features are under test.
+#![cfg_attr(
+    all(
+        feature = "std",
+        feature = "tiny",
+        not(any(
+            feature = "tiny-static",
+            feature = "compact",
+            feature = "balanced",
+            feature = "accurate"
+        ))
+    ),
+    doc = "```"
+)]
+#![cfg_attr(
+    not(all(
+        feature = "std",
+        feature = "tiny",
+        not(any(
+            feature = "tiny-static",
+            feature = "compact",
+            feature = "balanced",
+            feature = "accurate"
+        ))
+    )),
+    doc = "```ignore"
+)]
+//! # fn main() -> Result<(), utz::Error> {
 //! let finder = utz::Finder::new()?;
 //! let tz = finder.lookup(utz::Position { lon: -0.1278, lat: 51.5074 });
-//! // Some("Europe/London")
+//! assert_eq!(tz, Some("Europe/London"));
+//! # Ok(()) }
 //! ```
 //!
 //! With more than one preset feature selected, pick explicitly via the
@@ -56,12 +87,12 @@
 //! | `accurate`    | ε 10 m, i32    | ~8.1 MB | brotli: full zone set (every distinct tzid); the others merge zones identical since now |
 //!
 //! Preset features are additive across the whole dependency tree, and
-//! [`Finder::new`] exists only while exactly one preset is enabled:
+//! [`Finder::new()`] exists only while exactly one preset is enabled:
 //! with several in the union there is no single default to load, so
 //! `new()` is compiled out and its call sites fail to build. Every
 //! enabled preset's asset stays available as a static in [`data`];
-//! load one explicitly with [`Finder::from_slice`] or
-//! [`Finder::from_static`].
+//! load one explicitly with [`Finder::from_slice()`] or
+//! [`Finder::from_static()`].
 //!
 //! # Configuring
 //!
@@ -177,7 +208,7 @@
 //! ```
 //!
 //! Uncompressed assets can instead be borrowed zero-copy with
-//! [`Finder::from_static`] (full-rings assets must be 4-byte aligned:
+//! [`Finder::from_static()`] (full-rings assets must be 4-byte aligned:
 //! embed those with the re-exported [`include_bytes_aligned!`]). Outside
 //! a `build.rs`, the `utz-build` CLI writes the same containers:
 //! `utz-build gen now 500 --qbits 24 --codec gzip -o tz.utz`.
@@ -224,7 +255,7 @@
 //! crate, or your `build.rs` output via `include_bytes!`) or as
 //! external data: a file, an OTA download, a dedicated flash
 //! partition. Uncompressed containers can be used where they lie:
-//! [`Finder::from_static`] borrows them zero-copy straight from
+//! [`Finder::from_static()`] borrows them zero-copy straight from
 //! memory-mapped flash.
 //!
 //! ## Decoding and lookup
@@ -236,22 +267,22 @@
 //! the header states the decompressed size up front. RAM use then
 //! follows from how the container was loaded:
 //!
-//! - **zero-copy** ([`Finder::from_static`]): the container is borrowed
+//! - **zero-copy** ([`Finder::from_static()`]): the container is borrowed
 //!   in place and lookups stream geometry straight off the stored
 //!   bytes; no heap allocation at all.
-//! - **lazy** ([`Finder::from_slice`] and friends): the decompressed
+//! - **lazy** ([`Finder::from_slice()`] and friends): the decompressed
 //!   payload lives in owned RAM and nothing else is cached (the RAM
 //!   notes in the [preset table](#preset-bundles) are this buffer).
-//! - **eager** ([`Finder::preload`]): all rings are additionally
+//! - **eager** ([`Finder::preload()`]): all rings are additionally
 //!   decoded up front into a flat cache, the fastest mode;
-//!   [`Finder::preload_bytes`] tells you the exact cost before you pay it.
+//!   [`Finder::preload_bytes()`] tells you the exact cost before you pay it.
 //!
 //! A lookup quantizes the query point and indexes the grid cell; in the
 //! common case that already answers it. On a border cell it walks the
 //! candidate polygons: a bounding-box gate first, then an exact integer
 //! even-odd point-in-polygon test. There is no floating point in the
 //! path, so results are identical on every target, and points exactly
-//! on a border are claimed deterministically. [`Finder::lookup_coarse`] skips
+//! on a border are claimed deterministically. [`Finder::lookup_coarse()`] skips
 //! geometry entirely and answers at cell precision from any asset.
 //!
 //! `no_std`-first: API availability follows the
@@ -347,7 +378,7 @@ pub use finder::{Finder, Position};
 pub use utz_common::{Codec, Dataset, GeomEncoding, QuantBits, SimplifyAlgo};
 
 /// Preset assets baked in by the data-tier features. With exactly one
-/// preset enabled, `Finder::new` loads it; with several in the tree, pick
+/// preset enabled, `Finder::new()` loads it; with several in the tree, pick
 /// explicitly: `Finder::from_slice(utz::data::TINY)` /
 /// `Finder::from_static(utz::data::TINY_STATIC)`.
 // `doc` keeps the module (and intra-doc links to it) present in rustdoc
@@ -379,7 +410,7 @@ pub mod data {
     #[cfg(feature = "tiny")]
     pub use utz_data_tiny::TINY;
     /// tiny-static preset: tiny's decoded container shipped flat; ~125 K
-    /// flash, zero-copy via [`Finder::from_static`](crate::Finder::from_static),
+    /// flash, zero-copy via [`Finder::from_static()`](crate::Finder::from_static),
     /// ~0 RAM, no decoder, bare-`core` capable.
     #[cfg(feature = "tiny-static")]
     pub use utz_data_tiny_static::TINY_STATIC;
@@ -387,7 +418,7 @@ pub mod data {
 
 /// Compile-time capabilities of THIS utz build (its resolved features).
 ///
-/// For asset guards: `utz_build::Config::generate` writes a
+/// For asset guards: `utz_build::Config::generate()` writes a
 /// `<asset>.guard.rs` next to each asset, asserting the caps it needs.
 /// `include!` it beside the `include_bytes!` and a feature mismatch becomes
 /// a compile error in your crate instead of a load error in the field.
@@ -460,7 +491,7 @@ pub enum Error {
     #[cfg(feature = "std")]
     #[display("reading the container failed: {_0}")]
     ReadFailed(#[error(not(source))] alloc::string::String),
-    /// [`Finder::from_static`] was handed a compressed container.
+    /// [`Finder::from_static()`] was handed a compressed container.
     /// Decompression needs an owned buffer (use `from_slice`/`from_vec`).
     #[display("compressed container passed to from_static")]
     StaticContainerCompressed,
@@ -509,7 +540,7 @@ impl Error {
 }
 
 /// Embed a `.utz` container with `include_bytes_aligned!(4, path)`. Required
-/// for [`Finder::from_static`] on `FullRings` assets: the PIP kernels read
+/// for [`Finder::from_static()`] on `FullRings` assets: the PIP kernels read
 /// `(i32, i32)` pairs straight from the embedded bytes, and a bare
 /// `include_bytes!` guarantees no alignment. Harmless for any other asset.
 // Re-exported so consumers don't need their own copy of the dependency. Both

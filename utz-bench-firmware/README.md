@@ -6,7 +6,7 @@ Embeds each preset shape (tiny / compact / balanced) twice (the preset's
 compressed asset and its uncompressed twin) and measures every memory
 mode the hardware supports:
 
-- **xip-flash**: `Finder::from_static` on the uncompressed blob; lookups
+- **xip-flash**: `Finder::from_static()` on the uncompressed blob; lookups
   stream straight out of memory-mapped flash, payload never in RAM.
 - **ram**: the uncompressed container copied into heap (`from_vec`);
   streaming PIP from RAM. Small payloads land in internal SRAM; a

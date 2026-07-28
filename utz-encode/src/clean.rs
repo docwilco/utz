@@ -143,7 +143,7 @@ fn clean_cyclic(arc: &mut Arc<i32>, stats: &mut CleanStats) {
 }
 
 /// Assemble one ring's quantized coords from its signed arc refs: the
-/// integer twin of `Topology::reconstruct`'s ring assembly.
+/// integer twin of `Topology::reconstruct()`'s ring assembly.
 #[must_use]
 pub fn ring_coords_q(refs: &[u32], arcs: &[Arc<i32>]) -> Ring<i32> {
     let mut c: Ring<i32> = Vec::new();

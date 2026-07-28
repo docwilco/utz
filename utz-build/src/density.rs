@@ -53,7 +53,7 @@ pub struct DensityGrid {
 
 impl DensityGrid {
     /// Load from the sidecar cache, building it from GHS-POP on first use
-    /// (downloads the zip via [`crate::download::fetch`] if needed).
+    /// (downloads the zip via [`crate::download::fetch()`] if needed).
     ///
     /// # Errors
     /// Corrupt sidecar, or on first build: GHS-POP download failure, zip

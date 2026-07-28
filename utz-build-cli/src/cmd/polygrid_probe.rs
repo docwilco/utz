@@ -1,7 +1,7 @@
 //! Would a poly-granular grid replace the per-poly bboxes?
 //!
 //! Rebuilds the grid from a codec-*none* container's geometry twice with the
-//! real builder (`grid::build` + `intern_csr`): once per feature (today's
+//! real builder (`grid::build()` + `intern_csr`): once per feature (today's
 //! format) and once with each polygon exploded into its own pseudo-feature
 //! (the "purely grid" design: border-cell lists reference polys directly,
 //! so lazy PIP jumps straight to the polys that touch the cell and the

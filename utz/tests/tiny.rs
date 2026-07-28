@@ -23,7 +23,8 @@ fn new_loads_the_tiny_preset() {
         lon: -0.1276,
         lat: 51.5072,
     });
-    assert!(london.is_some(), "accurate lookup resolves");
+    // pins the quick-start doctest's claimed value (lib.rs)
+    assert_eq!(london, Some("Europe/London"));
     assert_eq!(
         f.lookup_coarse(utz::Position {
             lon: -0.1276,
