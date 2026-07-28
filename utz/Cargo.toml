@@ -6,7 +6,7 @@ license = "MIT"
 
 # Runtime crate — kept lean / no_std-friendly. geo is a DEV-dependency only
 # (PIP oracle). Codec features: each compiles in the decoder for
-# one codec byte. `gzip`/`ruzstd`/`brotli`/`xz` are pure-Rust and no_std+alloc
+# one payload codec. `gzip`/`ruzstd`/`brotli`/`xz` are pure-Rust and no_std+alloc
 # clean; `zstd-sys` is C + std. NOTE: lzma-rust2's `std` feature must stay OFF
 # tree-wide — with it on, the crate's Read/Write re-exports turn pub(crate)
 # and utz's xz decode arm stops compiling (decompress.rs).

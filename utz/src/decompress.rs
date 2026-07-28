@@ -1,17 +1,20 @@
-//! Codec backends. Each cargo feature compiles in the decoder
-//! for one outer-header codec byte; a container whose codec is not compiled
-//! in fails with [`Error::CodecNotCompiledIn`]. Backends:
+//! Codec backends. Each cargo feature compiles in the decoder for one
+//! payload [`Codec`]; a container whose codec is not compiled in fails
+//! with [`Error::CodecNotCompiledIn`]. Backends:
 //!
-//! | feature    | codec byte | crate                               | needs `std`? |
-//! |------------|-----------:|-------------------------------------|--------------|
-//! | (always)   |          0 | — (memcpy)                          | no           |
-//! | `gzip`     |          1 | [`miniz_oxide`]                     | no (alloc)   |
-//! | `ruzstd`   |          2 | [`ruzstd`] (pure Rust)              | no (alloc)   |
-//! | `zstd-sys` |          2 | [`zstd`] (C libzstd)                | yes          |
-//! | `brotli`   |          3 | [`brotli-decompressor`] (no-stdlib) | no (alloc)   |
-//! | `xz`       |          4 | [`lzma-rust2`] (`no_std`)           | no (alloc)   |
+//! | feature    | codec                   | crate                               | minimal environment |
+//! |------------|-------------------------|-------------------------------------|---------------------|
+//! | (always)   | [`Codec::Uncompressed`] | — (memcpy)                          | `alloc`             |
+//! | `gzip`     | [`Codec::Gzip`]         | [`miniz_oxide`]                     | `alloc`             |
+//! | `ruzstd`   | [`Codec::Zstd`]         | [`ruzstd`] (pure Rust)              | `alloc`             |
+//! | `zstd-sys` | [`Codec::Zstd`]         | [`zstd`] (C libzstd)                | `std`               |
+//! | `brotli`   | [`Codec::Brotli`]       | [`brotli-decompressor`] (no-stdlib) | `alloc`             |
+//! | `xz`       | [`Codec::Xz`]           | [`lzma-rust2`] (`no_std`)           | `alloc`             |
 //!
-//! If both zstd backends are enabled, `zstd-sys` wins (faster).
+//! If both zstd backends are enabled, `zstd-sys` wins (faster). The
+//! whole module needs `alloc` because decoding lands in owned RAM;
+//! zero-copy `core`-rung loads of uncompressed assets bypass it
+//! entirely.
 //!
 //! [`miniz_oxide`]: https://docs.rs/miniz_oxide
 //! [`ruzstd`]: https://docs.rs/ruzstd
@@ -312,7 +315,7 @@ mod tests {
     }
 
     /// A corrupt stream must surface the backend's own diagnostic, and
-    /// Display must compose the codec byte with that detail. Brotli's
+    /// Display must compose the codec with that detail. Brotli's
     /// diagnostic must be the specific libbrotli code, not the bare status.
     #[cfg(any(
         feature = "gzip",

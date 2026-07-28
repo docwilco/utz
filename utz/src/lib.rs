@@ -112,11 +112,11 @@
 //! ## Compression codecs
 //!
 //! Additive; each compiles the decoder for one payload codec.
-//! Uncompressed assets need none of them. Backend crates and codec
-//! bytes are in the [`decompress`] module docs.
+//! Uncompressed assets need none of them. The backend crates are
+//! listed in the [`decompress`] module docs.
 //!
-//! | feature    | codec  | environment |
-//! |------------|--------|-------------|
+//! | feature    | codec  | minimal environment |
+//! |------------|--------|---------------------|
 //! | `gzip`     | gzip   | `alloc` (pure Rust) |
 //! | `ruzstd`   | zstd   | `alloc` (pure Rust) |
 //! | `zstd-sys` | zstd   | `std` (C libzstd; wins over `ruzstd` when both are enabled) |
