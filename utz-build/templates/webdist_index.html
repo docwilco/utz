@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- μTZ webdist viewer: static page + sibling data files (<dataset>.bin.z,
-     heat.bin.z, utz_encode.wasm) written by `utz-build visualize`. Serve over
+     heat.bin.z, utz_whittle_stats.wasm) written by `utz-build visualize`. Serve over
      HTTP (fetch() is blocked on file://): python3 -m http.server -d webdist -->
 <html lang="en">
 <head>
@@ -95,7 +95,7 @@
   <h2>μTZ — live simplification</h2>
   <button id="clps" title="collapse/expand controls">–</button>
   <div id="pbody">
-  <p class="sub">TZBB datasets · runs the builder's own code (utz-encode → WASM) in workers</p>
+  <p class="sub">TZBB datasets · runs the builder's own code (utz-whittle-stats → WASM) in workers</p>
   <div class="qsec" data-sec="layers">
     <div class="qtitle">Layers <span>· dataset / algorithm / ε / quantization / order</span><span
       id="pxhead" title="the shipped bundle recipes (PLAN.md §14.5) — click a color to load one into that layer">presets</span></div>
@@ -205,8 +205,8 @@ function loadHeat() {
   }
   return HEAT_P;
 }
-var WASM_P = fetch('utz_encode.wasm').then(function (r) {
-  if (!r.ok) throw new Error('utz_encode.wasm: HTTP ' + r.status);
+var WASM_P = fetch('utz_whittle_stats.wasm').then(function (r) {
+  if (!r.ok) throw new Error('utz_whittle_stats.wasm: HTTP ' + r.status);
   return r.arrayBuffer();
 });
 

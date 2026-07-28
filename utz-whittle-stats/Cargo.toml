@@ -1,0 +1,21 @@
+[package]
+name = "utz-whittle-stats"
+version = "0.1.0+2026c"
+edition.workspace = true
+license = "MIT"
+publish = false
+
+# Size-reduction statistics of the whittling-down pipeline, in one place:
+# the stage-ladder types the `utz-build whittle` command prints and the
+# wasm stats surface the live viewer reads (src/wasm.rs, compiled to
+# wasm32 by `utz-build visualize`; cdylib is requested per-build, not via
+# crate-type, so native builds keep hashed artifact names).
+#
+# No C-backed codecs here: the wasm build compiles this crate's default
+# feature graph, and zstd-sys cannot target wasm32-unknown-unknown.
+[dependencies]
+utz-encode = { path = "../utz-encode" }
+utz-simplify = { path = "../utz-simplify" }
+
+[lints]
+workspace = true

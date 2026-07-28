@@ -20,6 +20,7 @@ utz-build = { path = "../utz-build", features = ["utz-error"] }
 utz-common = { path = "../utz-common" }
 utz-encode = { path = "../utz-encode", features = ["zstd"] }
 utz-simplify = { path = "../utz-simplify" }
+utz-whittle-stats = { path = "../utz-whittle-stats" }
 clap = { version = "4", features = ["derive"] }
 # oracle + contenders for the PIP/accuracy benches
 geo = { workspace = true }

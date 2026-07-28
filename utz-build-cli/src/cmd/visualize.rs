@@ -4,7 +4,7 @@
 // embedded viewers (_overlay/_live/border_sweep).
 //
 // usage: utz-build visualize [outdir]
-//   writes outdir (default webdist/): index.html · utz_encode.wasm ·
+//   writes outdir (default webdist/): index.html · utz_whittle_stats.wasm ·
 //   heat.bin.z · <dataset>.bin.z + zones-<dataset>.bin.z for
 //   now/1970/all/land-now/land-1970/land-all
 
@@ -31,14 +31,14 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     std::fs::create_dir_all(&out)?;
 
     let wasm = build_wasm()?;
-    std::fs::write(out.join("utz_encode.wasm"), &wasm)?;
+    std::fs::write(out.join("utz_whittle_stats.wasm"), &wasm)?;
     std::fs::write(out.join("index.html"), viz::webdist_index()?)?;
     #[expect(
         clippy::cast_precision_loss,
         reason = "wasm blob size ≪ 2^53; KiB display"
     )]
     let wasm_kib = wasm.len() as f64 / 1024.0;
-    println!("index.html + utz_encode.wasm ({wasm_kib:.1} KiB)");
+    println!("index.html + utz_whittle_stats.wasm ({wasm_kib:.1} KiB)");
 
     // Blob cache: each output carries a `.stamp-*` of the inputs that shaped
     // it — this binary, the TZBB zip (whose conditional-GET validators only
@@ -277,17 +277,17 @@ fn write_z(path: &Path, data: &[u8]) -> utz_build::Result<usize> {
     Ok(z.len())
 }
 
-/// Build utz-encode (simplify + live container encode) for
-/// wasm32-unknown-unknown and return the cdylib bytes.
+/// Build utz-whittle-stats (simplify + live container encode + stats
+/// surface) for wasm32-unknown-unknown and return the cdylib bytes.
 fn build_wasm() -> utz_build::Result<Vec<u8>> {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
-    // cdylib requested here rather than in utz-encode's crate-type — see the
-    // [lib] comment in utz-encode/Cargo.toml
+    // cdylib requested here rather than in the crate's crate-type — see the
+    // package comment in utz-whittle-stats/Cargo.toml
     let status = std::process::Command::new("cargo")
         .args([
             "rustc",
             "-p",
-            "utz-encode",
+            "utz-whittle-stats",
             "--release",
             "--target",
             "wasm32-unknown-unknown",
@@ -301,6 +301,6 @@ fn build_wasm() -> utz_build::Result<Vec<u8>> {
         Error::Msg("wasm build failed — try: rustup target add wasm32-unknown-unknown".into())
     );
     Ok(std::fs::read(format!(
-        "{root}/target/wasm32-unknown-unknown/release/utz_encode.wasm"
+        "{root}/target/wasm32-unknown-unknown/release/utz_whittle_stats.wasm"
     ))?)
 }

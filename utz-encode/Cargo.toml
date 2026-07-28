@@ -5,13 +5,8 @@ edition.workspace = true
 license = "MIT"
 publish = false
 
-# `lib` for the builder (utz-build). The webdist viewer's live container
-# encode wants a WASM cdylib of the same encoder (plus the
-# utz-simplify exports it links in) — requested per-build, NOT via crate-type:
-#   cargo rustc -p utz-encode --release --target wasm32-unknown-unknown --crate-type cdylib
-# (a `cdylib` crate-type would give every build unhashed artifact names, which
-# collide when the workspace builds utz-encode twice: as a member and as a
-# build-dependency via utz-bench-cli's build.rs → utz-build)
+# `lib` for the builder (utz-build). The webdist viewer's wasm build lives
+# in utz-whittle-stats, which wraps this encoder.
 [lib]
 path = "src/lib.rs" # explicit: cargo-readme cannot infer the default
 crate-type = ["lib"]

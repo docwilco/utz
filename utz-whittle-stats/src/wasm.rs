@@ -20,10 +20,10 @@
 //! const brotliLen = utz_enc_compress(3);
 //! ```
 
-use crate::encode::{self, Codec, Params, PayloadStats};
-use crate::topo::Topology;
-use crate::{validate, Arc, Feat};
-use utz_simplify::{simplify_weighted, DensityWeight, Simplify};
+use utz_encode::encode::{self, Codec, Params, PayloadStats};
+use utz_encode::topo::Topology;
+use utz_encode::{validate, Arc, Feat};
+use utz_simplify::{simplify_weighted, DensityWeight};
 
 struct State {
     topo: Topology,
@@ -203,8 +203,11 @@ fn simplified_arcs(
     w_min: f64,
     pre_snap_bits: Option<u32>,
 ) -> Vec<Arc> {
-    let algo = crate::encode::to_simplify(
-        crate::encode::SimplifyAlgo::from_byte(algo).unwrap_or(crate::encode::SimplifyAlgo::None),
+    let algo = utz_encode::encode::to_simplify(
+        u8::try_from(algo)
+            .ok()
+            .and_then(utz_encode::encode::SimplifyAlgo::from_byte)
+            .unwrap_or(utz_encode::encode::SimplifyAlgo::None),
         eps_m / 111_320.0,
     );
     let model = DensityWeight::new(w_min);
@@ -268,9 +271,9 @@ pub extern "C" fn utz_enc_payload(
         geom: Default::default(),
         // same 0/1/2 byte convention as the viewer's algo knob
         simplify: match algo {
-            1 => crate::encode::SimplifyAlgo::Visvalingam,
-            2 => crate::encode::SimplifyAlgo::ImaiIri,
-            _ => crate::encode::SimplifyAlgo::Rdp,
+            1 => utz_encode::encode::SimplifyAlgo::Visvalingam,
+            2 => utz_encode::encode::SimplifyAlgo::ImaiIri,
+            _ => utz_encode::encode::SimplifyAlgo::Rdp,
         },
     };
     match encode::payload_from_topology(&st.topo, &arcs, &st.feats, &p) {

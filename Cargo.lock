@@ -1440,6 +1440,7 @@ dependencies = [
  "utz-common",
  "utz-encode",
  "utz-simplify",
+ "utz-whittle-stats",
  "zip",
  "zstd",
 ]
@@ -1494,6 +1495,14 @@ name = "utz-simplify"
 version = "0.1.0+2026c"
 dependencies = [
  "utz-common",
+]
+
+[[package]]
+name = "utz-whittle-stats"
+version = "0.1.0+2026c"
+dependencies = [
+ "utz-encode",
+ "utz-simplify",
 ]
 
 [[package]]

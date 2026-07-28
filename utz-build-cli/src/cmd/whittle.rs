@@ -15,6 +15,7 @@ use utz_build::density::DensityGrid;
 use utz_build::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgo};
 use utz_build::{download, loader, topo, Feat};
 use utz_simplify::DensityWeight;
+use utz_whittle_stats::{arc_verts, coord_count};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -108,15 +109,6 @@ fn stage(label: &str, bytes: u64, prev: u64, source: u64) {
         prev as f64 / bytes as f64,
         source as f64 / bytes as f64
     );
-}
-
-fn coord_count(feats: &[Feat]) -> u64 {
-    feats
-        .iter()
-        .flat_map(|f| &f.polys)
-        .flat_map(|p| p.iter())
-        .map(|r| r.len() as u64)
-        .sum()
 }
 
 fn geojson_entry_size(zip_path: &std::path::Path) -> utz_build::Result<u64> {
@@ -236,7 +228,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
 
         // shared-arc topology, no simplification: pure border dedup
         let t0 = topo::build_topology_algo(&feats, encode::to_simplify(SimplifyAlgo::None, 0.0));
-        let arc_verts0: u64 = t0.arc_coords.iter().map(|a| a.len() as u64).sum();
+        let arc_verts0: u64 = arc_verts(&t0);
         stage(
             &format!("shared-arc topology ({} arcs)", t0.arc_coords.len()),
             arc_verts0 * 16,
@@ -251,10 +243,10 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         let t = topo::build_topology_weighted(&feats, algo, &|a, b| {
             weight.weight(density.max_along(a, b))
         });
-        let arc_verts: u64 = t.arc_coords.iter().map(|a| a.len() as u64).sum();
+        let arc_verts1: u64 = arc_verts(&t);
         stage(
             &format!("simplified (ε {} m weighted)", r.eps_m),
-            arc_verts * 16,
+            arc_verts1 * 16,
             arc_verts0 * 16,
             coords,
         );
@@ -274,7 +266,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         stage(
             &format!("quantized + varint arcs (i{})", r.quant_bits),
             u64::from(stats.arcs),
-            arc_verts * 16,
+            arc_verts1 * 16,
             coords,
         );
         println!(

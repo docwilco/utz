@@ -20,6 +20,7 @@ measure, test, benchmark, or ship the data it reads.
 | [`utz-build`](utz-build/) | builder library: encoder pipeline, source loading, density weighting, viz generation |
 | [`utz-build-cli`](utz-build-cli/) | the `utz-build` binary: `gen` plus the measurement and bench subcommands |
 | [`utz-simplify`](utz-simplify/) | boundary-simplification algorithms (native + wasm for the viewer) |
+| [`utz-whittle-stats`](utz-whittle-stats/) | pipeline size-reduction stats: the whittle ladder and the viewer's wasm surface |
 | [`utz-data-tiny`](utz-data-tiny/) | preset data crate: the generated `tiny` asset |
 | [`utz-data-tiny-static`](utz-data-tiny-static/) | preset data crate: the generated `tiny-static` asset |
 | [`utz-data-compact`](utz-data-compact/) | preset data crate: the generated `compact` asset |

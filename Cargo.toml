@@ -5,6 +5,7 @@ members = [
     "utz-common",
     "utz-build",
     "utz-build-cli",
+    "utz-whittle-stats",
     "utz-data-tiny",
     "utz-data-tiny-static",
     "utz-data-compact",
