@@ -251,6 +251,34 @@ are identical on every target, and points exactly on a border are claimed
 deterministically. [`Finder::lookup_coarse()`] skips geometry entirely and
 answers at cell precision from any asset.
 
+## Pairing assets with constructors
+
+The asset's codec, its [geometry encoding](#geometry-decoders), and the
+constructor it is handed to combine into distinct RAM/speed points. The
+recurring trade: spending storage (a larger encoding, no compression)
+removes lookup work and RAM; the size and speed columns are quantified
+on [`GeomEncoding`].
+
+| asset                         | loaded with                                       | steady-state RAM     | lookup speed |
+|-------------------------------|---------------------------------------------------|----------------------|--------------|
+| uncompressed `VarintArcs`     | [`Finder::from_static()`]                         | none                 | baseline     |
+| uncompressed `FixedWidthArcs` | [`Finder::from_static()`]                         | none                 | near-eager   |
+| uncompressed `FullRings`      | [`Finder::from_static()`]                         | none                 | eager        |
+| uncompressed arc encodings    | [`Finder::from_static()`] + [`Finder::preload()`] | eager cache          | eager        |
+| compressed `VarintArcs`       | [`Finder::from_slice()`] / [`Finder::from_vec()`] | decoded payload      | baseline     |
+| compressed `VarintArcs`       | [`Finder::eager_from_slice()`]                    | eager cache + tables | eager        |
+| uncompressed `Coarse`         | [`Finder::from_static()`]                         | none                 | grid probe   |
+
+`FullRings` + [`Finder::from_static()`] is the standout: the encoding is
+the preload cache serialized, so lookups run at eager speed straight off
+flash with no heap and no preload pass at boot; it just costs the most
+storage. Compression pulls the other way: the smallest container, but
+the decoded payload (or after [`Finder::eager_from_slice()`], the eager
+cache) must live in RAM. `Coarse` sidesteps the trade entirely by
+dropping the polygons: near-nothing to store, and via
+[`Finder::from_static()`] no RAM either (the floor of both ladders), at
+cell precision.
+
 `no_std`-first: API availability follows the [environment
 ladder](#environments) `core` ⊂ `alloc` ⊂ `std`.
 
