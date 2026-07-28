@@ -40,7 +40,7 @@
 //! (compressed) or `Finder::from_static(utz::data::TINY_STATIC)`
 //! (uncompressed, zero-copy). If you want to tune any of the parameters
 //! (simplification, quantization, codec, dataset), see
-//! [Building a custom dataset](#building-a-custom-dataset).
+//! [Building a custom asset](#building-a-custom-asset).
 //!
 //! # Preset bundles
 //!
@@ -125,12 +125,13 @@
 //!
 //! # Datasets
 //!
-//! Not a feature: the dataset is baked into an asset when it is
-//! generated (every preset except `accurate` uses `now`; custom builds
-//! choose). It picks
-//! the merge vintage: zones whose rules are identical from that point
-//! on are merged, so older vintages keep more zones. Oceans are covered
-//! by default; a `land-` prefix selects the land-only releases.
+//! Not a feature: the dataset picks which timezone-boundary-builder
+//! release an asset is generated from, baked in at generation time
+//! (every preset except `accurate` uses `now`; custom builds choose).
+//! It sets the merge vintage: zones whose rules are identical from
+//! that point on are merged, so older vintages keep more zones. Oceans
+//! are covered by default; a `land-` prefix selects the land-only
+//! releases.
 //!
 //! | dataset | zones | merge |
 //! |---------|------:|-------|
@@ -138,7 +139,7 @@
 //! | `1970`  |   304 | zones identical since 1970 merged |
 //! | `all`   |   444 | every distinct tzid kept |
 //!
-//! # Building a custom dataset
+//! # Building a custom asset
 //!
 //! The `custom` tier pairs with the `utz-build` crate. In a `build.rs`
 //! (with `utz-build` as a build-dependency), the typed builder
@@ -193,8 +194,9 @@
 //!
 //! ## Whittling the data down
 //!
-//! An asset starts as the timezone-boundary-builder `GeoJSON` (~80 MB for
-//! the default dataset) and is reduced in stages when it is generated
+//! An asset starts as the timezone-boundary-builder `GeoJSON` (~80 MB
+//! of source data for the default dataset) and is reduced in stages
+//! when it is generated
 //! (the `utz-build whittle` command measures every stage per preset):
 //!
 //! 1. **Merge vintage**: the [dataset](#datasets) choice alone removes
