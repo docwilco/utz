@@ -270,10 +270,11 @@ answers at cell precision from any asset.
 
 ## Pairing assets with constructors
 
-The asset's codec, its [geometry encoding](#geometry-decoders), and the
-constructor it is handed to combine into distinct RAM/speed points. The
-recurring trade: spending storage (a larger encoding, no compression)
-removes lookup work and RAM. Every row below is a one- or two-knob
+Three choices together set where a build lands on RAM and speed: the
+asset's codec, its [geometry encoding](#geometry-decoders), and the
+constructor that loads it. The recurring trade: spending storage (a
+larger encoding, no compression) removes lookup work and RAM. Every
+row below is a one- or two-knob
 variant of the `compact` recipe ([`utz_build::Config`] code in the
 first column); the relative ladder holds for the other recipes and is
 quantified on [`GeomEncoding`].
