@@ -29,41 +29,10 @@
 //! enables the decoder features it needs. [`Finder::new()`] loads the one
 //! enabled preset:
 //!
-// The fence toggles so the example runs as a real doctest in the one
-// feature row where `Finder::new()` exists and loads tiny (exactly one
-// preset enabled); every other row keeps it `ignore`, because doctests
-// link the regular library build of whatever features are under test.
-#![cfg_attr(
-    all(
-        feature = "std",
-        feature = "tiny",
-        not(any(
-            feature = "tiny-static",
-            feature = "compact",
-            feature = "balanced",
-            feature = "accurate"
-        ))
-    ),
-    doc = "```"
-)]
-#![cfg_attr(
-    not(all(
-        feature = "std",
-        feature = "tiny",
-        not(any(
-            feature = "tiny-static",
-            feature = "compact",
-            feature = "balanced",
-            feature = "accurate"
-        ))
-    )),
-    doc = "```ignore"
-)]
-//! # fn main() -> Result<(), utz::Error> {
+//! ```ignore
 //! let finder = utz::Finder::new()?;
 //! let tz = finder.lookup(utz::Position { lon: -0.1278, lat: 51.5074 });
 //! assert_eq!(tz, Some("Europe/London"));
-//! # Ok(()) }
 //! ```
 //!
 //! With more than one preset feature selected, pick explicitly via the

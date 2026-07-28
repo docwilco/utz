@@ -176,6 +176,44 @@ impl Finder {
     /// `tiny-static` is the zero-copy one (`from_static`, bare `core`); the
     /// rest are compressed and load lazy (`from_slice`).
     ///
+    /// # Example
+    ///
+    // The fence toggles so the example runs as a real doctest in the
+    // exactly-one-preset std+tiny build; doctests link the regular
+    // library build, so no other feature row can compile this call.
+    #[cfg_attr(
+        all(
+            feature = "std",
+            feature = "tiny",
+            not(any(
+                feature = "tiny-static",
+                feature = "compact",
+                feature = "balanced",
+                feature = "accurate"
+            ))
+        ),
+        doc = "```"
+    )]
+    #[cfg_attr(
+        not(all(
+            feature = "std",
+            feature = "tiny",
+            not(any(
+                feature = "tiny-static",
+                feature = "compact",
+                feature = "balanced",
+                feature = "accurate"
+            ))
+        )),
+        doc = "```ignore"
+    )]
+    /// # fn main() -> Result<(), utz::Error> {
+    /// let finder = utz::Finder::new()?;
+    /// let tz = finder.lookup(utz::Position { lon: -0.1278, lat: 51.5074 });
+    /// assert_eq!(tz, Some("Europe/London"));
+    /// # Ok(()) }
+    /// ```
+    ///
     /// # Errors
     /// As [`Finder::from_slice()`] (or [`Finder::from_static()`] for
     /// `tiny-static`) on the baked preset asset.
