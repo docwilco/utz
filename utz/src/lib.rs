@@ -47,13 +47,13 @@
 //! One Cargo feature picks a ready-made size/accuracy point; `custom`
 //! instead generates your own asset with `utz-build`:
 //!
-//! | feature       | simplification | size    | notes |
-//! |---------------|----------------|--------:|-------|
-//! | `tiny`        | ε 10 km, i16   |  ~71 KB | gzip: ~125 KB RAM to decode |
-//! | `tiny-static` | ε 10 km, i16   | ~125 KB | `tiny` uncompressed: zero-copy from flash, ~0 RAM, runs on bare-metal `core` |
-//! | `compact`     | ε 1 km, i24    | ~445 KB | xz |
-//! | `balanced`    | ε 50 m, i24    | ~1.2 MB | brotli |
-//! | `accurate`    | ε 10 m, i32    | ~8.1 MB | brotli: full zone set (every distinct tzid); the others merge zones identical since now |
+//! | feature       | simplification | geometry    | codec  | size    | notes |
+//! |---------------|----------------|-------------|--------|--------:|-------|
+//! | `tiny`        | ε 10 km, i16   | varint arcs | gzip   |  ~71 KB | ~125 KB RAM to decode |
+//! | `tiny-static` | ε 10 km, i16   | varint arcs | none   | ~125 KB | `tiny` uncompressed: zero-copy from flash, ~0 RAM, runs on bare-metal `core` |
+//! | `compact`     | ε 1 km, i24    | varint arcs | xz     | ~445 KB | |
+//! | `balanced`    | ε 50 m, i24    | varint arcs | brotli | ~1.2 MB | |
+//! | `accurate`    | ε 10 m, i32    | varint arcs | brotli | ~8.1 MB | full zone set (every distinct tzid); the others merge zones identical since now |
 //!
 //! Preset features are additive across the whole dependency tree, and
 //! [`Finder::new()`] exists only while exactly one preset is enabled:
