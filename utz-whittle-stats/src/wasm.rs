@@ -20,7 +20,7 @@
 //! const brotliLen = utz_enc_compress(3);
 //! ```
 
-use utz_encode::encode::{self, Codec, Params, PayloadStats};
+use utz_encode::encode::{self, Codec, GeomEncoding, Params, PayloadStats};
 use utz_encode::topo::Topology;
 use utz_encode::{validate, Arc, Feat};
 use utz_simplify::{simplify_weighted, DensityWeight};
@@ -33,10 +33,10 @@ struct State {
     feats: Vec<Feat>,
     dataset_code: u8,
     release: String,
-    /// last utz_enc_payload result (input to utz_enc_compress)
+    /// last `utz_enc_payload` result (input to `utz_enc_compress`)
     payload: Vec<u8>,
     stats: PayloadStats,
-    /// last utz_enc_problems result: 12-byte records (see utz_enc_problems)
+    /// last `utz_enc_problems` result: 12-byte records (see `utz_enc_problems`)
     problems: Vec<u8>,
 }
 
@@ -121,7 +121,7 @@ fn parse_blob(b: &[u8]) -> Option<State> {
     let n_features = r.u16()? as usize;
     let mut feats = Vec::with_capacity(n_features);
     for _ in 0..n_features {
-        let offset = r.f32()? as f64;
+        let offset = f64::from(r.f32()?);
         let len = r.u8()? as usize;
         let tzid = String::from_utf8(r.take(len)?.to_vec()).ok()?;
         feats.push(Feat {
@@ -142,12 +142,12 @@ fn parse_blob(b: &[u8]) -> Option<State> {
     }
     let mut structure = Vec::with_capacity(n_features);
     for _ in 0..n_features {
-        let npolys = r.u16()? as usize;
-        let mut polys = Vec::with_capacity(npolys);
-        for _ in 0..npolys {
-            let nrings = r.u16()? as usize;
-            let mut rings = Vec::with_capacity(nrings);
-            for _ in 0..nrings {
+        let n_polys = r.u16()? as usize;
+        let mut polys = Vec::with_capacity(n_polys);
+        for _ in 0..n_polys {
+            let n_poly_rings = r.u16()? as usize;
+            let mut rings = Vec::with_capacity(n_poly_rings);
+            for _ in 0..n_poly_rings {
                 rings.push(r.u32()? as usize);
             }
             polys.push(rings);
@@ -179,6 +179,10 @@ fn parse_blob(b: &[u8]) -> Option<State> {
 /// `len` bytes were fully initialized.
 #[no_mangle]
 pub unsafe extern "C" fn utz_enc_init(ptr: *mut u8, len: usize) -> u32 {
+    #[expect(
+        clippy::same_length_and_capacity,
+        reason = "the buffer comes from utz_enc_alloc's Vec::with_capacity(len), so len is the true capacity; the suggested slice copy would leak that allocation"
+    )]
     let blob = Vec::from_raw_parts(ptr, len, len);
     let st = parse_blob(&blob);
     let ok = st.is_some();
@@ -212,6 +216,10 @@ fn simplified_arcs(
     );
     let model = DensityWeight::new(w_min);
     let weighted = w_min < 1.0 && !st.dens.is_empty();
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "qmax = 2^(quant_bits-1)-1 ≤ 2^31-1, exact in f64"
+    )]
     let qmax = pre_snap_bits.map(|b| ((1u64 << (b - 1)) - 1) as f64);
     let mut base = 0usize;
     st.topo
@@ -237,7 +245,7 @@ fn simplified_arcs(
             let out = if weighted {
                 let w: Vec<f64> = st.dens[base..base + a.len()]
                     .iter()
-                    .map(|&d| model.weight(d as f64))
+                    .map(|&d| model.weight(f64::from(d)))
                     .collect();
                 simplify_weighted(algo, input, &w)
             } else {
@@ -247,6 +255,15 @@ fn simplified_arcs(
             out
         })
         .collect()
+}
+
+/// A buffer length heading back over the JS boundary as `u32`.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "usize is 32 bits on wasm32, so lengths cross the JS boundary losslessly"
+)]
+fn len_u32(n: usize) -> u32 {
+    n as u32
 }
 
 #[no_mangle]
@@ -268,7 +285,7 @@ pub extern "C" fn utz_enc_payload(
         quant_bits,
         grid_deg,
         codec: Codec::Uncompressed,
-        geom: Default::default(),
+        geom: GeomEncoding::default(),
         // same 0/1/2 byte convention as the viewer's algo knob
         simplify: match algo {
             1 => utz_encode::encode::SimplifyAlgo::Visvalingam,
@@ -280,7 +297,7 @@ pub extern "C" fn utz_enc_payload(
         Ok((payload, stats)) => {
             st.stats = stats;
             st.payload = payload;
-            st.payload.len() as u32
+            len_u32(st.payload.len())
         }
         Err(_) => 0,
     }
@@ -351,6 +368,10 @@ pub extern "C" fn utz_enc_problems(
     let arcs = simplified_arcs(st, algo, eps_m, w_min, (pre != 0).then_some(quant_bits));
     let problems = validate::find_problems(&st.topo, &arcs, quant_bits);
     let mut out = Vec::with_capacity(problems.len() * 12);
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "record layout: lon/lat narrow to f32 for display, and feature indices fit u16 because the blob header stores n_features as a u16"
+    )]
     for p in &problems {
         out.extend_from_slice(&(p.lon as f32).to_le_bytes());
         out.extend_from_slice(&(p.lat as f32).to_le_bytes());
@@ -362,7 +383,7 @@ pub extern "C" fn utz_enc_problems(
         out.extend_from_slice(&(p.feat as u16).to_le_bytes());
     }
     st.problems = out;
-    problems.len() as u32
+    len_u32(problems.len())
 }
 
 /// Pointer to the records of the last [`utz_enc_problems`] (null if none).
@@ -382,7 +403,7 @@ pub extern "C" fn utz_enc_tzid_ptr(i: u32) -> *const u8 {
             .feats
             .get(i as usize)
             .and_then(|f| f.tzid.as_deref())
-            .map_or(core::ptr::null(), |s| s.as_ptr()),
+            .map_or(core::ptr::null(), str::as_ptr),
         None => core::ptr::null(),
     }
 }
@@ -393,7 +414,7 @@ pub extern "C" fn utz_enc_tzid_len(i: u32) -> u32 {
             .feats
             .get(i as usize)
             .and_then(|f| f.tzid.as_deref())
-            .map_or(0, |s| s.len() as u32),
+            .map_or(0, |s| len_u32(s.len())),
         None => 0,
     }
 }
@@ -416,5 +437,5 @@ pub extern "C" fn utz_enc_compress(codec: u32) -> u32 {
         4 => Codec::Xz,
         _ => return 0,
     };
-    encode::compress(&st.payload, codec).map_or(0, |z| z.len() as u32)
+    encode::compress(&st.payload, codec).map_or(0, |z| len_u32(z.len()))
 }

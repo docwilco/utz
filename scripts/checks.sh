@@ -79,8 +79,8 @@ jobs_test() {
     test-two-presets "cargo test -p utz --no-default-features --features std,tiny,tiny-static" \
     test-codecs "cargo test -p utz --no-default-features --features std,custom,gzip,ruzstd,brotli,xz,geom-varint-arcs" \
     test-zstd-sys "cargo test -p utz --no-default-features --features std,custom,geom-varint-arcs,zstd-sys" \
-    test-wasm-simplify "cargo rustc -p utz-simplify --release --target $WASM --crate-type cdylib" \
-    test-wasm-whittle-stats "cargo rustc -p utz-whittle-stats --release --target $WASM --crate-type cdylib"
+    test-wasm-simplify "cargo clippy -p utz-simplify --release --target $WASM -- -D warnings && cargo rustc -p utz-simplify --release --target $WASM --crate-type cdylib" \
+    test-wasm-whittle-stats "cargo clippy -p utz-whittle-stats --release --target $WASM -- -D warnings && cargo rustc -p utz-whittle-stats --release --target $WASM --crate-type cdylib"
 }
 
 jobs_no_std() {

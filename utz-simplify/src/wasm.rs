@@ -53,15 +53,18 @@ pub unsafe extern "C" fn utz_free(ptr: *mut f64, n_f64: usize) {
 pub unsafe extern "C" fn utz_simplify(algo: u32, xy: *mut f64, n_pts: usize, param: f64) -> usize {
     let buf = core::slice::from_raw_parts_mut(xy, n_pts * 2);
     let pts: Vec<(f64, f64)> = buf.chunks_exact(2).map(|c| (c[0], c[1])).collect();
-    let out = simplify(
-        match algo {
-            ALGO_RDP => Simplify::Rdp { eps: param },
-            ALGO_VISVALINGAM => Simplify::Visvalingam { min_area: param },
-            ALGO_IMAI_IRI => Simplify::ImaiIri { eps: param },
-            _ => Simplify::None,
-        },
-        &pts,
-    );
+    #[expect(
+        clippy::match_same_arms,
+        reason = "ALGO_NONE is the ABI id for None; the wildcard separately keeps unknown ids safe"
+    )]
+    let algo = match algo {
+        ALGO_NONE => Simplify::None,
+        ALGO_RDP => Simplify::Rdp { eps: param },
+        ALGO_VISVALINGAM => Simplify::Visvalingam { min_area: param },
+        ALGO_IMAI_IRI => Simplify::ImaiIri { eps: param },
+        _ => Simplify::None,
+    };
+    let out = simplify(algo, &pts);
     for (i, (x, y)) in out.iter().enumerate() {
         buf[i * 2] = *x;
         buf[i * 2 + 1] = *y;
@@ -94,16 +97,18 @@ pub unsafe extern "C" fn utz_simplify_w(
         .iter()
         .map(|&d| model.weight(d))
         .collect();
-    let out = simplify_weighted(
-        match algo {
-            ALGO_RDP => Simplify::Rdp { eps: param },
-            ALGO_VISVALINGAM => Simplify::Visvalingam { min_area: param },
-            ALGO_IMAI_IRI => Simplify::ImaiIri { eps: param },
-            _ => Simplify::None,
-        },
-        &pts,
-        &w,
-    );
+    #[expect(
+        clippy::match_same_arms,
+        reason = "ALGO_NONE is the ABI id for None; the wildcard separately keeps unknown ids safe"
+    )]
+    let algo = match algo {
+        ALGO_NONE => Simplify::None,
+        ALGO_RDP => Simplify::Rdp { eps: param },
+        ALGO_VISVALINGAM => Simplify::Visvalingam { min_area: param },
+        ALGO_IMAI_IRI => Simplify::ImaiIri { eps: param },
+        _ => Simplify::None,
+    };
+    let out = simplify_weighted(algo, &pts, &w);
     for (i, (x, y)) in out.iter().enumerate() {
         buf[i * 2] = *x;
         buf[i * 2 + 1] = *y;
