@@ -3,7 +3,7 @@
 //!
 //! Source: the European Commission Joint Research Centre's Global
 //! Human Settlement Layer population grid, © European Union 1995–2023
-//! ([CC BY 4.0]; Schiavina et al. 2023,
+//! ([CC BY 4.0]; Schiavina, Freire, Carioli, MacManus 2023,
 //! <https://doi.org/10.2905/2FF68A52-5B5B-4A22-8F40-C41DA8332CFE>).
 //! A single global `GeoTIFF`, WGS84, 30 arc-seconds (~1 km),
 //! population *count* per cell, free direct download. One-time: fetch

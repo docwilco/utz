@@ -1,2 +1,2 @@
 # ".." keeps clippy's default doc-markdown identifier allowlist
-doc-valid-idents = ["μTZ", ".."]
+doc-valid-idents = ["μTZ", "MacManus", ".."]
