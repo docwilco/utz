@@ -367,7 +367,7 @@ impl Finder {
     }
 
     /// Decode a borrowed container into an owned `Finder` (lazy mode),
-    /// decompressing per the codec byte. For compressed assets already in
+    /// decompressing as needed. For compressed assets already in
     /// memory/flash (preset statics, OTA blobs): no copy of the compressed
     /// input is made.
     ///
@@ -401,7 +401,7 @@ impl Finder {
     }
 
     /// Take ownership of a container buffer (e.g. an OTA blob), decompressing
-    /// per the codec byte if a backend is compiled in. The `no_std` entry
+    /// if the container's codec is compiled in. The `no_std` entry
     /// point for compressed containers. Lazy mode either way: even an
     /// uncompressed owned buffer keeps the payload in RAM. Zero-copy needs
     /// [`from_static`](Finder::from_static).
