@@ -9,12 +9,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-CRATES=(
-  utz utz-common utz-encode utz-build utz-build-cli utz-simplify utz-whittle-stats
-  utz-data-tiny utz-data-tiny-static utz-data-compact
-  utz-data-balanced utz-data-accurate
-  utz-bench-common utz-bench-cli utz-bench-firmware
-)
+# every utz* directory in the workspace root is a crate
+CRATES=()
+for d in utz*/; do
+  [[ -f "$d/Cargo.toml" ]] && CRATES+=("${d%/}")
+done
 
 command -v cargo-readme > /dev/null || cargo install cargo-readme
 
