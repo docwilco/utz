@@ -1420,6 +1420,7 @@ dependencies = [
  "utz-common",
  "utz-encode",
  "utz-simplify",
+ "utz-whittle-stats",
  "zip",
 ]
 

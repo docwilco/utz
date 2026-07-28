@@ -113,6 +113,9 @@ fn parse_blob(b: &[u8]) -> Option<State> {
     }
     let n_arcs = r.u32()? as usize;
     let n_verts = r.u32()? as usize;
+    if flags & 4 != 0 {
+        r.u32()?; // raw ring-coordinate count: prefix-only, the JS reads it
+    }
     let mut offs = Vec::with_capacity(n_arcs + 1);
     for _ in 0..=n_arcs {
         offs.push(r.u32()? as usize);

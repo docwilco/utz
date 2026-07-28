@@ -175,10 +175,13 @@ function loadDataset(name) {
       var h = new Uint32Array(buf, 0, 4);
       if (h[0] !== 0x765A5475) throw new Error(name + ': bad magic');
       var nArcs = h[2], nVerts = h[3];
-      var p = 16 + 4 * (nArcs + 1);
+      var hasRaw = !!(h[1] & 4); // raw ring-coord count before arc dedup
+      var offs0 = hasRaw ? 20 : 16;
+      var p = offs0 + 4 * (nArcs + 1);
       p += (8 - p % 8) % 8;
       return {
-        offs: new Uint32Array(buf, 16, nArcs + 1),
+        rawCoords: hasRaw ? new Uint32Array(buf, 16, 1)[0] : null,
+        offs: new Uint32Array(buf, offs0, nArcs + 1),
         coords: new Float64Array(buf, p, nVerts * 2),
         dens: (h[1] & 1) ? new Float32Array(buf, p + nVerts * 16, nVerts) : null,
         hasTopo: !!(h[1] & 2),
@@ -1761,8 +1764,10 @@ function renderReduction() {
         (prev ? ' · <span class="pct">÷' + (prev / bytes).toFixed(2) + '</span>' : '') +
         '</span></div>';
     }
+    var raw = s.data.rawCoords ? s.data.rawCoords * 16 : 0;
+    if (raw) row('parsed coords · ' + s.data.rawCoords.toLocaleString() + ' v · f64', raw, 0);
     var arcs = s.data.stored0 * 16;
-    row('shared arcs · ' + s.data.stored0.toLocaleString() + ' v · f64', arcs, 0);
+    row('shared arcs · ' + s.data.stored0.toLocaleString() + ' v · f64', arcs, raw);
     var simp = kept * 16;
     if (!isRaw) row('simplified · ' + kept.toLocaleString() + ' v', simp, arcs);
     var es = null;

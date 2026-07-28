@@ -25,6 +25,8 @@ utz-simplify = { path = "../utz-simplify" }
 # encoder core (topology + quantization + grid + container), split out so it
 # also compiles to WASM for the webdist viewer (see utz-encode/src/lib.rs)
 utz-encode = { path = "../utz-encode", features = ["zstd"] }
+# shared pipeline-stats counts (raw coordinate count in the viewer blobs)
+utz-whittle-stats = { path = "../utz-whittle-stats" }
 
 # GeoJSON pipeline (replaced the temporary FGB loader)
 ureq = "2.12"

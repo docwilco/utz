@@ -18,9 +18,12 @@ pub fn webdist_index() -> crate::Result<String> {
 }
 
 /// Binary dataset blob for the webdist viewer (all little-endian):
-/// `"uTZv" | u32 flags (bit0 = densities, bit1 = topology) | u32 n_arcs
-/// | u32 n_verts | u32 offs[n_arcs+1] | pad to 8 | f64 xy[2·n_verts]
-/// | f32 dens[n_verts] | topology`.
+/// `"uTZv" | u32 flags (bit0 = densities, bit1 = topology, bit2 = raw
+/// coordinate count) | u32 n_arcs | u32 n_verts | u32 raw_coords (bit2)
+/// | u32 offs[n_arcs+1] | pad to 8 | f64 xy[2·n_verts]
+/// | f32 dens[n_verts] | topology`. `raw_coords` is the ring-coordinate
+/// count before topology dedup, so the viewer's Reduction ladder can show
+/// what shared arcs saved.
 /// Densities are per-vertex, flat in arc order: max of the vertex's incident
 /// edges via `max_along` (the same edge sampling the builder's weighted path
 /// uses), so the browser only maps density → weight (in WASM), never
@@ -49,24 +52,23 @@ pub fn dataset_bin(
     let arcs = &t.arc_coords;
     let n_arcs = arcs.len();
     let n_verts: usize = arcs.iter().map(std::vec::Vec::len).sum();
+    let push_u32 = |o: &mut Vec<u8>, v: usize, what: &str| {
+        let v = u32::try_from(v).unwrap_or_else(|_| panic!("{what} fits u32"));
+        o.extend_from_slice(&v.to_le_bytes());
+    };
     let mut o = Vec::with_capacity(24 + 4 * n_arcs + 20 * n_verts);
     o.extend_from_slice(b"uTZv");
-    o.extend_from_slice(&(u32::from(g.is_some()) | 2).to_le_bytes());
-    o.extend_from_slice(
-        &u32::try_from(n_arcs)
-            .expect("arc count fits u32")
-            .to_le_bytes(),
-    );
-    o.extend_from_slice(
-        &u32::try_from(n_verts)
-            .expect("vert count fits u32")
-            .to_le_bytes(),
-    );
-    let mut off = 0u32;
-    o.extend_from_slice(&off.to_le_bytes());
+    o.extend_from_slice(&(u32::from(g.is_some()) | 2 | 4).to_le_bytes());
+    push_u32(&mut o, n_arcs, "arc count");
+    push_u32(&mut o, n_verts, "vert count");
+    let raw_coords = usize::try_from(utz_whittle_stats::coord_count(feats))
+        .expect("raw coordinate count fits usize");
+    push_u32(&mut o, raw_coords, "raw coordinate count");
+    let mut off = 0usize;
+    push_u32(&mut o, off, "arc offset");
     for a in arcs {
-        off += u32::try_from(a.len()).expect("arc len fits u32");
-        o.extend_from_slice(&off.to_le_bytes());
+        off += a.len();
+        push_u32(&mut o, off, "arc offset");
     }
     o.resize(o.len().next_multiple_of(8), 0); // f64 view needs 8-byte alignment
     for a in arcs {
