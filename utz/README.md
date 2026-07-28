@@ -37,11 +37,11 @@ let tz = finder.lookup(utz::Position { lon: -0.1278, lat: 51.5074 });
 // Some("Europe/London")
 ```
 
-With several presets in the tree, pick explicitly via the statics in
-the [`data`] module: `Finder::from_slice(utz::data::TINY)`
+With more than one preset feature selected, pick explicitly via the
+statics in the [`data`] module: `Finder::from_slice(utz::data::TINY)`
 (compressed) or `Finder::from_static(utz::data::TINY_STATIC)`
-(uncompressed, zero-copy). Everything beyond the presets (your own
-simplification / quantization / codec / dataset point) goes through
+(uncompressed, zero-copy). If you want to tune any of the parameters
+(simplification, quantization, codec, dataset), see
 [Building a custom dataset](#building-a-custom-dataset).
 
 # Preset bundles
