@@ -202,8 +202,11 @@
 //!    chosen point in time onward.
 //! 2. **Topology**: borders shared between adjacent zones are cut into
 //!    arcs at junction points and each arc is stored once; rings become
-//!    lists of arc references. Half of all coordinates lie on shared
-//!    borders, and this removes that duplication.
+//!    lists of arc references. With oceans covered (the default) the
+//!    zones tile the whole planet, every border is shared by exactly
+//!    two zones, and every coordinate appears twice in the source, so
+//!    this halves them; land-only datasets save a little less
+//!    (coastlines bound one zone).
 //! 3. **Simplification**: each arc is simplified once (RDP by default)
 //!    to the configured tolerance, so neighboring zones stay perfectly
 //!    stitched. Optional population-density weighting keeps
@@ -282,7 +285,7 @@
 //! a build-time knob and adds integer quantization to go ~10× smaller,
 //! with a genuinely `no_std`/flash-embeddable format.
 //!
-//! [`utz_build::Config`]: https://docwilco.github.io/utz/docs/utz_build/struct.Config.html
+//! [`utz_build::Config`]: ../utz_build/struct.Config.html
 
 #![cfg_attr(not(feature = "std"), no_std)]
 // docs.rs and the Pages docs build pass `--cfg docsrs` on nightly, which

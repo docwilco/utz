@@ -204,8 +204,11 @@ the default dataset) and is reduced in stages when it is generated
    chosen point in time onward.
 2. **Topology**: borders shared between adjacent zones are cut into
    arcs at junction points and each arc is stored once; rings become
-   lists of arc references. Half of all coordinates lie on shared
-   borders, and this removes that duplication.
+   lists of arc references. With oceans covered (the default) the
+   zones tile the whole planet, every border is shared by exactly
+   two zones, and every coordinate appears twice in the source, so
+   this halves them; land-only datasets save a little less
+   (coastlines bound one zone).
 3. **Simplification**: each arc is simplified once (RDP by default)
    to the configured tolerance, so neighboring zones stay perfectly
    stitched. Optional population-density weighting keeps
@@ -292,12 +295,12 @@ Code: MIT. Timezone data is derived from
 [timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder)
 (OpenStreetMap, **ODbL**)
 
-[`Finder::new`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.new
-[`Finder::from_slice`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_slice
-[`Finder::from_static`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_static
-[`Finder::preload`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload
-[`Finder::preload_bytes`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload_bytes
-[`Finder::lookup_coarse`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.lookup_coarse
+[`Finder::new()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.new
+[`Finder::from_slice()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_slice
+[`Finder::from_static()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_static
+[`Finder::preload()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload
+[`Finder::preload_bytes()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload_bytes
+[`Finder::lookup_coarse()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.lookup_coarse
 [`data`]: https://docwilco.github.io/utz/docs/utz/data/index.html
 [`caps`]: https://docwilco.github.io/utz/docs/utz/caps/index.html
 [`crate::format`]: https://docwilco.github.io/utz/docs/utz/format/index.html

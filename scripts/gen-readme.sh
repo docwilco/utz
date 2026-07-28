@@ -17,7 +17,15 @@ done
 
 command -v cargo-readme > /dev/null || cargo install cargo-readme
 
-render() { cargo readme --project-root "$1" --no-indent-headings; }
+# Crate docs may link to sibling crates with doc-root-relative paths
+# (`../utz_build/struct.Config.html`) so rustdoc output works in any
+# shared doc root; a README has no doc root, so rewrite those links to
+# the hosted docs.
+DOCS_URL="https://docwilco.github.io/utz/docs/"
+render() {
+  cargo readme --project-root "$1" --no-indent-headings \
+    | sed -e "s|]: \.\./|]: ${DOCS_URL}|g" -e "s|](\.\./|](${DOCS_URL}|g"
+}
 
 mode=render
 case "${1:-}" in
