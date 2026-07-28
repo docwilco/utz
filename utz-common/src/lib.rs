@@ -213,8 +213,8 @@ impl SimplifyAlgo {
     }
 }
 
-/// The dataset a container was built from: TZBB vintage × coverage.
-/// Discriminants keep the wire bitfield: vintage in bits 0–1, bit 2 set =
+/// The dataset a container was built from: TZBB zone set × ocean coverage.
+/// Discriminants keep the wire bitfield: zone set in bits 0–1, bit 2 set =
 /// land-only (clear = with oceans).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Pread, Pwrite)]
 #[repr(u8)]
@@ -390,7 +390,7 @@ mod tests {
         bytes[57] = 17; // quant_bits: no such width
         assert!(bytes.pread_with::<PayloadHeader>(0, LE).is_err());
         bytes[57] = 16;
-        bytes[56] = 3; // dataset: vintage 3 is unassigned
+        bytes[56] = 3; // dataset: zone-set code 3 is unassigned
         assert!(bytes.pread_with::<PayloadHeader>(0, LE).is_err());
         bytes[56] = 0;
         bytes[60] = 9; // codec: no such codec

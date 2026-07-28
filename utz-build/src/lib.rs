@@ -11,16 +11,27 @@
 //!
 //! The source data is OSM [timezone-boundary-builder]. The dataset
 //! picks which TZBB release an asset is generated from and is baked
-//! in at generation time. It sets the merge vintage: zones whose
-//! rules are identical from that point on are merged, so older
-//! vintages keep more zones. Oceans are covered by default; a `land-`
-//! prefix selects the land-only releases.
+//! in at generation time. Its two knobs are the zone set and ocean
+//! coverage: `now` and `1970` merge zones whose rules are identical
+//! since that date, `all` keeps every distinct tzid, and a `land-`
+//! prefix selects the land-only releases (oceans are covered by
+//! default).
 //!
-//! | dataset | zones | merge |
-//! |---------|------:|-------|
-//! | `now`   |    64 | zones identical from today onward merged |
-//! | `1970`  |   304 | zones identical since 1970 merged |
-//! | `all`   |   444 | every distinct tzid kept |
+//! | zone set | zones | `land-` zones | merge |
+//! |----------|------:|--------------:|-------|
+//! | `now`    |    64 |            63 | zones identical from today onward merged |
+//! | `1970`   |   304 |           301 | zones identical since 1970 merged |
+//! | `all`    |   444 |           419 | every distinct tzid kept |
+//!
+//! Dropping the oceans does not shrink an asset: the shared-arc
+//! geometry encodings make ocean coverage nearly free, and the
+//! `land-` variants actually measure slightly bigger (at the tiny
+//! recipe's knobs, uncompressed: `land-now` 89.7 KiB vs `now`
+//! 86.7 KiB). Their best use is coarse (grid-only) assets that will
+//! only ever be queried for land coordinates: a coarse asset answers
+//! at cell precision, and with oceans covered a land point near the
+//! coast resolves to the ocean timezone whenever most of its cell is
+//! ocean; without ocean zones the cell keeps the land answer.
 //!
 //! [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
 
@@ -43,14 +54,14 @@ pub use config::Config;
 
 use std::path::PathBuf;
 
-/// The two dataset knobs: merge vintage × ocean coverage.
+/// The two dataset knobs: zone set × ocean coverage.
 /// TZBB's terminology: `now` = "Same since now", `1970` = "Same since 1970",
 /// `all` = "Comprehensive" (every tzid, unsuffixed release). μTZ defaults to
 /// with-oceans; a `land-` prefix selects the land-only releases.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Dataset {
     /// "now" | "1970" | "all"
-    pub vintage: &'static str,
+    pub zone_set: &'static str,
     pub oceans: bool,
 }
 
@@ -59,16 +70,16 @@ impl Dataset {
     #[must_use]
     pub fn name(&self) -> String {
         if self.oceans {
-            self.vintage.to_string()
+            self.zone_set.to_string()
         } else {
-            format!("land-{}", self.vintage)
+            format!("land-{}", self.zone_set)
         }
     }
-    /// Header byte (see encode.rs): bits 0–1 vintage (0=now, 1=1970, 2=all),
+    /// Header byte (see encode.rs): bits 0–1 zone set (0=now, 1=1970, 2=all),
     /// bit 2 set = land-only.
     #[must_use]
     pub fn code(&self) -> u8 {
-        let v = match self.vintage {
+        let v = match self.zone_set {
             "now" => 0,
             "1970" => 1,
             _ => 2,
@@ -86,14 +97,14 @@ pub fn dataset(ds: &str) -> crate::Result<Dataset> {
         Some(r) => (true, r),
         None => (false, ds),
     };
-    let vintage = match rest {
+    let zone_set = match rest {
         "now" | "osm" => "now",
         "1970" | "osm1970" => "1970",
         "all" | "full" | "comprehensive" => "all",
         _ => return Err(Error::UnknownDataset { ds: ds.into() }),
     };
     Ok(Dataset {
-        vintage,
+        zone_set,
         oceans: !land,
     })
 }

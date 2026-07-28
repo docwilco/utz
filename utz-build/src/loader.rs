@@ -1,5 +1,5 @@
 //! Source loading. The source is OSM timezone-boundary-builder; datasets
-//! pick ocean cover (with-oceans or land-only) and the merge vintage:
+//! pick ocean cover (with-oceans or land-only) and the zone set:
 //! `now` (64 zones, default), `1970` (304 zones), or `all` (444 zones).
 //!
 //! Download the `GeoJSON` zip (conditional GET) → parse.
@@ -76,11 +76,11 @@ pub fn resolve_release(cache_dir: &Path) -> crate::Result<String> {
 #[must_use]
 pub fn dataset_url(d: Dataset, release: &str) -> String {
     let oceans = if d.oceans { "-with-oceans" } else { "" };
-    let vintage = match d.vintage {
+    let zone_set = match d.zone_set {
         "all" => "",
         v => &format!("-{v}"),
     };
-    format!("{REPO}/releases/download/{release}/timezones{oceans}{vintage}.geojson.zip")
+    format!("{REPO}/releases/download/{release}/timezones{oceans}{zone_set}.geojson.zip")
 }
 
 /// Download (revalidating) + parse a dataset into `Feat`s. Returns the

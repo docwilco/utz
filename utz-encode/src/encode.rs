@@ -63,10 +63,10 @@ pub fn to_simplify(algo: SimplifyAlgo, eps_deg: f64) -> utz_simplify::Simplify {
 }
 
 pub struct Params<'a> {
-    /// bits 0–1: vintage (0 = now, 1 = 1970, 2 = all/comprehensive);
+    /// bits 0–1: zone set (0 = now, 1 = 1970, 2 = all/comprehensive);
     /// bit 2 set = land-only (clear = with-oceans). See `utz_build::Dataset::code()`.
     pub dataset: u8,
-    /// TZBB release tag recorded in the header (DST vintage / cache key)
+    /// TZBB release tag recorded in the header (rules snapshot / cache key)
     pub tzbb_release: &'a str,
     pub eps_m: f64,
     /// 16 / 24 / 32
@@ -532,7 +532,7 @@ fn ensure_header_limits(p: &Params, counts: (u64, u32, u32), n_parent: usize) ->
     ensure!(
         Dataset::from_byte(p.dataset).is_some(),
         Error::FormatLimit {
-            what: "dataset byte (vintage 0-2, land-only bit)",
+            what: "dataset byte (zone set 0-2, land-only bit)",
             n: p.dataset as usize,
             max: 0b110
         }

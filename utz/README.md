@@ -129,10 +129,11 @@ listed in the [`decompress`] module docs.
 
 Not a feature: the dataset picks which timezone-boundary-builder
 release an asset is generated from, baked in at generation time.
-It sets the merge vintage (zones whose rules are identical from
-that point on are merged): every preset except `accurate` uses
-`now`, the smallest; custom builds choose. Vintages, zone counts,
-and ocean coverage are documented with [`utz_build`].
+Its main knob is the zone set: `now` and `1970` merge zones whose
+rules are identical since that date, while `all` keeps every
+distinct tzid. Every preset except `accurate` uses `now`, the
+smallest; custom builds choose. Zone counts, ocean coverage, and
+the `land-` variants are documented with [`utz_build`].
 
 # Building a custom asset
 
@@ -194,9 +195,9 @@ of source data for the default dataset) and is reduced in stages
 when it is generated
 (the `utz-build whittle` command measures every stage per preset):
 
-1. **Merge vintage**: the [dataset](#datasets) choice alone removes
-   most zones, by merging ones whose rules are identical from the
-   chosen point in time onward.
+1. **Zone set**: the [dataset](#datasets) choice alone removes most
+   zones: `now` and `1970` merge ones whose rules are identical
+   since that date (`all` keeps every tzid).
 2. **Topology**: borders shared between adjacent zones are cut into
    arcs at junction points and each arc is stored once; rings become
    lists of arc references. With oceans covered (the default) the
@@ -289,7 +290,10 @@ with a genuinely `no_std`/flash-embeddable format.
 
 Code: MIT. Timezone data is derived from
 [timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder)
-(OpenStreetMap, **ODbL**)
+(OpenStreetMap, **ODbL**). Preset assets are simplified with
+population-density weighting derived from
+[GHS-POP R2023A](https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php)
+(European Commission JRC, **CC BY 4.0**).
 
 [`Finder::new()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.new
 [`Finder::from_slice()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_slice

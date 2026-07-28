@@ -127,10 +127,11 @@
 //!
 //! Not a feature: the dataset picks which timezone-boundary-builder
 //! release an asset is generated from, baked in at generation time.
-//! It sets the merge vintage (zones whose rules are identical from
-//! that point on are merged): every preset except `accurate` uses
-//! `now`, the smallest; custom builds choose. Vintages, zone counts,
-//! and ocean coverage are documented with [`utz_build`].
+//! Its main knob is the zone set: `now` and `1970` merge zones whose
+//! rules are identical since that date, while `all` keeps every
+//! distinct tzid. Every preset except `accurate` uses `now`, the
+//! smallest; custom builds choose. Zone counts, ocean coverage, and
+//! the `land-` variants are documented with [`utz_build`].
 //!
 //! # Building a custom asset
 //!
@@ -192,9 +193,9 @@
 //! when it is generated
 //! (the `utz-build whittle` command measures every stage per preset):
 //!
-//! 1. **Merge vintage**: the [dataset](#datasets) choice alone removes
-//!    most zones, by merging ones whose rules are identical from the
-//!    chosen point in time onward.
+//! 1. **Zone set**: the [dataset](#datasets) choice alone removes most
+//!    zones: `now` and `1970` merge ones whose rules are identical
+//!    since that date (`all` keeps every tzid).
 //! 2. **Topology**: borders shared between adjacent zones are cut into
 //!    arcs at junction points and each arc is stored once; rings become
 //!    lists of arc references. With oceans covered (the default) the
@@ -398,7 +399,7 @@ pub mod data {
 /// `include!` it beside the `include_bytes!` and a feature mismatch becomes
 /// a compile error in your crate instead of a load error in the field.
 /// Also useful directly for OTA/file-loaded assets:
-/// `assert!(utz::caps::XZ)` at startup.
+/// `assert!(utz::caps::CODEC_XZ)` at startup.
 pub mod caps {
     /// delta+varint arc geometry decoder (`geom-varint-arcs`)
     pub const GEOM_VARINT_ARCS: bool = cfg!(feature = "geom-varint-arcs");
@@ -409,13 +410,13 @@ pub mod caps {
     /// grid-only coarse assets (`geom-coarse`)
     pub const GEOM_COARSE: bool = cfg!(feature = "geom-coarse");
     /// gzip payload decoder (`gzip`)
-    pub const GZIP: bool = cfg!(feature = "gzip");
+    pub const CODEC_GZIP: bool = cfg!(feature = "gzip");
     /// zstd payload decoder (either backend: `ruzstd` / `zstd-sys`)
-    pub const ZSTD: bool = cfg!(any(feature = "ruzstd", feature = "zstd-sys"));
+    pub const CODEC_ZSTD: bool = cfg!(any(feature = "ruzstd", feature = "zstd-sys"));
     /// brotli payload decoder (`brotli`)
-    pub const BROTLI: bool = cfg!(feature = "brotli");
+    pub const CODEC_BROTLI: bool = cfg!(feature = "brotli");
     /// xz payload decoder (`xz`)
-    pub const XZ: bool = cfg!(feature = "xz");
+    pub const CODEC_XZ: bool = cfg!(feature = "xz");
 }
 
 /// Errors surfaced by the reader.

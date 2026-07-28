@@ -253,10 +253,10 @@ pub fn write_guard(out: &std::path::Path, geom: GeomEncoding, codec: Codec) -> c
     );
     let codec_guard = match codec {
         Codec::Uncompressed => None,
-        Codec::Gzip => Some(("GZIP", "gzip")),
-        Codec::Zstd => Some(("ZSTD", "ruzstd` or `zstd-sys")),
-        Codec::Brotli => Some(("BROTLI", "brotli")),
-        Codec::Xz => Some(("XZ", "xz")),
+        Codec::Gzip => Some(("CODEC_GZIP", "gzip")),
+        Codec::Zstd => Some(("CODEC_ZSTD", "ruzstd` or `zstd-sys")),
+        Codec::Brotli => Some(("CODEC_BROTLI", "brotli")),
+        Codec::Xz => Some(("CODEC_XZ", "xz")),
     };
     if let Some((cc, cf)) = codec_guard {
         use std::fmt::Write as _;

@@ -1,8 +1,13 @@
-//! Population density for density-weighted simplification (GHS-POP R2023A).
+//! Population density for density-weighted simplification ([GHS-POP
+//! R2023A]).
 //!
-//! Source: JRC's Global Human Settlement Layer population grid. A single
-//! global `GeoTIFF`, WGS84, 30 arc-seconds (~1 km), population *count* per
-//! cell, free direct download. One-time: fetch the ~460 MB zip through the
+//! Source: the European Commission Joint Research Centre's Global
+//! Human Settlement Layer population grid, © European Union 1995–2023
+//! ([CC BY 4.0]; Schiavina et al. 2023,
+//! <https://doi.org/10.2905/2FF68A52-5B5B-4A22-8F40-C41DA8332CFE>).
+//! A single global `GeoTIFF`, WGS84, 30 arc-seconds (~1 km),
+//! population *count* per cell, free direct download. One-time: fetch
+//! the ~460 MB zip through the
 //! [`crate::download`] cache, stream-decode the tif tile by tile summing 8×8
 //! blocks into a 4-arc-minute grid, convert counts → people/km², and cache
 //! the result as a small flat sidecar (~58 MB). Steady-state builds read only
@@ -11,6 +16,9 @@
 //! Resolution rationale: weighting only needs order-of-magnitude density near
 //! a boundary; 4′ (~7.4 km) cells are far below any useful eps ceiling while
 //! keeping the grid in-memory cheap.
+//!
+//! [GHS-POP R2023A]: https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php
+//! [CC BY 4.0]: https://creativecommons.org/licenses/by/4.0/
 
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};

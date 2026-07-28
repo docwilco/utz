@@ -6,7 +6,10 @@
 
 Code: MIT. Timezone data is derived from
 [timezone-boundary-builder](https://github.com/evansiroky/timezone-boundary-builder)
-(OpenStreetMap, **ODbL**)
+(OpenStreetMap, **ODbL**). Preset assets are simplified with
+population-density weighting derived from
+[GHS-POP R2023A](https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php)
+(European Commission JRC, **CC BY 4.0**).
 
 [`Finder::new()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.new
 [`Finder::from_slice()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_slice
