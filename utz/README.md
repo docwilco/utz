@@ -272,18 +272,22 @@ constructor it is handed to combine into distinct RAM/speed points. The
 recurring trade: spending storage (a larger encoding, no compression)
 removes lookup work and RAM. Every row below is a one- or two-knob
 variant of the `compact` recipe ([`utz_build::Config`] code in the
-first column; sizes measured on TZBB 2026c); the relative ladder holds
-for the other recipes and is quantified on [`GeomEncoding`].
+first column); the relative ladder holds for the other recipes and is
+quantified on [`GeomEncoding`].
 
-| asset | simplification | asset size | loaded with | steady-state RAM | lookup speed |
-|-------|----------------|-----------:|-------------|-----------------:|--------------|
-| `Config::compact().codec(Codec::Uncompressed)`                                | ε 1 km, i24 | ~608 KB | [`Finder::from_static()`]                         | none    | baseline   |
-| `Config::compact().codec(Codec::Uncompressed).geom(GeomEncoding::FixedWidthArcs)` | ε 1 km, i24 | ~1.0 MB | [`Finder::from_static()`]                     | none    | near-eager |
-| `Config::compact().codec(Codec::Uncompressed).geom(GeomEncoding::FullRings)`  | ε 1 km, i24 | ~1.9 MB | [`Finder::from_static()`]                         | none    | eager      |
-| `Config::compact().codec(Codec::Uncompressed)`                                | ε 1 km, i24 | ~608 KB | [`Finder::from_static()`] + [`Finder::preload()`] | ~2.4 MB | eager      |
-| `Config::compact()`                                                           | ε 1 km, i24 | ~445 KB | [`Finder::from_slice()`] / [`Finder::from_vec()`] | ~608 KB | baseline   |
-| `Config::compact()`                                                           | ε 1 km, i24 | ~445 KB | [`Finder::eager_from_slice()`]                    | ~2.5 MB | eager      |
-| `Config::compact().codec(Codec::Uncompressed).geom(GeomEncoding::Coarse)`     | ε 1 km, i24 | ~81 KB  | [`Finder::from_static()`]                         | none    | grid probe |
+| asset | loaded with | asset size | steady-state RAM | lookup speed |
+|-------|-------------|-----------:|-----------------:|--------------|
+| <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)</code> | [`Finder::from_static()`] | ~608 KB | none | baseline |
+| <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)<br>&nbsp;&nbsp;.geom(GeomEncoding::FixedWidthArcs)</code> | [`Finder::from_static()`] | ~1.0 MB | none | near-eager |
+| <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)<br>&nbsp;&nbsp;.geom(GeomEncoding::FullRings)</code> | [`Finder::from_static()`] | ~1.9 MB | none | eager |
+| <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)</code> | [`Finder::from_static()`] + [`Finder::preload()`] | ~608 KB | ~2.4 MB | eager |
+| <code>Config::compact()</code> | [`Finder::from_slice()`] / [`Finder::from_vec()`] | ~445 KB | ~608 KB | baseline |
+| <code>Config::compact()</code> | [`Finder::eager_from_slice()`] | ~445 KB | ~2.5 MB | eager |
+| <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)<br>&nbsp;&nbsp;.geom(GeomEncoding::Coarse)</code> | [`Finder::from_static()`] | ~81 KB | none | grid probe |
+
+All rows share the `compact` recipe's simplification and quantization
+(RDP ε 1 km, population-weighted, i24 coordinates); sizes measured on
+TZBB 2026c.
 
 `FullRings` + [`Finder::from_static()`] is the standout: the encoding is
 the preload cache serialized, so lookups run at eager speed straight off
