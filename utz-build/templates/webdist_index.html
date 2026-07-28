@@ -1321,6 +1321,7 @@ function encRender() {
     s.body.innerHTML = h;
   });
   encEmpty.style.display = encCb.checked && !any ? '' : 'none';
+  renderReduction(); // the ladder's payload/container rows follow encode results
 }
 encCb.addEventListener('change', function () { encRequest(true); syncHash(); });
 
@@ -1867,7 +1868,11 @@ gridDegIn.addEventListener('change', function () {
 });
 gridLayerSel.addEventListener('change', gridRefresh);
 
-function updateStats() {
+// the whittle ladder per enabled layer: shared arcs (the dataset blob) →
+// simplified → serialized payload → containers, from the layer result and
+// the layer's encode slot (mirrors `utz-build whittle`; the blob has no
+// pre-topology stages, so the ladder starts at the shared arcs)
+function renderReduction() {
   var el = document.getElementById('stats');
   el.innerHTML = '';
   var shown = 0;
@@ -1887,12 +1892,34 @@ function updateStats() {
     el.innerHTML += '<div class="st"><span class="sw" style="background:' + s.color + '"></span>' +
       '<span>' + DS_LIST[s.dsi] + ' ' + ALGO[s.algo].name + (isRaw ? '' : ' ε' + s.eps) + ' @ ' + q.label +
       (isRaw || s.order === 0 ? '' : ' ' + ORDER[s.order].label) +
-      (s.pwv > 0 && !isRaw ? ' pop' + s.popLabel() : '') + '</span>' +
-      '<span class="num">' + kept.toLocaleString() + ' v · <span class="pct">−' +
-      (100 * (1 - kept / s.data.stored0)).toFixed(1) + '%</span> · ' + fmtBytes(kept * 2 * q.bpc) +
-      '</span></div>';
+      (s.pwv > 0 && !isRaw ? ' pop' + s.popLabel() : '') + '</span></div>';
+    var rows = '';
+    function row(label, bytes, prev) {
+      rows += '<div class="st"><span style="padding-left:14px">' + label + '</span>' +
+        '<span class="num">' + fmtBytes(bytes) +
+        (prev ? ' · <span class="pct">÷' + (prev / bytes).toFixed(2) + '</span>' : '') +
+        '</span></div>';
+    }
+    var arcs = s.data.stored0 * 16;
+    row('shared arcs · ' + s.data.stored0.toLocaleString() + ' v · f64', arcs, 0);
+    var simp = kept * 16;
+    if (!isRaw) row('simplified · ' + kept.toLocaleString() + ' v', simp, arcs);
+    var es = null;
+    encSlots.forEach(function (x) { if (x.ly === s) es = x; });
+    var v = encCb.checked && es && es.view && !es.view.error ? es.view : null;
+    if (v && v.payload) {
+      row('payload ' + q.label + ' · grid ' + fmtBytes(v.payload.st[4]), v.payload.len, simp);
+      Object.keys(v.codecs || {}).forEach(function (c) {
+        row('.utz ' + c, v.codecs[c].bytes, v.payload.len);
+      });
+    }
+    el.innerHTML += rows;
   });
   if (!shown) el.innerHTML = '<div class="st" style="color:#5a6472">nothing enabled</div>';
+}
+
+function updateStats() {
+  renderReduction();
 
   // misassignment vs raw: simplification pockets, plus the display snap's
   // own contribution as a separate muted "quant" component (a Raw layer with
