@@ -123,10 +123,11 @@
 //! | `brotli`   | brotli | `alloc` (pure Rust) |
 //! | `xz`       | xz     | `alloc` (pure Rust) |
 //!
-//! ## Datasets
+//! # Datasets
 //!
-//! The dataset is baked into an asset when it is generated (every
-//! preset except `accurate` uses `now`; custom builds choose). It picks
+//! Not a feature: the dataset is baked into an asset when it is
+//! generated (every preset except `accurate` uses `now`; custom builds
+//! choose). It picks
 //! the merge vintage: zones whose rules are identical from that point
 //! on are merged, so older vintages keep more zones. Oceans are covered
 //! by default; a `land-` prefix selects the land-only releases.
