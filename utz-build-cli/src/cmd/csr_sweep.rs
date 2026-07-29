@@ -4,7 +4,9 @@
 //! P(PIP) over uniform lon/lat points, unique interned lists, and the memory
 //! split (primary array vs CSR side table), dominant-first ordering as decided.
 //!
-//!     usage: utz-build csr-sweep [eps_m]
+//! ```text
+//! usage: utz-build-cli csr-sweep [eps_m]
+//! ```
 
 use utz_build::grid::{self, Order};
 use utz_build::topo;

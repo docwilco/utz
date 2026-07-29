@@ -13,7 +13,9 @@
 //! cells whose owner equals `list[0]` — i.e. P(first PIP hit) for area-uniform
 //! lookups landing in border cells.
 //!
-//!     usage: utz-build dominant-cost [deg] [datasets...]
+//! ```text
+//! usage: utz-build-cli dominant-cost [deg] [datasets...]
+//! ```
 
 use utz_build::grid::{self, Order};
 

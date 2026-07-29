@@ -6,7 +6,9 @@
 //! same linear first-hit scan with the same hoisted bbox precheck, so the
 //! comparison is pure per-edge PIP.
 //!
-//!     usage: utz-build pip-bench [ds] [eps_m] [npts]
+//! ```text
+//! usage: utz-build-cli pip-bench [ds] [eps_m] [npts]
+//! ```
 
 use std::time::Instant;
 

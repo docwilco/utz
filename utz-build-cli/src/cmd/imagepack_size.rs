@@ -4,7 +4,9 @@
 //! 25–50%.) Takes v6 geom=2 codec-none containers, rewrites the coords
 //! section at quant width, compresses both payloads at preset settings.
 //!
-//!     utz-build imagepack-size <eager.utz>...
+//! ```text
+//! utz-build-cli imagepack-size <eager.utz>...
+//! ```
 
 use utz::format::{self};
 use utz_build::encode::{compress, Codec};

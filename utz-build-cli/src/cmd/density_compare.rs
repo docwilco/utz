@@ -3,7 +3,9 @@
 //! delta. The visual comparison lives in the live viewer (`visualize live`),
 //! which has a per-set pop-weight toggle and the density heatmap.
 //!
-//!     utz-build density-compare [ds] [eps_m] [w_min]
+//! ```text
+//! utz-build-cli density-compare [ds] [eps_m] [w_min]
+//! ```
 
 use utz_build::density::DensityGrid;
 use utz_build::encode::{self, Codec, Params};

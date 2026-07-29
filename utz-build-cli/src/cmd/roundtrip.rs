@@ -2,7 +2,9 @@
 //! Finder, and validate `lookup()` against a linear first-hit PIP scan over the
 //! same quantized geometry (the `grid_bench` reference).
 //!
-//!     usage: utz-build roundtrip [ds] [eps_m] [npts]
+//! ```text
+//! usage: utz-build-cli roundtrip [ds] [eps_m] [npts]
+//! ```
 
 use std::time::Instant;
 

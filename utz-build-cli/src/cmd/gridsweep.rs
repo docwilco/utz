@@ -3,7 +3,9 @@
 //! O(1)), the fraction of area-uniform lookups that hit a border cell, and a memory
 //! estimate.
 //!
-//!     usage: utz-build gridsweep [ds]
+//! ```text
+//! usage: utz-build-cli gridsweep [ds]
+//! ```
 
 #[derive(clap::Args)]
 pub struct Args {

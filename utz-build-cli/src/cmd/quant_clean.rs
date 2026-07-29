@@ -6,7 +6,9 @@
 //! the viewer's problems panel). `--locate` lists each surviving
 //! crossing/overlap as a live-viewer URL.
 //!
-//!     utz-build quant-clean [ds] [eps_m] [qbits...] [--locate]
+//! ```text
+//! utz-build-cli quant-clean [ds] [eps_m] [qbits...] [--locate]
+//! ```
 
 use utz_build::clean::{self, CleanStats};
 use utz_build::topo;

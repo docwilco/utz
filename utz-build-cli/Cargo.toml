@@ -5,14 +5,16 @@ edition.workspace = true
 license = "MIT"
 publish = false
 
-# The `utz-build` binary: the custom-tier `gen` command plus the
+# The `utz-build-cli` binary: the custom-tier `gen` command plus the
 # measurement/bench subcommands (one module per subcommand under src/cmd/).
 # Split from the utz-build library so that build scripts depending on the
 # builder never pull in the runtime reader: the reader is a *subject* here
-# (verify lookups, PIP/grid benches, container dissection), not a library
-# need of the encoder.
+# (verify lookups, PIP/grid benches, asset dissection), not a library
+# need of the encoder. The bin target is doc = false: the lib target
+# carries the crate docs.
 [[bin]]
-name = "utz-build"
+name = "utz-build-cli"
+doc = false
 path = "src/main.rs"
 
 [dependencies]

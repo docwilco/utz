@@ -2,7 +2,9 @@
 //! grid prefilter (interior O(1), border cells → dominant-first PIP) vs the
 //! plain linear first-hit scan, on the same quantized simplified geometry.
 //!
-//!     usage: utz-build grid-bench [ds] [eps_m] [deg] [npts]
+//! ```text
+//! usage: utz-build-cli grid-bench [ds] [eps_m] [deg] [npts]
+//! ```
 
 use std::time::Instant;
 

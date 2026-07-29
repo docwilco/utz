@@ -8,7 +8,7 @@
 //! the size columns of the ladder table on `GeomEncoding`.
 //!
 //! ```text
-//! utz-build whittle [--extended] [tiny|compact|balanced|accurate|all]
+//! utz-build-cli whittle [--extended] [tiny|compact|balanced|accurate|all]
 //! ```
 
 use utz_build::density::DensityGrid;

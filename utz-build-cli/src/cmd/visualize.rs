@@ -4,7 +4,7 @@
 //! embedded viewers (`_overlay/_live/border_sweep`).
 //!
 //! ```text
-//! usage: utz-build visualize [outdir]
+//! usage: utz-build-cli visualize [outdir]
 //!   writes outdir (default webdist/): index.html · utz_whittle_stats.wasm ·
 //!   heat.bin.z · <dataset>.bin.z + zones-<dataset>.bin.z for
 //!   now/1970/all/land-now/land-1970/land-all

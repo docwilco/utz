@@ -2,7 +2,7 @@
 //! already split at ±180°? Flags any edge whose lon span exceeds 180° (a true
 //! crossing stored planar) and any coordinate outside [-180, 180] / [-90, 90].
 //!
-//! usage: utz-build amscan [datasets...]
+//! usage: utz-build-cli amscan [datasets...]
 
 #[derive(clap::Args)]
 pub struct Args {

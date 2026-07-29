@@ -1,7 +1,9 @@
 //! Exact memory of a 2deg grid: measure candidate (zone) counts per border cell,
 //! then size several layouts, showing 32- vs 64-bit differences.
 //!
-//!     usage: utz-build grid2mem [ds] [deg]
+//! ```text
+//! usage: utz-build-cli grid2mem [ds] [deg]
+//! ```
 use std::collections::HashSet;
 
 #[derive(clap::Args)]

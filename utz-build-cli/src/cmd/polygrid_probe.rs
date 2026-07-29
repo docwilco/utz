@@ -14,7 +14,9 @@
 //! table). Also builds the feature grid at deg/2 and deg/4 for the
 //! "grid-only exact answers" scaling curve.
 //!
-//!     utz-build polygrid-probe <none.utz>...
+//! ```text
+//! utz-build-cli polygrid-probe <none.utz>...
+//! ```
 
 use utz::format::{self, read_fixed, read_u16, read_u32, read_varint, unzigzag};
 use utz_build::grid::{self, Order};

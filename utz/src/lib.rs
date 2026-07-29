@@ -179,7 +179,7 @@
 //! Uncompressed assets can instead be borrowed zero-copy with
 //! [`Finder::from_static()`] (full-rings assets must be 4-byte aligned: embed
 //! those with the re-exported [`include_bytes_aligned!`]). Outside a
-//! `build.rs`, the `utz-build` CLI writes the same assets: `utz-build gen
+//! `build.rs`, the `utz-build-cli` binary writes the same assets: `utz-build-cli gen
 //! now 500 --qbits 24 --codec gzip -o tz.utz`.
 //!
 //! What the built asset then costs at runtime is set by which constructor
@@ -194,7 +194,7 @@
 //!
 //! An asset starts as the timezone-boundary-builder `GeoJSON` (~80 MB of source
 //! data for the default dataset) and is reduced in stages when it is generated
-//! (the `utz-build whittle` command measures every stage per preset):
+//! (the `utz-build-cli whittle` command measures every stage per preset):
 //!
 //! 1. **Zone set**: the [dataset](#datasets) choice alone removes most zones:
 //!    `now` and `1970` merge ones whose rules are identical since that date

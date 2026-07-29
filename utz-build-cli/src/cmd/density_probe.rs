@@ -2,7 +2,9 @@
 //! zip and builds the density sidecar; prints spot checks that fail loudly if
 //! the tiff decode or geotransform is off.
 //!
-//!     utz-build density-probe
+//! ```text
+//! utz-build-cli density-probe
+//! ```
 
 use utz_build::density::DensityGrid;
 use utz_build::{ensure, Error};

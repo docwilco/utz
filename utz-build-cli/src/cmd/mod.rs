@@ -1,4 +1,4 @@
-//! One module per `utz-build` subcommand, named after it. Each exposes
+//! One module per `utz-build-cli` subcommand, named after it. Each exposes
 //! `Args` (clap; field docs are the `--help` text) and `run(Args)`. The
 //! module docs carry the question the subcommand answers and its method;
 //! the crate root groups them by area.

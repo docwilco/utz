@@ -5,7 +5,9 @@
 //! under a tracking allocator. Goal: pick preset windows at the ratio knee and
 //! verify the `peak ≈ decoded + window + state` model.
 //!
-//!     usage: utz-build window-sweep [ds] [grid_deg] [--eps E [--quant B]]
+//! ```text
+//! usage: utz-build-cli window-sweep [ds] [grid_deg] [--eps E [--quant B]]
+//! ```
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::io::Write as _;

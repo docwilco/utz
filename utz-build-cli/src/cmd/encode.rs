@@ -3,7 +3,7 @@
 //! it zero-copy from flash via `Finder::from_static()`).
 //!
 //! ```text
-//! utz-build encode [ds] [eps_m] [--codec none|gzip|zstd|brotli|xz]
+//! utz-build-cli encode [ds] [eps_m] [--codec none|gzip|zstd|brotli|xz]
 //!     [--qbits 24] [--grid-deg 2] [--w-min 0.052] [-o out.utz]
 //! ```
 

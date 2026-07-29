@@ -1,7 +1,9 @@
 //! Arc-store encoding shootout (delta+varint vs abs-fixed) at a chosen eps +
 //! quant grid.
 //!
-//!     usage: utz-build quant-size [eps_m] [qbits...]
+//! ```text
+//! usage: utz-build-cli quant-size [eps_m] [qbits...]
+//! ```
 use std::io::Write;
 use utz_build::topo;
 

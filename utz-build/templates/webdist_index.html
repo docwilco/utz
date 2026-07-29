@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- μTZ webdist viewer: static page + sibling data files (<dataset>.bin.z,
-     heat.bin.z, utz_whittle_stats.wasm) written by `utz-build visualize`. Serve over
+     heat.bin.z, utz_whittle_stats.wasm) written by `utz-build-cli visualize`. Serve over
      HTTP (fetch() is blocked on file://): python3 -m http.server -d webdist -->
 <html lang="en">
 <head>
@@ -156,7 +156,7 @@
   </div>
 </div>
 <script>
-// ---- data files (written next to this page by `utz-build visualize`) ----
+// ---- data files (written next to this page by `utz-build-cli visualize`) ----
 var DS_LIST = ['now', '1970', 'all', 'land-now', 'land-1970', 'land-all'];
 var DS_CACHE = {};
 function fetchBinZ(url) {
@@ -1125,7 +1125,7 @@ function encSpawn(s, d, name) {
     }
     if (m.type === 'initfail') {
       encAbort(s);
-      s.view = { error: 'blob has no topology section — regenerate the data files (utz-build visualize)' };
+      s.view = { error: 'blob has no topology section — regenerate the data files (utz-build-cli visualize)' };
       encRender();
       return;
     }
@@ -1174,11 +1174,11 @@ function fmtF64(x) {
   var v = String(x);
   return v.indexOf('.') < 0 && v.indexOf('e') < 0 ? v + '.0' : v;
 }
-// the `utz-build gen` line reproducing this layer's asset (the CLI's --algo
+// the `utz-build-cli gen` line reproducing this layer's asset (the CLI's --algo
 // names: rdp | vw | ii | none)
 function encExportCli(s) {
   var p = encParams(s);
-  var out = ['utz-build gen', p.name, String(p.epsM)];
+  var out = ['utz-build-cli gen', p.name, String(p.epsM)];
   if (p.algoKey !== 'rdp') out.push('--algo ' + (p.algoKey === 'raw' ? 'none' : p.algoKey));
   out.push('--qbits ' + p.qbits, '--grid-deg ' + p.gridDeg);
   if (p.wmin < 1) out.push('--w-min ' + p.wmin);
@@ -1223,7 +1223,7 @@ function encRequestSlot(s, force) {
     if (gen !== s.gen || !s.busy) return; // superseded meanwhile
     if (!d.hasTopo) {
       s.busy = false; encSyncSpin();
-      s.view = { error: 'blob has no topology section — regenerate the data files (utz-build visualize)' };
+      s.view = { error: 'blob has no topology section — regenerate the data files (utz-build-cli visualize)' };
       encRender();
       return;
     }
@@ -1400,7 +1400,7 @@ function probSpawn(name, d) {
       if (prob.pendingRun) { prob.pendingRun = false; probSend(); }
     } else if (m.type === 'initfail') {
       prob.busy = false; probSpin.classList.remove('on');
-      probNote('dataset blob predates the live encode — re-run utz-build visualize');
+      probNote('dataset blob predates the live encode — re-run utz-build-cli visualize');
     } else if (m.type === 'problems' && m.gen === prob.gen) {
       prob.busy = false; probSpin.classList.remove('on');
       probRender(m.recs, m.ms);
@@ -1435,7 +1435,7 @@ function probRefresh(force) {
   prob.busy = true; probSpin.classList.add('on');
   loadDataset(p.name).then(function (d) {
     if (gen !== prob.gen) return;
-    if (!d.hasTopo) { prob.busy = false; probSpin.classList.remove('on'); probNote('dataset blob predates the live encode — re-run utz-build visualize'); return; }
+    if (!d.hasTopo) { prob.busy = false; probSpin.classList.remove('on'); probNote('dataset blob predates the live encode — re-run utz-build-cli visualize'); return; }
     if (prob.worker && prob.dsName !== p.name) probKill();
     prob.dsName = p.name;
     if (!prob.worker) probSpawn(p.name, d);
@@ -1844,7 +1844,7 @@ gridLayerSel.addEventListener('change', gridRefresh);
 
 // the whittle ladder per enabled layer: shared arcs (the dataset blob) →
 // simplified → serialized payload → containers, from the layer result and
-// the layer's encode slot (mirrors `utz-build whittle`; the blob has no
+// the layer's encode slot (mirrors `utz-build-cli whittle`; the blob has no
 // pre-topology stages, so the ladder starts at the shared arcs)
 function renderReduction() {
   var el = document.getElementById('stats');

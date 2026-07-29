@@ -2,7 +2,9 @@
 //! encode Format B (i24 topology + delta/varint), compress, and measure lookup
 //! accuracy vs the FULL-precision reference over a random sample.
 //!
-//!     usage: utz-build rdp-sweep [ds]
+//! ```text
+//! usage: utz-build-cli rdp-sweep [ds]
+//! ```
 
 use geo::Contains;
 

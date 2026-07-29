@@ -1,12 +1,13 @@
 # utz-build-cli
 
-μTZ build & measurement CLI: the `utz-build` binary.
+μTZ build & measurement CLI: the `utz-build-cli` binary.
 
-The binary is named `utz-build` but is built from this `utz-build-cli`
-package; the `utz-build` *library* (the `utz_build` build-dependency
-that build scripts use) is a separate, reader-free crate. The split
-keeps build scripts light: this CLI pulls in the runtime reader (`utz`)
-and measurement dependencies that a `build.rs` never needs.
+Not to be confused with the `utz-build` *library*: that reader-free
+crate is what build scripts depend on. The split keeps build scripts
+light: this CLI pulls in the runtime reader (`utz`) and measurement
+dependencies that a `build.rs` never needs. (This doc surface is the
+package's lib target; the bin target is `doc = false` so the two do
+not race for the `utz_build_cli` doc directory.)
 
 ```
 cargo run --release -p utz-build-cli -- <subcommand> [args]
