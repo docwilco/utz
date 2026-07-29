@@ -180,7 +180,11 @@ pub enum GeomEncoding {
 }
 
 /// Simplification algorithm: which simplifier the encoder ran when the
-/// asset was generated.
+/// asset was generated. Each variant sketches its algorithm; guarantees,
+/// citations, and the density-weighted variants are documented in the
+/// [`utz_simplify`] crate.
+///
+/// [`utz_simplify`]: ../utz_simplify/index.html
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
 #[repr(u8)]
 pub enum SimplifyAlgo {
