@@ -381,8 +381,6 @@ pub mod pip;
 
 mod finder;
 pub use finder::{Finder, Position};
-// A doc comment here would stamp itself onto all five re-exports;
-// each type carries its own documentation, inlined by rustdoc.
 pub use utz_common::{Codec, Dataset, GeomEncoding, QuantBits, SimplifyAlgo};
 
 /// Preset assets baked in by the data-tier features. With exactly one
