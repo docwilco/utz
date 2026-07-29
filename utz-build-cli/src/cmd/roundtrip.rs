@@ -1,8 +1,8 @@
-// End-to-end roundtrip: encode the real container, decode with the runtime
-// Finder, and validate lookup() against a linear first-hit PIP scan over the
-// same quantized geometry (the grid_bench reference).
-//
-// usage: utz-build roundtrip [ds] [eps_m] [npts]
+//! End-to-end roundtrip: encode the real container, decode with the runtime
+//! Finder, and validate `lookup()` against a linear first-hit PIP scan over the
+//! same quantized geometry (the `grid_bench` reference).
+//!
+//!     usage: utz-build roundtrip [ds] [eps_m] [npts]
 
 use std::time::Instant;
 
@@ -22,6 +22,12 @@ pub struct Args {
     npts: usize,
 }
 
+/// # Errors
+/// Dataset load/parse or encode failure.
+///
+/// # Panics
+/// If the runtime `Finder` rejects the asset just encoded, or the decoded
+/// release string does not round-trip.
 #[expect(
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"

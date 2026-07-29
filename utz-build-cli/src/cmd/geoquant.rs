@@ -1,11 +1,13 @@
-// Does geo's integer PIP agree with its f64 PIP? Tests overflow behaviour of the
-// SimpleKernel at different coord types/grids on OSM -now.
+//! Does geo's integer PIP agree with its f64 PIP? Tests overflow behaviour of the
+//! `SimpleKernel` at different coord types/grids on OSM -now.
 use geo::Contains;
 use geo_types::{LineString, Point, Polygon};
 
 #[derive(clap::Args)]
 pub struct Args {}
 
+/// # Errors
+/// Dataset load/parse failure.
 pub fn run(_a: Args) -> utz_build::Result<()> {
     // load geometry once (f64), build parallel i64 / i32 copies at deg*1e6 (~0.11 m)
     let mut f64p: Vec<(String, Polygon<f64>)> = Vec::new();

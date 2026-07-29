@@ -1,8 +1,8 @@
-// Real grid lookup bench: interned-CSR
-// grid prefilter (interior O(1), border cells → dominant-first PIP) vs the
-// plain linear first-hit scan, on the same quantized simplified geometry.
-//
-// usage: utz-build grid-bench [ds] [eps_m] [deg] [npts]
+//! Real grid lookup bench: interned-CSR
+//! grid prefilter (interior O(1), border cells → dominant-first PIP) vs the
+//! plain linear first-hit scan, on the same quantized simplified geometry.
+//!
+//!     usage: utz-build grid-bench [ds] [eps_m] [deg] [npts]
 
 use std::time::Instant;
 
@@ -30,6 +30,11 @@ pub struct Args {
     npts: usize,
 }
 
+/// # Errors
+/// Dataset load/parse failure.
+///
+/// # Panics
+/// If the dataset has more features than fit a `u16` id.
 #[expect(
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"

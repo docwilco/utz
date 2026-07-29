@@ -1,11 +1,11 @@
-// Ratio-vs-window sweep + MEASURED
-// peak decode RAM. Encodes the real payload per codec across window/dict
-// sizes (capped at decoded size), then decodes each blob through the exact
-// paths `utz` ships (`utz::decompress` — ruzstd backend here, not zstd-sys)
-// under a tracking allocator. Goal: pick preset windows at the ratio knee and
-// verify the `peak ≈ decoded + window + state` model.
-//
-// usage: utz-build window-sweep [ds] [grid_deg] [--eps E [--quant B]]
+//! Ratio-vs-window sweep + MEASURED
+//! peak decode RAM. Encodes the real payload per codec across window/dict
+//! sizes (capped at decoded size), then decodes each blob through the exact
+//! paths `utz` ships (`utz::decompress` — ruzstd backend here, not zstd-sys)
+//! under a tracking allocator. Goal: pick preset windows at the ratio knee and
+//! verify the `peak ≈ decoded + window + state` model.
+//!
+//!     usage: utz-build window-sweep [ds] [grid_deg] [--eps E [--quant B]]
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::io::Write as _;
@@ -69,6 +69,13 @@ pub struct Args {
     quant: Option<u32>,
 }
 
+/// # Errors
+/// Dataset load/parse or payload encode failure, a codec backend
+/// compress/decode failure, or a decode that does not round-trip the
+/// payload.
+///
+/// # Panics
+/// If an xz dictionary size (capped at the raw payload size) exceeds `u32`.
 #[expect(
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"

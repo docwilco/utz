@@ -1,19 +1,19 @@
-// Dominant-first candidate-list ordering —
-// how many extra unique lists / KB does it cost vs id-sorted interning, and how
-// much PIP early-exit does each ordering actually buy?
-//
-// Orderings:
-//   id-sorted          — baseline, maximal interning
-//   area-desc          — global zone area descending; deterministic per set, so
-//                        interning is preserved BY CONSTRUCTION (verified here)
-//   cell-dominant-first — this cell's dominant zone first; best early-exit,
-//                        breaks interning (the cost being measured)
-//
-// Early-exit quality = fraction of owned subcells (0.25° at 2°) inside border
-// cells whose owner equals list[0] — i.e. P(first PIP hit) for area-uniform
-// lookups landing in border cells.
-//
-// usage: utz-build dominant-cost [deg] [datasets...]
+//! Dominant-first candidate-list ordering —
+//! how many extra unique lists / KB does it cost vs id-sorted interning, and how
+//! much PIP early-exit does each ordering actually buy?
+//!
+//! Orderings:
+//!   id-sorted          — baseline, maximal interning
+//!   area-desc          — global zone area descending; deterministic per set, so
+//!                        interning is preserved BY CONSTRUCTION (verified here)
+//!   cell-dominant-first — this cell's dominant zone first; best early-exit,
+//!                        breaks interning (the cost being measured)
+//!
+//! Early-exit quality = fraction of owned subcells (0.25° at 2°) inside border
+//! cells whose owner equals `list[0]` — i.e. P(first PIP hit) for area-uniform
+//! lookups landing in border cells.
+//!
+//!     usage: utz-build dominant-cost [deg] [datasets...]
 
 use utz_build::grid::{self, Order};
 
@@ -27,6 +27,8 @@ pub struct Args {
     ds: Vec<String>,
 }
 
+/// # Errors
+/// Dataset load/parse failure.
 pub fn run(a: Args) -> utz_build::Result<()> {
     let (deg, dss) = (a.deg, a.ds);
     for ds in &dss {

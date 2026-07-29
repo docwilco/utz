@@ -1,10 +1,10 @@
-// Grid size × P(PIP) × memory with the
-// *real* grid + interned-CSR builder (grid.rs), replacing gridsweep's crude
-// border-cell estimate. For each cell size: border-cell fraction, sampled
-// P(PIP) over uniform lon/lat points, unique interned lists, and the memory
-// split (primary array vs CSR side table), dominant-first ordering as decided.
-//
-// usage: utz-build csr-sweep [eps_m]
+//! Grid size × P(PIP) × memory with the
+//! *real* grid + interned-CSR builder (grid.rs), replacing gridsweep's crude
+//! border-cell estimate. For each cell size: border-cell fraction, sampled
+//! P(PIP) over uniform lon/lat points, unique interned lists, and the memory
+//! split (primary array vs CSR side table), dominant-first ordering as decided.
+//!
+//!     usage: utz-build csr-sweep [eps_m]
 
 use utz_build::grid::{self, Order};
 use utz_build::topo;
@@ -19,6 +19,12 @@ pub struct Args {
     eps_m: f64,
 }
 
+/// # Errors
+/// Dataset load/parse failure.
+///
+/// # Panics
+/// If a cell size overflows the 16-bit CSR encoding: unique-list index
+/// past the 15-bit tag, or `list_ids` length past `u16`.
 pub fn run(args: &Args) -> utz_build::Result<()> {
     let eps_m = args.eps_m;
     let pts = gen_pts(NPTS);

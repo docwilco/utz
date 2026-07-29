@@ -39,6 +39,11 @@ pub struct Args {
     algo: String,
 }
 
+/// # Errors
+/// Dataset load/parse or density-grid load failure.
+///
+/// # Panics
+/// If `algo` is not one of rdp|vw|ii.
 pub fn run(a: Args) -> utz_build::Result<()> {
     let (ds, eps_m, w_min, algo_key) = (a.ds, a.eps_m, a.w_min, a.algo);
     let algo = |eps_deg: f64| -> Simplify {

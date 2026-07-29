@@ -69,6 +69,12 @@ pub struct Args {
     paths: Vec<String>,
 }
 
+/// # Errors
+/// I/O reading an input asset or a compression backend failure.
+///
+/// # Panics
+/// If an input is not a codec-none arc-store .utz asset (geom 0/1), or its
+/// path has no file stem.
 pub fn run(a: &Args) -> utz_build::Result<()> {
     println!(
         "{:<28} {:>9} {:>9} {:>9} {:>9}",

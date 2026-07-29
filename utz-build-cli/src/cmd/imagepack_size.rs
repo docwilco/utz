@@ -17,6 +17,12 @@ pub struct Args {
     paths: Vec<String>,
 }
 
+/// # Errors
+/// I/O reading an input asset or a compression backend failure.
+///
+/// # Panics
+/// If an input is not a codec-none `FullRings` .utz asset, or its path has
+/// no file stem.
 pub fn run(args: &Args) -> utz_build::Result<()> {
     println!(
         "{:<30} {:>9} {:>9} {:>9} {:>9}",

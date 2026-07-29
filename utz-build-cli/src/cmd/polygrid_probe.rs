@@ -154,6 +154,12 @@ pub struct Args {
     paths: Vec<String>,
 }
 
+/// # Errors
+/// I/O reading an input asset.
+///
+/// # Panics
+/// If an input is not a codec-none arc-store .utz asset (geom 0/1), its
+/// path has no file stem, or it holds more features than fit a `u16` id.
 #[expect(
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"

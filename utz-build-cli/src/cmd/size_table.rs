@@ -1,7 +1,7 @@
-// Full pipeline size table on the
-// REAL container — topology × RDP(ε) × quant(i16/i24) × codec (incl gzip).
-//
-// usage: utz-build size-table [ds] [grid_deg]
+//! Full pipeline size table on the
+//! REAL container — topology × RDP(ε) × quant(i16/i24) × codec (incl gzip).
+//!
+//!     usage: utz-build size-table [ds] [grid_deg]
 
 use utz_build::encode::{self, Codec, Params};
 
@@ -15,6 +15,8 @@ pub struct Args {
     grid_deg: f64,
 }
 
+/// # Errors
+/// Dataset load/parse, payload encode, or compression backend failure.
 pub fn run(a: Args) -> utz_build::Result<()> {
     let (ds, grid_deg) = (a.ds, a.grid_deg);
     let feats = utz_build::load(&ds)?;

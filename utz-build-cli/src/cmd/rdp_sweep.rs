@@ -1,8 +1,8 @@
-// Topology-aware RDP sweep: for each tolerance, simplify each shared arc once,
-// encode Format B (i24 topology + delta/varint), compress, and measure lookup
-// accuracy vs the FULL-precision reference over a random sample.
-//
-// usage: utz-build rdp-sweep [ds]
+//! Topology-aware RDP sweep: for each tolerance, simplify each shared arc once,
+//! encode Format B (i24 topology + delta/varint), compress, and measure lookup
+//! accuracy vs the FULL-precision reference over a random sample.
+//!
+//!     usage: utz-build rdp-sweep [ds]
 
 use geo::Contains;
 
@@ -15,6 +15,11 @@ pub struct Args {
     ds: String,
 }
 
+/// # Errors
+/// Dataset load/parse failure.
+///
+/// # Panics
+/// If zstd compression of the encoded payload fails.
 pub fn run(a: Args) -> utz_build::Result<()> {
     let ds = a.ds;
     let feats = utz_build::load(&ds)?;

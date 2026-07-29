@@ -191,6 +191,8 @@ fn encodings_matrix(
     Ok(())
 }
 
+/// # Errors
+/// Density-grid load, dataset download/parse, or encode failure.
 pub fn run(a: &Args) -> utz_build::Result<()> {
     let cache = utz_build::cache_dir();
     let density = DensityGrid::load(&cache)?;

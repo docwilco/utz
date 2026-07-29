@@ -1,16 +1,49 @@
-//! μTZ build & measurement CLI. Each subcommand lives in its own module
-//! under [`cmd`].
+//! μTZ build & measurement CLI: the `utz-build` binary.
+//!
+//! The binary is named `utz-build` but is built from this `utz-build-cli`
+//! package; the `utz-build` *library* (the `utz_build` build-dependency
+//! that build scripts use) is a separate, reader-free crate. The split
+//! keeps build scripts light: this CLI pulls in the runtime reader (`utz`)
+//! and measurement dependencies that a `build.rs` never needs.
+//!
+//! ```text
+//! cargo run --release -p utz-build-cli -- <subcommand> [args]
+//! ```
+//!
+//! Two subcommands produce artifacts:
+//!
+//! - `gen` ([`cmd::encode`]) writes a `.utz` asset: the custom-tier CLI
+//!   path, and the input for `utz-bench-cli` and the bench firmware;
+//! - `visualize` ([`cmd::visualize`]) regenerates the webdist viewer.
+//!
+//! Everything else measures or validates a design decision; each module's
+//! docs state the question it answers and how. By area:
+//!
+//! - **simplification accuracy**: [`cmd::accuracy`],
+//!   [`cmd::density_compare`], [`cmd::rdp_sweep`], [`cmd::quant_clean`]
+//! - **asset size**: [`cmd::size_table`], [`cmd::whittle`],
+//!   [`cmd::window_sweep`], [`cmd::quant_size`], [`cmd::fixedwidth_size`],
+//!   [`cmd::imagepack_size`]
+//! - **grid prefilter design**: [`cmd::csr_sweep`], [`cmd::gridsweep`],
+//!   [`cmd::grid2mem`], [`cmd::grid_bench`], [`cmd::dominant_cost`],
+//!   [`cmd::polygrid_probe`]
+//! - **validation and sanity**: [`cmd::roundtrip`], [`cmd::pip_bench`],
+//!   [`cmd::geoquant`], [`cmd::amscan`], [`cmd::density_probe`]
+//!
+//! Source data downloads once into the workspace `cache/` (conditional
+//! GETs keep it fresh); density-weighted runs additionally fetch GHS-POP
+//! (~460 MB) on first use.
 
 use clap::Parser;
 
-mod cmd;
+pub mod cmd;
 
 #[derive(Parser)]
 #[command(name = "utz-build", version, about = "μTZ build & measurement toolbox")]
 enum Cmd {
     /// Generate the webdist viewer (static page + per-dataset binary blobs)
     Visualize(cmd::visualize::Args),
-    /// Generate a .utz container to disk (the custom-tier CLI;
+    /// Generate a .utz asset to disk (the custom-tier CLI;
     /// also feeds bench-cli / firmware)
     #[command(visible_alias = "encode")]
     Gen(cmd::encode::Args),
@@ -20,9 +53,9 @@ enum Cmd {
     DensityCompare(cmd::density_compare::Args),
     /// Spot-check the GHS-POP ingest (downloads ~460 MB once)
     DensityProbe(cmd::density_probe::Args),
-    /// End-to-end container roundtrip: encode, decode, validate vs linear PIP
+    /// End-to-end asset roundtrip: encode, decode, validate vs linear PIP
     Roundtrip(cmd::roundtrip::Args),
-    /// Full-container size table: eps × quant × codec
+    /// Full-asset size table: eps × quant × codec
     SizeTable(cmd::size_table::Args),
     /// Per-stage pipeline size reduction on the preset recipes
     Whittle(cmd::whittle::Args),
@@ -50,11 +83,11 @@ enum Cmd {
     Geoquant(cmd::geoquant::Args),
     /// Antimeridian scan: is TZBB already split at ±180°?
     Amscan(cmd::amscan::Args),
-    /// Fixed-width arc-store size vs delta+varint (from codec-none containers)
+    /// Fixed-width arc-store size vs delta+varint (from codec-none assets)
     FixedwidthSize(cmd::fixedwidth_size::Args),
     /// Poly-granular grid vs per-poly bboxes probe
     PolygridProbe(cmd::polygrid_probe::Args),
-    /// Packed `FullRings` coords vs general compression (geom=2 containers)
+    /// Packed `FullRings` coords vs general compression (geom=2 assets)
     ImagepackSize(cmd::imagepack_size::Args),
 }
 

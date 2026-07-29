@@ -32,6 +32,8 @@ pub struct Args {
     viewer: String,
 }
 
+/// # Errors
+/// Dataset load/parse failure, or a qbits value other than 16/24/32.
 #[expect(
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"

@@ -23,6 +23,12 @@ pub struct Args {
     w_min: f64,
 }
 
+/// # Errors
+/// Dataset load/parse, density-grid load, or encode failure.
+///
+/// # Panics
+/// If a vertex's density sample matches no band: the bands cover all of
+/// `0.0..`, so only a NaN or negative sample.
 pub fn run(a: Args) -> utz_build::Result<()> {
     // stored vertices binned by the density at the vertex itself
     const BANDS: [(f64, f64, &str); 4] = [

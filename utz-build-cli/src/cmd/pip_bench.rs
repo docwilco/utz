@@ -1,12 +1,12 @@
-// Hand-rolled i64 PIP vs the geo i64
-// oracle vs geometry-rs (tzf-rs's PIP crate, tidwall/geometry port) on real
-// OSM geometry — correctness (target 0 disagreements vs geo) + speed.
-//
-// All contenders get the SAME quantized (i24) simplified geometry and run the
-// same linear first-hit scan with the same hoisted bbox precheck, so the
-// comparison is pure per-edge PIP.
-//
-// usage: utz-build pip-bench [ds] [eps_m] [npts]
+//! Hand-rolled i64 PIP vs the geo i64
+//! oracle vs geometry-rs (tzf-rs's PIP crate, tidwall/geometry port) on real
+//! OSM geometry — correctness (target 0 disagreements vs geo) + speed.
+//!
+//! All contenders get the SAME quantized (i24) simplified geometry and run the
+//! same linear first-hit scan with the same hoisted bbox precheck, so the
+//! comparison is pure per-edge PIP.
+//!
+//!     usage: utz-build pip-bench [ds] [eps_m] [npts]
 
 use std::time::Instant;
 
@@ -36,6 +36,12 @@ struct P<'a> {
     rings: Vec<&'a [(i32, i32)]>,
 }
 
+/// # Errors
+/// Dataset load/parse failure.
+///
+/// # Panics
+/// If the warmup scan lands no sample point inside any zone (sanity check
+/// on the quantized geometry).
 #[expect(
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"

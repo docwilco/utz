@@ -1,6 +1,7 @@
-// Exact memory of a 2deg grid: measure candidate (zone) counts per border cell,
-// then size several layouts, showing 32- vs 64-bit differences.
-// usage: utz-build grid2mem [ds] [deg]
+//! Exact memory of a 2deg grid: measure candidate (zone) counts per border cell,
+//! then size several layouts, showing 32- vs 64-bit differences.
+//!
+//!     usage: utz-build grid2mem [ds] [deg]
 use std::collections::HashSet;
 
 #[derive(clap::Args)]
@@ -13,6 +14,11 @@ pub struct Args {
     deg: f64,
 }
 
+/// # Errors
+/// Dataset load/parse failure.
+///
+/// # Panics
+/// If the dataset has more features than fit a `u16` id.
 #[expect(
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"

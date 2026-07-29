@@ -10,6 +10,9 @@ use utz_build::{ensure, Error};
 #[derive(clap::Args)]
 pub struct Args {}
 
+/// # Errors
+/// GHS-POP download or density-sidecar build/load failure, or a spot-check
+/// probe landing outside its expected density range.
 pub fn run(_a: Args) -> utz_build::Result<()> {
     let t = std::time::Instant::now();
     let g = DensityGrid::load(&utz_build::cache_dir())?;

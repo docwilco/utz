@@ -1,12 +1,14 @@
-// Generate the webdist viewer: one static page + binary data
-// files per TZBB dataset, servable from any static host (GitHub Pages,
-// `python3 -m http.server -d webdist`). Supersedes the old per-dataset
-// embedded viewers (_overlay/_live/border_sweep).
-//
-// usage: utz-build visualize [outdir]
-//   writes outdir (default webdist/): index.html · utz_whittle_stats.wasm ·
-//   heat.bin.z · <dataset>.bin.z + zones-<dataset>.bin.z for
-//   now/1970/all/land-now/land-1970/land-all
+//! Generate the webdist viewer: one static page + binary data
+//! files per TZBB dataset, servable from any static host (GitHub Pages,
+//! `python3 -m http.server -d webdist`). Supersedes the old per-dataset
+//! embedded viewers (`_overlay/_live/border_sweep`).
+//!
+//! ```text
+//! usage: utz-build visualize [outdir]
+//!   writes outdir (default webdist/): index.html · utz_whittle_stats.wasm ·
+//!   heat.bin.z · <dataset>.bin.z + zones-<dataset>.bin.z for
+//!   now/1970/all/land-now/land-1970/land-all
+//! ```
 
 use std::path::{Path, PathBuf};
 
@@ -26,6 +28,9 @@ pub struct Args {
     force: bool,
 }
 
+/// # Errors
+/// Wasm viewer build failure, dataset or density-grid download/parse
+/// failure, or I/O writing the site files.
 pub fn run(a: Args) -> utz_build::Result<()> {
     let out = a.out;
     std::fs::create_dir_all(&out)?;

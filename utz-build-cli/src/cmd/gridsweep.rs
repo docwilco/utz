@@ -1,7 +1,9 @@
-// Grid-size sweep (1..=20 deg). For each size: total cells, "border" cells (a tz
-// boundary edge passes through -> lookup needs PIP), interior cells (single zone ->
-// O(1)), the fraction of area-uniform lookups that hit a border cell, and a memory
-// estimate. usage: utz-build gridsweep [ds]
+//! Grid-size sweep (1..=20 deg). For each size: total cells, "border" cells (a tz
+//! boundary edge passes through -> lookup needs PIP), interior cells (single zone ->
+//! O(1)), the fraction of area-uniform lookups that hit a border cell, and a memory
+//! estimate.
+//!
+//!     usage: utz-build gridsweep [ds]
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -10,6 +12,8 @@ pub struct Args {
     ds: String,
 }
 
+/// # Errors
+/// Dataset load/parse failure.
 pub fn run(a: Args) -> utz_build::Result<()> {
     let ds = a.ds;
     let feats = utz_build::load(&ds)?;

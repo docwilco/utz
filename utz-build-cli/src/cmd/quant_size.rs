@@ -1,5 +1,7 @@
-// Arc-store encoding shootout (delta+varint vs abs-fixed) at a chosen eps +
-// quant grid. usage: utz-build quant-size [eps_m] [qbits...]
+//! Arc-store encoding shootout (delta+varint vs abs-fixed) at a chosen eps +
+//! quant grid.
+//!
+//!     usage: utz-build quant-size [eps_m] [qbits...]
 use std::io::Write;
 use utz_build::topo;
 
@@ -13,6 +15,11 @@ pub struct Args {
     qbits: Vec<u32>,
 }
 
+/// # Errors
+/// Dataset load/parse failure.
+///
+/// # Panics
+/// If zstd compression of the encoded arc store fails.
 pub fn run(a: Args) -> utz_build::Result<()> {
     let (eps_m, bits) = (a.eps_m, a.qbits);
     let feats = utz_build::load("now")?;
