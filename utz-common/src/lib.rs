@@ -119,8 +119,8 @@ impl QuantBits {
     }
 }
 
-/// Geometry encoding, recorded in the header: what the geometry section
-/// contains and how lookups read it.
+/// Geometry encoding: how an asset stores its polygons and how lookups
+/// read them.
 ///
 /// The three polygon encodings answer bit-identically; they trade storage
 /// for lookup speed. `Coarse` alone trades precision instead: it drops the
@@ -179,8 +179,8 @@ pub enum GeomEncoding {
     Coarse = 3,
 }
 
-/// Simplification algorithm: selects the simplifier the encoder runs, and
-/// is recorded in the header.
+/// Simplification algorithm: which simplifier the encoder ran when the
+/// asset was generated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
 #[repr(u8)]
 pub enum SimplifyAlgo {
@@ -249,9 +249,8 @@ impl Dataset {
     }
 }
 
-/// A container's payload codec: the outer header's codec byte, shared
-/// between the encoder (which picks one) and the reader (which dispatches
-/// on it).
+/// How a container's payload is compressed. The encoder picks one;
+/// loading the container needs the matching decoder compiled in.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Pread, Pwrite)]
 #[repr(u8)]
 pub enum Codec {
