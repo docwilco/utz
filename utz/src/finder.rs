@@ -1,6 +1,6 @@
 //! `Finder`: grid prefilter → per-polygon integer PIP.
 //!
-//! Three memory modes, selected automatically by how the container is loaded
+//! Three memory modes, selected automatically by how the asset is loaded
 //! (only eager is an explicit request); availability falls out of the
 //! environment rung:
 //! - **zero-copy** (`from_static`, uncompressed): the payload is borrowed
@@ -45,7 +45,7 @@ pub struct Position {
     pub lat: f64,
 }
 
-/// The container's payload section. `Cow::Borrowed` = zero-copy mode,
+/// The asset's payload section. `Cow::Borrowed` = zero-copy mode,
 /// `Cow::Owned` = lazy/eager. `Cow` itself lives in `alloc`; on the
 /// bare-`core` rung borrowed is the only possible variant.
 #[cfg(feature = "alloc")]
@@ -320,14 +320,14 @@ impl Finder {
         finder
     }
 
-    /// Borrow a container from `&'static` bytes (flash partition,
+    /// Borrow an asset from `&'static` bytes (flash partition,
     /// `include_bytes!`, …). Zero-copy mode: no RAM payload. Only the
     /// `uncompressed` codec is accepted here.
     ///
     /// # Errors
-    /// [`Error::StaticContainerCompressed`] if the container is compressed;
+    /// [`Error::StaticContainerCompressed`] if the asset is compressed;
     /// the header-validation errors of [`format::outer()`]/[`format::parse()`]
-    /// for an invalid container; [`Error::Misaligned`] for unaligned
+    /// for an invalid asset; [`Error::Misaligned`] for unaligned
     /// `FullRings` coords.
     pub fn from_static(bytes: &'static [u8]) -> Result<Finder> {
         let start = format::outer(bytes)?;
@@ -366,17 +366,17 @@ impl Finder {
         }
     }
 
-    /// Decode a borrowed container into an owned `Finder` (lazy mode),
+    /// Decode a borrowed asset into an owned `Finder` (lazy mode),
     /// decompressing as needed. For compressed assets already in
     /// memory/flash (preset statics, OTA blobs): no copy of the compressed
-    /// input is made. An uncompressed container is copied into owned RAM
+    /// input is made. An uncompressed asset is copied into owned RAM
     /// wholesale; if you own the buffer, [`Finder::from_vec()`] reuses its
     /// allocation instead, and for `&'static` data
     /// [`Finder::from_static()`] borrows it with no copy at all.
     ///
     /// # Errors
     /// The header-validation errors of [`format::outer()`]/[`format::parse()`]
-    /// for an invalid container; [`Error::CodecNotCompiledIn`] /
+    /// for an invalid asset; [`Error::CodecNotCompiledIn`] /
     /// [`Error::DecoderFailed`] if the payload can't be decoded;
     /// [`Error::Misaligned`] for unaligned `FullRings` coords.
     #[cfg(feature = "alloc")]
@@ -403,10 +403,10 @@ impl Finder {
         })
     }
 
-    /// Take ownership of a container buffer: the entry point when the asset
+    /// Take ownership of an asset buffer: the entry point when the asset
     /// arrives at runtime (an OTA download, a network fetch) or when you
     /// bring your own decompression and hand over the result. A compressed
-    /// container is decompressed if its codec is compiled in; an
+    /// asset is decompressed if its codec is compiled in; an
     /// uncompressed one is adopted in place, reusing the allocation. Lazy
     /// mode either way: even an uncompressed owned buffer keeps the payload
     /// in RAM. Zero-copy needs [`from_static`](Finder::from_static).
@@ -499,7 +499,7 @@ impl Finder {
         Ok(f)
     }
 
-    /// Read a container from any `Read` source into an owned buffer.
+    /// Read an asset from any `Read` source into an owned buffer.
     ///
     /// # Errors
     /// [`Error::ReadFailed`] if reading fails; otherwise as
@@ -512,7 +512,7 @@ impl Finder {
         Finder::from_vec(bytes)
     }
 
-    /// TZBB release recorded in the container header.
+    /// TZBB release recorded in the asset header.
     #[must_use]
     pub fn tzbb_release(&self) -> &str {
         core::str::from_utf8(format::release(&self.layout, self.payload_bytes())).unwrap_or("")
@@ -741,7 +741,7 @@ impl Finder {
     /// header demands. Grid candidates are polys localized to the
     /// CELL; the record's bbox is the point-granular refinement: a
     /// miss returns before touching any arc. Lazy path streams the arcs
-    /// straight off the container bytes through the per-edge kernel:
+    /// straight off the asset bytes through the per-edge kernel:
     /// junction vertices are shared by consecutive arcs and the ring closure
     /// is a shared junction too, so the ring's segment set is exactly the
     /// union of each arc's internal segments. Every arc is walked FORWARD

@@ -185,7 +185,7 @@ impl Config {
         self
     }
 
-    /// Fetch sources (cached), build the container, write it, return the
+    /// Fetch sources (cached), build the asset, write it, return the
     /// path. Also writes `<out>.guard.rs`: a compile-time assertion of the
     /// `utz` features this asset needs (via `utz::caps`); `include!` it
     /// next to the `include_bytes!` so a feature mismatch fails the build

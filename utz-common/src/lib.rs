@@ -1,4 +1,4 @@
-//! Types and utilities shared across the workspace: the container codec
+//! Types and utilities shared across the workspace: the asset codec
 //! identifiers, the payload header record both the encoder and the reader
 //! serialize through, and the deterministic LCG behind every reproducible
 //! test/bench sampler.
@@ -128,7 +128,7 @@ impl QuantBits {
 ///
 /// The measured cost/speed ladder lives here. Every other doc site links
 /// back to this table rather than restating numbers. Size columns are
-/// whole containers relative to the `VarintArcs` build of the same preset;
+/// whole assets relative to the `VarintArcs` build of the same preset;
 /// lookup speed is the flash-XIP (execute-in-place, zero RAM) leg of the
 /// embedded bench, same baseline.
 ///
@@ -145,7 +145,7 @@ impl QuantBits {
 /// twice over: the grid is all it keeps, and grids compress extremely well.
 ///
 /// Size columns: `utz-build whittle --extended` (2026-07, TZBB 2026c),
-/// full containers per preset recipe vs the `VarintArcs` build.
+/// full assets per preset recipe vs the `VarintArcs` build.
 /// **TODO(verify):** the XIP lookup column still dates to the 2026-07
 /// bench-firmware runs on earlier payload revisions; re-run on target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
@@ -217,7 +217,7 @@ impl SimplifyAlgo {
     }
 }
 
-/// The dataset a container was built from: TZBB zone set × ocean coverage.
+/// The dataset an asset was built from: TZBB zone set × ocean coverage.
 /// Discriminants keep the wire bitfield: zone set in bits 0–1, bit 2 set =
 /// land-only (clear = with oceans).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Pread, Pwrite)]
@@ -253,8 +253,8 @@ impl Dataset {
     }
 }
 
-/// How a container's payload is compressed. The encoder picks one;
-/// loading the container needs the matching decoder compiled in.
+/// How an asset's payload is compressed. The encoder picks one;
+/// loading the asset needs the matching decoder compiled in.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Pread, Pwrite)]
 #[repr(u8)]
 pub enum Codec {

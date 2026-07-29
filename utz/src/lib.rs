@@ -96,7 +96,7 @@
 //!
 //! ## Geometry decoders
 //!
-//! One feature per geometry encoding; a container whose encoding has no
+//! One feature per geometry encoding; an asset whose encoding has no
 //! compiled decoder is refused at load. Presets enable the decoder their recipe
 //! uses; `custom` users pick the one(s) their assets use. The measured
 //! size/speed ladder is the table on [`GeomEncoding`].
@@ -179,7 +179,7 @@
 //! Uncompressed assets can instead be borrowed zero-copy with
 //! [`Finder::from_static()`] (full-rings assets must be 4-byte aligned: embed
 //! those with the re-exported [`include_bytes_aligned!`]). Outside a
-//! `build.rs`, the `utz-build` CLI writes the same containers: `utz-build gen
+//! `build.rs`, the `utz-build` CLI writes the same assets: `utz-build gen
 //! now 500 --qbits 24 --codec gzip -o tz.utz`.
 //!
 //! What the built asset then costs at runtime is set by which constructor
@@ -223,12 +223,12 @@
 //!
 //! ## Shipping the asset
 //!
-//! The result is one self-describing container (the [`format`][`crate::format`]
+//! The result is one self-describing asset (the [`format`][`crate::format`]
 //! module documents it): the header records every knob, so the decoder is fully
-//! generic and one binary reads any variant handed to it. The container reaches
+//! generic and one binary reads any variant handed to it. The asset reaches
 //! the reader either compiled in (a preset's data crate, or your `build.rs`
 //! output via `include_bytes!`) or as external data: a file, an OTA download, a
-//! dedicated flash partition. Uncompressed containers can be used where they
+//! dedicated flash partition. Uncompressed assets can be used where they
 //! lie: [`Finder::from_static()`] borrows them zero-copy straight from
 //! memory-mapped flash.
 //!
@@ -246,9 +246,9 @@
 //! decoder](#geometry-decoders) or [codec](#compression-codecs)) is refused
 //! with a typed error before any decoding starts. Decompression allocates
 //! exactly one buffer: the header states the decompressed size up front. RAM
-//! use then follows from how the container was loaded:
+//! use then follows from how the asset was loaded:
 //!
-//! - **zero-copy** ([`Finder::from_static()`]): the container is borrowed in
+//! - **zero-copy** ([`Finder::from_static()`]): the asset is borrowed in
 //!   place and lookups stream geometry straight off the stored bytes; no heap
 //!   allocation at all.
 //! - **lazy** ([`Finder::from_slice()`] and friends): the decompressed payload
@@ -296,7 +296,7 @@
 //! flash with no heap and no preload pass at boot; it just costs the most
 //! storage (and less than the cache it replaces: flash coordinates stay
 //! quant-width while the RAM cache rounds up to i32). Compression pulls
-//! the other way: the smallest container, but the decoded payload (or
+//! the other way: the smallest asset, but the decoded payload (or
 //! after [`Finder::eager_from_slice()`], the eager cache) must live in
 //! RAM. `Coarse` sidesteps the trade entirely by dropping the polygons:
 //! near-nothing to store, and via [`Finder::from_static()`] no RAM either
@@ -415,7 +415,7 @@ pub mod data {
     /// i16, 2° grid, gzip; ~71 K flash, peak decode RAM 125 K.
     #[cfg(feature = "tiny")]
     pub use utz_data_tiny::TINY;
-    /// tiny-static preset: tiny's decoded container shipped flat; ~125 K
+    /// tiny-static preset: tiny's decoded asset shipped flat; ~125 K
     /// flash, zero-copy via [`Finder::from_static()`](crate::Finder::from_static),
     /// ~0 RAM, no decoder, bare-`core` capable.
     #[cfg(feature = "tiny-static")]
@@ -457,18 +457,18 @@ pub mod caps {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
 pub enum Error {
-    /// The byte source ends before the container does: shorter than the
+    /// The byte source ends before the asset does: shorter than the
     /// outer header, or a payload cut short. Payload truncation is detected
     /// best-effort: where a codec's failure status doesn't cleanly separate
     /// a short stream from a corrupt one, truncation surfaces as
     /// `DecoderFailed`.
-    #[display("byte source ends before the container does (truncated)")]
+    #[display("byte source ends before the asset does (truncated)")]
     Truncated,
-    /// The magic bytes don't match: not a μTZ container.
-    #[display("not a μTZ container (bad magic)")]
+    /// The magic bytes don't match: not a μTZ asset.
+    #[display("not a μTZ asset (bad magic)")]
     BadMagic,
-    /// A μTZ container, but a format version this reader doesn't speak.
-    #[display("unsupported container version {_0}")]
+    /// A μTZ asset, but a format version this reader doesn't speak.
+    #[display("unsupported asset version {_0}")]
     UnsupportedVersion(#[error(not(source))] u8),
     /// A payload header field holds an invalid value (quantization bits,
     /// geometry byte, flags, or grid degrees).
@@ -480,7 +480,7 @@ pub enum Error {
     /// The decoded payload size disagrees with the outer header's raw length.
     #[display("decoded size disagrees with the header's raw length")]
     RawLengthMismatch,
-    /// The container's codec has no compiled-in backend. Enable the
+    /// The asset's codec has no compiled-in backend. Enable the
     /// matching codec feature.
     #[display("codec {_0:?} has no compiled-in backend")]
     CodecNotCompiledIn(#[error(not(source))] Codec),
@@ -495,22 +495,22 @@ pub enum Error {
     },
     /// Reading the byte source failed; carries the I/O error's text.
     #[cfg(feature = "std")]
-    #[display("reading the container failed: {_0}")]
+    #[display("reading the asset failed: {_0}")]
     ReadFailed(#[error(not(source))] alloc::string::String),
-    /// [`Finder::from_static()`] was handed a compressed container.
+    /// [`Finder::from_static()`] was handed a compressed asset.
     /// Decompression needs an owned buffer (use `from_slice`/`from_vec`).
-    #[display("compressed container passed to from_static")]
+    #[display("compressed asset passed to from_static")]
     StaticContainerCompressed,
-    /// A `FullRings` container's coordinate section is not 4-byte aligned
+    /// A `FullRings` asset's coordinate section is not 4-byte aligned
     /// in memory. Embed static assets with [`include_bytes_aligned!`]`(4, ..)`
     /// instead of a bare `include_bytes!`.
-    #[display("FullRings container not 4-byte aligned (use include_bytes_aligned!(4, ..))")]
+    #[display("FullRings asset not 4-byte aligned (use include_bytes_aligned!(4, ..))")]
     Misaligned,
     /// A `FullRings` coordinate section is misaligned within the payload
-    /// itself: the container is corrupt or came from a broken encoder.
+    /// itself: the asset is corrupt or came from a broken encoder.
     #[display("FullRings coordinate section misaligned within the payload")]
     FullRingsSectionMisaligned,
-    /// A `FullRings` container's ring-end table disagrees with its declared
+    /// A `FullRings` asset's ring-end table disagrees with its declared
     /// coordinate count.
     #[display("FullRings ring-end table disagrees with the coordinate count")]
     FullRingsCountsDisagree,
@@ -545,7 +545,7 @@ impl Error {
     }
 }
 
-/// Embed a `.utz` container with `include_bytes_aligned!(4, path)`. Required
+/// Embed a `.utz` asset with `include_bytes_aligned!(4, path)`. Required
 /// for [`Finder::from_static()`] on `FullRings` assets: the PIP kernels read
 /// `(i32, i32)` pairs straight from the embedded bytes, and a bare
 /// `include_bytes!` guarantees no alignment. Harmless for any other asset.

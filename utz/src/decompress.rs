@@ -1,5 +1,5 @@
 //! Codec backends. Each cargo feature compiles in the decoder for one
-//! payload [`Codec`]; a container whose codec is not compiled in fails
+//! payload [`Codec`]; an asset whose codec is not compiled in fails
 //! with [`Error::CodecNotCompiledIn`]. Backends:
 //!
 //! | feature    | codec                   | crate                               | minimum environment |
