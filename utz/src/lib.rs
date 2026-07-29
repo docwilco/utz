@@ -381,14 +381,8 @@ pub mod pip;
 
 mod finder;
 pub use finder::{Finder, Position};
-/// What an asset says about itself: which codec compressed it
-/// ([`Codec`]), how its geometry is encoded ([`GeomEncoding`]), its
-/// coordinate width ([`QuantBits`]), and which dataset and simplifier
-/// built it ([`Dataset`], [`SimplifyAlgo`]). You meet these in the
-/// parsed header ([`PayloadLayout`](format::PayloadLayout)) and in
-/// errors: [`Error::CodecNotCompiledIn`] and
-/// [`Error::GeometryNotCompiledIn`] carry one to name the decoder this
-/// build lacks.
+// A doc comment here would stamp itself onto all five re-exports;
+// each type carries its own documentation, inlined by rustdoc.
 pub use utz_common::{Codec, Dataset, GeomEncoding, QuantBits, SimplifyAlgo};
 
 /// Preset assets baked in by the data-tier features. With exactly one
