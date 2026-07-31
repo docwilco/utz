@@ -70,6 +70,7 @@
 //! [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
 //! [`Config`]: ../utz_build/config/struct.Config.html
 //! [cli]: ../utz_build_cli/index.html
+//! [`loader`]: ../utz_build/loader/index.html
 //! [reader]: ../utz/index.html
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -195,8 +196,8 @@ pub fn encode_weighted(
 /// Workspace-root `cache/` for downloaded TZBB releases (gitignored).
 /// The path is relative to this crate's source: correct inside the μTZ
 /// workspace, but for a registry-installed build-dependency it lands in
-/// the cargo registry copy — a known limitation to fix before the crate
-/// is published.
+/// the cargo registry copy (a known limitation to fix before the crate
+/// is published).
 #[must_use]
 pub fn cache_dir() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../cache"))

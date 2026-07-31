@@ -71,6 +71,7 @@ assets are read by [`utz`][reader].
 [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
 [`Config`]: https://docwilco.github.io/utz/docs/utz_build/config/struct.Config.html
 [cli]: https://docwilco.github.io/utz/docs/utz_build_cli/index.html
+[`loader`]: https://docwilco.github.io/utz/docs/utz_build/loader/index.html
 [reader]: https://docwilco.github.io/utz/docs/utz/index.html
 
 License: MIT

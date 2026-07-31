@@ -387,6 +387,13 @@ population-density weighting derived from
 [`Finder::from_vec()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_vec
 [`Finder::eager_from_slice()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.eager_from_slice
 [`Error`]: https://docwilco.github.io/utz/docs/utz/enum.Error.html
+[`Error::BadMagic`]: https://docwilco.github.io/utz/docs/utz/enum.Error.html#variant.BadMagic
+[`Error::Truncated`]: https://docwilco.github.io/utz/docs/utz/enum.Error.html#variant.Truncated
+[`Error::UnsupportedVersion`]: https://docwilco.github.io/utz/docs/utz/enum.Error.html#variant.UnsupportedVersion
+[`Error::CodecNotCompiledIn`]: https://docwilco.github.io/utz/docs/utz/enum.Error.html#variant.CodecNotCompiledIn
+[`Error::GeometryNotCompiledIn`]: https://docwilco.github.io/utz/docs/utz/enum.Error.html#variant.GeometryNotCompiledIn
+[`Error::StaticAssetCompressed`]: https://docwilco.github.io/utz/docs/utz/enum.Error.html#variant.StaticAssetCompressed
+[`Error::Misaligned`]: https://docwilco.github.io/utz/docs/utz/enum.Error.html#variant.Misaligned
 [`Finder::from_slice()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_slice
 [`Finder::from_static()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_static
 [`Finder::preload()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload
