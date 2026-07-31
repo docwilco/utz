@@ -12,9 +12,15 @@ pub type Poly<T = f64> = Vec<Ring<T>>;
 /// One open shared-boundary polyline (see `topo`); NOT `std::sync::Arc`.
 pub type Arc<T = f64> = Vec<(T, T)>;
 
+/// One timezone feature as loaded from the source `GeoJSON`: its polygons
+/// plus the tzid and UTC offset metadata.
 pub struct Feat {
+    /// UTC offset in hours (fractional allowed), for ocean zones without
+    /// a tzid.
     pub offset: f64,
+    /// IANA timezone id; `None` for pure-offset ocean zones.
     pub tzid: Option<String>,
+    /// The feature's polygons (exterior ring first, holes after).
     pub polys: Vec<Poly>,
 }
 
@@ -65,6 +71,8 @@ pub fn q24_lat(lat: f64) -> i32 {
     q_lat(lat, QMAX_I24)
 }
 
+/// Append `v`'s low three little-endian bytes: the stored form of an
+/// i24-quantized coordinate.
 pub fn push_i24(out: &mut Vec<u8>, v: i32) {
     let b = v.to_le_bytes();
     out.extend_from_slice(&b[0..3]);

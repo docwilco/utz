@@ -35,12 +35,19 @@ fn put_varint(out: &mut Vec<u8>, mut v: u64) {
 
 type VId = u32;
 
+/// A serialized topology plus the counts and reconstructed geometry the
+/// measurement tools report on.
 pub struct TopoOut {
+    /// The serialized arc store (i24 delta+varint).
     pub bytes: Vec<u8>,
+    /// Shared arcs stored.
     pub arcs: usize,
+    /// Ring-to-arc references across all rings.
     pub ring_refs: usize,
-    pub verts: usize,          // vertices actually stored (after simplification)
-    pub simplified: Vec<Feat>, // geometry reconstructed from the (simplified) arcs
+    /// Vertices actually stored (after simplification).
+    pub verts: usize,
+    /// Geometry reconstructed from the (simplified) arcs.
+    pub simplified: Vec<Feat>,
 }
 
 /// The shared-arc topology itself, before any serialization: what the container
@@ -93,6 +100,8 @@ impl Topology {
     }
 }
 
+/// Build and serialize the shared-arc topology at the default i24
+/// quantization: [`build_topology()`] followed by arc-store serialization.
 #[must_use]
 pub fn encode_topology(feats: &[Feat], eps_deg: f64) -> TopoOut {
     encode_topology_q(feats, eps_deg, 24)

@@ -62,9 +62,11 @@ pub fn to_simplify(algo: SimplifyAlgo, eps_deg: f64) -> utz_simplify::Simplify {
     }
 }
 
+/// Everything one encode run needs to know: the recipe knobs plus the
+/// provenance recorded in the asset's header.
 pub struct Params<'a> {
-    /// bits 0–1: zone set (0 = now, 1 = 1970, 2 = all/comprehensive);
-    /// bit 2 set = land-only (clear = with-oceans). See `utz_build::Dataset::code()`.
+    /// The dataset code byte: bits 0–1 zone set (0 = now, 1 = 1970,
+    /// 2 = all/comprehensive), bit 2 set = land-only (clear = with-oceans).
     pub dataset: u8,
     /// TZBB release tag recorded in the header (rules snapshot / cache key)
     pub tzbb_release: &'a str,

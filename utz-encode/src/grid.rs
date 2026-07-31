@@ -258,12 +258,17 @@ pub enum Order {
     CellDominantFirst,
 }
 
+/// The serializable grid prefilter: one u16 per cell plus the interned
+/// candidate lists in compressed-sparse-row form.
 pub struct Csr {
     /// u16 per cell: high bit 0 = zone id (or `NO_ZONE` marker semantics left to
     /// the container), high bit 1 = index into the interned lists
     pub primary: Vec<u16>,
+    /// Start offset of each interned list in [`Csr::list_ids`].
     pub list_offsets: Vec<u16>,
+    /// The interned candidate lists, concatenated.
     pub list_ids: Vec<u16>,
+    /// Distinct interned lists.
     pub uniq_lists: usize,
 }
 

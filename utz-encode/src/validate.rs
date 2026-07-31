@@ -38,6 +38,9 @@ pub struct Bad {
     pub locs: Vec<Loc>,
 }
 
+/// Sweep every ring and tally the problems: self-crossings, collinear
+/// overlaps, self-touches, and degenerate rings.
+#[must_use]
 pub fn measure(rings: impl Iterator<Item = Ring<i32>>) -> Bad {
     let mut b = Bad::default();
     for (ri, c) in rings.enumerate() {
