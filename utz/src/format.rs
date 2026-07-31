@@ -1,8 +1,18 @@
-//! Self-describing container parsing. The payload header is the shared
-//! [`PayloadHeader`] record (utz-common): the encoder in utz-encode
-//! serializes the same struct, so the two cannot drift. It sits in
-//! plaintext after the outer header, so a container is validated BEFORE
-//! any decompression; only the section blob after it is compressed.
+//! The asset container format and its parsing. Using μTZ does not
+//! require this module: every [`Finder`](crate::Finder) constructor
+//! calls it internally. It is public for the cases where you want to
+//! look at an asset without loading it: sniff its provenance (dataset,
+//! ε, codec, release) or cheaply validate an OTA download via
+//! [`outer()`] + [`parse()`] before committing it to flash.
+//!
+//! Container layout: an 8-byte plaintext prologue ([`MAGIC`],
+//! [`VERSION`], reserved padding), the 64-byte plaintext payload header
+//! (the shared [`PayloadHeader`] record, which both the encoder and this
+//! parser serialize through, so the two cannot drift), then the section
+//! blob: zone strings, geometry sections per the encoding, grid tables,
+//! and the release string, compressed as one unit when a codec is set.
+//! Because the header stays plaintext, an asset is identified and
+//! validated BEFORE any decompression.
 //!
 //! All multi-byte values little-endian. The parser stores OFFSETS into the
 //! section blob (no self-referential slices), so the same code serves
@@ -32,50 +42,78 @@ pub struct PayloadLayout {
     pub grid_deg: f32,
     pub eps_m: f32,
     pub n_features: u16,
-    // zone table: the string-offset table (u16[n_features+1]) starts the
-    // section blob at offset 0; the tzid pool follows it
+    /// The tzid pool; the zone string-offset table (`u16[n_features+1]`)
+    /// starts the section blob at offset 0, this pool follows it.
     pub pool: usize,
-    // arc store
+    /// Arcs in the arc store.
     pub n_arcs: u32,
-    pub arc_offsets: usize, // u32[n_arcs+1]
+    /// Arc offset table, `u32[n_arcs+1]`.
+    pub arc_offsets: usize,
+    /// The arc coordinate data the offset table indexes.
     pub arc_data: usize,
-    // ring index (per-poly records; grid candidates are polys)
-    /// poly id → feature id, `u16[eager_polys]`
+    /// Poly id → feature id, `u16[eager_polys]` (grid candidates are
+    /// polys; per-poly ring records follow).
     pub parent: usize,
-    pub poly_offsets: usize, // u32[eager_polys+1]
+    /// Per-poly ring-record offsets, `u32[eager_polys+1]`.
+    pub poly_offsets: usize,
+    /// The ring records the poly offsets index.
     pub ring_data: usize,
-    // full-rings sections (geom=2 only; usize::MAX otherwise): the
-    // preload-cache layout serialized — coords 4-aligned within the payload
-    pub full_coords: usize,    // (i32, i32)[eager_coords]
-    pub full_ring_ends: usize, // u32[eager_rings]
-    pub full_polys: usize,     // (bbox [i32; 4] + ring_end u32)[eager_polys]
-    // eager-cache reservation counts: exact Vec sizes for `preload`
-    // (coords is Σ referenced-arc vcounts — may only over-estimate)
+    /// `FullRings` coords, `(i32, i32)[eager_coords]`, 4-aligned within
+    /// the payload (geom=2 only; `usize::MAX` otherwise — the
+    /// preload-cache layout serialized).
+    pub full_coords: usize,
+    /// `FullRings` ring ends, `u32[eager_rings]` (geom=2 only).
+    pub full_ring_ends: usize,
+    /// `FullRings` per-poly records, bbox `[i32; 4]` + ring-end `u32`
+    /// (geom=2 only).
+    pub full_polys: usize,
+    /// Eager-cache coordinate reservation: exact `Vec` size for
+    /// `preload` (Σ referenced-arc vcounts; may only over-estimate).
     pub eager_coords: u32,
+    /// Eager-cache ring reservation.
     pub eager_rings: u32,
+    /// Eager-cache poly reservation.
     pub eager_polys: u32,
-    // grid
+    /// Grid columns.
     pub ncols: u16,
+    /// Grid rows.
     pub nrows: u16,
-    pub primary: usize, // u16[ncols*nrows]
+    /// Primary grid table, `u16[ncols*nrows]`.
+    pub primary: usize,
+    /// Distinct border-cell candidate lists.
     pub uniq: u16,
-    pub list_offsets: usize, // u16[uniq+1]
+    /// Candidate-list offsets, `u16[uniq+1]`.
+    pub list_offsets: usize,
+    /// The interned candidate lists the offsets index.
     pub list_ids: usize,
-    // TZBB release string (the payload tail)
+    /// TZBB release string offset (the payload tail).
     pub release_off: usize,
+    /// TZBB release string length.
     pub release_len: usize,
 }
 
+/// Little-endian u16 at `pos`.
+///
+/// # Panics
+/// If `pos + 2` exceeds `b` (all `read_*` helpers assume offsets already
+/// validated by [`parse()`]).
 #[must_use]
 pub fn read_u16(b: &[u8], pos: usize) -> u16 {
     u16::from_le_bytes([b[pos], b[pos + 1]])
 }
+/// Little-endian u32 at `pos`.
+///
+/// # Panics
+/// If `pos + 4` exceeds `b`.
 #[must_use]
 pub fn read_u32(b: &[u8], pos: usize) -> u32 {
     u32::from_le_bytes([b[pos], b[pos + 1], b[pos + 2], b[pos + 3]])
 }
 
 /// Fixed-width signed coord: 2/3/4 bytes little-endian, sign-extended.
+///
+/// # Panics
+/// If the coord's bytes run past `b`.
 #[must_use]
 pub fn read_fixed(b: &[u8], pos: usize, quant_bits: QuantBits) -> i32 {
     match quant_bits {
@@ -94,6 +132,9 @@ pub fn read_fixed(b: &[u8], pos: usize, quant_bits: QuantBits) -> i32 {
 }
 
 /// Varint; returns (value, `next_pos`).
+///
+/// # Panics
+/// If the varint runs past `b`.
 #[must_use]
 pub fn read_varint(b: &[u8], mut pos: usize) -> (u64, usize) {
     let (mut v, mut shift) = (0u64, 0u32);
@@ -107,6 +148,7 @@ pub fn read_varint(b: &[u8], mut pos: usize) -> (u64, usize) {
         shift += 7;
     }
 }
+/// Undo zigzag encoding: map `0, 1, 2, 3, …` back to `0, -1, 1, -2, …`.
 #[must_use]
 pub fn unzigzag(v: u64) -> i64 {
     (v >> 1).cast_signed() ^ -((v & 1).cast_signed())

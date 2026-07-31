@@ -1,4 +1,7 @@
-//! Per-polygon integer point-in-polygon.
+//! Per-polygon integer point-in-polygon: the kernels behind
+//! [`lookup()`](crate::Finder::lookup). Nothing here is needed to use
+//! μTZ; the module is public for the benches and for auditing the
+//! exactness claims below.
 //!
 //! Even-odd ray cast (ray toward +x) over ONE polygon's rings: exterior
 //! first, holes after; parity XORs across rings, so a point inside a hole
@@ -51,7 +54,7 @@
 //! - [`edge`]: one edge, the streaming unit. The test is
 //!   per-segment, endpoint-symmetric, and parity accumulation is
 //!   order-independent, so lazy/static lookups fold arcs through it straight
-//!   off the container bytes with O(1) state and no decode buffer.
+//!   off the asset bytes with O(1) state and no decode buffer.
 
 use core::ops::{Mul, Sub};
 
@@ -94,19 +97,26 @@ impl CoordPair for (i16, i16) {
 
 /// Ring-level verdict: `Inside` toggles polygon parity, `Boundary` claims.
 pub enum RingHit {
+    /// The point is inside this ring: toggle the polygon's parity.
     Inside,
+    /// The point is outside this ring.
     Outside,
+    /// The point lies exactly on the ring: claimed immediately.
     Boundary,
 }
 
 /// Edge-level verdict for streaming accumulation.
 pub enum EdgeHit {
+    /// The +x ray crosses this edge: toggle parity.
     Cross,
+    /// No crossing.
     Miss,
+    /// The point lies exactly on this edge: claimed immediately.
     Boundary,
 }
 
 /// `rings[0]` = exterior, rest = holes; no duplicated closing vertex.
+#[must_use]
 pub fn contains<W, P>(rings: &[&[P]], px: P::Narrow, py: P::Narrow) -> bool
 where
     P: CoordPair,
@@ -125,6 +135,7 @@ where
 
 /// Even-odd scan of one OPEN ring (the closing edge `last→first` is
 /// implied). `Inside` = odd crossings of the +x ray from `(px, py)`.
+#[must_use]
 pub fn ring_hit<W, P>(ring: &[P], px: P::Narrow, py: P::Narrow) -> RingHit
 where
     P: CoordPair,
@@ -167,6 +178,7 @@ where
     reason = "the per-edge kernel every PIP loop folds through; inlining must not depend on per-target heuristics"
 )]
 #[inline(always)]
+#[must_use]
 pub fn edge<W, N>(a: (N, N), b: (N, N), px: N, py: N) -> EdgeHit
 where
     N: Copy + Ord,

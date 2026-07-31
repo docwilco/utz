@@ -1,6 +1,9 @@
-//! Codec backends. Each cargo feature compiles in the decoder for one
-//! payload [`Codec`]; an asset whose codec is not compiled in fails
-//! with [`Error::CodecNotCompiledIn`]. Backends:
+//! Codec backends. You pick codecs with cargo *features*; every
+//! [`Finder`](crate::Finder) constructor calls this module for you, and
+//! it is public mainly so the backend table below has a home. Each
+//! feature compiles in the decoder for one payload [`Codec`]; an asset
+//! whose codec is not compiled in fails with
+//! [`Error::CodecNotCompiledIn`]. Backends:
 //!
 //! | feature    | codec                   | crate                               | minimum environment |
 //! |------------|-------------------------|-------------------------------------|---------------------|
