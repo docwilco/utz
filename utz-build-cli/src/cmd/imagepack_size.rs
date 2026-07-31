@@ -1,7 +1,7 @@
 //! Does packing `FullRings` coords to quant width beat general compression
 //! of the zero-padded i32 pairs? (Decides whether packed images are
 //! worth it for *compressed* assets; uncompressed XIP always saves the raw
-//! 25–50%.) Takes v6 geom=2 codec-none containers, rewrites the coords
+//! 25–50%.) Takes uncompressed full-rings assets, rewrites the coords
 //! section at quant width, compresses both payloads at preset settings.
 //!
 //! ```text
@@ -14,7 +14,7 @@ use utz_common::GeomEncoding;
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// codec-none .utz container path(s)
+    /// codec-none .utz asset path(s)
     #[arg(required = true)]
     paths: Vec<String>,
 }

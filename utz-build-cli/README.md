@@ -5,9 +5,7 @@
 Not to be confused with the `utz-build` *library*: that reader-free
 crate is what build scripts depend on. The split keeps build scripts
 light: this CLI pulls in the runtime reader (`utz`) and measurement
-dependencies that a `build.rs` never needs. (This doc surface is the
-package's lib target; the bin target is `doc = false` so the two do
-not race for the `utz_build_cli` doc directory.)
+dependencies that a `build.rs` never needs.
 
 ```
 cargo run --release -p utz-build-cli -- <subcommand> [args]

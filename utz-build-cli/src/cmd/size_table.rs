@@ -1,8 +1,8 @@
-//! Full pipeline size table on the
-//! REAL container — topology × RDP(ε) × quant(i16/i24) × codec (incl gzip).
+//! Full pipeline size table on the *real* asset: topology × RDP(ε) ×
+//! quant(i16/i24) × codec (incl gzip).
 //!
 //! ```text
-//! usage: utz-build-cli size-table [ds] [grid_deg]
+//! utz-build-cli size-table [ds] [grid_deg]
 //! ```
 
 use utz_build::encode::{self, Codec, Params};

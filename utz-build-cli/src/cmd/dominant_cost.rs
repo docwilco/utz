@@ -1,11 +1,11 @@
-//! Dominant-first candidate-list ordering —
-//! how many extra unique lists / KB does it cost vs id-sorted interning, and how
-//! much PIP early-exit does each ordering actually buy?
+//! Dominant-first candidate-list ordering: how many extra unique lists /
+//! KB does it cost vs id-sorted interning, and how much PIP early-exit
+//! does each ordering actually buy?
 //!
 //! Orderings:
 //!   id-sorted          — baseline, maximal interning
 //!   area-desc          — global zone area descending; deterministic per set, so
-//!                        interning is preserved BY CONSTRUCTION (verified here)
+//!                        interning is preserved *by construction* (verified here)
 //!   cell-dominant-first — this cell's dominant zone first; best early-exit,
 //!                        breaks interning (the cost being measured)
 //!
@@ -14,7 +14,7 @@
 //! lookups landing in border cells.
 //!
 //! ```text
-//! usage: utz-build-cli dominant-cost [deg] [datasets...]
+//! utz-build-cli dominant-cost [deg] [datasets...]
 //! ```
 
 use utz_build::grid::{self, Order};

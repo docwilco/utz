@@ -1,5 +1,7 @@
-//! Does geo's integer PIP agree with its f64 PIP? Tests overflow behaviour of the
-//! `SimpleKernel` at different coord types/grids on OSM -now.
+//! Does geo's integer PIP agree with its f64 PIP? Tests overflow behaviour
+//! of the `SimpleKernel` at different coord types/grids on the `now`
+//! dataset.
+
 use geo::Contains;
 use geo_types::{LineString, Point, Polygon};
 

@@ -1,12 +1,12 @@
-//! Ratio-vs-window sweep + MEASURED
-//! peak decode RAM. Encodes the real payload per codec across window/dict
-//! sizes (capped at decoded size), then decodes each blob through the exact
-//! paths `utz` ships (`utz::decompress` — ruzstd backend here, not zstd-sys)
-//! under a tracking allocator. Goal: pick preset windows at the ratio knee and
+//! Ratio-vs-window sweep + *measured* peak decode RAM. Encodes the real
+//! payload per codec across window/dict sizes (capped at decoded size),
+//! then decodes each blob through the exact paths `utz` ships
+//! (`utz::decompress()` — ruzstd backend here, not zstd-sys) under a
+//! tracking allocator. Goal: pick preset windows at the ratio knee and
 //! verify the `peak ≈ decoded + window + state` model.
 //!
 //! ```text
-//! usage: utz-build-cli window-sweep [ds] [grid_deg] [--eps E [--quant B]]
+//! utz-build-cli window-sweep [ds] [grid_deg] [--eps E [--quant B]]
 //! ```
 
 use std::alloc::{GlobalAlloc, Layout, System};

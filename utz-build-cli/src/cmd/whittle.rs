@@ -1,10 +1,10 @@
 //! Per-stage size reduction of the whittling-down pipeline, measured on
 //! the real preset recipes: source `GeoJSON` → parsed f64 coordinates →
 //! shared-arc topology → density-weighted simplification → quantized +
-//! serialized sections → compressed container. The stages mirror the utz
+//! serialized sections → compressed asset. The stages mirror the utz
 //! crate docs' "How it works" list; this is the command that keeps those
 //! numbers honest. `--extended` adds the geometry-encodings matrix (raw
-//! payload, recipe-codec container, and xz container per `GeomEncoding`),
+//! payload, recipe-codec asset, and xz asset per `GeomEncoding`),
 //! the size columns of the ladder table on `GeomEncoding`.
 //!
 //! ```text
@@ -38,7 +38,7 @@ struct Recipe {
     grid_deg: f64,
     w_min: f64,
     codec: Codec,
-    /// also report the uncompressed container (the `-static` twin)
+    /// also report the uncompressed asset (the `-static` twin)
     static_twin: bool,
 }
 
@@ -134,7 +134,7 @@ fn ratio(n: u64, d: u64) -> f64 {
     n as f64 / d as f64
 }
 
-/// Raw payload + compressed container per geometry encoding, with ratios
+/// Raw payload + compressed asset per geometry encoding, with ratios
 /// vs `VarintArcs`: the size columns of the `GeomEncoding` ladder table.
 fn encodings_matrix(
     r: &Recipe,

@@ -1,8 +1,10 @@
-//! Antimeridian scan: is TZBB with-oceans
-//! already split at ±180°? Flags any edge whose lon span exceeds 180° (a true
-//! crossing stored planar) and any coordinate outside [-180, 180] / [-90, 90].
+//! Antimeridian scan: is TZBB with-oceans already split at ±180°? Flags
+//! any edge whose lon span exceeds 180° (a true crossing stored planar)
+//! and any coordinate outside [-180, 180] / [-90, 90].
 //!
-//! usage: utz-build-cli amscan [datasets...]
+//! ```text
+//! utz-build-cli amscan [datasets...]
+//! ```
 
 #[derive(clap::Args)]
 pub struct Args {

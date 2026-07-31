@@ -1,12 +1,14 @@
-//! Grid size × P(PIP) × memory with the
-//! *real* grid + interned-CSR builder (grid.rs), replacing gridsweep's crude
-//! border-cell estimate. For each cell size: border-cell fraction, sampled
-//! P(PIP) over uniform lon/lat points, unique interned lists, and the memory
-//! split (primary array vs CSR side table), dominant-first ordering as decided.
+//! Grid size × P(PIP) × memory with the *real* grid + interned-CSR builder
+//! ([`utz_encode::grid`]), replacing gridsweep's crude border-cell
+//! estimate. For each cell size: border-cell fraction, sampled P(PIP) over
+//! uniform lon/lat points, unique interned lists, and the memory split
+//! (primary array vs CSR side table), dominant-first ordering as decided.
 //!
 //! ```text
-//! usage: utz-build-cli csr-sweep [eps_m]
+//! utz-build-cli csr-sweep [eps_m]
 //! ```
+//!
+//! [`utz_encode::grid`]: ../utz_encode/grid/index.html
 
 use utz_build::grid::{self, Order};
 use utz_build::topo;

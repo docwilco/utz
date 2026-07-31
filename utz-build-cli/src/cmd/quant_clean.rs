@@ -1,14 +1,16 @@
 //! Quantization-artifact report: how badly does grid snapping mangle the
 //! ring geometry (self-crossings, collinear self-overlaps, self-touches,
-//! zero-area rings), and how much of that does the clean.rs pass remove.
-//! Rings are assembled from the shared arcs exactly like the encoder does;
-//! the measuring itself lives in utz-encode's validate module (shared with
-//! the viewer's problems panel). `--locate` lists each surviving
-//! crossing/overlap as a live-viewer URL.
+//! zero-area rings), and how much of that does the [`utz_encode::clean`]
+//! pass remove. Rings are assembled from the shared arcs exactly like the
+//! encoder does; the measuring itself lives in utz-encode's validate
+//! module (shared with the viewer's problems panel). `--locate` lists each
+//! surviving crossing/overlap as a live-viewer URL.
 //!
 //! ```text
 //! utz-build-cli quant-clean [ds] [eps_m] [qbits...] [--locate]
 //! ```
+//!
+//! [`utz_encode::clean`]: ../utz_encode/clean/index.html
 
 use utz_build::clean::{self, CleanStats};
 use utz_build::topo;

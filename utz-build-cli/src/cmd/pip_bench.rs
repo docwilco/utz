@@ -1,13 +1,13 @@
-//! Hand-rolled i64 PIP vs the geo i64
-//! oracle vs geometry-rs (tzf-rs's PIP crate, tidwall/geometry port) on real
-//! OSM geometry — correctness (target 0 disagreements vs geo) + speed.
+//! Hand-rolled i64 PIP vs the geo i64 oracle vs geometry-rs (tzf-rs's PIP
+//! crate, tidwall/geometry port) on real OSM geometry — correctness
+//! (target 0 disagreements vs geo) + speed.
 //!
-//! All contenders get the SAME quantized (i24) simplified geometry and run the
+//! All contenders get the *same* quantized (i24) simplified geometry and run the
 //! same linear first-hit scan with the same hoisted bbox precheck, so the
 //! comparison is pure per-edge PIP.
 //!
 //! ```text
-//! usage: utz-build-cli pip-bench [ds] [eps_m] [npts]
+//! utz-build-cli pip-bench [ds] [eps_m] [npts]
 //! ```
 
 use std::time::Instant;

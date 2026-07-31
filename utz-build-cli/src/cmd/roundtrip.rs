@@ -1,9 +1,9 @@
-//! End-to-end roundtrip: encode the real container, decode with the runtime
+//! End-to-end roundtrip: encode the real asset, decode with the runtime
 //! Finder, and validate `lookup()` against a linear first-hit PIP scan over the
 //! same quantized geometry (the `grid_bench` reference).
 //!
 //! ```text
-//! usage: utz-build-cli roundtrip [ds] [eps_m] [npts]
+//! utz-build-cli roundtrip [ds] [eps_m] [npts]
 //! ```
 
 use std::time::Instant;

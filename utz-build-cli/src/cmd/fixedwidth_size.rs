@@ -1,14 +1,14 @@
 //! What does dropping delta+varint geometry cost in flash? (The
 //! fixed-width-arcs / streaming-eager question.)
 //!
-//! For a codec-*none* container, rebuilds the payload in two variants and
+//! For a codec-*none* asset, rebuilds the payload in two variants and
 //! compresses all three with the preset encoders (`utz_encode::compress()`):
 //!
 //! - **A (fixed-width arcs)**: the interned arc store re-emitted as absolute
 //!   fixed-width coords (no deltas, no varints). Streaming/XIP lookups would
 //!   skip the per-vertex varint decode: near-eager speed, zero RAM cache.
 //! - **B (eager layout)**: geometry flattened per ring as i32 pairs, the
-//!   exact `preload()` cache image, so after decompression the buffer IS the
+//!   exact `preload()` cache image, so after decompression the buffer *is* the
 //!   eager cache (shared arcs duplicated, like preload does).
 //!
 //! Section splicing only rewrites the geometry blocks; header offset fields
@@ -64,7 +64,7 @@ fn arc_coords(payload: &[u8], header: &format::PayloadLayout, id: usize) -> Vec<
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// codec-none .utz container path(s)
+    /// codec-none .utz asset path(s)
     #[arg(required = true)]
     paths: Vec<String>,
 }

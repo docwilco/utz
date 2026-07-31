@@ -3,7 +3,7 @@
 //! `python3 -m http.server -d webdist`).
 //!
 //! ```text
-//! usage: utz-build-cli visualize [outdir]
+//! utz-build-cli visualize [outdir]
 //!   writes outdir (default webdist/): index.html · utz_whittle_stats.wasm ·
 //!   heat.bin.z · <dataset>.bin.z + zones-<dataset>.bin.z for
 //!   now/1970/all/land-now/land-1970/land-all
@@ -193,7 +193,7 @@ fn zip_fp(zip: &Path) -> String {
 }
 
 /// Zone lattice for the coarse-prefilter dominance view: encode a fine-ε
-/// container and let the *runtime* answer a 0.1° lattice, so the browser
+/// asset and let the *runtime* answer a 0.1° lattice, so the browser
 /// shows exactly what the shipped grid+PIP would answer. Format
 /// (little-endian): `"uTZz" | u32 w | u32 h | u32 n_zones
 /// | per zone: u16 len + utf8 tzid | pad to 2 | u16 ids[w·h]`
@@ -281,7 +281,7 @@ fn write_z(path: &Path, data: &[u8]) -> utz_build::Result<usize> {
     Ok(z.len())
 }
 
-/// Build utz-whittle-stats (simplify + live container encode + stats
+/// Build utz-whittle-stats (simplify + live asset encode + stats
 /// surface) for wasm32-unknown-unknown and return the cdylib bytes.
 fn build_wasm() -> utz_build::Result<Vec<u8>> {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/..");

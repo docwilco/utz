@@ -4,7 +4,7 @@
 //! sample.
 //!
 //! ```text
-//! usage: utz-build-cli rdp-sweep [ds]
+//! utz-build-cli rdp-sweep [ds]
 //! ```
 
 use geo::Contains;

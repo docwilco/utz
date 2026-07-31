@@ -1,10 +1,10 @@
-//! Grid-size sweep (1..=20 deg). For each size: total cells, "border" cells (a tz
-//! boundary edge passes through -> lookup needs PIP), interior cells (single zone ->
-//! O(1)), the fraction of area-uniform lookups that hit a border cell, and a memory
-//! estimate.
+//! Grid-size sweep (1..=20 deg). For each size: total cells, "border"
+//! cells (a tz boundary edge passes through → lookup needs PIP), interior
+//! cells (single zone → O(1)), the fraction of area-uniform lookups that
+//! hit a border cell, and a memory estimate.
 //!
 //! ```text
-//! usage: utz-build-cli gridsweep [ds]
+//! utz-build-cli gridsweep [ds]
 //! ```
 
 #[derive(clap::Args)]

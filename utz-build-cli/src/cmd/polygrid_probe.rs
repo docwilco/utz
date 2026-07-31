@@ -1,6 +1,6 @@
 //! Would a poly-granular grid replace the per-poly bboxes?
 //!
-//! Rebuilds the grid from a codec-*none* container's geometry twice with the
+//! Rebuilds the grid from a codec-*none* asset's geometry twice with the
 //! real builder (`grid::build()` + `intern_csr`): once per feature (today's
 //! format) and once with each polygon exploded into its own pseudo-feature
 //! (the "purely grid" design: border-cell lists reference polys directly,
@@ -151,7 +151,7 @@ fn measure(feats: &[Feat], deg: f64) -> (grid::CellGrid, Stats) {
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// codec-none .utz container path(s)
+    /// codec-none .utz asset path(s)
     #[arg(required = true)]
     paths: Vec<String>,
 }

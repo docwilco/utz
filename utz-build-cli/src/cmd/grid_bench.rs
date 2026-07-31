@@ -1,9 +1,9 @@
-//! Real grid lookup bench: interned-CSR
-//! grid prefilter (interior O(1), border cells → dominant-first PIP) vs the
-//! plain linear first-hit scan, on the same quantized simplified geometry.
+//! Real grid lookup bench: interned-CSR grid prefilter (interior O(1),
+//! border cells → dominant-first PIP) vs the plain linear first-hit scan,
+//! on the same quantized simplified geometry.
 //!
 //! ```text
-//! usage: utz-build-cli grid-bench [ds] [eps_m] [deg] [npts]
+//! utz-build-cli grid-bench [ds] [eps_m] [deg] [npts]
 //! ```
 
 use std::time::Instant;
