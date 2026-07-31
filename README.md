@@ -2,8 +2,8 @@
 
 Tiny, embeddable latitude/longitude → IANA timezone lookup for Rust.
 
-The library is the [`utz`](utz/) crate — its [README](utz/README.md) covers
-features, preset bundles, and usage. Everything else here exists to build,
+The library is the [`utz`](utz/) crate: its [README](utz/README.md) covers
+features, presets, and usage. Everything else here exists to build,
 measure, test, benchmark, or ship the data it reads.
 
 - [Interactive viewer](https://docwilco.github.io/utz/live/) — explore the
@@ -15,10 +15,10 @@ measure, test, benchmark, or ship the data it reads.
 | crate | role |
 |---|---|
 | [`utz`](utz/) | the runtime lookup library (lat/lon → IANA tzid) |
-| [`utz-common`](utz-common/) | container header types shared by reader and encoder |
-| [`utz-encode`](utz-encode/) | container encoder library |
+| [`utz-common`](utz-common/) | asset-format types shared by reader and encoder |
+| [`utz-encode`](utz-encode/) | asset encoder library |
 | [`utz-build`](utz-build/) | builder library: encoder pipeline, source loading, density weighting, viz generation |
-| [`utz-build-cli`](utz-build-cli/) | the `utz-build` binary: `gen` plus the measurement and bench subcommands |
+| [`utz-build-cli`](utz-build-cli/) | the `utz-build-cli` binary: `gen` plus the measurement and bench subcommands |
 | [`utz-simplify`](utz-simplify/) | boundary-simplification algorithms (native + wasm for the viewer) |
 | [`utz-whittle-stats`](utz-whittle-stats/) | pipeline size-reduction stats: the whittle ladder and the viewer's wasm surface |
 | [`utz-data-tiny`](utz-data-tiny/) | preset data crate: the generated `tiny` asset |

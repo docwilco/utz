@@ -494,7 +494,7 @@ deliberate bare-metal intent and satisfies choice 2:
     IDE-completable, no file discovery (`CARGO_MANIFEST_DIR`/`OUT_DIR` are the
     consumer's own): `utz_build::Config::new().dataset(Now).rdp_meters(500.0)
     .generate()?` → `include_bytes!(concat!(env!("OUT_DIR"), "/tz.utz"))`.
-  - *CLI* (`icu_datagen` pattern): `utz-build gen --rdp 500 -o tz.utz` — for
+  - *CLI* (`icu_datagen` pattern): `utz-build-cli gen 500 -o tz.utz` — for
     flash-partition/OTA images, experiments, and the CI that builds the data
     crates. Assets are **never committed to a repo**; they're regenerated
     (downloads are cond-GET-cached, so regeneration is cheap).
@@ -555,7 +555,7 @@ data-in-crate), `getrandom` (why one-of-N features fail: additivity).
 
 ## 12. Visualization
 
-`utz-build/viz.rs` + `cargo run -p utz-build -- visualize` regenerates the
+`utz-build/viz.rs` + `cargo run -p utz-build-cli -- visualize` regenerates the
 viewers (keyless Carto/Esri tiles, scale bar, on-the-fly JS quantization; HTML
 self-embeds data → generated artifact, not a committed asset). Users tune
 ε/quant/grid **before** committing the build knobs. Link a CI-built copy from docs.
