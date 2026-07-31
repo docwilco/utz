@@ -13,9 +13,12 @@ extern crate alloc;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
-// on-disk magic stays ASCII ("μ" is 2 bytes in UTF-8 and byte literals
-// reject non-ASCII); the project brands as μTZ, the container as uTZ1
+/// The magic bytes every `.utz` asset starts with. ASCII on purpose ("μ"
+/// is 2 bytes in UTF-8 and byte literals reject non-ASCII): the project
+/// brands as μTZ, the container as uTZ1.
 pub const MAGIC: [u8; 4] = *b"uTZ1";
+/// The container-format version this workspace reads and writes; a reader
+/// refuses any other value.
 pub const VERSION: u8 = 10;
 
 /// The container prologue: `MAGIC` (4), `VERSION` (1), 3 reserved bytes.
@@ -141,13 +144,15 @@ impl QuantBits {
 ///
 /// Narrow-quant `FullRings` XIP even outran the RAM preload cache on the
 /// embedded bench. On fixed-width payloads the codec ranking flips: xz
-/// overtakes brotli at every shape. `Coarse` shrinks with preset fineness
+/// overtakes brotli at every preset. `Coarse` shrinks with preset fineness
 /// twice over: the grid is all it keeps, and grids compress extremely well.
 ///
-/// Size columns: `utz-build whittle --extended` (2026-07, TZBB 2026c),
-/// full assets per preset recipe vs the `VarintArcs` build.
-/// **TODO(verify):** the XIP lookup column still dates to the 2026-07
-/// bench-firmware runs on earlier payload revisions; re-run on target.
+/// Size columns: `utz-build-cli whittle --extended` (2026-07, TZBB 2026c),
+/// full assets per preset recipe vs the `VarintArcs` build. The XIP
+/// lookup column is from the 2026-07 bench-firmware runs against earlier
+/// payload revisions; read it as a relative ladder.
+// TODO(verify): re-run the XIP lookup column on target against the
+// current payload revisions (last measured 2026-07 on earlier ones).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
 #[repr(u8)]
 pub enum GeomEncoding {
@@ -217,23 +222,33 @@ impl SimplifyAlgo {
     }
 }
 
-/// The dataset an asset was built from: TZBB zone set × ocean coverage.
-/// Discriminants keep the wire bitfield: zone set in bits 0–1, bit 2 set =
-/// land-only (clear = with oceans).
+/// The dataset an asset was built from: which
+/// [timezone-boundary-builder] release, as a zone set × ocean coverage
+/// pair. The zone set trades zone count for historical fidelity: `now`
+/// and `1970` merge zones whose rules are identical since that date,
+/// `all` keeps every distinct tzid. Ocean coverage decides whether
+/// maritime timezones tile the rest of the planet or queries at sea
+/// return `None`. (Discriminants keep the wire bitfield: zone set in
+/// bits 0–1, bit 2 set = land-only.)
+///
+/// [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Pread, Pwrite)]
 #[repr(u8)]
 pub enum Dataset {
-    /// zones distinct today, with oceans
+    /// Zones whose rules are identical from today onward merged, oceans
+    /// covered: the smallest set, and the preset default.
     Now = 0,
-    /// zones distinct since 1970, with oceans
+    /// Zones identical since 1970 merged, oceans covered: enough to
+    /// resolve any post-1970 civil time correctly.
     Since1970 = 1,
-    /// every distinct tzid, with oceans
+    /// Every distinct tzid kept, oceans covered: full historical
+    /// fidelity, the largest set.
     All = 2,
-    /// zones distinct today, land only
+    /// `Now` without maritime zones: queries at sea return `None`.
     NowLandOnly = 4,
-    /// zones distinct since 1970, land only
+    /// `Since1970` without maritime zones.
     Since1970LandOnly = 5,
-    /// every distinct tzid, land only
+    /// `All` without maritime zones.
     AllLandOnly = 6,
 }
 
