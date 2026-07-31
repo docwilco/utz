@@ -20,7 +20,7 @@ default = []
 # along for decompression); recipes are pinned in utz-build's Config. Naming
 # grammar: a
 # bare tier name is the compressed asset (lazy/eager modes), `<tier>-static`
-# is the same decoded container shipped flat — zero-copy via `from_static`,
+# is the same decoded asset shipped flat — zero-copy via `from_static`,
 # no alloc, no codec, `core`-rung capable. `custom` is a marker: bring your
 # own asset, generated with utz-build.
 # Each preset also enables the geometry decoder its recipe uses (all preset
@@ -41,8 +41,8 @@ alloc = []
 std = ["alloc"]
 
 # ---- choice 3: geometry decoders --------------------------------------------
-# One per GeomEncoding; a container whose geom byte has no compiled decoder
-# is refused at load (Error::Geometry). Presets carry theirs; `custom` users
+# One per GeomEncoding; an asset whose encoding has no compiled decoder is
+# refused at load (Error::GeometryNotCompiledIn). Presets carry theirs; `custom` users
 # pick the one(s) their assets use. `geom-full-rings` is little-endian-only
 # (typed coordinate slices) — enabling it on a big-endian target is a
 # compile_error.

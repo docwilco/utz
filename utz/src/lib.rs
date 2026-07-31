@@ -457,11 +457,11 @@ pub mod caps {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
 pub enum Error {
-    /// The byte source ends before the asset does: shorter than the
-    /// outer header, or a payload cut short. Payload truncation is detected
-    /// best-effort: where a codec's failure status doesn't cleanly separate
-    /// a short stream from a corrupt one, truncation surfaces as
-    /// `DecoderFailed`.
+    /// The byte source ends before the asset does: an incomplete
+    /// download, a cut-short flash write, or plain wrong bytes.
+    /// Truncation inside compressed data is detected best-effort: where a
+    /// codec's failure status doesn't cleanly separate a short stream
+    /// from a corrupt one, it surfaces as `DecoderFailed` instead.
     #[display("byte source ends before the asset does (truncated)")]
     Truncated,
     /// The magic bytes don't match: not a μTZ asset.
@@ -470,14 +470,17 @@ pub enum Error {
     /// A μTZ asset, but a format version this reader doesn't speak.
     #[display("unsupported asset version {_0}")]
     UnsupportedVersion(#[error(not(source))] u8),
-    /// A payload header field holds an invalid value (quantization bits,
-    /// geometry byte, flags, or grid degrees).
+    /// The asset's header holds a value this reader considers invalid
+    /// (quantization width, geometry encoding, flags, or grid degrees):
+    /// corrupt data or an encoder ahead of this reader.
     #[display("invalid payload header field")]
     InvalidHeaderField,
-    /// The payload is too short for its header, or a section overruns it.
+    /// The asset's contents are shorter than its header declares:
+    /// corrupt or truncated data.
     #[display("section overruns the payload")]
     SectionOverrun,
-    /// The decoded payload size disagrees with the outer header's raw length.
+    /// Decompression produced a different size than the asset's header
+    /// declares: corrupt data.
     #[display("decoded size disagrees with the header's raw length")]
     RawLengthMismatch,
     /// The asset's codec has no compiled-in backend. Enable the
@@ -498,20 +501,23 @@ pub enum Error {
     #[display("reading the asset failed: {_0}")]
     ReadFailed(#[error(not(source))] alloc::string::String),
     /// [`Finder::from_static()`] was handed a compressed asset.
-    /// Decompression needs an owned buffer (use `from_slice`/`from_vec`).
+    /// Decompression needs an owned buffer: use
+    /// [`Finder::from_slice()`] / [`Finder::from_vec()`], or generate the
+    /// asset uncompressed.
     #[display("compressed asset passed to from_static")]
-    StaticContainerCompressed,
+    StaticAssetCompressed,
     /// A `FullRings` asset's coordinate section is not 4-byte aligned
     /// in memory. Embed static assets with [`include_bytes_aligned!`]`(4, ..)`
     /// instead of a bare `include_bytes!`.
     #[display("FullRings asset not 4-byte aligned (use include_bytes_aligned!(4, ..))")]
     Misaligned,
-    /// A `FullRings` coordinate section is misaligned within the payload
-    /// itself: the asset is corrupt or came from a broken encoder.
+    /// A `FullRings` asset's coordinates are misaligned within the
+    /// payload itself (not the embedding problem of
+    /// [`Error::Misaligned`]): corrupt data.
     #[display("FullRings coordinate section misaligned within the payload")]
     FullRingsSectionMisaligned,
-    /// A `FullRings` asset's ring-end table disagrees with its declared
-    /// coordinate count.
+    /// A `FullRings` asset's internal tables disagree with each other:
+    /// corrupt data.
     #[display("FullRings ring-end table disagrees with the coordinate count")]
     FullRingsCountsDisagree,
     /// The geometry encoding byte has no compiled-in decoder. Enable the

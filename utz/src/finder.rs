@@ -325,15 +325,15 @@ impl Finder {
     /// `uncompressed` codec is accepted here.
     ///
     /// # Errors
-    /// [`Error::StaticContainerCompressed`] if the asset is compressed;
-    /// the header-validation errors of [`format::outer()`]/[`format::parse()`]
-    /// for an invalid asset; [`Error::Misaligned`] for unaligned
-    /// `FullRings` coords.
+    /// [`Error::StaticAssetCompressed`] if the asset is compressed;
+    /// [`Error::BadMagic`] / [`Error::UnsupportedVersion`] / the other
+    /// header-validation errors if the bytes are not a readable μTZ
+    /// asset; [`Error::Misaligned`] for unaligned `FullRings` coords.
     pub fn from_static(bytes: &'static [u8]) -> Result<Finder> {
         let start = format::outer(bytes)?;
         let layout = format::parse(&bytes[start..])?;
         if layout.codec != Codec::Uncompressed {
-            return Err(Error::StaticContainerCompressed);
+            return Err(Error::StaticAssetCompressed);
         }
         let sections_start = start + format::PAYLOAD_HEADER_LEN;
         // trailing bytes (e.g. flash-partition padding) are fine; running
@@ -375,8 +375,9 @@ impl Finder {
     /// [`Finder::from_static()`] borrows it with no copy at all.
     ///
     /// # Errors
-    /// The header-validation errors of [`format::outer()`]/[`format::parse()`]
-    /// for an invalid asset; [`Error::CodecNotCompiledIn`] /
+    /// [`Error::BadMagic`] / [`Error::UnsupportedVersion`] / the other
+    /// header-validation errors if the bytes are not a readable μTZ
+    /// asset; [`Error::CodecNotCompiledIn`] /
     /// [`Error::DecoderFailed`] if the payload can't be decoded;
     /// [`Error::Misaligned`] for unaligned `FullRings` coords.
     #[cfg(feature = "alloc")]
@@ -447,13 +448,12 @@ impl Finder {
     /// Decode straight to eager mode: all polygons decoded up front into
     /// a flat in-RAM cache so lookups never touch the encoded geometry,
     /// the fastest mode (what [`preload()`](Finder::preload) switches a
-    /// `Finder` into). The geometry sections are then dropped:
-    /// steady-state RAM is the eager cache plus only the
-    /// header/tzid/grid tables, less than
+    /// `Finder` into). The encoded geometry is then dropped: steady-state
+    /// RAM is the eager cache plus the small lookup tables, less than
     /// [`from_slice()`](Finder::from_slice) + `preload()` keeping the full
     /// decoded payload (−17% on the compact preset). Peak RAM during
-    /// construction is unchanged (decoded payload and cache briefly
-    /// coexist; the arc store must be resident to flatten rings). For
+    /// construction is unchanged: the decoded payload and the cache
+    /// briefly coexist while the cache is built. For
     /// uncompressed `&'static` assets,
     /// [`from_static()`](Finder::from_static) + `preload()` is better
     /// still: the payload stays in flash.
@@ -512,7 +512,11 @@ impl Finder {
         Finder::from_vec(bytes)
     }
 
-    /// TZBB release recorded in the asset header.
+    /// The [timezone-boundary-builder] (TZBB) release the asset was
+    /// generated from, as recorded in its header; an empty string if the
+    /// recorded bytes are not valid UTF-8.
+    ///
+    /// [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
     #[must_use]
     pub fn tzbb_release(&self) -> &str {
         core::str::from_utf8(format::release(&self.layout, self.payload_bytes())).unwrap_or("")
@@ -546,7 +550,7 @@ impl Finder {
     }
 
     /// Decode all polygons into RAM once (eager mode): repeat lookups
-    /// then skip the per-arc varint decode. Costs
+    /// then skip decoding entirely, the fastest mode. Costs
     /// [`preload_bytes`](Finder::preload_bytes)
     /// (≈ uncompressed geometry at quant-nearest width: i16 pairs for
     /// i16-quant assets — half the cache — i32 otherwise) in heap. The
@@ -629,8 +633,16 @@ impl Finder {
 
     /// Accurate lookup: grid cell → interior zone (O(1)) or candidates → PIP.
     ///
+    /// `None` means no zone claims the point: at sea on a `land-`
+    /// dataset, or coordinates outside the valid lon/lat range. With
+    /// oceans covered (the default datasets) every valid coordinate
+    /// resolves to some zone. On a `Coarse` (grid-only) asset the answer
+    /// is at cell precision, identical to
+    /// [`lookup_coarse()`](Finder::lookup_coarse): cell precision is that
+    /// asset's precision.
+    ///
     /// Zero-copy/lazy Finders test candidates directly off the payload bytes
-    /// (zero alloc); eager ones (after `preload`) scan
+    /// (zero alloc); eager ones (after `preload()`) scan
     /// pre-decoded rings.
     #[must_use]
     pub fn lookup(&self, pos: Position) -> Option<&str> {
@@ -663,8 +675,10 @@ impl Finder {
         }
     }
 
-    /// Grid-only approximate lookup: no geometry decoded, ~cell-size border
-    /// error. Border cells answer with the cell's dominant zone.
+    /// Grid-only approximate lookup on any asset: no geometry decoded,
+    /// ~cell-size border error. Border cells answer with the cell's
+    /// dominant zone; `None` means no zone touches the cell (at sea on a
+    /// `land-` dataset, or outside the valid lon/lat range).
     #[must_use]
     pub fn lookup_coarse(&self, pos: Position) -> Option<&str> {
         let (px, py) = self.quantize(pos);
