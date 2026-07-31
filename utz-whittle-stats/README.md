@@ -1,7 +1,7 @@
 # utz-whittle-stats
 
 Size-reduction statistics of the whittling-down pipeline, in one
-place: the stage ladder `utz-build whittle` prints and the wasm stats
+place: the stage ladder `utz-build-cli whittle` prints and the wasm stats
 surface the live viewer reads (`wasm` module) share these types and
 counts instead of each computing their own.
 

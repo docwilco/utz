@@ -1,6 +1,7 @@
 //! Topology-aware RDP sweep: for each tolerance, simplify each shared arc once,
-//! encode Format B (i24 topology + delta/varint), compress, and measure lookup
-//! accuracy vs the FULL-precision reference over a random sample.
+//! encode the shared-arc payload (i24 topology + delta/varint), compress, and
+//! measure lookup accuracy vs the full-precision reference over a random
+//! sample.
 //!
 //! ```text
 //! usage: utz-build-cli rdp-sweep [ds]

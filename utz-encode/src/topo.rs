@@ -1,4 +1,4 @@
-//! Format B: TopoJSON-style topology. Shared borders are cut into *arcs* at
+//! TopoJSON-style shared-arc topology. Shared borders are cut into *arcs* at
 //! junctions, each arc stored ONCE as i24 delta+varint, and every ring is a list
 //! of signed arc references. Optional topology-aware Ramer–Douglas–Peucker
 //! (RDP) line simplification runs on each arc a single time (endpoints fixed),
@@ -104,7 +104,7 @@ pub fn encode_topology_q(feats: &[Feat], eps_deg: f64, qbits: u32) -> TopoOut {
     encode_topology_qm(feats, eps_deg, qbits, false)
 }
 
-/// Steps 1–4 of Format B: dedup vertices, cut shared arcs at junctions,
+/// The topology build: dedup vertices, cut shared arcs at junctions,
 /// topology-aware RDP (each arc simplified exactly once, endpoints fixed).
 #[must_use]
 pub fn build_topology(feats: &[Feat], eps_deg: f64) -> Topology {
