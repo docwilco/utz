@@ -2,7 +2,7 @@
 
 μTZ `tiny` preset asset: dataset `now`, RDP
 ε=10 000 m with pop-density weight floor 1e-3, i16, 2° grid, gzip —
-~71 K flash, peak decode RAM = decoded size (125 K).
+~71 KB flash, peak decode RAM = decoded size (~125 KB).
 
 Regenerate (writes `data/tiny.utz`, gitignored):
 

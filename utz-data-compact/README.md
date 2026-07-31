@@ -1,7 +1,8 @@
 # utz-data-compact
 
 μTZ `compact` preset asset: dataset `now`, RDP
-ε=1 000 m with pop-density weight floor 1e-3, i24, 4/3° grid, xz.
+ε=1 000 m with pop-density weight floor 1e-3, i24, 4/3° grid, xz —
+~445 KB flash, peak decode RAM = decoded size (~608 KB).
 
 Regenerate (writes `data/compact.utz`, gitignored):
 
