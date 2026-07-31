@@ -1,11 +1,37 @@
-//! μTZ builder library.
+//! μTZ builder library: generate custom `.utz` assets from a `build.rs`.
 //!
-//! Home of the encoder (topology + RDP + quantization + grid + container),
-//! source loading, density weighting, and the viz generator. The
-//! `utz-build-cli` binary (`gen` plus the measurement and bench
-//! subcommands) lives in the crate of the same name, which also carries
-//! the runtime-reader dependency; this library stays reader-free so build
-//! scripts using [`Config`] are not rebuilt by reader-only changes.
+//! Everything routes through the typed builder, [`Config`]. In a
+//! `build.rs` (with `utz-build` as a build-dependency):
+//!
+//! ```no_run
+//! utz_build::Config::new()
+//!     .dataset("now")     // [land-]now | 1970 | all
+//!     .rdp_meters(500.0)  // simplification tolerance ceiling
+//!     .quant_bits(24)     // 16 / 24 / 32
+//!     .codec(utz_build::Codec::Gzip)
+//!     .generate()?;       // writes $OUT_DIR/tz.utz (+ .guard.rs)
+//! # Ok::<(), utz_build::Error>(())
+//! ```
+//!
+//! The [utz crate's "Building a custom asset"][custom] section is the
+//! full walkthrough: embedding the asset, the guard file, and matching
+//! reader features. Every knob is a [`Config`] method; everything else
+//! this crate exposes (the encoder pipeline, source loading, density
+//! weighting, the viewer generator) is machinery those methods drive.
+//!
+//! # Source data
+//!
+//! Sources download on first use into a `cache/` directory at the
+//! workspace root and are revalidated with conditional GETs: the
+//! [timezone-boundary-builder] `GeoJSON` (tens of MB per dataset,
+//! [ODbL]), and for density-weighted recipes the [GHS-POP] population
+//! raster (~460 MB once, [CC BY 4.0]). Set `UTZ_TZBB_RELEASE` to pin a
+//! TZBB release for reproducible builds (see [`loader`]).
+//!
+//! [custom]: ../utz/index.html#building-a-custom-asset
+//! [ODbL]: https://opendatacommons.org/licenses/odbl/
+//! [GHS-POP]: https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php
+//! [CC BY 4.0]: https://creativecommons.org/licenses/by/4.0/
 //!
 //! # Datasets
 //!
@@ -33,14 +59,26 @@
 //! coast resolves to the ocean timezone whenever most of its cell is
 //! ocean; without ocean zones the cell keeps the land answer.
 //!
+//! # Related crates
+//!
+//! The [`utz-build-cli`][cli] binary (`gen` plus the measurement and
+//! bench subcommands) lives in its own crate: it carries the
+//! runtime-reader dependency, so this library stays reader-free and
+//! build scripts are not rebuilt by reader-only changes. The generated
+//! assets are read by [`utz`][reader].
+//!
 //! [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
 //! [`Config`]: ../utz_build/config/struct.Config.html
+//! [cli]: ../utz_build_cli/index.html
+//! [reader]: ../utz/index.html
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 // encoder core (types, topo, grid, encode) lives in utz-encode (WASM-shared);
 // re-export it all so `utz_build::topo::…` paths keep working
 pub use utz_encode::*;
+// the Config knob enums, at the root where the examples use them
+pub use utz_encode::encode::{Codec, GeomEncoding, SimplifyAlgo};
 
 pub mod error;
 pub use error::{Error, Result};
