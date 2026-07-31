@@ -101,7 +101,7 @@
   <p class="sub">TZBB datasets · runs the builder's own code (utz-whittle-stats → WASM) in workers</p>
   <div class="qsec" data-sec="layers">
     <div class="qtitle">Layers <span>· dataset / algorithm / ε / quantization / order</span><span
-      id="pxhead" title="the shipped bundle recipes (PLAN.md §14.5) — click a color to load one into that layer">presets</span></div>
+      id="pxhead" title="the shipped preset recipes: click a color to load one into that layer">presets</span></div>
     <div id="pxbody"></div>
     <div id="slots"></div>
     <div class="slot" title="how coincident layer lines are drawn, so one color doesn't hide the others">
@@ -800,7 +800,7 @@ Layer.prototype.offsetPx = function () {
   return j < 0 || n < 2 ? 0 : (j - (n - 1) / 2) * 1.2;
 };
 
-// the shipped bundle recipes (PLAN.md §14.5) — single source for the default
+// the shipped preset recipes: single source for the default
 // layer slots, the preset quick-load box, and the per-layer encode grid°.
 // tiny-static shares tiny's geometry so it has no entry of its own.
 var PRESETS = [
@@ -899,7 +899,7 @@ map.on('zoomend', function () {
 // per-layer encode sliders (typed values may sit between detents)
 var GRID_DEG = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 4 / 3, 1.5, 2, 3, 5, 10];
 
-// ---- live container encode (PLAN.md §12) ----
+// ---- live asset encode ----
 // Runs the real utz-encode pipeline for EVERY enabled layer — one worker per
 // layer, so the stat blocks compare side by side and one layer's parameter
 // change only restarts its own encode. Per layer: stage 1 simplify →
@@ -1268,7 +1268,7 @@ function encRender() {
       h += '<div class="st"><span style="margin-left:22px">' + glabel + '</span><span class="num">…</span></div>';
     } else {
       var st = v.payload.st;
-      // ratio vs the same container with fixed-width verts instead of the
+      // ratio vs the same asset with fixed-width verts instead of the
       // delta+varint arc stream — what stage 1's entropy coding buys
       // (varint arcs only; the other encodings ARE their stored form)
       var fixed = v.payload.len - st[2] + st[6] * 2 * (p.qbits / 8);
@@ -1295,7 +1295,7 @@ function encRender() {
     s.body.innerHTML = h;
   });
   encEmpty.style.display = encCb.checked && !any ? '' : 'none';
-  renderReduction(); // the ladder's payload/container rows follow encode results
+  renderReduction(); // the ladder's payload/asset rows follow encode results
 }
 encCb.addEventListener('change', function () { encRequest(true); syncHash(); });
 
@@ -1843,7 +1843,7 @@ gridDegIn.addEventListener('change', function () {
 gridLayerSel.addEventListener('change', gridRefresh);
 
 // the whittle ladder per enabled layer: shared arcs (the dataset blob) →
-// simplified → serialized payload → containers, from the layer result and
+// simplified → serialized payload → assets, from the layer result and
 // the layer's encode slot (mirrors `utz-build-cli whittle`; the blob has no
 // pre-topology stages, so the ladder starts at the shared arcs)
 function renderReduction() {
