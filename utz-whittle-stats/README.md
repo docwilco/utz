@@ -13,4 +13,6 @@ The [`misassign`] module is the accuracy side of the same story: the
 misassigned-area/population pricing the viewer's simplify worker runs
 (through the `wasm` exports) and the accuracy CLI shares natively.
 
+[`misassign`]: https://docwilco.github.io/utz/docs/utz_whittle_stats/misassign/index.html
+
 License: MIT

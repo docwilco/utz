@@ -9,7 +9,7 @@ subcommands) lives in the crate of the same name, which also carries
 the runtime-reader dependency; this library stays reader-free so build
 scripts using [`Config`] are not rebuilt by reader-only changes.
 
-# Datasets
+## Datasets
 
 The source data is OSM [timezone-boundary-builder]. The dataset
 picks which TZBB release an asset is generated from and is baked
@@ -36,5 +36,6 @@ coast resolves to the ocean timezone whenever most of its cell is
 ocean; without ocean zones the cell keeps the land answer.
 
 [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
+[`Config`]: https://docwilco.github.io/utz/docs/utz_build/config/struct.Config.html
 
 License: MIT

@@ -37,4 +37,28 @@ Source data downloads once into the workspace `cache/` (conditional
 GETs keep it fresh); density-weighted runs additionally fetch GHS-POP
 (~460 MB) on first use.
 
+[`cmd::accuracy`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/accuracy/index.html
+[`cmd::amscan`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/amscan/index.html
+[`cmd::csr_sweep`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/csr_sweep/index.html
+[`cmd::density_compare`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/density_compare/index.html
+[`cmd::density_probe`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/density_probe/index.html
+[`cmd::dominant_cost`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/dominant_cost/index.html
+[`cmd::encode`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/encode/index.html
+[`cmd::fixedwidth_size`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/fixedwidth_size/index.html
+[`cmd::geoquant`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/geoquant/index.html
+[`cmd::grid2mem`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/grid2mem/index.html
+[`cmd::grid_bench`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/grid_bench/index.html
+[`cmd::gridsweep`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/gridsweep/index.html
+[`cmd::imagepack_size`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/imagepack_size/index.html
+[`cmd::pip_bench`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/pip_bench/index.html
+[`cmd::polygrid_probe`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/polygrid_probe/index.html
+[`cmd::quant_clean`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/quant_clean/index.html
+[`cmd::quant_size`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/quant_size/index.html
+[`cmd::rdp_sweep`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/rdp_sweep/index.html
+[`cmd::roundtrip`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/roundtrip/index.html
+[`cmd::size_table`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/size_table/index.html
+[`cmd::visualize`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/visualize/index.html
+[`cmd::whittle`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/whittle/index.html
+[`cmd::window_sweep`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/window_sweep/index.html
+
 License: MIT

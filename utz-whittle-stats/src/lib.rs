@@ -10,6 +10,8 @@
 //! The [`misassign`] module is the accuracy side of the same story: the
 //! misassigned-area/population pricing the viewer's simplify worker runs
 //! (through the `wasm` exports) and the accuracy CLI shares natively.
+//!
+//! [`misassign`]: ../utz_whittle_stats/misassign/index.html
 
 use utz_encode::encode::PayloadStats;
 use utz_encode::topo::Topology;

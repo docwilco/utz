@@ -34,6 +34,7 @@
 //! ocean; without ocean zones the cell keeps the land answer.
 //!
 //! [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
+//! [`Config`]: ../utz_build/config/struct.Config.html
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 

@@ -17,13 +17,15 @@ done
 
 command -v cargo-readme > /dev/null || cargo install cargo-readme
 
-# Crate docs may link to sibling crates with doc-root-relative paths
-# (`../utz_build/struct.Config.html`) so rustdoc output works in any
-# shared doc root; a README has no doc root, so rewrite those links to
-# the hosted docs.
+# Crate docs may link to sibling crates (and themselves) with
+# doc-root-relative paths (`../utz_build/config/struct.Config.html`) so
+# rustdoc output works in any shared doc root; a README has no doc root,
+# so rewrite those links to the hosted docs. Crate-doc headings nest one
+# level under the README's title (cargo-readme's default), so the title
+# stays the only H1.
 DOCS_URL="https://docwilco.github.io/utz/docs/"
 render() {
-  cargo readme --project-root "$1" --no-indent-headings \
+  cargo readme --project-root "$1" \
     | sed -e "s|]: \.\./|]: ${DOCS_URL}|g" -e "s|](\.\./|](${DOCS_URL}|g"
 }
 

@@ -17,7 +17,7 @@ lookup.
   with [`jiff`](https://crates.io/crates/jiff) (whose compile-time static
   zones pair well with μTZ's embedded nature) or the prevalent `chrono-tz`.
 
-# Getting started
+## Getting started
 
 A quick start needs just two choices, picked as cargo features: an
 [environment](#environments) and a [preset](#preset-bundles).
@@ -43,7 +43,7 @@ or `Finder::from_static(utz::data::TINY_STATIC)` (uncompressed, zero-copy).
 If you want to tune any of the parameters (simplification, quantization,
 codec, dataset), see [Building a custom asset](#building-a-custom-asset).
 
-# Preset bundles
+## Preset bundles
 
 One Cargo feature picks a ready-made size/accuracy point; `custom` instead
 generates your own asset with `utz-build`:
@@ -69,7 +69,7 @@ let lazy = utz::Finder::from_slice(utz::data::TINY)?; // decoded into RAM
 let flat = utz::Finder::from_static(utz::data::TINY_STATIC)?; // zero-copy
 ```
 
-# Configuring
+## Configuring
 
 Everything about a build is chosen through cargo features. Three are
 mandatory: a data tier (a [preset](#preset-bundles) or `custom`), an
@@ -82,7 +82,7 @@ codecs](#compression-codecs) are additive on top. The
 in when the asset is generated. The [`caps`] module exposes at compile
 time what a build can read.
 
-## Environments
+### Environments
 
 μTZ is `no_std`-first: API availability follows the environment ladder
 `core` ⊂ `alloc` ⊂ `std`. Each level adds API on top of the one below
@@ -96,7 +96,7 @@ and another for `std`, the build gets `std` and both keep working.
 | `alloc` | `no_std` plus an allocator               | compressed assets too, decoded into RAM |
 | `std`   | full standard library (implies `alloc`)  | adds file/reader loading |
 
-## Geometry decoders
+### Geometry decoders
 
 One feature per geometry encoding; an asset whose encoding has no
 compiled decoder is refused at load. Presets enable the decoder their recipe
@@ -110,7 +110,7 @@ size/speed ladder is the table on [`GeomEncoding`].
 | `geom-full-rings`       | whole rings, read in place          | fastest; little-endian hosts only |
 | `geom-coarse`           | grid-only assets                    | cell precision; compiles no point-in-polygon code |
 
-## Compression codecs
+### Compression codecs
 
 Additive; each compiles the decoder for one payload codec. Uncompressed
 assets need none of them. The backend crates are listed in the
@@ -124,7 +124,7 @@ assets need none of them. The backend crates are listed in the
 | `brotli`   | brotli | `alloc` (pure Rust) |
 | `xz`       | xz     | `alloc` (pure Rust) |
 
-# Datasets
+## Datasets
 
 Not a feature: the dataset picks which timezone-boundary-builder release an
 asset is generated from, baked in at generation time. Its main knob is the
@@ -133,7 +133,7 @@ date, while `all` keeps every distinct tzid. Every preset except `accurate`
 uses `now`, the smallest; custom builds choose. Zone counts, ocean coverage,
 and the `land-` variants are documented with [`utz_build`].
 
-# Building a custom asset
+## Building a custom asset
 
 The `custom` tier pairs with the `utz-build` crate. In a `build.rs` (with
 `utz-build` as a build-dependency), the typed builder
@@ -190,9 +190,9 @@ modes, and [Pairing assets with
 constructors](#pairing-assets-with-constructors) tabulates the
 worthwhile knob combinations, each row a `Config` one-liner.
 
-# How it works
+## How it works
 
-## Whittling the data down
+### Whittling the data down
 
 An asset starts as the timezone-boundary-builder `GeoJSON` (~80 MB of source
 data for the default dataset) and is reduced in stages when it is generated
@@ -223,7 +223,7 @@ data for the default dataset) and is reduced in stages when it is generated
 7. **Compression**: the section blob is compressed with the chosen codec;
    only the format prologue and header stay plaintext.
 
-## Shipping the asset
+### Shipping the asset
 
 The result is one self-describing asset (the [`format`][`crate::format`]
 module documents it): the header records every knob, so the decoder is fully
@@ -234,7 +234,7 @@ dedicated flash partition. Uncompressed assets can be used where they
 lie: [`Finder::from_static()`] borrows them zero-copy straight from
 memory-mapped flash.
 
-## Decoding and lookup
+### Decoding and lookup
 
 Loading is build-once/query-many: a constructor validates the header
 and decompresses and decodes exactly once, up front, and the returned
@@ -268,7 +268,7 @@ are identical on every target, and points exactly on a border are claimed
 deterministically. [`Finder::lookup_coarse()`] skips geometry entirely and
 answers at cell precision from any asset.
 
-## Pairing assets with constructors
+### Pairing assets with constructors
 
 Three choices together set where a build lands on RAM and speed: the
 asset's codec, its [geometry encoding](#geometry-decoders), and the
@@ -304,7 +304,7 @@ RAM. `Coarse` sidesteps the trade entirely by dropping the polygons:
 near-nothing to store, and via [`Finder::from_static()`] no RAM either
 (the floor of both ladders), at cell precision.
 
-# Inspirations & credits
+## Inspirations & credits
 
 μTZ stands on the shoulders of three excellent projects; it reuses their
 ideas and pushes on size and embeddability:
@@ -333,7 +333,11 @@ population-density weighting derived from
 [GHS-POP R2023A](https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php)
 (European Commission JRC, **CC BY 4.0**).
 
+[`Finder`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html
 [`Finder::new()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.new
+[`Finder::from_vec()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_vec
+[`Finder::eager_from_slice()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.eager_from_slice
+[`Error`]: https://docwilco.github.io/utz/docs/utz/enum.Error.html
 [`Finder::from_slice()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_slice
 [`Finder::from_static()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_static
 [`Finder::preload()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload

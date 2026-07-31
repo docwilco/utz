@@ -34,5 +34,29 @@
 //! Source data downloads once into the workspace `cache/` (conditional
 //! GETs keep it fresh); density-weighted runs additionally fetch GHS-POP
 //! (~460 MB) on first use.
+//!
+//! [`cmd::accuracy`]: ../utz_build_cli/cmd/accuracy/index.html
+//! [`cmd::amscan`]: ../utz_build_cli/cmd/amscan/index.html
+//! [`cmd::csr_sweep`]: ../utz_build_cli/cmd/csr_sweep/index.html
+//! [`cmd::density_compare`]: ../utz_build_cli/cmd/density_compare/index.html
+//! [`cmd::density_probe`]: ../utz_build_cli/cmd/density_probe/index.html
+//! [`cmd::dominant_cost`]: ../utz_build_cli/cmd/dominant_cost/index.html
+//! [`cmd::encode`]: ../utz_build_cli/cmd/encode/index.html
+//! [`cmd::fixedwidth_size`]: ../utz_build_cli/cmd/fixedwidth_size/index.html
+//! [`cmd::geoquant`]: ../utz_build_cli/cmd/geoquant/index.html
+//! [`cmd::grid2mem`]: ../utz_build_cli/cmd/grid2mem/index.html
+//! [`cmd::grid_bench`]: ../utz_build_cli/cmd/grid_bench/index.html
+//! [`cmd::gridsweep`]: ../utz_build_cli/cmd/gridsweep/index.html
+//! [`cmd::imagepack_size`]: ../utz_build_cli/cmd/imagepack_size/index.html
+//! [`cmd::pip_bench`]: ../utz_build_cli/cmd/pip_bench/index.html
+//! [`cmd::polygrid_probe`]: ../utz_build_cli/cmd/polygrid_probe/index.html
+//! [`cmd::quant_clean`]: ../utz_build_cli/cmd/quant_clean/index.html
+//! [`cmd::quant_size`]: ../utz_build_cli/cmd/quant_size/index.html
+//! [`cmd::rdp_sweep`]: ../utz_build_cli/cmd/rdp_sweep/index.html
+//! [`cmd::roundtrip`]: ../utz_build_cli/cmd/roundtrip/index.html
+//! [`cmd::size_table`]: ../utz_build_cli/cmd/size_table/index.html
+//! [`cmd::visualize`]: ../utz_build_cli/cmd/visualize/index.html
+//! [`cmd::whittle`]: ../utz_build_cli/cmd/whittle/index.html
+//! [`cmd::window_sweep`]: ../utz_build_cli/cmd/window_sweep/index.html
 
 pub mod cmd;

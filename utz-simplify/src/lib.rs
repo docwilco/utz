@@ -27,6 +27,11 @@
 //! The builder uses this for population-density-aware refinement: denser
 //! areas get smaller multipliers, so boundaries stay precise where people
 //! live. `w = 1.0` everywhere reproduces the scalar functions exactly.
+//!
+//! [`rdp`]: ../utz_simplify/fn.rdp.html
+//! [`visvalingam`]: ../utz_simplify/fn.visvalingam.html
+//! [`imai_iri`]: ../utz_simplify/fn.imai_iri.html
+//! [`simplify_weighted`]: ../utz_simplify/fn.simplify_weighted.html
 
 #[cfg(target_arch = "wasm32")]
 mod wasm;

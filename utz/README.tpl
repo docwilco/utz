@@ -11,7 +11,11 @@ population-density weighting derived from
 [GHS-POP R2023A](https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php)
 (European Commission JRC, **CC BY 4.0**).
 
+[`Finder`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html
 [`Finder::new()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.new
+[`Finder::from_vec()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_vec
+[`Finder::eager_from_slice()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.eager_from_slice
+[`Error`]: https://docwilco.github.io/utz/docs/utz/enum.Error.html
 [`Finder::from_slice()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_slice
 [`Finder::from_static()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_static
 [`Finder::preload()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload

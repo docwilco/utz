@@ -30,4 +30,9 @@ The builder uses this for population-density-aware refinement: denser
 areas get smaller multipliers, so boundaries stay precise where people
 live. `w = 1.0` everywhere reproduces the scalar functions exactly.
 
+[`rdp`]: https://docwilco.github.io/utz/docs/utz_simplify/fn.rdp.html
+[`visvalingam`]: https://docwilco.github.io/utz/docs/utz_simplify/fn.visvalingam.html
+[`imai_iri`]: https://docwilco.github.io/utz/docs/utz_simplify/fn.imai_iri.html
+[`simplify_weighted`]: https://docwilco.github.io/utz/docs/utz_simplify/fn.simplify_weighted.html
+
 License: MIT
