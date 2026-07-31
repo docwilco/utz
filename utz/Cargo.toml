@@ -15,7 +15,7 @@ license = "MIT"
 # compile_error! whose message is the onboarding. default = [] on purpose.
 default = []
 
-# ---- choice 1: data tier ---------------------------------------------------
+# ---- choice 1: asset source ---------------------------------------------------
 # Presets bake one CI-generated asset + the codec to read it (`alloc` comes
 # along for decompression); recipes are pinned in utz-build's Config. Naming
 # grammar: a
