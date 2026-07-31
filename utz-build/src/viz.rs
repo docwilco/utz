@@ -7,7 +7,7 @@ fn template_path(name: &str) -> String {
 }
 
 /// The static webdist viewer page (`webdist_index.html`, no substitutions):
-/// fetches per-dataset `.bin.z` blobs + `utz_simplify.wasm` at runtime.
+/// fetches per-dataset `.bin.z` blobs + `utz_whittle_stats.wasm` at runtime.
 ///
 /// # Errors
 /// I/O failure reading the template file.
@@ -30,8 +30,9 @@ pub fn webdist_index() -> crate::Result<String> {
 /// re-samples geometry.
 ///
 /// The topology section carries everything `payload_from_topology` needs
-/// beyond the arcs, so the viewer can run the container encoder live
-/// (utz-encode/src/wasm.rs parses it; the JS only reads the prefix above):
+/// beyond the arcs, so the viewer can run the asset encoder live
+/// (utz-whittle-stats/src/wasm.rs parses it; the JS only reads the prefix
+/// above):
 /// `u8 dataset_code | u8 rel_len | release bytes | u16 n_features
 /// | per feature: f32 offset | u8 len | tzid bytes
 /// | u32 n_rings | per ring: u32 nrefs | u32 refs (id<<1|rev)

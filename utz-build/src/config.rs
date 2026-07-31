@@ -27,8 +27,9 @@ use std::path::PathBuf;
 
 use crate::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgo};
 
-/// Builder for a custom `.utz` asset. Defaults: dataset `now`, RDP ε=500 m,
-/// i24, 2° grid, gzip.
+/// Builder for a custom `.utz` asset. Defaults: dataset `now`, RDP
+/// ε=500 m, no density weighting, i24, 2° grid, gzip, varint-arcs
+/// geometry, output `$OUT_DIR/tz.utz`.
 #[derive(Clone, Debug)]
 pub struct Config {
     dataset: String,
@@ -59,13 +60,15 @@ impl Default for Config {
 }
 
 impl Config {
+    /// A config at the documented defaults; chain knob methods to
+    /// override, then [`generate()`](Config::generate).
     #[must_use]
     pub fn new() -> Self {
         Config::default()
     }
 
     /// The `tiny` preset recipe: RDP ε=10 000 m with pop-density
-    /// floor 1e-3, i16, 2° grid, gzip. A preset constructor is a starting
+    /// floor 0.001, i16, 2° grid, gzip. A preset constructor is a starting
     /// point for one-knob variants: `tiny-static` is
     /// `Config::tiny().codec(Codec::Uncompressed)`.
     #[must_use]
@@ -79,7 +82,7 @@ impl Config {
     }
 
     /// The `compact` preset recipe: RDP ε=1 000 m with pop-density
-    /// floor 1e-3, i24, 4/3° grid, xz.
+    /// floor 0.001, i24, 4/3° grid, xz.
     #[must_use]
     pub fn compact() -> Self {
         Config::new()
@@ -91,7 +94,7 @@ impl Config {
     }
 
     /// The `balanced` preset recipe: RDP ε=50 m with pop-density
-    /// floor 2e-2, i24, 2/3° grid, brotli.
+    /// floor 0.020, i24, 2/3° grid, brotli.
     #[must_use]
     pub fn balanced() -> Self {
         Config::new()
@@ -104,7 +107,7 @@ impl Config {
 
     /// The `accurate` preset recipe: dataset `all` (the full
     /// Comprehensive zone set; the other presets use `now`), RDP ε=10 m
-    /// with pop-density floor 1e-1, i32, 0.5° grid, brotli.
+    /// with pop-density floor 0.10, i32, 0.5° grid, brotli.
     #[must_use]
     pub fn accurate() -> Self {
         Config::new()
@@ -123,21 +126,27 @@ impl Config {
         self
     }
 
-    /// Simplification tolerance ceiling in meters (RDP ε).
+    /// Simplification tolerance ceiling in meters (default 500). The
+    /// value is the ε of whichever [`simplify_algo`](Config::simplify_algo)
+    /// runs: a max-deviation bound for RDP and Imai–Iri; Visvalingam
+    /// derives its area threshold as ε².
     #[must_use]
     pub fn rdp_meters(mut self, eps_m: f64) -> Self {
         self.eps_m = eps_m;
         self
     }
 
-    /// Quantization width: 16 / 24 / 32.
+    /// Quantization width: 16 / 24 / 32 (default 24). Any other value
+    /// fails at [`generate()`](Config::generate), not here.
     #[must_use]
     pub fn quant_bits(mut self, bits: u32) -> Self {
         self.quant_bits = bits;
         self
     }
 
-    /// Grid cell size in degrees, 0.1–45.
+    /// Grid cell size in degrees, 0.1–45 (default 2). Fractional sizes
+    /// are fine (the presets use 4/3, 2/3, and 0.5); out-of-range values
+    /// fail at [`generate()`](Config::generate).
     #[must_use]
     pub fn grid_deg(mut self, deg: f64) -> Self {
         self.grid_deg = deg;
@@ -152,8 +161,12 @@ impl Config {
         self
     }
 
-    /// Simplification algorithm. Default RDP; `ImaiIri` gives provably
-    /// minimum vertices for the same ε (−4 to −19% measured, slower encode).
+    /// Simplification algorithm, default [`SimplifyAlgo::Rdp`].
+    /// [`SimplifyAlgo::ImaiIri`] gives provably minimum vertices for the
+    /// same ε (−4 to −19% measured, slower encode);
+    /// [`SimplifyAlgo::Visvalingam`] trades the deviation bound for a
+    /// cartographically smoother caricature; [`SimplifyAlgo::None`] keeps
+    /// every source vertex.
     #[must_use]
     pub fn simplify_algo(mut self, algo: SimplifyAlgo) -> Self {
         self.simplify = algo;
@@ -169,9 +182,9 @@ impl Config {
         self
     }
 
-    /// Population-density-weighted simplification: ε multiplier floor in the
-    /// densest cells (tiny uses 1e-3). First use downloads GHS-POP (~460 MB,
-    /// cached).
+    /// Population-density-weighted simplification: ε multiplier floor in
+    /// the densest cells, in (0, 1] (the presets use 0.001–0.10; default
+    /// off, uniform ε). First use downloads GHS-POP (~460 MB, cached).
     #[must_use]
     pub fn density_weight_floor(mut self, w_min: f64) -> Self {
         self.density_weight_floor = Some(w_min);
@@ -192,9 +205,9 @@ impl Config {
     /// instead of the first load.
     ///
     /// # Errors
-    /// Invalid dataset name, source download/parse failure, encoding failure,
-    /// missing `OUT_DIR` when no `out_path` is set, or I/O writing the asset
-    /// and its guard file.
+    /// Invalid dataset name, out-of-range `quant_bits`/`grid_deg`, source
+    /// download/parse failure, encoding failure, missing `OUT_DIR` when no
+    /// `out_path` is set, or I/O writing the asset and its guard file.
     pub fn generate(self) -> crate::Result<PathBuf> {
         let (feats, release) = crate::load_with_release(&self.dataset)?;
         let p = Params {

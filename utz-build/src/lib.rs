@@ -99,8 +99,11 @@ use std::path::PathBuf;
 /// with-oceans; a `land-` prefix selects the land-only releases.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Dataset {
-    /// "now" | "1970" | "all"
+    /// `"now"` | `"1970"` | `"all"`: how aggressively zones with
+    /// identical rules are merged.
     pub zone_set: &'static str,
+    /// Whether maritime timezones cover the oceans (`false` = the
+    /// `land-` releases).
     pub oceans: bool,
 }
 
@@ -190,6 +193,10 @@ pub fn encode_weighted(
 }
 
 /// Workspace-root `cache/` for downloaded TZBB releases (gitignored).
+/// The path is relative to this crate's source: correct inside the μTZ
+/// workspace, but for a registry-installed build-dependency it lands in
+/// the cargo registry copy — a known limitation to fix before the crate
+/// is published.
 #[must_use]
 pub fn cache_dir() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../cache"))

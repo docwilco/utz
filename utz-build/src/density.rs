@@ -28,6 +28,7 @@ use tiff::decoder::{Decoder, DecodingResult, Limits};
 use crate::Error;
 use tiff::tags::Tag;
 
+/// Where the GHS-POP population raster downloads from (JRC open data).
 pub const GHS_POP_URL: &str = "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/\
 GHS_POP_GLOBE_R2023A/GHS_POP_E2020_GLOBE_R2023A_4326_30ss/V1-0/\
 GHS_POP_E2020_GLOBE_R2023A_4326_30ss_V1_0.zip";
@@ -48,14 +49,19 @@ pub fn sidecar_path(cache_dir: &Path) -> PathBuf {
 /// Population density (people/km²) on a coarse global lon/lat grid.
 /// Row 0 is the northernmost; `dlat` is positive.
 pub struct DensityGrid {
+    /// Grid columns.
     pub width: usize,
+    /// Grid rows.
     pub height: usize,
-    /// west edge of cell (0,0)
+    /// West edge of cell (0,0).
     pub lon0: f64,
-    /// north edge of cell (0,0)
+    /// North edge of cell (0,0).
     pub lat0: f64,
+    /// Cell width in degrees.
     pub dlon: f64,
+    /// Cell height in degrees (positive; rows run north to south).
     pub dlat: f64,
+    /// Row-major density samples, people/km².
     pub cells: Vec<f32>,
 }
 

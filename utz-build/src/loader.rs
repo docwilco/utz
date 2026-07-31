@@ -61,9 +61,7 @@ pub fn resolve_release(cache_dir: &Path) -> crate::Result<String> {
                 );
                 return Ok(tag);
             }
-            eprintln!(
-                "warning: resolving latest TZBB release failed ({e}); tagging container \"dev\""
-            );
+            eprintln!("warning: resolving latest TZBB release failed ({e}); tagging asset \"dev\"");
             Ok("dev".into())
         }
     }
