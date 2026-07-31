@@ -15,7 +15,7 @@
 //! go stale, which is fine for a size measurement.
 //!
 //! ```text
-//! utz-build fixedwidth-size \
+//! utz-build-cli fixedwidth-size \
 //!     utz-data-tiny-static/data/tiny-static.utz <compact-none.utz> ...
 //! ```
 

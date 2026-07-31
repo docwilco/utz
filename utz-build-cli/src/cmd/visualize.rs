@@ -1,7 +1,6 @@
 //! Generate the webdist viewer: one static page + binary data
 //! files per TZBB dataset, servable from any static host (GitHub Pages,
-//! `python3 -m http.server -d webdist`). Supersedes the old per-dataset
-//! embedded viewers (`_overlay/_live/border_sweep`).
+//! `python3 -m http.server -d webdist`).
 //!
 //! ```text
 //! usage: utz-build-cli visualize [outdir]

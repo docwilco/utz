@@ -1,10 +1,12 @@
 //! Encode an asset to disk: the input for utz-bench-cli and the
-//! ESP32-S3 firmware (which embeds an *uncompressed* container and borrows
-//! it zero-copy from flash via `Finder::from_static()`).
+//! embedded bench firmware (which embeds an *uncompressed* asset and
+//! borrows it zero-copy from flash via `Finder::from_static()`).
 //!
 //! ```text
-//! utz-build-cli encode [ds] [eps_m] [--codec none|gzip|zstd|brotli|xz]
-//!     [--qbits 24] [--grid-deg 2] [--w-min 0.052] [-o out.utz]
+//! utz-build-cli gen [ds] [eps_m] [--codec none|gzip|zstd|brotli|xz]
+//!     [--qbits 24] [--grid-deg 2] [--algo rdp|vw|ii|none]
+//!     [--geom varint-arcs|fixed-width-arcs|full-rings|coarse]
+//!     [--w-min <mult>] [-o out.utz]
 //! ```
 
 use std::path::PathBuf;
@@ -28,7 +30,7 @@ pub struct Args {
     /// quantization width: 16/24/32
     #[arg(long, default_value_t = 24)]
     qbits: u32,
-    /// grid cell size in integer degrees
+    /// grid cell size in degrees (fractional allowed, e.g. 4/3 as 1.333…)
     #[arg(long, default_value_t = 2.0)]
     grid_deg: f64,
     /// simplification algorithm: none|rdp|vw|ii
@@ -38,7 +40,8 @@ pub struct Args {
     /// (see `GeomEncoding` for the size/speed ladder)
     #[arg(long, default_value = "varint-arcs")]
     geom: String,
-    /// enable population weighting with this floor multiplier (e.g. 0.052)
+    /// enable population weighting with this floor multiplier, in (0, 1]
+    /// (the presets use 0.001-0.10)
     #[arg(long)]
     w_min: Option<f64>,
     /// output path (default: `<ds>-<eps>m[-w<min>]-<codec>.utz`)

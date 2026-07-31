@@ -13,7 +13,7 @@
 //!     per pocket is essentially exact)
 //!
 //! ```text
-//! utz-build accuracy [ds] [eps_m] [w_min] [rdp|vw|ii]
+//! utz-build-cli accuracy [ds] [eps_m] [w_min] [rdp|vw|ii]
 //! ```
 
 use utz_build::density::DensityGrid;
