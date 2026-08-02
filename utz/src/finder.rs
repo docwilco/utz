@@ -45,6 +45,16 @@ pub struct Position {
     pub lat: f64,
 }
 
+impl Position {
+    /// Whether both coordinates are in range (lon −180..=180,
+    /// lat −90..=90); `false` for NaN. What [`Finder::lookup()`] checks
+    /// before answering.
+    #[must_use]
+    pub fn is_valid(&self) -> bool {
+        (-180.0..=180.0).contains(&self.lon) && (-90.0..=90.0).contains(&self.lat)
+    }
+}
+
 /// The asset's payload section. `Cow::Borrowed` = zero-copy mode,
 /// `Cow::Owned` = lazy/eager. `Cow` itself lives in `alloc`; on the
 /// bare-`core` rung borrowed is the only possible variant.
@@ -157,7 +167,7 @@ impl EagerCoord for (i16, i16) {
 ///
 /// | feature | adds mode    | API |
 /// |---------|--------------|-----|
-/// | `core`  | zero-copy    | [`from_static`](Finder::from_static), [`lookup`](Finder::lookup), [`lookup_coarse`](Finder::lookup_coarse) |
+/// | `core`  | zero-copy    | [`from_static`](Finder::from_static), [`lookup`](Finder::lookup), [`lookup_coarse`](Finder::lookup_coarse) (and their `_unchecked` variants) |
 /// | `alloc` | lazy + eager | [`from_slice`](Finder::from_slice), [`from_vec`](Finder::from_vec), [`eager_from_slice`](Finder::eager_from_slice), [`preload`](Finder::preload), [`preload_bytes`](Finder::preload_bytes) |
 /// | `std`   |              | [`from_reader`](Finder::from_reader) |
 pub struct Finder {
@@ -209,7 +219,7 @@ impl Finder {
     )]
     /// # fn main() -> Result<(), utz::Error> {
     /// let finder = utz::Finder::new()?;
-    /// let tz = finder.lookup(utz::Position { lon: -0.1278, lat: 51.5074 });
+    /// let tz = finder.lookup(utz::Position { lon: -0.1278, lat: 51.5074 })?;
     /// assert_eq!(tz, Some("Europe/London"));
     /// # Ok(()) }
     /// ```
@@ -633,19 +643,37 @@ impl Finder {
 
     /// Accurate lookup: grid cell → interior zone (O(1)) or candidates → PIP.
     ///
-    /// `None` means no zone claims the point: at sea on a `land-`
-    /// dataset, or coordinates outside the valid lon/lat range. With
-    /// oceans covered (the default datasets) every valid coordinate
-    /// resolves to some zone. On a `Coarse` (grid-only) asset the answer
-    /// is at cell precision, identical to
+    /// `Ok(None)` means no zone claims the point: at sea on a `land-`
+    /// dataset. With oceans covered (the default datasets) every valid
+    /// position resolves to some zone. On a `Coarse` (grid-only) asset
+    /// the answer is at cell precision, identical to
     /// [`lookup_coarse()`](Finder::lookup_coarse): cell precision is that
     /// asset's precision.
     ///
     /// Zero-copy/lazy Finders test candidates directly off the payload bytes
     /// (zero alloc); eager ones (after `preload()`) scan
     /// pre-decoded rings.
+    ///
+    /// # Errors
+    /// [`Error::InvalidPosition`] if `pos` fails
+    /// [`Position::is_valid()`]: lon beyond ±180, lat beyond ±90, or NaN.
+    /// Pre-validated hot loops can skip the check with
+    /// [`lookup_unchecked()`](Finder::lookup_unchecked).
+    pub fn lookup(&self, pos: Position) -> Result<Option<&str>> {
+        if pos.is_valid() {
+            Ok(self.lookup_unchecked(pos))
+        } else {
+            Err(Error::InvalidPosition)
+        }
+    }
+
+    /// [`lookup()`](Finder::lookup) without the position check, for hot
+    /// loops whose inputs are valid by construction. Memory-safe for any
+    /// input, but an invalid position returns an arbitrary nearby answer
+    /// instead of an error: out-of-range coordinates clamp to the nearest
+    /// edge of the world, NaN behaves as 0.
     #[must_use]
-    pub fn lookup(&self, pos: Position) -> Option<&str> {
+    pub fn lookup_unchecked(&self, pos: Position) -> Option<&str> {
         let (px, py) = self.quantize(pos);
         match self.cell_value(px, py) {
             v if v == NO_ZONE => None,
@@ -677,10 +705,25 @@ impl Finder {
 
     /// Grid-only approximate lookup on any asset: no geometry decoded,
     /// ~cell-size border error. Border cells answer with the cell's
-    /// dominant zone; `None` means no zone touches the cell (at sea on a
-    /// `land-` dataset, or outside the valid lon/lat range).
+    /// dominant zone; `Ok(None)` means no zone touches the cell (at sea
+    /// on a `land-` dataset).
+    ///
+    /// # Errors
+    /// [`Error::InvalidPosition`], exactly as
+    /// [`lookup()`](Finder::lookup).
+    pub fn lookup_coarse(&self, pos: Position) -> Result<Option<&str>> {
+        if pos.is_valid() {
+            Ok(self.lookup_coarse_unchecked(pos))
+        } else {
+            Err(Error::InvalidPosition)
+        }
+    }
+
+    /// [`lookup_coarse()`](Finder::lookup_coarse) without the position
+    /// check; the same contract as
+    /// [`lookup_unchecked()`](Finder::lookup_unchecked).
     #[must_use]
-    pub fn lookup_coarse(&self, pos: Position) -> Option<&str> {
+    pub fn lookup_coarse_unchecked(&self, pos: Position) -> Option<&str> {
         let (px, py) = self.quantize(pos);
         match self.cell_value(px, py) {
             v if v == NO_ZONE => None,
@@ -702,7 +745,7 @@ impl Finder {
     }
     #[expect(
         clippy::cast_possible_truncation,
-        reason = "|v*qmax| < i32::MAX for in-range lon/lat; float as saturates, wild input degrades to a miss"
+        reason = "|v*qmax| < i32::MAX for in-range lon/lat; float as saturates, and the unchecked lookups document that wild input clamps"
     )]
     fn quantize(&self, pos: Position) -> (i32, i32) {
         // round-half-away like the encoder (f64::round is std-only)

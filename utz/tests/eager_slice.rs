@@ -23,9 +23,9 @@ fn eager_from_slice_matches_lazy_and_preload() {
                 lon: -180.0 + (f64::from(i) + 0.37) * 6.0,
                 lat: -90.0 + (f64::from(j) + 0.61) * 6.0,
             };
-            let want = lazy.lookup(pos);
-            assert_eq!(eager.lookup(pos), want, "at {pos:?}");
-            assert_eq!(pre.lookup(pos), want, "preload at {pos:?}");
+            let want = lazy.lookup(pos).expect("grid position in range");
+            assert_eq!(eager.lookup(pos), Ok(want), "at {pos:?}");
+            assert_eq!(pre.lookup(pos), Ok(want), "preload at {pos:?}");
             assert_eq!(
                 eager.lookup_coarse(pos),
                 lazy.lookup_coarse(pos),

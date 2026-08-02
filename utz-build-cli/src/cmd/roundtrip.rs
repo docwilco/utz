@@ -107,7 +107,11 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     let start = Instant::now();
     let got: Vec<Option<&str>> = pts
         .iter()
-        .map(|&(lon, lat)| finder.lookup(utz::Position { lon, lat }))
+        .map(|&(lon, lat)| {
+            finder
+                .lookup(utz::Position { lon, lat })
+                .expect("sample point in range")
+        })
         .collect();
     let lazy_elapsed = start.elapsed();
     #[expect(
@@ -152,7 +156,12 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     let start = Instant::now();
     let answered = pts
         .iter()
-        .filter(|&&(lon, lat)| finder.lookup_coarse(utz::Position { lon, lat }).is_some())
+        .filter(|&&(lon, lat)| {
+            finder
+                .lookup_coarse(utz::Position { lon, lat })
+                .expect("sample point in range")
+                .is_some()
+        })
         .count();
     println!(
         "lookup_coarse: {answered}/{npts} answered, {:.2} µs/point",
@@ -179,7 +188,11 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     let start = Instant::now();
     let eager_got: Vec<Option<&str>> = pts
         .iter()
-        .map(|&(lon, lat)| eager_finder.lookup(utz::Position { lon, lat }))
+        .map(|&(lon, lat)| {
+            eager_finder
+                .lookup(utz::Position { lon, lat })
+                .expect("sample point in range")
+        })
         .collect();
     let eager_elapsed = start.elapsed();
     assert!(

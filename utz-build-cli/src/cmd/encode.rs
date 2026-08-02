@@ -113,7 +113,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         f.lookup(utz::Position {
             lon: -0.1276,
             lat: 51.5072
-        })
+        })?
         .is_some(),
         Error::Msg("verify lookup failed".into())
     );

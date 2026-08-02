@@ -28,7 +28,7 @@ size/accuracy point):
 
 ```toml
 [dependencies]
-utz = { version = "0.1", features = ["std", "tiny"] }
+utz = { version = "0.2", features = ["std", "tiny"] }
 ```
 
 A preset is a complete build: it bakes its asset into the binary and enables
@@ -37,14 +37,16 @@ preset:
 
 ```rust
 let finder = utz::Finder::new()?;
-let tz = finder.lookup(utz::Position { lon: -0.1278, lat: 51.5074 });
+let tz = finder.lookup(utz::Position { lon: -0.1278, lat: 51.5074 })?;
 assert_eq!(tz, Some("Europe/London"));
 ```
 
-[`lookup()`](Finder::lookup) returns an `Option`: `None` means no zone
-claims the point (see [Handling failures](#handling-failures)). To tune
-any parameter beyond the presets, see [Building a custom
-asset](#building-a-custom-asset).
+[`lookup()`](Finder::lookup) validates the position (out-of-range or
+NaN coordinates are an [`Error`]) and returns an `Option`: `None`
+means no zone claims the point (see
+[Handling failures](#handling-failures)). To tune any parameter
+beyond the presets, see
+[Building a custom asset](#building-a-custom-asset).
 
 ## Presets
 
@@ -207,13 +209,17 @@ near-nothing to store, and via [`Finder::from_static()`] no RAM either
 
 ### Handling failures
 
-After construction, lookups cannot fail: [`lookup()`](Finder::lookup)
-returns `None` only when no zone claims the point, which with oceans
-covered (the default datasets) means coordinates outside the valid
-lon/lat range, and on a `land-` dataset also any point at sea.
+A lookup distinguishes a bad question from an empty answer:
+[`lookup()`](Finder::lookup) errors with [`Error::InvalidPosition`]
+when the position itself is out of range (lon beyond ±180, lat beyond
+±90, or NaN), and returns `Ok(None)` when the position is fine but no
+zone claims it, which with oceans covered (the default datasets)
+never happens, and on a `land-` dataset means a point at sea. Hot
+loops whose inputs are valid by construction can skip the check with
+[`Finder::lookup_unchecked()`].
 
-Everything fallible happens at load, and [`Error`]'s variants sort
-into three families:
+Everything else fallible happens at load, and [`Error`]'s variants
+sort into three families:
 
 - **capability mismatches** ([`Error::CodecNotCompiledIn`],
   [`Error::GeometryNotCompiledIn`]): the build lacks a feature the
@@ -257,7 +263,7 @@ feature](#compression-codecs) for its compression (none for
 
 ```toml
 [dependencies]
-utz = { version = "0.1", features = ["std", "custom", "gzip", "geom-varint-arcs"] }
+utz = { version = "0.2", features = ["std", "custom", "gzip", "geom-varint-arcs"] }
 
 [build-dependencies]
 utz-build = "0.1"

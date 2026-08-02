@@ -19,17 +19,19 @@ fn new_loads_the_balanced_preset() {
         !f.tzbb_release().is_empty(),
         "header carries a TZBB release tag"
     );
-    let london = f.lookup(utz::Position {
-        lon: -0.1276,
-        lat: 51.5072,
-    });
+    let london = f
+        .lookup(utz::Position {
+            lon: -0.1276,
+            lat: 51.5072,
+        })
+        .expect("position in range");
     assert!(london.is_some(), "accurate lookup resolves");
     assert_eq!(
         f.lookup_coarse(utz::Position {
             lon: -0.1276,
             lat: 51.5072
         }),
-        london,
+        Ok(london),
         "coarse agrees inland"
     );
 }

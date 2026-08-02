@@ -266,6 +266,7 @@ fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> utz_build::Result<Vec<u8>> 
             let lon = -180.0 + (c as f64 + 0.5) * STEP;
             let id = finder
                 .lookup(utz::Position { lon, lat })
+                .expect("lattice point in range")
                 .and_then(|t| idx.get(t).copied())
                 .unwrap_or(0xFFFF);
             o.extend_from_slice(&id.to_le_bytes());
