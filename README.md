@@ -1,5 +1,14 @@
 # μTZ workspace
 
+[![CI](https://github.com/docwilco/utz/actions/workflows/ci.yml/badge.svg)](https://github.com/docwilco/utz/actions/workflows/ci.yml)
+[![Pages](https://github.com/docwilco/utz/actions/workflows/pages.yml/badge.svg)](https://github.com/docwilco/utz/actions/workflows/pages.yml)
+[![dependencies](https://deps.rs/repo/github/docwilco/utz/status.svg)](https://deps.rs/repo/github/docwilco/utz)
+[![crates.io](https://img.shields.io/crates/v/utz.svg)](https://crates.io/crates/utz)
+[![docs.rs](https://docs.rs/utz/badge.svg)](https://docs.rs/utz)
+[![docs](https://img.shields.io/badge/docs-github.io-blue)](https://docwilco.github.io/utz/docs/utz/)
+[![MSRV](https://img.shields.io/crates/msrv/utz.svg)](https://github.com/docwilco/utz/blob/main/Cargo.toml)
+[![license](https://img.shields.io/crates/l/utz.svg)](LICENSE)
+
 Tiny, embeddable latitude/longitude → IANA timezone lookup for Rust.
 
 The library is the [`utz`](utz/) crate: its [README](utz/README.md) covers

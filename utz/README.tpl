@@ -1,5 +1,12 @@
 # μTZ
 
+[![crates.io](https://img.shields.io/crates/v/utz.svg)](https://crates.io/crates/utz)
+[![docs.rs](https://docs.rs/utz/badge.svg)](https://docs.rs/utz)
+[![docs](https://img.shields.io/badge/docs-github.io-blue)](https://docwilco.github.io/utz/docs/utz/)
+[![CI](https://github.com/docwilco/utz/actions/workflows/ci.yml/badge.svg)](https://github.com/docwilco/utz/actions/workflows/ci.yml)
+[![MSRV](https://img.shields.io/crates/msrv/utz.svg)](https://crates.io/crates/utz)
+[![license](https://img.shields.io/crates/l/utz.svg)](https://github.com/docwilco/utz/blob/main/LICENSE)
+
 {{readme}}
 
 ## License
