@@ -633,15 +633,6 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
 name = "lzma-rust2"
-version = "0.16.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca93e534d1142d1d0dcca6d25fe302508a5dfb40b302802904577725ea0b695b"
-dependencies = [
- "sha2",
-]
-
-[[package]]
-name = "lzma-rust2"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12931b17820a3a0c48e46359d2be49ef57b5d50509fd5baba43e6c654977aa66"
@@ -1251,7 +1242,7 @@ dependencies = [
  "geo",
  "geo-types",
  "include_bytes_aligned",
- "lzma-rust2 0.18.0",
+ "lzma-rust2",
  "miniz_oxide 0.9.1",
  "ruzstd",
  "scroll",
@@ -1361,7 +1352,7 @@ dependencies = [
  "geo",
  "geo-types",
  "geometry-rs",
- "lzma-rust2 0.18.0",
+ "lzma-rust2",
  "miniz_oxide 0.9.1",
  "tiff",
  "utz",
@@ -1380,8 +1371,8 @@ version = "0.3.0+2026c"
 dependencies = [
  "brotli",
  "derive_more",
- "lzma-rust2 0.16.5",
- "miniz_oxide 0.8.9",
+ "lzma-rust2",
+ "miniz_oxide 0.9.1",
  "ndarray",
  "scroll",
  "utz-common",

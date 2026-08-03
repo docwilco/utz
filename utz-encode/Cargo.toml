@@ -33,9 +33,9 @@ ndarray = { version = "0.17", default-features = false, features = ["std"] }
 # simplification menu + DensityWeight (shared with the viewer via this cdylib)
 utz-simplify = { path = "../utz-simplify", version = "0.3.0" }
 # codecs (all pure Rust except optional zstd)
-miniz_oxide = "0.8"
+miniz_oxide = "0.9"
 brotli = "8.0"
-lzma-rust2 = { version = "0.16", default-features = false, features = ["xz", "encoder", "optimization"] }
+lzma-rust2 = { version = "0.18", default-features = false, features = ["xz", "encoder", "optimization"] }
 zstd = { version = "0.13", optional = true }
 
 [lints]
