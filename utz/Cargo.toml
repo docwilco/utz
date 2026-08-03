@@ -107,6 +107,9 @@ version = "0.3.0"
 
 [dev-dependencies]
 utz-common = { path = "../utz-common", version = "0.3.0" }
+# the real encoder, for cross-crate codec roundtrip tests (the unit-test
+# vectors alone can't catch encoder/decoder parameter drift)
+utz-encode = { path = "../utz-encode", version = "0.3.0", features = ["zstd"] }
 geo = { workspace = true }
 geo-types = { workspace = true }
 test-case = "3.3"

@@ -773,7 +773,19 @@ pub fn compress(raw: &[u8], codec: Codec) -> crate::Result<Vec<u8>> {
         Codec::Uncompressed => raw.to_vec(),
         Codec::Gzip => miniz_oxide::deflate::compress_to_vec_zlib(raw, 10),
         #[cfg(feature = "zstd")]
-        Codec::Zstd => zstd::encode_all(raw, 22)?,
+        Codec::Zstd => {
+            use std::io::Write as _;
+            // Never declare a window larger than the content (decoders
+            // allocate the declared window), and cap at 2^26: ruzstd
+            // (utz's pure-Rust backend) refuses frames declaring over
+            // 100 MB. encode_all would let level 22 default to 2^27.
+            let log = raw.len().next_power_of_two().trailing_zeros().clamp(10, 26);
+            let mut enc = zstd::stream::write::Encoder::new(Vec::new(), 22)?;
+            enc.set_pledged_src_size(Some(raw.len() as u64))?;
+            enc.window_log(log)?;
+            enc.write_all(raw)?;
+            enc.finish()?
+        }
         #[cfg(not(feature = "zstd"))]
         Codec::Zstd => return Err(Error::ZstdNotCompiled),
         Codec::Brotli => {
