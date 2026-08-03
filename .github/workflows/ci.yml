@@ -107,3 +107,29 @@ jobs:
         with:
           name: preset-assets
       - run: ./scripts/checks.sh docs
+
+  msrv:
+    name: MSRV (1.87)
+    needs: gen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # keep in sync with [workspace.package] rust-version
+      - uses: dtolnay/rust-toolchain@1.87
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: preset-assets
+      - run: cargo check --workspace --all-targets
+
+  # Packaging dry-run for the dependency-free leaves; the other publish-set
+  # crates can only be verified once their deps are on crates.io (their
+  # stripped manifests resolve against the registry) — see RELEASING.md.
+  package:
+    name: Package (leaf crates)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo package -p utz-common -p utz-simplify
