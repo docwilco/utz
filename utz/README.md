@@ -296,8 +296,7 @@ loads it: see [Loading an asset](#loading-an-asset), especially the
 
 An asset starts as the [timezone-boundary-builder] `GeoJSON` (~80 MB of
 source data for the default dataset) and is reduced in stages when it is
-generated (the `utz-dev-cli whittle` command measures every stage per
-preset):
+generated:
 
 1. **Zone set**: the [dataset](#datasets) choice alone removes most zones:
    `now` and `1970` merge ones whose rules are identical since that date
@@ -324,6 +323,25 @@ preset):
 7. **Compression**: the payload is compressed with the chosen codec; a
    small plaintext header stays readable so any tool can identify the
    asset without decompressing it.
+
+Measured per preset (TZBB release 2026c; the workspace's `utz-dev-cli
+whittle` command reproduces every row):
+
+| stage                            |   `tiny` | `compact` | `balanced` | `accurate` |
+|----------------------------------|---------:|----------:|-----------:|-----------:|
+| source `GeoJSON`                 |  80.6 MB |   80.6 MB |    80.6 MB |   173.9 MB |
+| parsed coordinates (f64 pairs)   |  57.8 MB |   57.8 MB |    57.8 MB |   124.9 MB |
+| shared-arc topology              |  28.9 MB |   28.9 MB |    28.9 MB |    62.4 MB |
+| simplified                       | 692.6 KB |    2.5 MB |     7.9 MB |    30.8 MB |
+| quantized, varint-coded arcs     |  73.4 KB |  512.6 KB |     1.6 MB |    10.1 MB |
+| serialized payload (grid added)  | 124.9 KB |  607.6 KB |     1.9 MB |    10.6 MB |
+| compressed asset                 |  70.9 KB |  445.1 KB |     1.2 MB |     8.1 MB |
+
+The first three presets share the `now` dataset (64 zones after the
+stage-1 merge), so their rows only diverge once simplification applies
+each recipe's tolerance; `accurate` starts from the full `all` set
+(444 zones). `tiny-static` is `tiny`'s serialized payload shipped
+uncompressed: the 124.9 KB row, skipping stage 7.
 
 ### Shipping the asset
 
