@@ -25,7 +25,7 @@
 
 use std::path::PathBuf;
 
-use crate::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgo};
+use utz_encode::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgo};
 
 /// Builder for a custom `.utz` asset. Defaults: dataset `now`, RDP
 /// ε=500 m, no density weighting, i24, 2° grid, gzip, varint-arcs

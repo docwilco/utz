@@ -16,8 +16,8 @@
 //! The [utz crate's "Building a custom asset"][custom] section is the
 //! full walkthrough: embedding the asset, the guard file, and matching
 //! reader features. Every knob is a [`Config`] method; everything else
-//! this crate exposes (the encoder pipeline, source loading, density
-//! weighting, the viewer generator) is machinery those methods drive.
+//! this crate exposes (source loading, density weighting) is machinery
+//! those methods drive.
 //!
 //! # Source data
 //!
@@ -63,11 +63,13 @@
 //!
 //! # Related crates
 //!
-//! The [`utz-build-cli`][cli] binary (`gen` plus the measurement and
-//! bench subcommands) lives in its own crate: it carries the
+//! The [`utz-build-cli`][cli] binary (`gen` and `gen-preset`, the CLI
+//! counterpart of a `build.rs`) lives in its own crate: it carries the
 //! runtime-reader dependency, so this library stays reader-free and
 //! build scripts are not rebuilt by reader-only changes. The generated
-//! assets are read by [`utz`][reader].
+//! assets are read by [`utz`][reader]; the repo-internal measurement
+//! and viewer tooling lives in the unpublished `utz-dev-cli` and
+//! `utz-viz` crates.
 //!
 //! [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
 //! [`Config`]: ../utz_build/config/struct.Config.html
@@ -77,11 +79,11 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-// encoder core (types, topo, grid, encode) lives in utz-encode (WASM-shared);
-// re-export it all so `utz_build::topo::…` paths keep working
-pub use utz_encode::*;
-// the Config knob enums, at the root where the examples use them
+// The consumer surface: Config plus the names its knobs and results
+// need. The encoder machinery itself stays in utz-encode; the internal
+// tooling (utz-dev-cli, utz-viz) depends on that crate directly.
 pub use utz_encode::encode::{Codec, GeomEncoding, SimplifyAlgo};
+pub use utz_encode::Feat;
 
 pub mod error;
 pub use error::{Error, Result};
@@ -90,7 +92,6 @@ pub mod config;
 pub mod density;
 pub mod download;
 pub mod loader;
-pub mod viz;
 
 pub use config::Config;
 
@@ -194,15 +195,17 @@ pub fn load_with_release_in(
 /// Payload encoding failure.
 pub fn encode_weighted(
     feats: &[Feat],
-    p: &encode::Params,
+    p: &utz_encode::encode::Params,
     grid: &density::DensityGrid,
     model: utz_simplify::DensityWeight,
 ) -> crate::Result<Vec<u8>> {
     let eps_deg = p.eps_m / 111_320.0;
     let algo = utz_encode::encode::to_simplify(p.simplify, eps_deg);
-    let t = topo::build_topology_weighted(feats, algo, &|a, b| model.weight(grid.max_along(a, b)));
-    Ok(encode::finish(
-        &encode::payload_from_topology(&t, &t.arc_coords, feats, p)?.0,
+    let t = utz_encode::topo::build_topology_weighted(feats, algo, &|a, b| {
+        model.weight(grid.max_along(a, b))
+    });
+    Ok(utz_encode::encode::finish(
+        &utz_encode::encode::payload_from_topology(&t, &t.arc_coords, feats, p)?.0,
         p.codec,
     )?)
 }

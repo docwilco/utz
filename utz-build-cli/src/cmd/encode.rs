@@ -1,6 +1,8 @@
-//! Encode an asset to disk: the input for utz-bench-cli and the
-//! embedded bench firmware (which embeds an *uncompressed* asset and
-//! borrows it zero-copy from flash via `Finder::from_static()`).
+//! Encode an asset to disk from explicit knobs: the input for
+//! utz-bench-cli, the embedded bench firmware (which embeds an
+//! *uncompressed* asset and borrows it zero-copy from flash via
+//! `Finder::from_static()`), and any flash-partition/OTA image.
+//! Every flag maps to one [`utz_build::Config`] knob.
 //!
 //! ```text
 //! utz-build-cli gen [ds] [eps_m] [--codec none|gzip|zstd|brotli|xz]
@@ -8,13 +10,12 @@
 //!     [--geom varint-arcs|fixed-width-arcs|full-rings|coarse]
 //!     [--w-min <mult>] [-o out.utz]
 //! ```
+//!
+//! [`utz_build::Config`]: ../../utz_build/config/struct.Config.html
 
 use std::path::PathBuf;
 
-use utz_build::density::DensityGrid;
-use utz_build::encode::{self, Codec, Params};
-use utz_build::{ensure, Error};
-use utz_simplify::DensityWeight;
+use utz_build::{Codec, Config, Error, GeomEncoding, SimplifyAlgo};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -67,10 +68,10 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         }
     };
     let simplify = match a.algo.as_str() {
-        "none" => encode::SimplifyAlgo::None,
-        "rdp" => encode::SimplifyAlgo::Rdp,
-        "vw" | "visvalingam" => encode::SimplifyAlgo::Visvalingam,
-        "ii" | "imai-iri" => encode::SimplifyAlgo::ImaiIri,
+        "none" => SimplifyAlgo::None,
+        "rdp" => SimplifyAlgo::Rdp,
+        "vw" | "visvalingam" => SimplifyAlgo::Visvalingam,
+        "ii" | "imai-iri" => SimplifyAlgo::ImaiIri,
         c => {
             return Err(Error::Msg(format!(
                 "unknown algo {c:?}: use none|rdp|vw|ii"
@@ -78,64 +79,53 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         }
     };
     let geom = match a.geom.as_str() {
-        "varint-arcs" | "varint" | "delta" => encode::GeomEncoding::VarintArcs,
-        "fixed-width-arcs" | "fixed" => encode::GeomEncoding::FixedWidthArcs,
-        "full-rings" | "eager" | "image" => encode::GeomEncoding::FullRings,
-        "coarse" => encode::GeomEncoding::Coarse,
+        "varint-arcs" | "varint" | "delta" => GeomEncoding::VarintArcs,
+        "fixed-width-arcs" | "fixed" => GeomEncoding::FixedWidthArcs,
+        "full-rings" | "eager" | "image" => GeomEncoding::FullRings,
+        "coarse" => GeomEncoding::Coarse,
         c => {
             return Err(Error::Msg(format!(
                 "unknown geom {c:?}: use varint-arcs|fixed-width-arcs|full-rings|coarse"
             )))
         }
     };
-    let (feats, release) = utz_build::load_with_release(&a.ds)?;
-    let p = Params {
-        dataset: utz_build::dataset(&a.ds)?.code(),
-        tzbb_release: &release,
-        eps_m: a.eps_m,
-        quant_bits: a.qbits,
-        grid_deg: a.grid_deg,
-        codec,
-        simplify,
-        geom,
-        w_min: a.w_min,
-    };
-    let container = match a.w_min {
-        Some(w) => {
-            let grid = DensityGrid::load(&utz_build::cache_dir())?;
-            utz_build::encode_weighted(&feats, &p, &grid, DensityWeight::new(w))?
-        }
-        None => encode::encode(&feats, &p)?,
-    };
-
-    // sanity: the runtime must accept what we just wrote
-    let f = utz::Finder::from_vec(container.clone())?;
-    ensure!(
-        f.lookup(utz::Position {
-            lon: -0.1276,
-            lat: 51.5072
-        })?
-        .is_some(),
-        Error::Msg("verify lookup failed".into())
-    );
-
     let out = a.out.unwrap_or_else(|| {
         let w = a.w_min.map(|w| format!("-w{w}")).unwrap_or_default();
         PathBuf::from(format!("{}-{}m{}-{}.utz", a.ds, a.eps_m, w, a.codec))
     });
-    if let Some(parent) = out.parent() {
-        std::fs::create_dir_all(parent)?;
+
+    let mut config = Config::new()
+        .dataset(&a.ds)
+        .rdp_meters(a.eps_m)
+        .quant_bits(a.qbits)
+        .grid_deg(a.grid_deg)
+        .codec(codec)
+        .simplify_algo(simplify)
+        .geom(geom)
+        .out_path(&out);
+    if let Some(w) = a.w_min {
+        config = config.density_weight_floor(w);
     }
-    std::fs::write(&out, &container)?;
-    utz_build::config::write_guard(&out, geom, codec)?;
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "container size ≪ 2^53; KiB display"
-    )]
-    let kib = container.len() as f64 / 1024.0;
+    let path = config.generate()?;
+
+    // sanity: the runtime must accept what we just wrote
+    let container = std::fs::read(&path)?;
+    let size = container.len();
+    let f = utz::Finder::from_vec(container)?;
+    let release = f.tzbb_release().to_string();
+    if f.lookup(utz::Position {
+        lon: -0.1276,
+        lat: 51.5072,
+    })?
+    .is_none()
+    {
+        return Err(Error::Msg("verify lookup failed".into()));
+    }
+    #[expect(clippy::cast_precision_loss, reason = "asset size ≪ 2^53; KiB display")]
+    let kib = size as f64 / 1024.0;
     println!(
         "wrote {} ({kib:.1} KiB, {codec:?}, TZBB {release})",
-        out.display()
+        path.display()
     );
     Ok(())
 }

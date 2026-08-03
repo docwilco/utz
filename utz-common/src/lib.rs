@@ -169,7 +169,7 @@ impl QuantBits {
 /// overtakes brotli at every preset. `Coarse` shrinks with preset fineness
 /// twice over: the grid is all it keeps, and grids compress extremely well.
 ///
-/// Size columns: `utz-build-cli whittle --extended` (2026-07, TZBB 2026c),
+/// Size columns: `utz-dev-cli whittle --extended` (2026-07, TZBB 2026c),
 /// full assets per preset recipe vs the `VarintArcs` build. The XIP
 /// lookup column is from the 2026-07 bench-firmware runs against earlier
 /// payload revisions; read it as a relative ladder.

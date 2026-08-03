@@ -1,6 +1,6 @@
 //! Ring-geometry validation: find where assembled rings self-cross, overlap
 //! themselves collinearly, self-touch, or collapse entirely. Shared by the
-//! `utz-build-cli quant-clean` report and the viewer's live problems panel
+//! `utz-dev-cli quant-clean` report and the viewer's live problems panel
 //! (wasm.rs), so both agree on what "problematic geometry" means.
 
 use crate::clean::{self, CleanStats};

@@ -17,10 +17,11 @@ measure, test, benchmark, or ship the data it reads.
 | [`utz`](utz/) | the runtime lookup library (lat/lon → IANA tzid) |
 | [`utz-common`](utz-common/) | asset-format types shared by reader and encoder |
 | [`utz-encode`](utz-encode/) | asset encoder library |
-| [`utz-build`](utz-build/) | builder library: encoder pipeline, source loading, density weighting, viz generation |
-| [`utz-build-cli`](utz-build-cli/) | the `utz-build-cli` binary: `gen` plus the measurement and bench subcommands |
+| [`utz-build`](utz-build/) | builder library: `Config`, source loading, density weighting |
+| [`utz-build-cli`](utz-build-cli/) | the `utz-build-cli` binary: `gen` and `gen-preset`, asset generation from the command line |
+| [`utz-dev-cli`](utz-dev-cli/) | the repo-internal `utz-dev-cli` binary: measurement, bench, and viewer commands |
 | [`utz-simplify`](utz-simplify/) | boundary-simplification algorithms (native + wasm for the viewer) |
-| [`utz-whittle-stats`](utz-whittle-stats/) | pipeline size-reduction stats: the whittle ladder and the viewer's wasm surface |
+| [`utz-viz`](utz-viz/) | everything behind the deployed viewer: whittle ladder, misassignment pricing, wasm surface, site emitter |
 | [`utz-data-tiny`](utz-data-tiny/) | preset data crate: the generated `tiny` asset |
 | [`utz-data-tiny-static`](utz-data-tiny-static/) | preset data crate: the generated `tiny-static` asset |
 | [`utz-data-compact`](utz-data-compact/) | preset data crate: the generated `compact` asset |

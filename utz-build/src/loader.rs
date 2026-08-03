@@ -9,7 +9,8 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::{download, Dataset, Error, Feat, Poly, Ring};
+use crate::{download, Dataset, Error, Feat};
+use utz_encode::{Poly, Ring};
 
 const REPO: &str = "https://github.com/evansiroky/timezone-boundary-builder";
 

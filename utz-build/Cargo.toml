@@ -19,14 +19,12 @@ utz-error = ["dep:utz"]
 [dependencies]
 utz-common = { path = "../utz-common" }
 derive_more = { workspace = true }
-geo = { workspace = true }
 # polyline simplification menu, shared with the viz HTML via WASM
 utz-simplify = { path = "../utz-simplify" }
 # encoder core (topology + quantization + grid + container), split out so it
 # also compiles to WASM for the webdist viewer (see utz-encode/src/lib.rs)
 utz-encode = { path = "../utz-encode", features = ["zstd"] }
 # shared pipeline-stats counts (raw coordinate count in the viewer blobs)
-utz-whittle-stats = { path = "../utz-whittle-stats" }
 
 # GeoJSON pipeline (replaced the temporary FGB loader)
 ureq = "2.12"

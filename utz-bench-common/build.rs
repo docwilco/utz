@@ -6,8 +6,8 @@
 //! `utz_bench_common::assets`), so host and target checksums stay comparable
 //! by construction.
 
-use utz_build::encode::{Codec, GeomEncoding};
 use utz_build::Config;
+use utz_build::{Codec, GeomEncoding};
 
 fn main() {
     // sources are cond-GET-cached in the workspace cache/; the encode reruns

@@ -17,8 +17,8 @@ utz_build::Config::new()
 The [utz crate's "Building a custom asset"][custom] section is the
 full walkthrough: embedding the asset, the guard file, and matching
 reader features. Every knob is a [`Config`] method; everything else
-this crate exposes (the encoder pipeline, source loading, density
-weighting, the viewer generator) is machinery those methods drive.
+this crate exposes (source loading, density weighting) is machinery
+those methods drive.
 
 ## Source data
 
@@ -64,11 +64,13 @@ ocean; without ocean zones the cell keeps the land answer.
 
 ## Related crates
 
-The [`utz-build-cli`][cli] binary (`gen` plus the measurement and
-bench subcommands) lives in its own crate: it carries the
+The [`utz-build-cli`][cli] binary (`gen` and `gen-preset`, the CLI
+counterpart of a `build.rs`) lives in its own crate: it carries the
 runtime-reader dependency, so this library stays reader-free and
 build scripts are not rebuilt by reader-only changes. The generated
-assets are read by [`utz`][reader].
+assets are read by [`utz`][reader]; the repo-internal measurement
+and viewer tooling lives in the unpublished `utz-dev-cli` and
+`utz-viz` crates.
 
 [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
 [`Config`]: https://docwilco.github.io/utz/docs/utz_build/config/struct.Config.html

@@ -1411,7 +1411,6 @@ name = "utz-build"
 version = "0.1.0+2026c"
 dependencies = [
  "derive_more",
- "geo",
  "serde",
  "serde_json",
  "tiff",
@@ -1420,7 +1419,6 @@ dependencies = [
  "utz-common",
  "utz-encode",
  "utz-simplify",
- "utz-whittle-stats",
  "zip",
 ]
 
@@ -1428,22 +1426,9 @@ dependencies = [
 name = "utz-build-cli"
 version = "0.1.0+2026c"
 dependencies = [
- "brotli",
  "clap",
- "geo",
- "geo-types",
- "geometry-rs",
- "lzma-rust2",
- "miniz_oxide",
- "tiff",
  "utz",
  "utz-build",
- "utz-common",
- "utz-encode",
- "utz-simplify",
- "utz-whittle-stats",
- "zip",
- "zstd",
 ]
 
 [[package]]
@@ -1490,6 +1475,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "utz-dev-cli"
+version = "0.1.0+2026c"
+dependencies = [
+ "brotli",
+ "clap",
+ "geo",
+ "geo-types",
+ "geometry-rs",
+ "lzma-rust2",
+ "miniz_oxide",
+ "tiff",
+ "utz",
+ "utz-build",
+ "utz-common",
+ "utz-encode",
+ "utz-simplify",
+ "utz-viz",
+ "zip",
+ "zstd",
+]
+
+[[package]]
 name = "utz-encode"
 version = "0.1.0+2026c"
 dependencies = [
@@ -1512,9 +1519,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "utz-whittle-stats"
+name = "utz-viz"
 version = "0.1.0+2026c"
 dependencies = [
+ "utz-build",
  "utz-encode",
  "utz-simplify",
 ]

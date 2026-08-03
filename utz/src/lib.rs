@@ -294,7 +294,7 @@
 //!
 //! An asset starts as the [timezone-boundary-builder] `GeoJSON` (~80 MB of
 //! source data for the default dataset) and is reduced in stages when it is
-//! generated (the `utz-build-cli whittle` command measures every stage per
+//! generated (the `utz-dev-cli whittle` command measures every stage per
 //! preset):
 //!
 //! 1. **Zone set**: the [dataset](#datasets) choice alone removes most zones:

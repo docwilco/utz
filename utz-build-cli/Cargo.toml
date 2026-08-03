@@ -5,13 +5,10 @@ edition.workspace = true
 license = "MIT"
 publish = false
 
-# The `utz-build-cli` binary: the custom-tier `gen` command plus the
-# measurement/bench subcommands (one module per subcommand under src/cmd/).
-# Split from the utz-build library so that build scripts depending on the
-# builder never pull in the runtime reader: the reader is a *subject* here
-# (verify lookups, PIP/grid benches, asset dissection), not a library
-# need of the encoder. The bin target is doc = false: the lib target
-# carries the crate docs.
+# The user-facing asset-generation CLI: `gen` (arbitrary knobs) and
+# `gen-preset` (the canonical preset recipes), both driving
+# utz_build::Config. The repo-internal measurement/bench/viewer commands
+# live in utz-dev-cli.
 [[bin]]
 name = "utz-build-cli"
 doc = false
@@ -19,27 +16,8 @@ path = "src/main.rs"
 
 [dependencies]
 utz-build = { path = "../utz-build", features = ["utz-error"] }
-utz-common = { path = "../utz-common" }
-utz-encode = { path = "../utz-encode", features = ["zstd"] }
-utz-simplify = { path = "../utz-simplify" }
-utz-whittle-stats = { path = "../utz-whittle-stats" }
-clap = { version = "4", features = ["derive"] }
-# oracle + contenders for the PIP/accuracy benches
-geo = { workspace = true }
-geo-types = { workspace = true }
-# tzf-rs's PIP crate (tidwall/geometry port) — pip_bench contender
-geometry-rs = "0.3"
-# codecs for the size measurements
-zstd = "0.13"
-brotli = "8.0"
-lzma-rust2 = { version = "0.16", default-features = false, features = ["xz", "encoder", "optimization"] }
-miniz_oxide = "0.8"
-zip = { version = "2.4", default-features = false, features = ["deflate"] }
-tiff = "0.11"
-# runtime crate, exercised by gen's verify and the roundtrip/bench
-# subcommands; pure-Rust zstd backend (ruzstd) here — the zstd-sys backend
-# is compile-checked separately (cargo check -p utz --features std,zstd-sys)
 utz = { path = "../utz", features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint-arcs", "geom-fixed-width-arcs", "geom-full-rings", "geom-coarse"] }
+clap = { version = "4", features = ["derive"] }
 
 [lints]
 workspace = true
