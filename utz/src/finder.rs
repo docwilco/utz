@@ -525,6 +525,19 @@ impl Finder {
         Finder::from_vec(bytes)
     }
 
+    /// The population-density weight floor the asset was simplified
+    /// with (the `Config::density_weight_floor()` knob), as recorded in
+    /// its header: `None` means uniform, unweighted simplification.
+    /// Provenance, like [`tzbb_release()`](Finder::tzbb_release); it does
+    /// not affect lookups.
+    #[must_use]
+    pub fn density_weight_floor(&self) -> Option<f64> {
+        match self.layout.w_min_e4 {
+            0 => None,
+            w => Some(f64::from(w) / 1e4),
+        }
+    }
+
     /// The [timezone-boundary-builder] (TZBB) release the asset was
     /// generated from, as recorded in its header; an empty string if the
     /// recorded bytes are not valid UTF-8.

@@ -27,6 +27,8 @@ fn new_loads_the_tiny_preset() {
         .expect("position in range");
     // pins the quick-start doctest's claimed value (lib.rs)
     assert_eq!(london, Some("Europe/London"));
+    // provenance: the tiny recipe's density-weight floor round-trips
+    assert_eq!(f.density_weight_floor(), Some(0.001));
     assert_eq!(
         f.lookup_coarse(utz::Position {
             lon: -0.1276,

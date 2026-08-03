@@ -42,7 +42,8 @@ pub struct PayloadLayout {
     pub grid_deg: f32,
     pub eps_m: f32,
     /// population-density weight floor ×1e-4 the asset was built with
-    /// (0 = unweighted; provenance)
+    /// (0 = unweighted; provenance, exposed as
+    /// [`Finder::density_weight_floor()`](crate::Finder::density_weight_floor))
     pub w_min_e4: u16,
     pub n_features: u16,
     /// The tzid pool; the zone string-offset table (`u16[n_features+1]`)
