@@ -88,7 +88,11 @@ pub fn dataset_url(d: Dataset, release: &str) -> String {
 /// Release-tag caching, download, or zip/`GeoJSON` parse failure.
 pub fn load_tzbb(d: Dataset, cache_dir: &Path) -> crate::Result<(Vec<Feat>, String)> {
     let release = resolve_release(cache_dir)?;
-    let zip_path = download::fetch(&dataset_url(d, &release), cache_dir)?;
+    // key the download by release: TZBB asset basenames are
+    // release-independent, and a flat cache would serve one release's
+    // bytes under another's tag when offline
+    let release_dir = cache_dir.join("tzbb").join(&release);
+    let zip_path = download::fetch(&dataset_url(d, &release), &release_dir)?;
     Ok((load_geojson_zip(&zip_path)?, release))
 }
 

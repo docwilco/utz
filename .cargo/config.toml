@@ -3,3 +3,9 @@ crates-io = "https://docs.rs/"
 
 [alias]
 docs = "doc --no-deps --workspace -Zrustdoc-map"
+
+# All cargo-run processes and build scripts inside this workspace share
+# the repo-local source-data cache (utz_build::cache_dir() reads this;
+# external consumers fall back to the per-user cache directory).
+[env]
+UTZ_CACHE_DIR = { value = "cache", relative = true }

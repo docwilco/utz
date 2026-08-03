@@ -41,6 +41,7 @@ pub struct Config {
     geom: GeomEncoding,
     density_weight_floor: Option<f64>,
     out: Option<PathBuf>,
+    cache_dir: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -55,6 +56,7 @@ impl Default for Config {
             geom: GeomEncoding::VarintArcs,
             density_weight_floor: None,
             out: None,
+            cache_dir: None,
         }
     }
 }
@@ -198,6 +200,19 @@ impl Config {
         self
     }
 
+    /// Where source downloads are cached. Default: the
+    /// [`cache_dir()`](crate::cache_dir) chain (`UTZ_CACHE_DIR`, then the
+    /// per-user cache directory). Point this at a pre-fetched directory
+    /// for hermetic builds with no network. Build scripts relying on the
+    /// environment default should emit
+    /// `cargo:rerun-if-env-changed=UTZ_CACHE_DIR` (and
+    /// `UTZ_TZBB_RELEASE` if unpinned).
+    #[must_use]
+    pub fn cache_dir(mut self, p: impl Into<PathBuf>) -> Self {
+        self.cache_dir = Some(p.into());
+        self
+    }
+
     /// Fetch sources (cached), build the asset, write it, return the
     /// path. Also writes `<out>.guard.rs`: a compile-time assertion of the
     /// `utz` features this asset needs (via `utz::caps`); `include!` it
@@ -209,7 +224,8 @@ impl Config {
     /// download/parse failure, encoding failure, missing `OUT_DIR` when no
     /// `out_path` is set, or I/O writing the asset and its guard file.
     pub fn generate(self) -> crate::Result<PathBuf> {
-        let (feats, release) = crate::load_with_release(&self.dataset)?;
+        let cache = self.cache_dir.clone().unwrap_or_else(crate::cache_dir);
+        let (feats, release) = crate::load_with_release_in(&self.dataset, &cache)?;
         let p = Params {
             dataset: crate::dataset(&self.dataset)?.code(),
             tzbb_release: &release,
@@ -222,10 +238,7 @@ impl Config {
         };
         let bytes = match self.density_weight_floor {
             Some(w) => {
-                // TODO(hermetic consumers): cache_dir() is workspace-
-                // relative — as a build-dependency this lands in the registry
-                // copy. Needs a user-cache dir + a pre-fetched-source knob.
-                let grid = crate::density::DensityGrid::load(&crate::cache_dir())?;
+                let grid = crate::density::DensityGrid::load(&cache)?;
                 crate::encode_weighted(&feats, &p, &grid, utz_simplify::DensityWeight::new(w))?
             }
             None => encode::encode(&feats, &p)?,

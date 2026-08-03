@@ -22,8 +22,10 @@ weighting, the viewer generator) is machinery those methods drive.
 
 ## Source data
 
-Sources download on first use into a `cache/` directory at the
-workspace root and are revalidated with conditional GETs: the
+Sources download on first use into a per-user cache directory
+(`$XDG_CACHE_HOME/utz-build`, overridable with `UTZ_CACHE_DIR` or
+[`Config::cache_dir()`](config::Config::cache_dir); see
+[`cache_dir()`]) and are revalidated with conditional GETs: the
 [timezone-boundary-builder] `GeoJSON` (tens of MB per dataset,
 [ODbL]), and for density-weighted recipes the [GHS-POP] population
 raster (~460 MB once, [CC BY 4.0]). Set `UTZ_TZBB_RELEASE` to pin a

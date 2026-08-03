@@ -21,8 +21,10 @@
 //!
 //! # Source data
 //!
-//! Sources download on first use into a `cache/` directory at the
-//! workspace root and are revalidated with conditional GETs: the
+//! Sources download on first use into a per-user cache directory
+//! (`$XDG_CACHE_HOME/utz-build`, overridable with `UTZ_CACHE_DIR` or
+//! [`Config::cache_dir()`](config::Config::cache_dir); see
+//! [`cache_dir()`]) and are revalidated with conditional GETs: the
 //! [timezone-boundary-builder] `GeoJSON` (tens of MB per dataset,
 //! [ODbL]), and for density-weighted recipes the [GHS-POP] population
 //! raster (~460 MB once, [CC BY 4.0]). Set `UTZ_TZBB_RELEASE` to pin a
@@ -168,7 +170,19 @@ pub fn load(ds: &str) -> crate::Result<Vec<Feat>> {
 /// # Errors
 /// Invalid dataset name, or TZBB download/parse failure.
 pub fn load_with_release(ds: &str) -> crate::Result<(Vec<Feat>, String)> {
-    loader::load_tzbb(dataset(ds)?, &cache_dir())
+    load_with_release_in(ds, &cache_dir())
+}
+
+/// [`load_with_release`] against an explicit cache directory instead of
+/// the [`cache_dir()`] chain.
+///
+/// # Errors
+/// As [`load_with_release`].
+pub fn load_with_release_in(
+    ds: &str,
+    cache_dir: &std::path::Path,
+) -> crate::Result<(Vec<Feat>, String)> {
+    loader::load_tzbb(dataset(ds)?, cache_dir)
 }
 
 /// `encode::encode()` with population-density-weighted simplification: the
@@ -193,12 +207,37 @@ pub fn encode_weighted(
     )?)
 }
 
-/// Workspace-root `cache/` for downloaded TZBB releases (gitignored).
-/// The path is relative to this crate's source: correct inside the μTZ
-/// workspace, but for a registry-installed build-dependency it lands in
-/// the cargo registry copy (a known limitation to fix before the crate
-/// is published).
+/// The source-data cache directory, resolved at call time:
+///
+/// 1. `$UTZ_CACHE_DIR` (the μTZ workspace pins this to its `cache/`
+///    via `.cargo/config.toml`, so in-repo builds share one cache)
+/// 2. `$XDG_CACHE_HOME/utz-build`
+/// 3. `%LOCALAPPDATA%\utz-build` (Windows) or `$HOME/.cache/utz-build`
+/// 4. `$OUT_DIR/utz-build-cache` (build-script last resort)
+///
+/// [`Config::cache_dir()`](config::Config::cache_dir) overrides the
+/// chain per build. Everything inside is a re-fetchable download (TZBB
+/// zips keyed per release, the ~460 MB GHS-POP raster and its decoded
+/// sidecar): safe to delete. Build scripts that depend on the chain
+/// should emit `cargo:rerun-if-env-changed=UTZ_CACHE_DIR`.
 #[must_use]
 pub fn cache_dir() -> PathBuf {
-    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../cache"))
+    use std::path::Path;
+    if let Some(p) = std::env::var_os("UTZ_CACHE_DIR").filter(|p| !p.is_empty()) {
+        return p.into();
+    }
+    if let Some(p) = std::env::var_os("XDG_CACHE_HOME").filter(|p| !p.is_empty()) {
+        return Path::new(&p).join("utz-build");
+    }
+    #[cfg(windows)]
+    if let Some(p) = std::env::var_os("LOCALAPPDATA").filter(|p| !p.is_empty()) {
+        return Path::new(&p).join("utz-build");
+    }
+    if let Some(p) = std::env::var_os("HOME").filter(|p| !p.is_empty()) {
+        return Path::new(&p).join(".cache").join("utz-build");
+    }
+    if let Some(p) = std::env::var_os("OUT_DIR").filter(|p| !p.is_empty()) {
+        return Path::new(&p).join("utz-build-cache");
+    }
+    PathBuf::from("utz-build-cache")
 }
