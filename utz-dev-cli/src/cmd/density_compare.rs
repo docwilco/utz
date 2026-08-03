@@ -23,7 +23,7 @@ pub struct Args {
     eps_m: f64,
     /// weighted-floor multiplier at max density
     #[arg(default_value_t = 0.1)]
-    w_min: f64,
+    density_weight_floor: f64,
 }
 
 /// # Errors
@@ -40,7 +40,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         (100.0, 1000.0, "100-1k (town)"),
         (1000.0, f64::INFINITY, ">=1k (city)"),
     ];
-    let (ds, eps_m, w_min) = (a.ds, a.eps_m, a.w_min);
+    let (ds, eps_m, w_min) = (a.ds, a.eps_m, a.density_weight_floor);
 
     let feats = utz_build::load(&ds)?;
     let grid = DensityGrid::load(&utz_build::cache_dir())?;
@@ -103,11 +103,14 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         grid_deg: 2.0,
         codec: Codec::Zstd,
         simplify: encode::SimplifyAlgo::default(),
-        w_min: None,
+        density_weight_floor: None,
         geom: encode::GeomEncoding::default(),
     };
     let container = |t: &topo::Topology, w_min: Option<f64>| -> utz_build::Result<Vec<u8>> {
-        let p = Params { w_min, ..p };
+        let p = Params {
+            density_weight_floor: w_min,
+            ..p
+        };
         Ok(encode::finish(
             &encode::payload_from_topology(t, &t.arc_coords, &feats, &p)?.0,
             p.codec,

@@ -190,8 +190,8 @@ impl Config {
     /// [`generate()`](Config::generate)). First use downloads GHS-POP
     /// (~460 MB, cached).
     #[must_use]
-    pub fn density_weight_floor(mut self, w_min: f64) -> Self {
-        self.density_weight_floor = Some(w_min);
+    pub fn density_weight_floor(mut self, floor: f64) -> Self {
+        self.density_weight_floor = Some(floor);
         self
     }
 
@@ -237,7 +237,7 @@ impl Config {
             codec: self.codec,
             simplify: self.simplify,
             geom: self.geom,
-            w_min: self.density_weight_floor,
+            density_weight_floor: self.density_weight_floor,
         };
         let bytes = match self.density_weight_floor {
             Some(w) => {

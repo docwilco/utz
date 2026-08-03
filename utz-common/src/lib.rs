@@ -86,7 +86,7 @@ pub struct PayloadHeader {
     /// Population-density weight floor in fixed-point 1e-4 (0 =
     /// unweighted, 10000 = 1.0): provenance for the density-weighted
     /// simplification knob, like `eps_m`.
-    pub w_min_e4: u16,
+    pub density_weight_floor_e4: u16,
     /// reserved, must be zero (pads the header to 64 bytes)
     pub reserved: u8,
 }
@@ -388,7 +388,7 @@ mod tests {
             simplify_algo: SimplifyAlgo::Rdp,
             geom: GeomEncoding::FixedWidthArcs,
             codec: Codec::Brotli,
-            w_min_e4: 200,
+            density_weight_floor_e4: 200,
             reserved: 0,
         };
         let mut bytes = [0u8; PAYLOAD_HEADER_LEN];
@@ -427,7 +427,7 @@ mod tests {
             simplify_algo: SimplifyAlgo::None,
             geom: GeomEncoding::VarintArcs,
             codec: Codec::Uncompressed,
-            w_min_e4: 0,
+            density_weight_floor_e4: 0,
             reserved: 0,
         };
         let mut bytes = [0u8; PAYLOAD_HEADER_LEN];

@@ -262,7 +262,7 @@ pub struct ArcParams {
     /// degrees; Visvalingam takes degrees squared)
     pub algo: Simplify,
     /// density weighting floor; `>= 1` (or no densities) turns weighting off
-    pub w_min: f64,
+    pub density_weight_floor: f64,
     /// display quantization mode
     pub quant: Quant,
     /// Q→S order: snap to the display lattice BEFORE simplifying (ignored
@@ -314,8 +314,8 @@ pub fn arc_misassign(
         arc
     };
     let kept = match dens {
-        Some(d) if params.w_min < 1.0 => {
-            let model = DensityWeight::new(params.w_min);
+        Some(d) if params.density_weight_floor < 1.0 => {
+            let model = DensityWeight::new(params.density_weight_floor);
             let weights: Vec<f64> = d.iter().map(|&x| model.weight(x)).collect();
             simplify_weighted(params.algo, src, &weights)
         }
@@ -556,7 +556,7 @@ mod tests {
     fn driver_sq_i16_matches_js() {
         let params = ArcParams {
             algo: Simplify::Rdp { eps: 0.15 },
-            w_min: 1.0,
+            density_weight_floor: 1.0,
             quant: Quant::I16,
             pre: false,
         };
@@ -577,7 +577,7 @@ mod tests {
     fn driver_qs_i24_matches_js() {
         let params = ArcParams {
             algo: Simplify::Rdp { eps: 0.05 },
-            w_min: 1.0,
+            density_weight_floor: 1.0,
             quant: Quant::I24,
             pre: true,
         };
@@ -612,7 +612,7 @@ mod tests {
         // Q→S with drops: the walk-match runs against the snapped src
         let params = ArcParams {
             algo: Simplify::Rdp { eps: 0.15 },
-            w_min: 1.0,
+            density_weight_floor: 1.0,
             quant: Quant::I16,
             pre: true,
         };
@@ -639,7 +639,7 @@ mod tests {
         // algo None: no pockets, pure display-snap pricing
         let params = ArcParams {
             algo: Simplify::None,
-            w_min: 1.0,
+            density_weight_floor: 1.0,
             quant: Quant::F32,
             pre: false,
         };
@@ -657,7 +657,7 @@ mod tests {
     fn driver_accumulates_across_arcs() {
         let params = ArcParams {
             algo: Simplify::Rdp { eps: 0.15 },
-            w_min: 1.0,
+            density_weight_floor: 1.0,
             quant: Quant::I16,
             pre: false,
         };

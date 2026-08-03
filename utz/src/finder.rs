@@ -532,7 +532,7 @@ impl Finder {
     /// not affect lookups.
     #[must_use]
     pub fn density_weight_floor(&self) -> Option<f64> {
-        match self.layout.w_min_e4 {
+        match self.layout.density_weight_floor_e4 {
             0 => None,
             w => Some(f64::from(w) / 1e4),
         }

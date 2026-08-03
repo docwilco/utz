@@ -86,7 +86,7 @@ pub struct Params<'a> {
     /// provenance (`None` = unweighted). The weighting itself is applied
     /// by the caller's simplification pass (utz-build's
     /// `encode_weighted()`); this only stamps the knob.
-    pub w_min: Option<f64>,
+    pub density_weight_floor: Option<f64>,
 }
 
 /// Byte size of each payload section + post-simplification geometry counts:
@@ -135,12 +135,16 @@ pub fn build_payload(feats: &[Feat], p: &Params) -> crate::Result<Vec<u8>> {
 /// weighting off, which callers express as `None`.
 ///
 /// # Errors
-/// [`Error::WMin`] for a non-finite floor or one outside (0, 1).
-fn w_min_e4(w_min: Option<f64>) -> crate::Result<u16> {
-    match w_min {
+/// [`Error::DensityWeightFloor`] for a non-finite floor or one outside
+/// (0, 1).
+fn density_weight_floor_e4(floor: Option<f64>) -> crate::Result<u16> {
+    match floor {
         None => Ok(0),
         Some(w) => {
-            ensure!(w.is_finite() && w > 0.0 && w < 1.0, Error::WMin { w });
+            ensure!(
+                w.is_finite() && w > 0.0 && w < 1.0,
+                Error::DensityWeightFloor { floor: w }
+            );
             #[expect(
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,
@@ -182,7 +186,7 @@ pub fn payload_from_topology(
         (0.1..=45.0).contains(&p.grid_deg),
         Error::GridDeg { deg: p.grid_deg }
     );
-    let w_min_e4 = w_min_e4(p.w_min)?;
+    let density_weight_floor_e4 = density_weight_floor_e4(p.density_weight_floor)?;
     ensure!(
         feats.len() < 0x7FFF,
         Error::FormatLimit {
@@ -268,7 +272,7 @@ pub fn payload_from_topology(
         simplify_algo: p.simplify,
         geom: p.geom,
         codec: Codec::Uncompressed, // finish() records the actual codec
-        w_min_e4,
+        density_weight_floor_e4,
         reserved: 0,
     };
     o.pwrite_with(header, 0, LE)

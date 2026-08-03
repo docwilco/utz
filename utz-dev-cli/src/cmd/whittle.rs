@@ -38,7 +38,7 @@ struct Recipe {
     eps_m: f64,
     quant_bits: u32,
     grid_deg: f64,
-    w_min: f64,
+    density_weight_floor: f64,
     codec: Codec,
     /// also report the uncompressed asset (the `-static` twin)
     static_twin: bool,
@@ -51,7 +51,7 @@ const RECIPES: [Recipe; 4] = [
         eps_m: 10_000.0,
         quant_bits: 16,
         grid_deg: 2.0,
-        w_min: 0.001,
+        density_weight_floor: 0.001,
         codec: Codec::Gzip,
         static_twin: true,
     },
@@ -61,7 +61,7 @@ const RECIPES: [Recipe; 4] = [
         eps_m: 1_000.0,
         quant_bits: 24,
         grid_deg: 4.0 / 3.0,
-        w_min: 0.001,
+        density_weight_floor: 0.001,
         codec: Codec::Xz,
         static_twin: false,
     },
@@ -71,7 +71,7 @@ const RECIPES: [Recipe; 4] = [
         eps_m: 50.0,
         quant_bits: 24,
         grid_deg: 2.0 / 3.0,
-        w_min: 0.020,
+        density_weight_floor: 0.020,
         codec: Codec::Brotli,
         static_twin: false,
     },
@@ -81,7 +81,7 @@ const RECIPES: [Recipe; 4] = [
         eps_m: 10.0,
         quant_bits: 32,
         grid_deg: 0.5,
-        w_min: 0.10,
+        density_weight_floor: 0.10,
         codec: Codec::Brotli,
         static_twin: false,
     },
@@ -170,7 +170,7 @@ fn encodings_matrix(
             codec: Codec::Uncompressed,
             simplify: SimplifyAlgo::Rdp,
             geom,
-            w_min: Some(r.w_min),
+            density_weight_floor: Some(r.density_weight_floor),
         };
         let (payload, _) = encode::payload_from_topology(t, &t.arc_coords, feats, &p)?;
         let container = encode::finish(&payload, r.codec)?;
@@ -225,7 +225,7 @@ fn report_recipe(
 
     println!(
         "{} ({}, ε {} m w{}, i{}, {:.4}°, {:?}, TZBB {release})",
-        r.name, r.ds, r.eps_m, r.w_min, r.quant_bits, r.grid_deg, r.codec
+        r.name, r.ds, r.eps_m, r.density_weight_floor, r.quant_bits, r.grid_deg, r.codec
     );
     println!(
         "  {:<34} {:>10}   {:<7} {:<8}",
@@ -256,7 +256,7 @@ fn report_recipe(
 
     // the recipe's density-weighted simplification
     let eps_deg = r.eps_m / 111_320.0;
-    let weight = DensityWeight::new(r.w_min);
+    let weight = DensityWeight::new(r.density_weight_floor);
     let algo = encode::to_simplify(SimplifyAlgo::Rdp, eps_deg);
     let t =
         topo::build_topology_weighted(&feats, algo, &|a, b| weight.weight(density.max_along(a, b)));
@@ -278,7 +278,7 @@ fn report_recipe(
         codec: Codec::Uncompressed,
         simplify: SimplifyAlgo::Rdp,
         geom: encode::GeomEncoding::VarintArcs,
-        w_min: Some(r.w_min),
+        density_weight_floor: Some(r.density_weight_floor),
     };
     let payload = report_payload(&t, &feats, &p, coords, arc_verts1)?;
 

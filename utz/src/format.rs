@@ -44,7 +44,7 @@ pub struct PayloadLayout {
     /// population-density weight floor ×1e-4 the asset was built with
     /// (0 = unweighted; provenance, exposed as
     /// [`Finder::density_weight_floor()`](crate::Finder::density_weight_floor))
-    pub w_min_e4: u16,
+    pub density_weight_floor_e4: u16,
     pub n_features: u16,
     /// The tzid pool; the zone string-offset table (`u16[n_features+1]`)
     /// starts the section blob at offset 0, this pool follows it.
@@ -199,7 +199,7 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
         })?;
     if h.flags != 0
         || h.reserved != 0
-        || h.w_min_e4 > 10_000
+        || h.density_weight_floor_e4 > 10_000
         || h.grid_deg.is_nan()
         || h.grid_deg <= 0.0
         || h.ncols == 0
@@ -255,7 +255,7 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
         simplify_algo: h.simplify_algo,
         grid_deg: h.grid_deg,
         eps_m: h.eps_m,
-        w_min_e4: h.w_min_e4,
+        density_weight_floor_e4: h.density_weight_floor_e4,
         n_features: h.n_features,
         pool,
         n_arcs: sections.n_arcs,
@@ -479,7 +479,7 @@ mod tests {
             simplify_algo: SimplifyAlgo::Rdp,
             geom: GeomEncoding::VarintArcs,
             codec: Codec::Uncompressed,
-            w_min_e4: 10,
+            density_weight_floor_e4: 10,
             reserved: 0,
         }
     }
@@ -503,16 +503,16 @@ mod tests {
     #[test]
     fn valid_synthetic_header_parses() {
         let h = parse(&header_bytes(tiny_header())).expect("valid header");
-        assert_eq!(h.w_min_e4, 10);
+        assert_eq!(h.density_weight_floor_e4, 10);
         check_tables(&tiny_payload(), &h).expect("valid tables");
     }
 
     #[test]
     fn header_field_rejections() {
         for (name, h) in [
-            ("w_min over 1.0", {
+            ("density weight floor over 1.0", {
                 let mut h = tiny_header();
-                h.w_min_e4 = 10_001;
+                h.density_weight_floor_e4 = 10_001;
                 h
             }),
             ("reserved nonzero", {

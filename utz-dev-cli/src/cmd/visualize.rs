@@ -209,7 +209,7 @@ fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> utz_build::Result<Vec<u8>> 
         grid_deg: 2.0,
         codec: Codec::Zstd,
         simplify: encode::SimplifyAlgo::default(),
-        w_min: None,
+        density_weight_floor: None,
         geom: encode::GeomEncoding::default(),
     };
     let finder = utz::Finder::from_vec(encode::encode(feats, &p)?)?;

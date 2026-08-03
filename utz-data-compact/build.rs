@@ -33,7 +33,7 @@ fn main() {
         h.simplify_algo,
         h.geom,
         h.codec,
-        h.w_min_e4,
+        h.density_weight_floor_e4,
     );
     assert_eq!(
         actual, expected,
