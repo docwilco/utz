@@ -106,6 +106,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
             codec: Codec::Uncompressed,
             simplify: encode::SimplifyAlgo::default(),
             geom: encode::GeomEncoding::default(),
+            w_min: None,
         };
         let payload = encode::build_payload(&feats, &p)?;
         let raw = payload.len();

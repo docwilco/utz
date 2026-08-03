@@ -103,6 +103,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         grid_deg: 2.0,
         codec: Codec::Zstd,
         simplify: encode::SimplifyAlgo::default(),
+        w_min: None,
         geom: encode::GeomEncoding::default(),
     };
     let container = |t: &topo::Topology| -> utz_build::Result<Vec<u8>> {

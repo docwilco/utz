@@ -168,6 +168,7 @@ fn encodings_matrix(
             codec: Codec::Uncompressed,
             simplify: SimplifyAlgo::Rdp,
             geom,
+            w_min: Some(r.w_min),
         };
         let (payload, _) = encode::payload_from_topology(t, &t.arc_coords, feats, &p)?;
         let container = encode::finish(&payload, r.codec)?;
@@ -263,6 +264,7 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
             codec: Codec::Uncompressed,
             simplify: SimplifyAlgo::Rdp,
             geom: encode::GeomEncoding::VarintArcs,
+            w_min: Some(r.w_min),
         };
         let (payload, stats) = encode::payload_from_topology(&t, &t.arc_coords, &feats, &p)?;
         stage(

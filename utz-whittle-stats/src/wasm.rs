@@ -324,6 +324,7 @@ pub extern "C" fn utz_enc_payload(
             .ok()
             .and_then(utz_encode::encode::SimplifyAlgo::from_byte)
             .unwrap_or(utz_encode::encode::SimplifyAlgo::Rdp),
+        w_min: (w_min < 1.0).then_some(w_min),
     };
     match encode::payload_from_topology(&st.topo, &arcs, &st.feats, &p) {
         Ok((payload, stats)) => {

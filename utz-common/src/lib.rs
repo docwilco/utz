@@ -19,7 +19,7 @@ use alloc::vec::Vec;
 pub const MAGIC: [u8; 4] = *b"uTZ1";
 /// The container-format version this workspace reads and writes; a reader
 /// refuses any other value.
-pub const VERSION: u8 = 10;
+pub const VERSION: u8 = 11;
 
 /// The container prologue: `MAGIC` (4), `VERSION` (1), 3 reserved bytes.
 /// The only part of the format whose layout is frozen across versions:
@@ -83,8 +83,12 @@ pub struct PayloadHeader {
     pub geom: GeomEncoding,
     /// the section blob's compression codec
     pub codec: Codec,
+    /// Population-density weight floor in fixed-point 1e-4 (0 =
+    /// unweighted, 10000 = 1.0): provenance for the density-weighted
+    /// simplification knob, like `eps_m`.
+    pub w_min_e4: u16,
     /// reserved, must be zero (pads the header to 64 bytes)
-    pub reserved: [u8; 3],
+    pub reserved: u8,
 }
 
 /// Coordinate quantization width: how many bits each stored coordinate
@@ -361,7 +365,8 @@ mod tests {
             simplify_algo: SimplifyAlgo::Rdp,
             geom: GeomEncoding::FixedWidthArcs,
             codec: Codec::Brotli,
-            reserved: [0; 3],
+            w_min_e4: 520,
+            reserved: 0,
         };
         let mut bytes = [0u8; PAYLOAD_HEADER_LEN];
         let written = bytes
@@ -399,7 +404,8 @@ mod tests {
             simplify_algo: SimplifyAlgo::None,
             geom: GeomEncoding::VarintArcs,
             codec: Codec::Uncompressed,
-            reserved: [0; 3],
+            w_min_e4: 0,
+            reserved: 0,
         };
         let mut bytes = [0u8; PAYLOAD_HEADER_LEN];
         bytes

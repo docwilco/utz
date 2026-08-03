@@ -235,6 +235,7 @@ impl Config {
             codec: self.codec,
             simplify: self.simplify,
             geom: self.geom,
+            w_min: self.density_weight_floor,
         };
         let bytes = match self.density_weight_floor {
             Some(w) => {

@@ -41,6 +41,9 @@ pub struct PayloadLayout {
     /// cell size in degrees; fractional (e.g. 0.5) allowed
     pub grid_deg: f32,
     pub eps_m: f32,
+    /// population-density weight floor ×1e-4 the asset was built with
+    /// (0 = unweighted; provenance)
+    pub w_min_e4: u16,
     pub n_features: u16,
     /// The tzid pool; the zone string-offset table (`u16[n_features+1]`)
     /// starts the section blob at offset 0, this pool follows it.
@@ -193,7 +196,12 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
             scroll::Error::BadInput { .. } => Error::InvalidHeaderField,
             _ => Error::Truncated,
         })?;
-    if h.flags != 0 || h.reserved != [0; 3] || h.grid_deg.is_nan() || h.grid_deg <= 0.0 {
+    if h.flags != 0
+        || h.reserved != 0
+        || h.w_min_e4 > 10_000
+        || h.grid_deg.is_nan()
+        || h.grid_deg <= 0.0
+    {
         return Err(Error::InvalidHeaderField);
     }
     let sections_len = h.raw_len as usize;
@@ -244,6 +252,7 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
         simplify_algo: h.simplify_algo,
         grid_deg: h.grid_deg,
         eps_m: h.eps_m,
+        w_min_e4: h.w_min_e4,
         n_features: h.n_features,
         pool,
         n_arcs: sections.n_arcs,

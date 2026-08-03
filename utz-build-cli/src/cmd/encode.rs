@@ -98,6 +98,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         codec,
         simplify,
         geom,
+        w_min: a.w_min,
     };
     let container = match a.w_min {
         Some(w) => {

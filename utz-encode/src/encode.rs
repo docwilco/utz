@@ -81,6 +81,11 @@ pub struct Params<'a> {
     pub simplify: SimplifyAlgo,
     /// arc-store encoding: delta+varint (default) or fixed-width
     pub geom: GeomEncoding,
+    /// Population-density weight floor, recorded in the header as
+    /// provenance (`None` = unweighted). The weighting itself is applied
+    /// by the caller's simplification pass (utz-build's
+    /// `encode_weighted()`); this only stamps the knob.
+    pub w_min: Option<f64>,
 }
 
 /// Byte size of each payload section + post-simplification geometry counts:
@@ -240,7 +245,13 @@ pub fn payload_from_topology(
         simplify_algo: p.simplify,
         geom: p.geom,
         codec: Codec::Uncompressed, // finish() records the actual codec
-        reserved: [0; 3],
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "clamped into 0..=10_000 before the cast"
+        )]
+        w_min_e4: (p.w_min.unwrap_or(0.0).clamp(0.0, 1.0) * 1e4).round() as u16,
+        reserved: 0,
     };
     o.pwrite_with(header, 0, LE)
         .expect("header buffer reserved at PAYLOAD_HEADER_LEN");

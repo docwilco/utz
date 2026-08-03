@@ -48,6 +48,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
         codec: Codec::Uncompressed,
         simplify: encode::SimplifyAlgo::default(),
         geom: encode::GeomEncoding::default(),
+        w_min: None,
     };
     let container = encode::encode(&feats, &params)?;
     #[expect(
