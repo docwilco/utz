@@ -24,8 +24,9 @@ exclude = ["utz-bench-firmware"]
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/docwilco/utz"
-# floor: cast_signed/is_multiple_of (1.87) and ruzstd 0.8's own 1.87
-rust-version = "1.87"
+# floor: zip 8 and geo 0.33 require 1.88 (our own code needs 1.87 for
+# cast_signed/is_multiple_of; ruzstd 0.9 wants 1.87)
+rust-version = "1.88"
 
 [workspace.dependencies]
 geo = "0.33"
