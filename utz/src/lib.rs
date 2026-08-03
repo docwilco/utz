@@ -345,7 +345,8 @@
 //!     <tr><td>parsed coordinates (f64 pairs)</td><td colspan="3" align="center">57.8 MB</td><td align="right">124.9 MB</td></tr>
 //!     <tr><td>shared-arc topology</td><td colspan="3" align="center">28.9 MB</td><td align="right">62.4 MB</td></tr>
 //!     <tr><td>simplified</td><td align="right">692.6 KB</td><td align="right">2.5 MB</td><td align="right">7.9 MB</td><td align="right">30.8 MB</td></tr>
-//!     <tr><td>quantized, varint-coded arcs</td><td align="right">73.4 KB</td><td align="right">512.6 KB</td><td align="right">1.6 MB</td><td align="right">10.1 MB</td></tr>
+//!     <tr><td>quantized (coords at full width)</td><td align="right">114.4 KB</td><td align="right">940.6 KB</td><td align="right">3.0 MB</td><td align="right">15.4 MB</td></tr>
+//!     <tr><td>varint-coded arcs</td><td align="right">73.4 KB</td><td align="right">512.6 KB</td><td align="right">1.6 MB</td><td align="right">10.1 MB</td></tr>
 //!     <tr><td>serialized payload (grid added)</td><td align="right">124.9 KB</td><td align="right">607.6 KB</td><td align="right">1.9 MB</td><td align="right">10.6 MB</td></tr>
 //!     <tr><td>compressed asset</td><td align="right">70.9 KB</td><td align="right">445.1 KB</td><td align="right">1.2 MB</td><td align="right">8.1 MB</td></tr>
 //!   </tbody>

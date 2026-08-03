@@ -1,7 +1,8 @@
 //! Per-stage size reduction of the whittling-down pipeline, measured on
 //! the real preset recipes: source `GeoJSON` → parsed f64 coordinates →
-//! shared-arc topology → density-weighted simplification → quantized +
-//! serialized sections → compressed asset. The stages mirror the utz
+//! shared-arc topology → density-weighted simplification → quantized
+//! coordinates → varint-coded arcs → serialized sections → compressed
+//! asset. The stages mirror the utz
 //! crate docs' "How it works" list; this is the command that keeps those
 //! numbers honest. `--extended` adds the geometry-encodings matrix (raw
 //! payload, recipe-codec asset, and xz asset per `GeomEncoding`),
@@ -204,107 +205,140 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         if a.preset != "all" && a.preset != r.name {
             continue;
         }
-        let ds = utz_build::dataset(r.ds)?;
-        let zip_path = download::fetch(&loader::dataset_url(ds, &release), &cache)?;
-        let geojson = geojson_entry_size(&zip_path)?;
-        let feats = loader::load_geojson_zip(&zip_path)?;
-
-        println!(
-            "{} ({}, ε {} m w{}, i{}, {:.4}°, {:?}, TZBB {release})",
-            r.name, r.ds, r.eps_m, r.w_min, r.quant_bits, r.grid_deg, r.codec
-        );
-        println!(
-            "  {:<34} {:>10}   {:<7} {:<8}",
-            "stage", "size", "÷prev", "÷coords"
-        );
-
-        // parsed coordinates as f64 pairs: the in-memory baseline every
-        // later stage is measured against
-        let coords = coord_count(&feats) * 16;
-        println!(
-            "  {:<34} {:>10}   {:<7} {:<8}",
-            format!("source GeoJSON ({} zones)", feats.len()),
-            human(geojson),
-            "",
-            ""
-        );
-        stage("parsed coordinates (f64 pairs)", coords, geojson, coords);
-
-        // shared-arc topology, no simplification: pure border dedup
-        let t0 = topo::build_topology_algo(&feats, encode::to_simplify(SimplifyAlgo::None, 0.0));
-        let arc_verts0: u64 = arc_verts(&t0);
-        stage(
-            &format!("shared-arc topology ({} arcs)", t0.arc_coords.len()),
-            arc_verts0 * 16,
-            coords,
-            coords,
-        );
-
-        // the recipe's density-weighted simplification
-        let eps_deg = r.eps_m / 111_320.0;
-        let weight = DensityWeight::new(r.w_min);
-        let algo = encode::to_simplify(SimplifyAlgo::Rdp, eps_deg);
-        let t = topo::build_topology_weighted(&feats, algo, &|a, b| {
-            weight.weight(density.max_along(a, b))
-        });
-        let arc_verts1: u64 = arc_verts(&t);
-        stage(
-            &format!("simplified (ε {} m weighted)", r.eps_m),
-            arc_verts1 * 16,
-            arc_verts0 * 16,
-            coords,
-        );
-
-        // quantize + delta/varint code + grid + serialize
-        let p = Params {
-            dataset: ds.code(),
-            tzbb_release: &release,
-            eps_m: r.eps_m,
-            quant_bits: r.quant_bits,
-            grid_deg: r.grid_deg,
-            codec: Codec::Uncompressed,
-            simplify: SimplifyAlgo::Rdp,
-            geom: encode::GeomEncoding::VarintArcs,
-            w_min: Some(r.w_min),
-        };
-        let (payload, stats) = encode::payload_from_topology(&t, &t.arc_coords, &feats, &p)?;
-        stage(
-            &format!("quantized + varint arcs (i{})", r.quant_bits),
-            u64::from(stats.arcs),
-            arc_verts1 * 16,
-            coords,
-        );
-        println!(
-            "  {:<34} {:>10}   (header {} + zones {} + rings {} + grid {})",
-            format!("serialized payload ({} verts)", stats.n_verts),
-            human(payload.len() as u64),
-            human(u64::from(stats.header)),
-            human(u64::from(stats.zones)),
-            human(u64::from(stats.rings)),
-            human(u64::from(stats.grid)),
-        );
-
-        let container = encode::finish(&payload, r.codec)?;
-        stage(
-            &format!("compressed container ({:?})", r.codec),
-            container.len() as u64,
-            payload.len() as u64,
-            coords,
-        );
-        if r.static_twin {
-            let flat = encode::finish(&payload, Codec::Uncompressed)?;
-            stage(
-                "uncompressed twin (-static)",
-                flat.len() as u64,
-                coords,
-                coords,
-            );
-        }
-
-        if a.extended {
-            encodings_matrix(&r, &t, &feats, &release)?;
-        }
-        println!();
+        report_recipe(&r, &cache, &density, &release, a.extended)?;
     }
     Ok(())
+}
+
+/// Measure and print every whittling stage for one recipe.
+fn report_recipe(
+    r: &Recipe,
+    cache: &std::path::Path,
+    density: &DensityGrid,
+    release: &str,
+    extended: bool,
+) -> utz_build::Result<()> {
+    let ds = utz_build::dataset(r.ds)?;
+    let zip_path = download::fetch(&loader::dataset_url(ds, release), cache)?;
+    let geojson = geojson_entry_size(&zip_path)?;
+    let feats = loader::load_geojson_zip(&zip_path)?;
+
+    println!(
+        "{} ({}, ε {} m w{}, i{}, {:.4}°, {:?}, TZBB {release})",
+        r.name, r.ds, r.eps_m, r.w_min, r.quant_bits, r.grid_deg, r.codec
+    );
+    println!(
+        "  {:<34} {:>10}   {:<7} {:<8}",
+        "stage", "size", "÷prev", "÷coords"
+    );
+
+    // parsed coordinates as f64 pairs: the in-memory baseline every
+    // later stage is measured against
+    let coords = coord_count(&feats) * 16;
+    println!(
+        "  {:<34} {:>10}   {:<7} {:<8}",
+        format!("source GeoJSON ({} zones)", feats.len()),
+        human(geojson),
+        "",
+        ""
+    );
+    stage("parsed coordinates (f64 pairs)", coords, geojson, coords);
+
+    // shared-arc topology, no simplification: pure border dedup
+    let t0 = topo::build_topology_algo(&feats, encode::to_simplify(SimplifyAlgo::None, 0.0));
+    let arc_verts0: u64 = arc_verts(&t0);
+    stage(
+        &format!("shared-arc topology ({} arcs)", t0.arc_coords.len()),
+        arc_verts0 * 16,
+        coords,
+        coords,
+    );
+
+    // the recipe's density-weighted simplification
+    let eps_deg = r.eps_m / 111_320.0;
+    let weight = DensityWeight::new(r.w_min);
+    let algo = encode::to_simplify(SimplifyAlgo::Rdp, eps_deg);
+    let t =
+        topo::build_topology_weighted(&feats, algo, &|a, b| weight.weight(density.max_along(a, b)));
+    let arc_verts1: u64 = arc_verts(&t);
+    stage(
+        &format!("simplified (ε {} m weighted)", r.eps_m),
+        arc_verts1 * 16,
+        arc_verts0 * 16,
+        coords,
+    );
+
+    // quantize + delta/varint code + grid + serialize
+    let p = Params {
+        dataset: ds.code(),
+        tzbb_release: release,
+        eps_m: r.eps_m,
+        quant_bits: r.quant_bits,
+        grid_deg: r.grid_deg,
+        codec: Codec::Uncompressed,
+        simplify: SimplifyAlgo::Rdp,
+        geom: encode::GeomEncoding::VarintArcs,
+        w_min: Some(r.w_min),
+    };
+    let payload = report_payload(&t, &feats, &p, coords, arc_verts1)?;
+
+    let container = encode::finish(&payload, r.codec)?;
+    stage(
+        &format!("compressed container ({:?})", r.codec),
+        container.len() as u64,
+        payload.len() as u64,
+        coords,
+    );
+    if r.static_twin {
+        let flat = encode::finish(&payload, Codec::Uncompressed)?;
+        stage(
+            "uncompressed twin (-static)",
+            flat.len() as u64,
+            coords,
+            coords,
+        );
+    }
+
+    if extended {
+        encodings_matrix(r, &t, &feats, release)?;
+    }
+    println!();
+    Ok(())
+}
+
+/// Serialize the varint payload and print the quantize / varint-code /
+/// serialize stages; returns the payload for the compression stages.
+fn report_payload(
+    t: &topo::Topology,
+    feats: &[Feat],
+    p: &Params,
+    coords: u64,
+    arc_verts1: u64,
+) -> utz_build::Result<Vec<u8>> {
+    let (payload, stats) = encode::payload_from_topology(t, &t.arc_coords, feats, p)?;
+    // quantization alone: the surviving vertices at the declared
+    // coordinate width (what fixed-width-arcs would store)
+    let quantized = u64::from(stats.n_verts) * 2 * u64::from(p.quant_bits / 8);
+    stage(
+        &format!("quantized (i{} fixed-width)", p.quant_bits),
+        quantized,
+        arc_verts1 * 16,
+        coords,
+    );
+    stage(
+        "varint-coded arcs",
+        u64::from(stats.arcs),
+        quantized,
+        coords,
+    );
+    println!(
+        "  {:<34} {:>10}   (header {} + zones {} + rings {} + grid {})",
+        format!("serialized payload ({} verts)", stats.n_verts),
+        human(payload.len() as u64),
+        human(u64::from(stats.header)),
+        human(u64::from(stats.zones)),
+        human(u64::from(stats.rings)),
+        human(u64::from(stats.grid)),
+    );
+    Ok(payload)
 }
