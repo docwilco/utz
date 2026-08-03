@@ -1,3 +1,14 @@
+// docs.rs-only overrides of the sibling links; see utz/src/lib.rs.
+#![cfg_attr(
+    on_docsrs,
+    doc = "[custom]: https://docs.rs/utz/latest/utz/index.html#building-a-custom-asset"
+)]
+#![cfg_attr(
+    on_docsrs,
+    doc = "[cli]: https://docs.rs/utz-build-cli/latest/utz_build_cli/index.html"
+)]
+#![cfg_attr(on_docsrs, doc = "[reader]: https://docs.rs/utz/latest/utz/index.html")]
+#![cfg_attr(on_docsrs, doc = "")]
 //! μTZ builder library: generate custom `.utz` assets from a `build.rs`.
 //!
 //! Everything routes through the typed builder, [`Config`]. In a

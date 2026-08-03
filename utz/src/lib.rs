@@ -1,3 +1,19 @@
+// On docs.rs (and only there) the sibling-crate links below resolve to
+// docs.rs instead of the shared doc root; first definition wins, so
+// these must precede the doc comment. See [workspace.lints.rust].
+#![cfg_attr(
+    on_docsrs,
+    doc = "[`utz_build::Config`]: https://docs.rs/utz-build/latest/utz_build/config/struct.Config.html"
+)]
+#![cfg_attr(
+    on_docsrs,
+    doc = "[`utz_build`]: https://docs.rs/utz-build/latest/utz_build/index.html#datasets"
+)]
+#![cfg_attr(
+    on_docsrs,
+    doc = "[`utz-simplify`]: https://docs.rs/utz-simplify/latest/utz_simplify/index.html"
+)]
+#![cfg_attr(on_docsrs, doc = "")]
 //! μTZ (micro-timezone): tiny, tunable, embeddable lat/lon → IANA timezone-id
 //! lookup.
 //!

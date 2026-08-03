@@ -206,6 +206,11 @@ pub enum GeomEncoding {
     Coarse = 3,
 }
 
+#[cfg_attr(
+    on_docsrs,
+    doc = "[`utz_simplify`]: https://docs.rs/utz-simplify/latest/utz_simplify/index.html"
+)]
+#[cfg_attr(on_docsrs, doc = "")]
 /// Simplification algorithm: which simplifier the encoder ran when the
 /// asset was generated. Each variant sketches its algorithm; guarantees,
 /// citations, and the density-weighted variants are documented in the

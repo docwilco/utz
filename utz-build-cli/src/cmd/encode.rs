@@ -1,3 +1,8 @@
+#![cfg_attr(
+    on_docsrs,
+    doc = "[`utz_build::Config`]: https://docs.rs/utz-build/latest/utz_build/config/struct.Config.html"
+)]
+#![cfg_attr(on_docsrs, doc = "")]
 //! Encode an asset to disk from explicit knobs: the input for
 //! utz-bench-cli, the embedded bench firmware (which embeds an
 //! *uncompressed* asset and borrows it zero-copy from flash via

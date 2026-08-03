@@ -38,6 +38,13 @@ derive_more = { version = "2", default-features = false, features = ["display", 
 # stabilizes: https://github.com/rust-lang/rfcs/pull/3806
 include_bytes_aligned = "0.2.0"
 
+[workspace.lints.rust]
+# on_docsrs is set ONLY by the crates' docs.rs metadata (rustdoc-args):
+# it swaps the doc-root-relative sibling links (right for the workspace
+# doc tree and the Pages site) for absolute docs.rs URLs. The Pages
+# build sets docsrs (for feature banners) but never on_docsrs.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(on_docsrs)"] }
+
 [workspace.lints.clippy]
 # Pedantic is enforced with NO blanket allows: every finding is either fixed
 # or carries a site-level #[expect(..., reason = "...")] naming the invariant

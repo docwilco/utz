@@ -27,3 +27,6 @@ clap = { version = "4", features = ["derive"] }
 
 [lints]
 workspace = true
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--cfg", "on_docsrs"]

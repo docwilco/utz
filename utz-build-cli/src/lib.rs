@@ -1,3 +1,9 @@
+// docs.rs-only override of the sibling link; see utz/src/lib.rs.
+#![cfg_attr(
+    on_docsrs,
+    doc = "[`utz_build::Config`]: https://docs.rs/utz-build/latest/utz_build/config/struct.Config.html"
+)]
+#![cfg_attr(on_docsrs, doc = "")]
 //! μTZ asset-generation CLI: the `utz-build-cli` binary.
 //!
 //! The command-line counterpart of a `build.rs` using
@@ -18,7 +24,7 @@
 //! from a single source of truth. The repo-internal measurement and
 //! viewer commands live in the (unpublished) `utz-dev-cli` crate.
 //!
-//! [`utz_build::Config`]: https://docs.rs/utz-build/latest/utz_build/config/struct.Config.html
+//! [`utz_build::Config`]: ../utz_build/config/struct.Config.html
 //! [`cmd::encode`]: ../utz_build_cli/cmd/encode/index.html
 //! [`cmd::gen_preset`]: ../utz_build_cli/cmd/gen_preset/index.html
 

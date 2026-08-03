@@ -89,6 +89,8 @@ checkout.
 - [ ] Check the docs.rs builds (utz builds with the feature set pinned
       in `[package.metadata.docs.rs]`; presets are deliberately excluded
       there because the assets are not in utz's package).
-- [ ] Known cosmetic issue: cross-crate links between the μTZ crates 404
-      on docs.rs (they assume the combined doc root); the canonical docs
+- [ ] Cross-crate doc links resolve everywhere: local and Pages builds
+      use the shared doc root, while docs.rs builds get absolute docs.rs
+      URLs via the `on_docsrs` cfg that only the crates' docs.rs metadata
+      sets (first markdown link definition wins). The canonical docs
       remain https://docwilco.github.io/utz/docs/.
