@@ -1,6 +1,6 @@
 [package]
 name = "utz-build"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 edition.workspace = true
 license = "MIT"
 repository.workspace = true
@@ -25,13 +25,13 @@ categories = ["development-tools::build-utils", "science::geo"]
 utz-error = ["dep:utz"]
 
 [dependencies]
-utz-common = { path = "../utz-common", version = "0.1.0" }
+utz-common = { path = "../utz-common", version = "0.3.0" }
 derive_more = { workspace = true }
 # polyline simplification menu, shared with the viz HTML via WASM
-utz-simplify = { path = "../utz-simplify", version = "0.1.0" }
+utz-simplify = { path = "../utz-simplify", version = "0.3.0" }
 # encoder core (topology + quantization + grid + container), split out so it
 # also compiles to WASM for the webdist viewer (see utz-encode/src/lib.rs)
-utz-encode = { path = "../utz-encode", version = "0.1.0", features = ["zstd"] }
+utz-encode = { path = "../utz-encode", version = "0.3.0", features = ["zstd"] }
 # shared pipeline-stats counts (raw coordinate count in the viewer blobs)
 
 # GeoJSON pipeline (replaced the temporary FGB loader)
@@ -40,7 +40,7 @@ zip = { version = "2.4", default-features = false, features = ["deflate"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tiff = "0.11"
-utz = { path = "../utz", version = "0.2.0", features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint-arcs", "geom-fixed-width-arcs", "geom-full-rings", "geom-coarse"], optional = true }
+utz = { path = "../utz", version = "0.3.0", features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint-arcs", "geom-fixed-width-arcs", "geom-full-rings", "geom-coarse"], optional = true }
 
 [lints]
 workspace = true

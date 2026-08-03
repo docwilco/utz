@@ -1366,7 +1366,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "utz"
-version = "0.2.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "brotli-decompressor",
  "derive_more",
@@ -1389,7 +1389,7 @@ dependencies = [
 
 [[package]]
 name = "utz-bench-cli"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "clap",
  "derive_more",
@@ -1399,7 +1399,7 @@ dependencies = [
 
 [[package]]
 name = "utz-bench-common"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "utz",
  "utz-build",
@@ -1408,7 +1408,7 @@ dependencies = [
 
 [[package]]
 name = "utz-build"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "derive_more",
  "serde",
@@ -1424,7 +1424,7 @@ dependencies = [
 
 [[package]]
 name = "utz-build-cli"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "clap",
  "utz",
@@ -1433,42 +1433,42 @@ dependencies = [
 
 [[package]]
 name = "utz-common"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "scroll",
 ]
 
 [[package]]
 name = "utz-data-accurate"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "utz-common",
 ]
 
 [[package]]
 name = "utz-data-balanced"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "utz-common",
 ]
 
 [[package]]
 name = "utz-data-compact"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "utz-common",
 ]
 
 [[package]]
 name = "utz-data-tiny"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "utz-common",
 ]
 
 [[package]]
 name = "utz-data-tiny-static"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "include_bytes_aligned",
  "utz-common",
@@ -1476,7 +1476,7 @@ dependencies = [
 
 [[package]]
 name = "utz-dev-cli"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "brotli",
  "clap",
@@ -1498,7 +1498,7 @@ dependencies = [
 
 [[package]]
 name = "utz-encode"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "brotli",
  "derive_more",
@@ -1513,14 +1513,14 @@ dependencies = [
 
 [[package]]
 name = "utz-simplify"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "utz-common",
 ]
 
 [[package]]
 name = "utz-viz"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 dependencies = [
  "utz-build",
  "utz-encode",

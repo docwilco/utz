@@ -1,6 +1,6 @@
 [package]
 name = "utz-build-cli"
-version = "0.1.0+2026c"
+version = "0.3.0+2026c"
 edition.workspace = true
 license = "MIT"
 repository.workspace = true
@@ -21,8 +21,8 @@ doc = false
 path = "src/main.rs"
 
 [dependencies]
-utz-build = { path = "../utz-build", version = "0.1.0", features = ["utz-error"] }
-utz = { path = "../utz", version = "0.2.0", features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint-arcs", "geom-fixed-width-arcs", "geom-full-rings", "geom-coarse"] }
+utz-build = { path = "../utz-build", version = "0.3.0", features = ["utz-error"] }
+utz = { path = "../utz", version = "0.3.0", features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint-arcs", "geom-fixed-width-arcs", "geom-full-rings", "geom-coarse"] }
 clap = { version = "4", features = ["derive"] }
 
 [lints]

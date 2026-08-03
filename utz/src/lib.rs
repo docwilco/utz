@@ -42,7 +42,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! utz = { version = "0.2", features = ["std", "tiny"] }
+//! utz = { version = "0.3", features = ["std", "tiny"] }
 //! ```
 //!
 //! A preset is a complete build: it bakes its asset into the binary and enables
@@ -277,10 +277,10 @@
 //!
 //! ```toml
 //! [dependencies]
-//! utz = { version = "0.2", features = ["std", "custom", "gzip", "geom-varint-arcs"] }
+//! utz = { version = "0.3", features = ["std", "custom", "gzip", "geom-varint-arcs"] }
 //!
 //! [build-dependencies]
-//! utz-build = "0.1"
+//! utz-build = "0.3"
 //! ```
 //!
 //! The generated guard file asserts exactly this match. Embed the asset and
