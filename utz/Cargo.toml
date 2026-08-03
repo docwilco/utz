@@ -3,6 +3,11 @@ name = "utz"
 version = "0.2.0+2026c"
 edition.workspace = true
 license = "MIT"
+repository.workspace = true
+rust-version.workspace = true
+description = "Tiny, tunable, embeddable lat/lon to IANA timezone-id lookup: no_std capable, integer-exact, assets from 71 KB"
+keywords = ["timezone", "geolocation", "no-std", "embedded", "iana"]
+categories = ["date-and-time", "embedded", "no-std", "science::geo"]
 
 # Runtime crate — kept lean / no_std-friendly. geo is a DEV-dependency only
 # (PIP oracle). Codec features: each compiles in the decoder for
@@ -77,11 +82,11 @@ zstd = { version = "0.13", optional = true }
 # shim (decompress.rs), keeping the decoder alloc-clean → preset-eligible
 brotli-decompressor = { version = "5.0", optional = true, default-features = false }
 lzma-rust2 = { version = "0.16", optional = true, default-features = false, features = ["xz"] }
-utz-data-tiny = { path = "../utz-data-tiny", optional = true }
-utz-data-tiny-static = { path = "../utz-data-tiny-static", optional = true }
-utz-data-compact = { path = "../utz-data-compact", optional = true }
-utz-data-balanced = { path = "../utz-data-balanced", optional = true }
-utz-data-accurate = { path = "../utz-data-accurate", optional = true }
+utz-data-tiny = { path = "../utz-data-tiny", version = "0.1.0", optional = true }
+utz-data-tiny-static = { path = "../utz-data-tiny-static", version = "0.1.0", optional = true }
+utz-data-compact = { path = "../utz-data-compact", version = "0.1.0", optional = true }
+utz-data-balanced = { path = "../utz-data-balanced", version = "0.1.0", optional = true }
+utz-data-accurate = { path = "../utz-data-accurate", version = "0.1.0", optional = true }
 # re-exported for embedding FullRings assets 4-aligned (see workspace toml)
 include_bytes_aligned = { workspace = true }
 
@@ -94,9 +99,10 @@ default-features = false
 # the shared Codec types; no alloc — the enum must exist on the core rung
 path = "../utz-common"
 default-features = false
+version = "0.1.0"
 
 [dev-dependencies]
-utz-common = { path = "../utz-common" }
+utz-common = { path = "../utz-common", version = "0.1.0" }
 geo = { workspace = true }
 geo-types = { workspace = true }
 test-case = "3.3"

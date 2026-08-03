@@ -12,4 +12,4 @@ cargo run --release -p utz-build-cli -- gen now 1000 --qbits 24 \
     -o utz-data-compact/data/compact.utz
 ```
 
-License: MIT
+License: MIT AND ODbL-1.0

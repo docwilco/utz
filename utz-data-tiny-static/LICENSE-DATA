@@ -1,0 +1,16 @@
+Data license
+
+The .utz asset packaged in this crate is a derivative database of
+timezone-boundary-builder (https://github.com/evansiroky/timezone-boundary-builder),
+which builds on OpenStreetMap data. It is made available under the Open
+Database License (ODbL) 1.0: https://opendatacommons.org/licenses/odbl/1.0/
+
+(c) OpenStreetMap contributors; boundary compilation (c) the
+timezone-boundary-builder project.
+
+The asset's simplification is population-density weighted using the
+GHS-POP R2023A dataset (European Commission, Joint Research Centre),
+licensed CC BY 4.0:
+https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php
+
+The crate's code (src/, build.rs) is MIT licensed; see LICENSE.

@@ -3,6 +3,8 @@ name = "utz-dev-cli"
 version = "0.1.0+2026c"
 edition.workspace = true
 license = "MIT"
+repository.workspace = true
+rust-version.workspace = true
 publish = false
 
 # The repo-internal `utz-dev-cli` binary: the measurement/bench/viewer

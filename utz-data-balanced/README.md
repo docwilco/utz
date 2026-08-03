@@ -12,4 +12,4 @@ cargo run --release -p utz-build-cli -- gen now 50 --qbits 24 \
     -o utz-data-balanced/data/balanced.utz
 ```
 
-License: MIT
+License: MIT AND ODbL-1.0

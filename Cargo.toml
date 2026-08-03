@@ -22,7 +22,10 @@ exclude = ["utz-bench-firmware"]
 
 [workspace.package]
 edition = "2021"
-repository = "" # TBD
+license = "MIT"
+repository = "https://github.com/docwilco/utz"
+# floor: cast_signed/is_multiple_of (1.87) and ruzstd 0.8's own 1.87
+rust-version = "1.87"
 
 [workspace.dependencies]
 geo = "0.32"

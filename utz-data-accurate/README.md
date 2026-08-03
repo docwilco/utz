@@ -13,4 +13,4 @@ cargo run --release -p utz-build-cli -- gen all 10 --qbits 32 \
     -o utz-data-accurate/data/accurate.utz
 ```
 
-License: MIT
+License: MIT AND ODbL-1.0

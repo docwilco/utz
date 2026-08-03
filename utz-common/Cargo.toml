@@ -3,7 +3,11 @@ name = "utz-common"
 version = "0.1.0+2026c"
 edition.workspace = true
 license = "MIT"
-publish = false
+repository.workspace = true
+rust-version.workspace = true
+description = "Asset-format types shared by the uTZ reader and encoder"
+keywords = ["timezone", "no-std"]
+categories = ["date-and-time", "no-std"]
 
 [features]
 default = ["alloc"]

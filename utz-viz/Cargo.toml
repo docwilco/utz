@@ -3,6 +3,8 @@ name = "utz-viz"
 version = "0.1.0+2026c"
 edition.workspace = true
 license = "MIT"
+repository.workspace = true
+rust-version.workspace = true
 publish = false
 
 # Everything behind the publicly deployed webdist viewer, in one private

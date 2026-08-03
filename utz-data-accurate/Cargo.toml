@@ -2,8 +2,13 @@
 name = "utz-data-accurate"
 version = "0.1.0+2026c"
 edition.workspace = true
-license = "MIT"
-publish = false
+license = "MIT AND ODbL-1.0"
+repository.workspace = true
+rust-version.workspace = true
+description = "Pregenerated uTZ accurate preset asset (embedded timezone-boundary data, ODbL)"
+keywords = ["timezone", "data", "embedded"]
+categories = ["date-and-time", "embedded"]
+include = ["src/**/*", "build.rs", "data/accurate.utz", "README.md", "LICENSE*"]
 
 # Preset data crate: one CI-generated `.utz` asset as a static.
 # The asset is gitignored and regenerated, never committed (sources are
@@ -17,4 +22,4 @@ workspace = true
 
 # the recipe guard in build.rs parses the asset header
 [build-dependencies]
-utz-common = { path = "../utz-common" }
+utz-common = { path = "../utz-common", version = "0.1.0" }

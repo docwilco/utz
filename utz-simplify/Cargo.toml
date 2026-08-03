@@ -3,7 +3,11 @@ name = "utz-simplify"
 version = "0.1.0+2026c"
 edition.workspace = true
 license = "MIT"
-publish = false
+repository.workspace = true
+rust-version.workspace = true
+description = "Open-polyline simplification: RDP, Visvalingam-Whyatt, Imai-Iri, each with density-weighted variants"
+keywords = ["simplification", "rdp", "polyline", "geo"]
+categories = ["science::geo", "algorithms"]
 
 # `lib` for the builder (utz-build). The tuning-viewer HTML
 # wants a WASM cdylib — requested per-build, NOT via crate-type (which
@@ -20,4 +24,4 @@ crate-type = ["lib"]
 workspace = true
 
 [dev-dependencies]
-utz-common = { path = "../utz-common" }
+utz-common = { path = "../utz-common", version = "0.1.0" }

@@ -3,7 +3,11 @@ name = "utz-encode"
 version = "0.1.0+2026c"
 edition.workspace = true
 license = "MIT"
-publish = false
+repository.workspace = true
+rust-version.workspace = true
+description = "uTZ asset encoder: shared-arc topology, quantization, grid prefilter, serialization"
+keywords = ["timezone", "geo", "encoder"]
+categories = ["science::geo", "encoding"]
 
 # `lib` for the builder (utz-build). The webdist viewer's wasm build lives
 # in utz-whittle-stats, which wraps this encoder.
@@ -20,12 +24,12 @@ zstd = ["dep:zstd"]
 [dependencies]
 derive_more = { workspace = true }
 # the shared Codec types + PayloadHeader (also used by the utz reader)
-utz-common = { path = "../utz-common", default-features = false }
+utz-common = { path = "../utz-common", version = "0.1.0", default-features = false }
 scroll = { version = "0.13", default-features = false }
 # 2D cell grids without hand-rolled index arithmetic
 ndarray = { version = "0.16", default-features = false, features = ["std"] }
 # simplification menu + DensityWeight (shared with the viewer via this cdylib)
-utz-simplify = { path = "../utz-simplify" }
+utz-simplify = { path = "../utz-simplify", version = "0.1.0" }
 # codecs (all pure Rust except optional zstd)
 miniz_oxide = "0.8"
 brotli = "8.0"
