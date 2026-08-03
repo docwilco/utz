@@ -1456,24 +1456,37 @@ dependencies = [
 [[package]]
 name = "utz-data-accurate"
 version = "0.1.0+2026c"
+dependencies = [
+ "utz-common",
+]
 
 [[package]]
 name = "utz-data-balanced"
 version = "0.1.0+2026c"
+dependencies = [
+ "utz-common",
+]
 
 [[package]]
 name = "utz-data-compact"
 version = "0.1.0+2026c"
+dependencies = [
+ "utz-common",
+]
 
 [[package]]
 name = "utz-data-tiny"
 version = "0.1.0+2026c"
+dependencies = [
+ "utz-common",
+]
 
 [[package]]
 name = "utz-data-tiny-static"
 version = "0.1.0+2026c"
 dependencies = [
  "include_bytes_aligned",
+ "utz-common",
 ]
 
 [[package]]

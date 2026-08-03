@@ -19,6 +19,8 @@ enum Cmd {
     /// also feeds bench-cli / firmware)
     #[command(visible_alias = "encode")]
     Gen(cmd::encode::Args),
+    /// Generate a preset asset from its canonical Config recipe
+    GenPreset(cmd::gen_preset::Args),
     /// Misassigned area/population of simplified topologies vs raw arcs
     Accuracy(cmd::accuracy::Args),
     /// Uniform vs population-weighted simplification: verts by density band
@@ -77,6 +79,7 @@ fn run() -> utz_build::Result<()> {
     match Cmd::parse() {
         Cmd::Visualize(a) => cmd::visualize::run(a),
         Cmd::Gen(a) => cmd::encode::run(a),
+        Cmd::GenPreset(a) => cmd::gen_preset::run(a),
         Cmd::Accuracy(a) => cmd::accuracy::run(a),
         Cmd::DensityCompare(a) => cmd::density_compare::run(a),
         Cmd::DensityProbe(a) => cmd::density_probe::run(a),

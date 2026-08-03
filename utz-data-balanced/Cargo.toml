@@ -14,3 +14,7 @@ publish = false
 
 [lints]
 workspace = true
+
+# the recipe guard in build.rs parses the asset header
+[build-dependencies]
+utz-common = { path = "../utz-common" }

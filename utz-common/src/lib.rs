@@ -91,6 +91,24 @@ pub struct PayloadHeader {
     pub reserved: u8,
 }
 
+impl PayloadHeader {
+    /// Parse the plaintext header out of a complete asset, checking the
+    /// prologue first (magic + [`VERSION`]). `None` if the bytes are too
+    /// short, not a μTZ asset, or a different format version. Reads only
+    /// the first `PROLOGUE_LEN + PAYLOAD_HEADER_LEN` bytes: cheap
+    /// provenance sniffing without decompression.
+    #[must_use]
+    pub fn from_asset(bytes: &[u8]) -> Option<PayloadHeader> {
+        if bytes.len() < PROLOGUE_LEN + PAYLOAD_HEADER_LEN
+            || bytes[..4] != MAGIC
+            || bytes[4] != VERSION
+        {
+            return None;
+        }
+        bytes.pread_with(PROLOGUE_LEN, scroll::LE).ok()
+    }
+}
+
 /// Coordinate quantization width: how many bits each stored coordinate
 /// occupies (the wire value IS the bit count).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Pread, Pwrite)]

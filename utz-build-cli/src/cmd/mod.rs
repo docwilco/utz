@@ -11,6 +11,7 @@ pub mod density_probe;
 pub mod dominant_cost;
 pub mod encode;
 pub mod fixedwidth_size;
+pub mod gen_preset;
 pub mod geoquant;
 pub mod grid2mem;
 pub mod grid_bench;
