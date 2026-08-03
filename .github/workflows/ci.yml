@@ -59,6 +59,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: preset-assets
+      - name: Restore source-data cache (read-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: source-data-${{ github.run_id }}
+          restore-keys: source-data-
       - run: ./scripts/checks.sh clippy
 
   test:
@@ -74,6 +80,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: preset-assets
+      - name: Restore source-data cache (read-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: source-data-${{ github.run_id }}
+          restore-keys: source-data-
       - run: ./scripts/checks.sh test
 
   no_std:
@@ -89,6 +101,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: preset-assets
+      - name: Restore source-data cache (read-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: source-data-${{ github.run_id }}
+          restore-keys: source-data-
       - run: ./scripts/checks.sh no-std
 
   docs:
@@ -106,6 +124,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: preset-assets
+      - name: Restore source-data cache (read-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: source-data-${{ github.run_id }}
+          restore-keys: source-data-
       - run: ./scripts/checks.sh docs
 
   msrv:
@@ -120,11 +144,19 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: preset-assets
+      - name: Restore source-data cache (read-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: source-data-${{ github.run_id }}
+          restore-keys: source-data-
       - run: cargo check --workspace --all-targets
 
-  # Packaging dry-run for the dependency-free leaves; the other publish-set
-  # crates can only be verified once their deps are on crates.io (their
-  # stripped manifests resolve against the registry) — see RELEASING.md.
+  # Packaging dry-run for the two crates with no unpublished normal deps.
+  # They must be packaged in ONE invocation: utz-simplify has utz-common as
+  # a dev-dependency, which sibling resolution satisfies but a solo package
+  # would try to pull from the registry. The other publish-set crates can
+  # only be verified once their deps are on crates.io — see RELEASING.md.
   package:
     name: Package (leaf crates)
     runs-on: ubuntu-latest

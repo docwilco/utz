@@ -7,7 +7,7 @@ serializer with its generic-compression codecs (encode).
 
 Split out of utz-build so it compiles for wasm32-unknown-unknown: the
 webdist viewer runs this exact pipeline live for size stats (the wasm
-surface lives in utz-whittle-stats).
+surface lives in utz-viz).
 Everything here is pure Rust with no filesystem/network access; the one
 C-backed codec (zstd) sits behind the `zstd` cargo feature.
 

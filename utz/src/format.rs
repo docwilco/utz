@@ -201,6 +201,8 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
         || h.w_min_e4 > 10_000
         || h.grid_deg.is_nan()
         || h.grid_deg <= 0.0
+        || h.ncols == 0
+        || h.nrows == 0
     {
         return Err(Error::InvalidHeaderField);
     }
@@ -279,6 +281,70 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
 }
 
 /// Reject a section end past the blob end.
+/// Validate every cross-reference inside the (decompressed) section
+/// tables that [`crate::Finder::lookup()`] follows without further
+/// checks: zone-string offsets, the parent table, grid cell values,
+/// and the candidate lists. One linear pass at load time, so a corrupt
+/// or hostile asset is refused with a typed error instead of panicking
+/// a lookup later.
+///
+/// # Errors
+/// [`Error::TableOutOfRange`] on the first out-of-range reference.
+pub fn check_tables(p: &[u8], h: &PayloadLayout) -> Result<()> {
+    let bad = Error::TableOutOfRange;
+    let nf = usize::from(h.n_features);
+    // zone-string offset table: u16[n_features+1] at 0, monotone, within
+    // the payload once rebased onto the pool
+    let mut prev = 0u16;
+    for i in 0..=nf {
+        let off = crate::format::read_u16(p, i * 2);
+        if off < prev || h.pool + usize::from(off) > h.sections_len {
+            return Err(bad);
+        }
+        prev = off;
+    }
+    // parent table: poly id → feature id
+    let polys = h.eager_polys as usize;
+    for i in 0..polys {
+        if usize::from(read_u16(p, h.parent + i * 2)) >= nf {
+            return Err(bad);
+        }
+    }
+    // candidate lists: u16[uniq+1] offsets monotone and in range, ids are
+    // poly ids
+    let uniq = usize::from(h.uniq);
+    let list_len = (h.release_off.saturating_sub(h.list_ids)) / 2;
+    let mut prev = 0u16;
+    for i in 0..=uniq {
+        let off = read_u16(p, h.list_offsets + i * 2);
+        if off < prev || usize::from(off) > list_len {
+            return Err(bad);
+        }
+        prev = off;
+    }
+    let end = usize::from(prev);
+    for i in 0..end {
+        if usize::from(read_u16(p, h.list_ids + i * 2)) >= polys {
+            return Err(bad);
+        }
+    }
+    // grid: interior cells name a feature, border cells a candidate list
+    for i in 0..(h.ncols as usize * h.nrows as usize) {
+        let v = read_u16(p, h.primary + i * 2);
+        if v == utz_common::NO_ZONE {
+            continue;
+        }
+        if v & 0x8000 == 0 {
+            if usize::from(v) >= nf {
+                return Err(bad);
+            }
+        } else if usize::from(v & 0x7FFF) >= uniq {
+            return Err(bad);
+        }
+    }
+    Ok(())
+}
+
 fn need(sections_len: usize, end: usize) -> Result<()> {
     if sections_len < end {
         Err(Error::SectionOverrun)
@@ -377,4 +443,114 @@ fn arc_sections(
 #[must_use]
 pub fn release<'p>(h: &PayloadLayout, p: &'p [u8]) -> &'p [u8] {
     &p[h.release_off..h.release_off + h.release_len]
+}
+
+#[cfg(all(test, feature = "geom-varint-arcs"))]
+mod tests {
+    use super::*;
+    use scroll::Pwrite;
+    use utz_common::{Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo};
+
+    /// A minimal consistent varint-arcs header: one feature with an empty
+    /// tzid, no arcs, no polys, a 1×1 grid whose cell is `NO_ZONE`, and a
+    /// 20-byte section blob.
+    fn tiny_header() -> PayloadHeader {
+        PayloadHeader {
+            arcs_off: 8,
+            rings_off: 12,
+            grid_off: 16,
+            release_off: 20,
+            eager_coords: 0,
+            eager_rings: 0,
+            eager_polys: 0,
+            n_arcs: 0,
+            raw_len: 20,
+            grid_deg: 360.0,
+            eps_m: 500.0,
+            n_features: 1,
+            ncols: 1,
+            nrows: 1,
+            uniq: 0,
+            release_len: 0,
+            flags: 0,
+            dataset: Dataset::Now,
+            quant_bits: QuantBits::Bits24,
+            simplify_algo: SimplifyAlgo::Rdp,
+            geom: GeomEncoding::VarintArcs,
+            codec: Codec::Uncompressed,
+            w_min_e4: 10,
+            reserved: 0,
+        }
+    }
+
+    fn header_bytes(h: PayloadHeader) -> [u8; PAYLOAD_HEADER_LEN] {
+        let mut b = [0u8; PAYLOAD_HEADER_LEN];
+        b.pwrite_with(h, 0, scroll::LE).expect("fits");
+        b
+    }
+
+    /// The matching 20-byte section blob (see [`tiny_header`]).
+    fn tiny_payload() -> [u8; 20] {
+        let mut p = [0u8; 20];
+        // zone string-offset table u16[2] = {0, 0}: one empty tzid; the
+        // pool at 4 is empty. Grid cell at 16 = NO_ZONE. List offsets
+        // u16[1] at 18 = {0}.
+        p[16..18].copy_from_slice(&utz_common::NO_ZONE.to_le_bytes());
+        p
+    }
+
+    #[test]
+    fn valid_synthetic_header_parses() {
+        let h = parse(&header_bytes(tiny_header())).expect("valid header");
+        assert_eq!(h.w_min_e4, 10);
+        check_tables(&tiny_payload(), &h).expect("valid tables");
+    }
+
+    #[test]
+    fn header_field_rejections() {
+        for (name, h) in [
+            ("w_min over 1.0", {
+                let mut h = tiny_header();
+                h.w_min_e4 = 10_001;
+                h
+            }),
+            ("reserved nonzero", {
+                let mut h = tiny_header();
+                h.reserved = 1;
+                h
+            }),
+            ("zero grid columns", {
+                let mut h = tiny_header();
+                h.ncols = 0;
+                h
+            }),
+            ("non-positive grid_deg", {
+                let mut h = tiny_header();
+                h.grid_deg = 0.0;
+                h
+            }),
+        ] {
+            assert!(
+                matches!(parse(&header_bytes(h)), Err(Error::InvalidHeaderField)),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn table_cross_reference_rejections() {
+        let h = parse(&header_bytes(tiny_header())).expect("valid header");
+        // interior cell naming a feature that doesn't exist
+        let mut p = tiny_payload();
+        p[16..18].copy_from_slice(&5u16.to_le_bytes());
+        assert_eq!(check_tables(&p, &h), Err(Error::TableOutOfRange));
+        // border cell naming a candidate list that doesn't exist
+        let mut p = tiny_payload();
+        p[16..18].copy_from_slice(&0x8000u16.to_le_bytes());
+        assert_eq!(check_tables(&p, &h), Err(Error::TableOutOfRange));
+        // zone-string offset running past the pool
+        let mut p = tiny_payload();
+        p[2..4].copy_from_slice(&u16::MAX.to_le_bytes());
+        assert_eq!(check_tables(&p, &h), Err(Error::TableOutOfRange));
+    }
 }

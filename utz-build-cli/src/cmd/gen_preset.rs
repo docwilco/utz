@@ -38,9 +38,19 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             )))
         }
     };
-    let out = a
-        .out
-        .unwrap_or_else(|| PathBuf::from(format!("utz-data-{0}/data/{0}.utz", a.preset)));
+    let out = if let Some(out) = a.out {
+        out
+    } else {
+        let dir = PathBuf::from(format!("utz-data-{}", a.preset));
+        if !dir.is_dir() {
+            return Err(utz_build::Error::Msg(format!(
+                "default output {}/data/ expects the μTZ checkout root as the \
+                 current directory; pass --out",
+                dir.display()
+            )));
+        }
+        dir.join("data").join(format!("{}.utz", a.preset))
+    };
     let path = config.out_path(out).generate()?;
     println!("wrote {}", path.display());
     Ok(())

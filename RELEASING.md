@@ -33,7 +33,14 @@ each crate (usually well under a minute) before publishing its
 dependents. `cargo publish` runs a verify build resolving deps from the
 registry, which is also why only `utz-common` and `utz-simplify` can be
 package-verified before anything is published (CI's `package` job does
-exactly those two).
+exactly those two, in a single `cargo package` invocation: utz-simplify's
+dev-dependency on utz-common resolves against the sibling there).
+
+`utz` publishes with `--no-verify`: its deliberate compile-error guards
+(pick an asset source / environment / geometry decoder) fire on the
+zero-feature build the verify step runs. The feature matrix is fully
+built by `./scripts/checks.sh all` beforehand, on the same sources the
+package contains.
 
 ```sh
 cargo publish -p utz-common
@@ -44,7 +51,7 @@ cargo publish -p utz-data-tiny-static
 cargo publish -p utz-data-compact
 cargo publish -p utz-data-balanced
 cargo publish -p utz-data-accurate
-cargo publish -p utz
+cargo publish -p utz --no-verify
 cargo publish -p utz-build
 cargo publish -p utz-build-cli
 ```
@@ -53,7 +60,8 @@ Notes per crate:
 
 - **utz-data-***: the `.utz` assets are gitignored but force-included by
   each crate's `include` list; `cargo package --list -p utz-data-tiny`
-  should show `data/tiny.utz`, `build.rs`, `LICENSE`, `LICENSE-DATA`.
+  should show `data/tiny.utz`, `build.rs`, `src/lib.rs`, `README.md`,
+  `LICENSE`, and `LICENSE-DATA` (plus cargo's own metadata files).
   These crates are `license = "MIT AND ODbL-1.0"`: the packaged asset is
   a derivative database of timezone-boundary-builder (OpenStreetMap,
   ODbL); LICENSE-DATA carries the attribution.
@@ -61,6 +69,10 @@ Notes per crate:
   (never on docs.rs, which has no network — the crate docs tell users
   to vendor via `UTZ_CACHE_DIR` / `Config::cache_dir()` for hermetic
   builds).
+- **utz-data-accurate**: ~8.1 MB of already-compressed asset, ~81% of
+  crates.io's default 10 MiB upload limit. Watch the size on every TZBB
+  refresh and request a per-crate limit raise from the crates.io team
+  before it crosses.
 - **utz-build-cli**: after publishing, `cargo install utz-build-cli`
   is the supported way to get `gen`/`gen-preset` outside a checkout.
 

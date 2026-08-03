@@ -23,6 +23,9 @@ pub enum Error {
     #[from(skip)]
     #[display("grid_deg must be within 0.1\u{2013}45 (got {deg})")]
     GridDeg { deg: f64 },
+    #[from(skip)]
+    #[display("w_min must be within (0, 1) (got {w})")]
+    WMin { w: f64 },
     /// A count or byte length exceeds the width the container format stores
     /// it at. Fail loudly instead of an `as` wrap silently corrupting tables.
     #[from(skip)]

@@ -13,6 +13,8 @@ fn main() {
     // sources are cond-GET-cached in the workspace cache/; the encode reruns
     // only when this recipe changes
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=UTZ_CACHE_DIR");
+    println!("cargo:rerun-if-env-changed=UTZ_TZBB_RELEASE");
     let out = std::env::var("OUT_DIR").unwrap();
     Config::compact()
         .codec(Codec::Uncompressed)

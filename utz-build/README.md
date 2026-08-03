@@ -24,7 +24,7 @@ those methods drive.
 
 Sources download on first use into a per-user cache directory
 (`$XDG_CACHE_HOME/utz-build`, overridable with `UTZ_CACHE_DIR` or
-[`Config::cache_dir()`](config::Config::cache_dir); see
+[`Config::cache_dir()`]; see
 [`cache_dir()`]) and are revalidated with conditional GETs: the
 [timezone-boundary-builder] `GeoJSON` (tens of MB per dataset,
 [ODbL]), and for density-weighted recipes the [GHS-POP] population
@@ -74,6 +74,8 @@ and viewer tooling lives in the unpublished `utz-dev-cli` and
 
 [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
 [`Config`]: https://docwilco.github.io/utz/docs/utz_build/config/struct.Config.html
+[`Config::cache_dir()`]: https://docwilco.github.io/utz/docs/utz_build/config/struct.Config.html#method.cache_dir
+[`cache_dir()`]: https://docwilco.github.io/utz/docs/utz_build/fn.cache_dir.html
 [cli]: https://docwilco.github.io/utz/docs/utz_build_cli/index.html
 [`loader`]: https://docwilco.github.io/utz/docs/utz_build/loader/index.html
 [reader]: https://docwilco.github.io/utz/docs/utz/index.html

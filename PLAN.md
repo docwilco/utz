@@ -555,7 +555,7 @@ data-in-crate), `getrandom` (why one-of-N features fail: additivity).
 
 ## 12. Visualization
 
-`utz-build/viz.rs` + `cargo run -p utz-build-cli -- visualize` regenerates the
+`utz-viz` (emit + templates) + `cargo run -p utz-dev-cli -- visualize` regenerates the
 viewers (keyless Carto/Esri tiles, scale bar, on-the-fly JS quantization; HTML
 self-embeds data → generated artifact, not a committed asset). Users tune
 ε/quant/grid **before** committing the build knobs. Link a CI-built copy from docs.

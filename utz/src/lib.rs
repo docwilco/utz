@@ -39,7 +39,7 @@
 //! assert_eq!(tz, Some("Europe/London"));
 //! ```
 //!
-//! [`lookup()`](Finder::lookup) validates the position (out-of-range or
+//! [`Finder::lookup()`] validates the position (out-of-range or
 //! NaN coordinates are an [`Error`]) and returns an `Option`: `None`
 //! means no zone claims the point (see
 //! [Handling failures](#handling-failures)). To tune any parameter
@@ -208,7 +208,7 @@
 //! ## Handling failures
 //!
 //! A lookup distinguishes a bad question from an empty answer:
-//! [`lookup()`](Finder::lookup) errors with [`Error::InvalidPosition`]
+//! [`Finder::lookup()`] errors with [`Error::InvalidPosition`]
 //! when the position itself is out of range (lon beyond ±180, lat beyond
 //! ±90, or NaN), and returns `Ok(None)` when the position is fine but no
 //! zone claims it, which with oceans covered (the default datasets)
@@ -311,7 +311,18 @@
 //!    detailed while relaxing empty ones.
 //! 4. **Quantization**: coordinates land on an integer grid at 16, 24, or 32
 //!    bits per coordinate; narrower grids mean smaller assets and narrower
-//!    arithmetic at lookup time.
+//!    arithmetic at lookup time. Each width spreads lon ±180° / lat ±90°
+//!    across its integer range, so one grid step is:
+//!
+//!    | grid | lat step | lon step | on the ground at the equator |
+//!    |------|---------:|---------:|-----------------------------:|
+//!    | i16  | 2.7e-3°  | 5.5e-3°  | ~306 m N–S × ~611 m E–W      |
+//!    | i24  | 1.1e-5°  | 2.1e-5°  | ~1.2 m × ~2.4 m              |
+//!    | i32  | 4.2e-8°  | 8.4e-8°  | ~4.7 mm × ~9.3 mm            |
+//!
+//!    Rounding moves a point by at most half a step, and the E–W ground
+//!    step shrinks with cos(lat) away from the equator (at 60° latitude it
+//!    matches the N–S step).
 //! 5. **Coordinate coding**: within an arc, vertices are stored as
 //!    zigzag-varint deltas, a byte or two for most steps (the other [geometry
 //!    encodings](#geometry-decoders) trade that compactness for lookup speed).
@@ -325,15 +336,20 @@
 //! Measured per preset (TZBB release 2026c; the workspace's `utz-dev-cli
 //! whittle` command reproduces every row):
 //!
-//! | stage                            |   `tiny` | `compact` | `balanced` | `accurate` |
-//! |----------------------------------|---------:|----------:|-----------:|-----------:|
-//! | source `GeoJSON`                 |  80.6 MB |   80.6 MB |    80.6 MB |   173.9 MB |
-//! | parsed coordinates (f64 pairs)   |  57.8 MB |   57.8 MB |    57.8 MB |   124.9 MB |
-//! | shared-arc topology              |  28.9 MB |   28.9 MB |    28.9 MB |    62.4 MB |
-//! | simplified                       | 692.6 KB |    2.5 MB |     7.9 MB |    30.8 MB |
-//! | quantized, varint-coded arcs     |  73.4 KB |  512.6 KB |     1.6 MB |    10.1 MB |
-//! | serialized payload (grid added)  | 124.9 KB |  607.6 KB |     1.9 MB |    10.6 MB |
-//! | compressed asset                 |  70.9 KB |  445.1 KB |     1.2 MB |     8.1 MB |
+//! <table>
+//!   <thead>
+//!     <tr><th>stage</th><th><code>tiny</code></th><th><code>compact</code></th><th><code>balanced</code></th><th><code>accurate</code></th></tr>
+//!   </thead>
+//!   <tbody>
+//!     <tr><td>source <code>GeoJSON</code></td><td colspan="3" align="center">80.6 MB</td><td align="right">173.9 MB</td></tr>
+//!     <tr><td>parsed coordinates (f64 pairs)</td><td colspan="3" align="center">57.8 MB</td><td align="right">124.9 MB</td></tr>
+//!     <tr><td>shared-arc topology</td><td colspan="3" align="center">28.9 MB</td><td align="right">62.4 MB</td></tr>
+//!     <tr><td>simplified</td><td align="right">692.6 KB</td><td align="right">2.5 MB</td><td align="right">7.9 MB</td><td align="right">30.8 MB</td></tr>
+//!     <tr><td>quantized, varint-coded arcs</td><td align="right">73.4 KB</td><td align="right">512.6 KB</td><td align="right">1.6 MB</td><td align="right">10.1 MB</td></tr>
+//!     <tr><td>serialized payload (grid added)</td><td align="right">124.9 KB</td><td align="right">607.6 KB</td><td align="right">1.9 MB</td><td align="right">10.6 MB</td></tr>
+//!     <tr><td>compressed asset</td><td align="right">70.9 KB</td><td align="right">445.1 KB</td><td align="right">1.2 MB</td><td align="right">8.1 MB</td></tr>
+//!   </tbody>
+//! </table>
 //!
 //! The first three presets share the `now` dataset (64 zones after the
 //! stage-1 merge), so their rows only diverge once simplification applies
@@ -599,6 +615,11 @@ pub enum Error {
         "geometry encoding {_0:?} has no compiled-in decoder (enable the matching geom-* feature)"
     )]
     GeometryNotCompiledIn(#[error(not(source))] GeomEncoding),
+    /// A cross-reference inside the asset's tables points outside its
+    /// target (a zone id, poly id, or candidate-list index out of range):
+    /// corrupt data, caught at load.
+    #[display("table cross-reference out of range (corrupt asset)")]
+    TableOutOfRange,
     /// [`Finder::lookup()`] / [`Finder::lookup_coarse()`] was handed a
     /// [`Position`] outside lon −180..=180 / lat −90..=90 (or NaN).
     /// The only error a lookup can produce; validate with

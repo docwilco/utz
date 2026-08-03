@@ -5,7 +5,7 @@
 //!
 //! Stateful by design: the encode worker uploads the `<ds>.bin.z` blob once
 //! (`utz_enc_init` parses the topology section written by
-//! `utz_build::viz::dataset_bin()`), then every parameter change is one cheap
+//! [`crate::emit::dataset_bin()`]), then every parameter change is one cheap
 //! `utz_enc_payload` call (simplify → quantize → clean → grid → serialize)
 //! followed by one `utz_enc_compress` call per codec, so the JS can post
 //! stats after every step instead of waiting for the slowest codec.

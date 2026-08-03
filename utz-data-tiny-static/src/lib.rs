@@ -4,11 +4,11 @@
 //! via `Finder::from_static()`, ~0 RAM, no decoder; works on the bare `core`
 //! rung.
 //!
-//! Regenerate (writes `data/tiny-static.utz`, gitignored):
+//! Regenerate (writes `data/tiny-static.utz`, gitignored) from the canonical
+//! recipe; the build script refuses assets that do not match it:
 //!
 //! ```text
-//! cargo run --release -p utz-build-cli -- gen now 10000 --qbits 16 \
-//!     --w-min 0.001 --codec none -o utz-data-tiny-static/data/tiny-static.utz
+//! cargo run --release -p utz-build-cli -- gen-preset tiny-static
 //! ```
 
 #![no_std]

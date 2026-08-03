@@ -1,4 +1,4 @@
-// The utz-dev-cli binary: a thin dispatcher over utz_build_cli::cmd.
+// The utz-dev-cli binary: a thin dispatcher over utz_dev_cli::cmd.
 // Crate docs live on the lib target (src/lib.rs); this bin target is
 // doc = false so the two don't race for the utz_dev_cli doc directory.
 

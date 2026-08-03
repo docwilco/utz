@@ -23,7 +23,7 @@
 //!
 //! Sources download on first use into a per-user cache directory
 //! (`$XDG_CACHE_HOME/utz-build`, overridable with `UTZ_CACHE_DIR` or
-//! [`Config::cache_dir()`](config::Config::cache_dir); see
+//! [`Config::cache_dir()`]; see
 //! [`cache_dir()`]) and are revalidated with conditional GETs: the
 //! [timezone-boundary-builder] `GeoJSON` (tens of MB per dataset,
 //! [ODbL]), and for density-weighted recipes the [GHS-POP] population
@@ -73,6 +73,8 @@
 //!
 //! [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
 //! [`Config`]: ../utz_build/config/struct.Config.html
+//! [`Config::cache_dir()`]: ../utz_build/config/struct.Config.html#method.cache_dir
+//! [`cache_dir()`]: ../utz_build/fn.cache_dir.html
 //! [cli]: ../utz_build_cli/index.html
 //! [`loader`]: ../utz_build/loader/index.html
 //! [reader]: ../utz/index.html
@@ -216,9 +218,10 @@ pub fn encode_weighted(
 ///    via `.cargo/config.toml`, so in-repo builds share one cache)
 /// 2. `$XDG_CACHE_HOME/utz-build`
 /// 3. `%LOCALAPPDATA%\utz-build` (Windows) or `$HOME/.cache/utz-build`
-/// 4. `$OUT_DIR/utz-build-cache` (build-script last resort)
+/// 4. `$OUT_DIR/utz-build-cache` (build-script last resort), else
+///    `./utz-build-cache` relative to the current directory
 ///
-/// [`Config::cache_dir()`](config::Config::cache_dir) overrides the
+/// [`Config::cache_dir()`] overrides the
 /// chain per build. Everything inside is a re-fetchable download (TZBB
 /// zips keyed per release, the ~460 MB GHS-POP raster and its decoded
 /// sidecar): safe to delete. Build scripts that depend on the chain
@@ -229,7 +232,8 @@ pub fn cache_dir() -> PathBuf {
     if let Some(p) = std::env::var_os("UTZ_CACHE_DIR").filter(|p| !p.is_empty()) {
         return p.into();
     }
-    if let Some(p) = std::env::var_os("XDG_CACHE_HOME").filter(|p| !p.is_empty()) {
+    // the XDG spec says to ignore a relative XDG_CACHE_HOME
+    if let Some(p) = std::env::var_os("XDG_CACHE_HOME").filter(|p| Path::new(p).is_absolute()) {
         return Path::new(&p).join("utz-build");
     }
     #[cfg(windows)]

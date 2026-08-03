@@ -5,6 +5,10 @@ edition.workspace = true
 license = "MIT"
 repository.workspace = true
 rust-version.workspace = true
+homepage = "https://docwilco.github.io/utz/"
+documentation = "https://docwilco.github.io/utz/docs/utz_build/"
+# dev scratch artifacts stay out of the package
+exclude = ["demo"]
 description = "Generate custom uTZ timezone-lookup assets from a build.rs (the typed Config builder)"
 keywords = ["timezone", "build-dependencies", "geolocation"]
 categories = ["development-tools::build-utils", "science::geo"]

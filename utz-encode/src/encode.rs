@@ -64,6 +64,7 @@ pub fn to_simplify(algo: SimplifyAlgo, eps_deg: f64) -> utz_simplify::Simplify {
 
 /// Everything one encode run needs to know: the recipe knobs plus the
 /// provenance recorded in the asset's header.
+#[derive(Clone, Copy)]
 pub struct Params<'a> {
     /// The dataset code byte: bits 0–1 zone set (0 = now, 1 = 1970,
     /// 2 = all/comprehensive), bit 2 set = land-only (clear = with-oceans).
@@ -129,6 +130,27 @@ pub fn build_payload(feats: &[Feat], p: &Params) -> crate::Result<Vec<u8>> {
     Ok(payload_from_topology(&t, &t.arc_coords, feats, p)?.0)
 }
 
+/// The header's fixed-point (1e-4) density-weight floor. A real floor
+/// never stamps 0 (which means "unweighted"), and `w >= 1.0` means
+/// weighting off, which callers express as `None`.
+///
+/// # Errors
+/// [`Error::WMin`] for a non-finite floor or one outside (0, 1).
+fn w_min_e4(w_min: Option<f64>) -> crate::Result<u16> {
+    match w_min {
+        None => Ok(0),
+        Some(w) => {
+            ensure!(w.is_finite() && w > 0.0 && w < 1.0, Error::WMin { w });
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "validated into (0, 1) above, so the product is in (0, 10_000)"
+            )]
+            Ok(((w * 1e4).round() as u16).max(1))
+        }
+    }
+}
+
 /// Serialize an already-simplified topology: quantize → grid → sections.
 /// `arc_coords` may differ from `t.arc_coords` (the wasm viewer simplifies
 /// per-arc itself); `feats` supplies only per-feature metadata (tzid,
@@ -160,6 +182,7 @@ pub fn payload_from_topology(
         (0.1..=45.0).contains(&p.grid_deg),
         Error::GridDeg { deg: p.grid_deg }
     );
+    let w_min_e4 = w_min_e4(p.w_min)?;
     ensure!(
         feats.len() < 0x7FFF,
         Error::FormatLimit {
@@ -245,12 +268,7 @@ pub fn payload_from_topology(
         simplify_algo: p.simplify,
         geom: p.geom,
         codec: Codec::Uncompressed, // finish() records the actual codec
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "clamped into 0..=10_000 before the cast"
-        )]
-        w_min_e4: (p.w_min.unwrap_or(0.0).clamp(0.0, 1.0) * 1e4).round() as u16,
+        w_min_e4,
         reserved: 0,
     };
     o.pwrite_with(header, 0, LE)

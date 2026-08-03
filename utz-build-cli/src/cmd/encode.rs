@@ -41,8 +41,8 @@ pub struct Args {
     /// (see `GeomEncoding` for the size/speed ladder)
     #[arg(long, default_value = "varint-arcs")]
     geom: String,
-    /// enable population weighting with this floor multiplier, in (0, 1]
-    /// (the presets use 0.001-0.10)
+    /// enable population weighting with this floor multiplier, strictly
+    /// between 0 and 1 (the presets use 0.001-0.10)
     #[arg(long)]
     w_min: Option<f64>,
     /// output path (default: `<ds>-<eps>m[-w<min>]-<codec>.utz`)
@@ -119,6 +119,10 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     })?
     .is_none()
     {
+        // don't leave a bad asset (or its guard) where a good one may
+        // have been
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("utz.guard.rs"));
         return Err(Error::Msg("verify lookup failed".into()));
     }
     #[expect(clippy::cast_precision_loss, reason = "asset size ≪ 2^53; KiB display")]

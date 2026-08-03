@@ -5,12 +5,14 @@ edition.workspace = true
 license = "MIT"
 repository.workspace = true
 rust-version.workspace = true
+homepage = "https://docwilco.github.io/utz/"
+documentation = "https://docwilco.github.io/utz/docs/utz_encode/"
 description = "uTZ asset encoder: shared-arc topology, quantization, grid prefilter, serialization"
 keywords = ["timezone", "geo", "encoder"]
 categories = ["science::geo", "encoding"]
 
 # `lib` for the builder (utz-build). The webdist viewer's wasm build lives
-# in utz-whittle-stats, which wraps this encoder.
+# in utz-viz, which wraps this encoder.
 [lib]
 path = "src/lib.rs" # explicit: cargo-readme cannot infer the default
 crate-type = ["lib"]
@@ -38,3 +40,7 @@ zstd = { version = "0.13", optional = true }
 
 [lints]
 workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

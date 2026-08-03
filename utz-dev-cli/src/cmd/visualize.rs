@@ -309,7 +309,15 @@ fn build_wasm() -> utz_build::Result<Vec<u8>> {
         status.success(),
         Error::Msg("wasm build failed — try: rustup target add wasm32-unknown-unknown".into())
     );
+    // a relative CARGO_TARGET_DIR is resolved against the spawned
+    // cargo's cwd, which is the workspace root above
+    let target = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| format!("{root}/target"));
+    let target = if std::path::Path::new(&target).is_absolute() {
+        target
+    } else {
+        format!("{root}/{target}")
+    };
     Ok(std::fs::read(format!(
-        "{root}/target/wasm32-unknown-unknown/release/utz_viz.wasm"
+        "{target}/wasm32-unknown-unknown/release/utz_viz.wasm"
     ))?)
 }

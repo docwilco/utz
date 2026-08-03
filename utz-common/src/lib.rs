@@ -383,7 +383,7 @@ mod tests {
             simplify_algo: SimplifyAlgo::Rdp,
             geom: GeomEncoding::FixedWidthArcs,
             codec: Codec::Brotli,
-            w_min_e4: 520,
+            w_min_e4: 200,
             reserved: 0,
         };
         let mut bytes = [0u8; PAYLOAD_HEADER_LEN];

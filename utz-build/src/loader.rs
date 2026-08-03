@@ -18,8 +18,10 @@ const REPO: &str = "https://github.com/evansiroky/timezone-boundary-builder";
 /// (`…/releases/tag/<tag>`): no API, no auth. The tag is cached in
 /// `<cache_dir>/tzbb-release.tag` so offline regeneration keeps it;
 /// `UTZ_TZBB_RELEASE` pins a tag explicitly (skips the probe). With no
-/// network and no cached tag, falls back to `"dev"` with a warning (the
-/// zip cache may still serve the data).
+/// network and no cached tag, falls back to `"dev"` with a warning; the
+/// per-release zip cache (`tzbb/<release>/`) will then be empty, so a
+/// first-ever offline run fails at download rather than serving
+/// mislabeled bytes.
 ///
 /// # Errors
 /// I/O failure caching the freshly probed tag (probe failures themselves

@@ -38,9 +38,10 @@ jobs:
           path: cache
           key: source-data-${{ github.run_id }}
           restore-keys: source-data-
-      # webdist blobs are stamped with their inputs (utz-build binary, TZBB
-      # zip validators, density sidecar) — restoring the previous run's
-      # output lets unchanged datasets skip the multi-minute re-encode
+      # webdist blobs are stamped with their inputs (the utz-dev-cli
+      # binary, TZBB zip validators, density sidecar) — restoring the
+      # previous run's output lets unchanged datasets skip the
+      # multi-minute re-encode
       - name: Cache webdist blobs
         uses: actions/cache@v4
         with:
@@ -48,9 +49,9 @@ jobs:
           key: webdist-${{ github.run_id }}
           restore-keys: webdist-
       - name: Build webdist (viewer + dataset blobs)
-        run: cargo run --release -p utz-build-cli -- visualize webdist
+        run: cargo run --release -p utz-dev-cli -- visualize webdist
       # rustdoc compiles the utz-data-* crates, whose assets are gitignored
-      # and regenerated (§5, §11)
+      # and regenerated
       - name: Generate preset assets
         run: ./scripts/gen-presets.sh
       # nightly: doc_cfg (feature-gate banners) needs it; the checks stage
@@ -61,7 +62,7 @@ jobs:
       - name: Assemble site (viewer at /live, rustdoc at /docs)
         run: |
           mkdir -p site
-          cp -r webdist site/live
+          cp -r webdist site/live && rm -f site/live/.stamp-*
           cp -r target/doc site/docs
           cat > site/index.html <<'EOF'
           <!DOCTYPE html>

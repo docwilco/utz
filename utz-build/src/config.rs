@@ -185,8 +185,10 @@ impl Config {
     }
 
     /// Population-density-weighted simplification: ε multiplier floor in
-    /// the densest cells, in (0, 1] (the presets use 0.001–0.10; default
-    /// off, uniform ε). First use downloads GHS-POP (~460 MB, cached).
+    /// the densest cells, strictly between 0 and 1 (the presets use
+    /// 0.001–0.10; default off, uniform ε; out-of-range fails at
+    /// [`generate()`](Config::generate)). First use downloads GHS-POP
+    /// (~460 MB, cached).
     #[must_use]
     pub fn density_weight_floor(mut self, w_min: f64) -> Self {
         self.density_weight_floor = Some(w_min);

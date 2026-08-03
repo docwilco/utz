@@ -20,7 +20,7 @@ canonical `Config::<preset>()` recipes, so preset assets regenerate
 from a single source of truth. The repo-internal measurement and
 viewer commands live in the (unpublished) `utz-dev-cli` crate.
 
-[`utz_build::Config`]: https://docwilco.github.io/utz/docs/utz_build/config/struct.Config.html
+[`utz_build::Config`]: https://docs.rs/utz-build/latest/utz_build/config/struct.Config.html
 [`cmd::encode`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/encode/index.html
 [`cmd::gen_preset`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/gen_preset/index.html
 

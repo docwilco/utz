@@ -1,7 +1,7 @@
 //! Builder error type, following the workspace error pattern (see
 //! `utz::Error`): `derive_more` derives, foreign errors enter via
 //! `derive_more::From`, domain variants are `#[from(skip)]`. Library paths
-//! use typed variants; the measurement tools in `utz-build-cli` may use
+//! use typed variants; the measurement tools in `utz-dev-cli` may use
 //! [`Error::Msg`] for one-off messages.
 
 use std::path::PathBuf;
@@ -62,7 +62,7 @@ pub enum Error {
     #[from(skip)]
     #[display("no OUT_DIR (not in a build.rs?) — set .out_path()")]
     NoOutDir,
-    /// One-off messages in the `utz-build-cli` measurement tools.
+    /// One-off messages in the `utz-dev-cli` measurement tools.
     #[from(skip)]
     #[display("{_0}")]
     Msg(#[error(not(source))] String),

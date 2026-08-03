@@ -12,5 +12,9 @@ The asset's simplification is population-density weighted using the
 GHS-POP R2023A dataset (European Commission, Joint Research Centre),
 licensed CC BY 4.0:
 https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php
+GHS-POP only informs which boundary vertices are kept during
+simplification; none of its data is contained in the asset, so its
+license does not attach to the packaged bytes. Attribution is given
+here as a courtesy.
 
 The crate's code (src/, build.rs) is MIT licensed; see LICENSE.

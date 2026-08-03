@@ -106,14 +106,15 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         w_min: None,
         geom: encode::GeomEncoding::default(),
     };
-    let container = |t: &topo::Topology| -> utz_build::Result<Vec<u8>> {
+    let container = |t: &topo::Topology, w_min: Option<f64>| -> utz_build::Result<Vec<u8>> {
+        let p = Params { w_min, ..p };
         Ok(encode::finish(
             &encode::payload_from_topology(t, &t.arc_coords, &feats, &p)?.0,
             p.codec,
         )?)
     };
-    let cu = container(&t_u)?;
-    let cw = container(&t_w)?;
+    let cu = container(&t_u, None)?;
+    let cw = container(&t_w, Some(w_min))?;
     #[expect(
         clippy::cast_precision_loss,
         reason = "container sizes ≪ 2^53; KiB and % display"

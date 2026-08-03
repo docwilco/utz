@@ -27,6 +27,9 @@ population-density weighting derived from
 [`Finder::from_static()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_static
 [`Finder::preload()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload
 [`Finder::preload_bytes()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload_bytes
+[`Finder::lookup()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.lookup
+[`Finder::lookup_unchecked()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.lookup_unchecked
+[`Error::InvalidPosition`]: https://docwilco.github.io/utz/docs/utz/enum.Error.html#variant.InvalidPosition
 [`Finder::lookup_coarse()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.lookup_coarse
 [`data`]: https://docwilco.github.io/utz/docs/utz/data/index.html
 [`caps`]: https://docwilco.github.io/utz/docs/utz/caps/index.html

@@ -5,6 +5,10 @@ edition.workspace = true
 license = "MIT"
 repository.workspace = true
 rust-version.workspace = true
+homepage = "https://docwilco.github.io/utz/"
+documentation = "https://docwilco.github.io/utz/docs/utz/"
+# keep the readme template (build tooling) out of the package
+exclude = ["README.tpl"]
 description = "Tiny, tunable, embeddable lat/lon to IANA timezone-id lookup: no_std capable, integer-exact, assets from 71 KB"
 keywords = ["timezone", "geolocation", "no-std", "embedded", "iana"]
 categories = ["date-and-time", "embedded", "no-std", "science::geo"]
@@ -69,7 +73,7 @@ xz = ["dep:lzma-rust2", "alloc"]
 # representative set: the mandatory choices can't be defaulted, so
 # docs.rs picks one of each + the decoders
 features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint-arcs", "geom-fixed-width-arcs", "geom-full-rings", "geom-coarse"]
-# feature-gate banners on items (doc_auto_cfg; docs.rs builds on nightly)
+# feature-gate banners on items (doc_cfg; docs.rs builds on nightly)
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]

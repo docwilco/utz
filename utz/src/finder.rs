@@ -352,6 +352,7 @@ impl Finder {
             .get(sections_start..sections_start + layout.sections_len)
             .ok_or(Error::Truncated)?;
         check_full_rings(payload, &layout)?;
+        format::check_tables(payload, &layout)?;
         Ok(Finder {
             #[cfg(feature = "alloc")]
             payload: alloc::borrow::Cow::Borrowed(payload),
@@ -407,6 +408,7 @@ impl Finder {
             codec => decompress::decompress(codec, layout.sections_len, sections)?,
         };
         check_full_rings(&payload, &layout)?;
+        format::check_tables(&payload, &layout)?;
         Ok(Finder {
             payload: payload.into(),
             layout,
@@ -448,6 +450,7 @@ impl Finder {
             }
         };
         check_full_rings(&payload, &layout)?;
+        format::check_tables(&payload, &layout)?;
         Ok(Finder {
             payload: payload.into(),
             layout,

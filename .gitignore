@@ -9,5 +9,5 @@
 # Generated assets (all knob variants) and the built container(s).
 /assets/
 *.utz
-# Generated viewer site (regenerate: cargo run --release -p utz-build -- visualize).
+# Generated viewer site (regenerate: cargo run --release -p utz-dev-cli -- visualize).
 /webdist/
