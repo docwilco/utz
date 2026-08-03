@@ -26,9 +26,9 @@ pub fn fetch(url: &str, cache_dir: &Path) -> crate::Result<PathBuf> {
         if let Ok(m) = std::fs::read_to_string(&meta) {
             for line in m.lines() {
                 if let Some(v) = line.strip_prefix("etag: ") {
-                    req = req.set("If-None-Match", v);
+                    req = req.header("If-None-Match", v);
                 } else if let Some(v) = line.strip_prefix("last-modified: ") {
-                    req = req.set("If-Modified-Since", v);
+                    req = req.header("If-Modified-Since", v);
                 }
             }
         }
@@ -38,15 +38,21 @@ pub fn fetch(url: &str, cache_dir: &Path) -> crate::Result<PathBuf> {
         Ok(resp) if resp.status() == 304 => Ok(file),
         Ok(resp) => {
             use std::fmt::Write as _;
+            let header = |name: &str| {
+                resp.headers()
+                    .get(name)
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_owned)
+            };
             let mut hdrs = String::new();
-            if let Some(v) = resp.header("etag") {
+            if let Some(v) = header("etag") {
                 let _ = writeln!(hdrs, "etag: {v}");
             }
-            if let Some(v) = resp.header("last-modified") {
+            if let Some(v) = header("last-modified") {
                 let _ = writeln!(hdrs, "last-modified: {v}");
             }
             let mut bytes = Vec::new();
-            resp.into_reader().read_to_end(&mut bytes)?;
+            resp.into_body().into_reader().read_to_end(&mut bytes)?;
             let tmp = file.with_extension("part");
             std::fs::write(&tmp, &bytes)?;
             std::fs::rename(&tmp, &file)?;

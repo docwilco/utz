@@ -28,13 +28,13 @@ clap = { version = "4", features = ["derive"] }
 geo = { workspace = true }
 geo-types = { workspace = true }
 # tzf-rs's PIP crate (tidwall/geometry port) — pip_bench contender
-geometry-rs = "0.3"
+geometry-rs = "0.5"
 # codecs for the size measurements
 zstd = "0.13"
 brotli = "8.0"
-lzma-rust2 = { version = "0.16", default-features = false, features = ["xz", "encoder", "optimization"] }
-miniz_oxide = "0.8"
-zip = { version = "2.4", default-features = false, features = ["deflate"] }
+lzma-rust2 = { version = "0.18", default-features = false, features = ["xz", "encoder", "optimization"] }
+miniz_oxide = "0.9"
+zip = { version = "8", default-features = false, features = ["deflate"] }
 tiff = "0.11"
 # runtime crate, exercised by gen's verify and the roundtrip/bench
 # subcommands; pure-Rust zstd backend (ruzstd) here — the zstd-sys backend

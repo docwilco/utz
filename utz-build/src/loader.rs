@@ -34,17 +34,19 @@ pub fn resolve_release(cache_dir: &Path) -> crate::Result<String> {
     }
     let tag_file = cache_dir.join("tzbb-release.tag");
     let probed: crate::Result<String> = (|| {
-        let resp = ureq::AgentBuilder::new()
-            .redirects(0)
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .max_redirects(0)
             .build()
-            .get(&format!("{REPO}/releases/latest"))
-            .call()?;
-        resp.header("location")
+            .into();
+        let resp = agent.get(format!("{REPO}/releases/latest")).call()?;
+        resp.headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
             .and_then(|l| l.split_once("/releases/tag/"))
             .map(|(_, t)| t.trim_matches('/').to_string())
             .filter(|t| !t.is_empty())
             .ok_or_else(|| Error::NoReleaseRedirect {
-                status: resp.status(),
+                status: resp.status().as_u16(),
             })
     })();
     match probed {

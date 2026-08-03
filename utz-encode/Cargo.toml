@@ -29,7 +29,7 @@ derive_more = { workspace = true }
 utz-common = { path = "../utz-common", version = "0.3.0", default-features = false }
 scroll = { version = "0.13", default-features = false }
 # 2D cell grids without hand-rolled index arithmetic
-ndarray = { version = "0.16", default-features = false, features = ["std"] }
+ndarray = { version = "0.17", default-features = false, features = ["std"] }
 # simplification menu + DensityWeight (shared with the viewer via this cdylib)
 utz-simplify = { path = "../utz-simplify", version = "0.3.0" }
 # codecs (all pure Rust except optional zstd)

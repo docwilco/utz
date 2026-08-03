@@ -136,7 +136,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
                 };
                 (
                     fi,
-                    geometry_rs::Polygon::new(ring(&p[0]), p[1..].iter().map(ring).collect()),
+                    geometry_rs::Polygon::new(ring(&p[0]), p[1..].iter().map(ring).collect(), None),
                 )
             })
         })

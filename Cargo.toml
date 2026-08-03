@@ -28,7 +28,7 @@ repository = "https://github.com/docwilco/utz"
 rust-version = "1.87"
 
 [workspace.dependencies]
-geo = "0.32"
+geo = "0.33"
 geo-types = "0.7"
 # error derives (Display/Error/From) — the workspace error-type pattern;
 # no_std-capable, so the device crate shares it

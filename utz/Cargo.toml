@@ -79,13 +79,13 @@ rustdoc-args = ["--cfg", "docsrs", "--cfg", "on_docsrs"]
 [dependencies]
 # no default features: keeps the derives no_std (Error derive = core::error::Error)
 derive_more = { workspace = true }
-miniz_oxide = { version = "0.8", optional = true, default-features = false, features = ["with-alloc"] }
-ruzstd = { version = "0.8", optional = true, default-features = false }
+miniz_oxide = { version = "0.9", optional = true, default-features = false, features = ["with-alloc"] }
+ruzstd = { version = "0.9", optional = true, default-features = false }
 zstd = { version = "0.13", optional = true }
 # no-stdlib mode: no default `std` feature; utz supplies a global-allocator
 # shim (decompress.rs), keeping the decoder alloc-clean → preset-eligible
 brotli-decompressor = { version = "5.0", optional = true, default-features = false }
-lzma-rust2 = { version = "0.16", optional = true, default-features = false, features = ["xz"] }
+lzma-rust2 = { version = "0.18", optional = true, default-features = false, features = ["xz"] }
 utz-data-tiny = { path = "../utz-data-tiny", version = "0.3.0", optional = true }
 utz-data-tiny-static = { path = "../utz-data-tiny-static", version = "0.3.0", optional = true }
 utz-data-compact = { path = "../utz-data-compact", version = "0.3.0", optional = true }
