@@ -27,7 +27,7 @@ use alloc::vec::Vec;
 #[cfg(feature = "alloc")]
 use crate::decompress;
 use crate::format::{self, read_fixed, read_u16, read_u32, read_varint, unzigzag, PayloadLayout};
-use crate::{pip, Codec, Error, Result};
+use crate::{caps, pip, Codec, Error, Result};
 use utz_common::{GeomEncoding, QuantBits, NO_ZONE};
 
 /// A geographic position in degrees, **order-neutral by design**:
@@ -701,7 +701,7 @@ impl Finder {
                 let b = self.payload_bytes();
                 // coarse assets carry no geometry: cell precision IS the
                 // asset's precision — the dominant-first head is the answer
-                if cfg!(feature = "geom-coarse") && self.layout.geom == GeomEncoding::Coarse {
+                if caps::GEOM_COARSE && self.layout.geom == GeomEncoding::Coarse {
                     return self.tzid(self.parent_of(read_u16(b, s)));
                 }
                 let mut first = None;
@@ -874,8 +874,7 @@ impl Finder {
     fn scan_arc(&self, id: usize, px: i32, py: i32) -> pip::RingHit {
         let (h, b) = (&self.layout, self.payload_bytes());
         let wide = h.quant_bits == QuantBits::Bits32;
-        let fixed =
-            cfg!(feature = "geom-fixed-width-arcs") && h.geom == GeomEncoding::FixedWidthArcs;
+        let fixed = caps::GEOM_FIXED_WIDTH_ARCS && h.geom == GeomEncoding::FixedWidthArcs;
         let mut pos = h.arc_data + read_u32(b, h.arc_offsets + id * 4) as usize;
         let (vcount, p2) = read_varint(b, pos);
         pos = p2;
@@ -1080,9 +1079,7 @@ impl Finder {
         let start = coords.len();
         coords.push(C::from_q(qlon as i32, qlat as i32));
         for _ in 1..vcount {
-            if cfg!(feature = "geom-fixed-width-arcs")
-                && header.geom == GeomEncoding::FixedWidthArcs
-            {
+            if caps::GEOM_FIXED_WIDTH_ARCS && header.geom == GeomEncoding::FixedWidthArcs {
                 coords.push(C::from_q(
                     read_fixed(payload, pos, header.quant_bits),
                     read_fixed(payload, pos + coord_bytes, header.quant_bits),

@@ -22,7 +22,7 @@ use scroll::Pread;
 use utz_common::{Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo};
 pub use utz_common::{MAGIC, PAYLOAD_HEADER_LEN, PROLOGUE_LEN, VERSION};
 
-use crate::{Error, Result};
+use crate::{caps, Error, Result};
 
 /// Parsed header: every section position needed for O(1) access.
 #[derive(Clone, Copy)]
@@ -210,10 +210,10 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
     let sections_len = h.raw_len as usize;
     // a valid geom byte whose decoder isn't compiled in is refused loudly
     let compiled = match h.geom {
-        GeomEncoding::VarintArcs => cfg!(feature = "geom-varint-arcs"),
-        GeomEncoding::FixedWidthArcs => cfg!(feature = "geom-fixed-width-arcs"),
-        GeomEncoding::FullRings => cfg!(feature = "geom-full-rings"),
-        GeomEncoding::Coarse => cfg!(feature = "geom-coarse"),
+        GeomEncoding::VarintArcs => caps::GEOM_VARINT_ARCS,
+        GeomEncoding::FixedWidthArcs => caps::GEOM_FIXED_WIDTH_ARCS,
+        GeomEncoding::FullRings => caps::GEOM_FULL_RINGS,
+        GeomEncoding::Coarse => caps::GEOM_COARSE,
     };
     if !compiled {
         return Err(Error::GeometryNotCompiledIn(h.geom));
