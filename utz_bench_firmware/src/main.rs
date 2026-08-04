@@ -1,28 +1,32 @@
-//! μTZ lookup bench on ESP32-S3: the on-target flash-latency matrix.
+//! The μTZ lookup bench on ESP32-S3: the on-target flash-latency matrix.
 //!
-//! Embeds each preset shape (tiny / compact / balanced) twice (the preset's
-//! compressed asset and its uncompressed twin) and measures every memory
-//! mode the hardware supports:
+//! The firmware embeds each preset shape (tiny / compact / balanced) twice
+//! (the preset's compressed asset and its uncompressed twin) and measures
+//! every memory mode the hardware supports:
 //!
-//! - **xip-flash**: `Finder::from_static()` on the uncompressed blob; lookups
-//!   stream straight out of memory-mapped flash, payload never in RAM.
-//! - **ram**: the uncompressed container copied into heap (`from_vec`);
-//!   streaming PIP from RAM. Small payloads land in internal SRAM; a
+//! - **xip-flash** calls `Finder::from_static()` on the uncompressed blob;
+//!   lookups stream straight out of memory-mapped flash, and the payload is
+//!   never in RAM.
+//! - **ram** copies the uncompressed container into the heap (`from_vec()`)
+//!   and streams PIP from RAM. Small payloads land in internal SRAM; a
 //!   sacrificial SRAM filler forces a second tiny run into PSRAM, isolating
 //!   the PSRAM access penalty.
-//! - **decode**: `from_slice` on the compressed asset, the buffered-decode
-//!   path (decode time printed separately = per-codec embedded decode speed).
-//! - **eager**: `from_static` + `preload`; geometry decoded to RAM once,
-//!   payload stays in flash.
-//! - **partition**: the same tiny-static asset read back out of a dedicated
+//! - **decode** calls `from_slice()` on the compressed asset, the
+//!   buffered-decode path; the decode time is printed separately and gives
+//!   the per-codec embedded decode speed.
+//! - **eager** runs `from_static()` plus `preload()`; geometry is decoded to
+//!   RAM once, and the payload stays in flash.
+//! - **partition** reads the same tiny-static asset back out of a dedicated
 //!   `utzdata` flash partition (found by label in the ESP-IDF partition
-//!   table at runtime) instead of the app image: the ship-the-dataset-
-//!   separately path, e.g. for OTA-ing data without the firmware.
+//!   table at runtime) instead of the app image; this is the
+//!   ship-the-dataset-separately path, e.g. for OTA-ing data without the
+//!   firmware.
 //!
-//! Uses the same harness + points as `utz_bench_cli`: every leg's checksum must
-//! equal the host run of the same shape at npts=2000.
+//! The bench uses the same harness and points as `utz_bench_cli`: every
+//! leg's checksum must equal the host run of the same shape at npts=2000.
 //!
-//! Setup (once): see README.md. Then `cargo run --release` flashes + monitors.
+//! One-time setup is described in README.md. After that,
+//! `cargo run --release` flashes and monitors.
 
 #![no_std]
 #![no_main]
@@ -53,13 +57,14 @@ use utz_bench_common::assets::{
     BALANCED_NONE, COMPACT_EAGER, COMPACT_FIXED, COMPACT_NONE, TINY_COARSE, TINY_EAGER, TINY_FIXED,
 };
 
-/// modest by host standards; lookups run ~250-300x host on this core (see
-/// README) so a round must stay in seconds, not minutes
+/// A modest point count by host standards; lookups run ~250-300x host on
+/// this core (see README), so a round must stay in seconds, not minutes.
 const NPTS: usize = 2_000;
 const ROUNDS: usize = 3;
-/// internal-SRAM heap; the PSRAM region is added at runtime if detected.
-/// Not larger: the rest of DRAM is the main stack, and gzip decode keeps its
-/// ~32 K inflate state there (320 K heap tripped the stack guard).
+/// The internal-SRAM heap size; the PSRAM region is added at runtime if
+/// detected. It is not larger because the rest of DRAM is the main stack,
+/// and gzip decode keeps its ~32 K inflate state there (a 320 K heap
+/// tripped the stack guard).
 const SRAM_HEAP: usize = 256 * 1024;
 
 fn now_us() -> u64 {
@@ -74,7 +79,8 @@ fn free_psram() -> usize {
     esp_alloc::HEAP.free_caps(MemoryCapability::External.into())
 }
 
-/// largest single allocation we can plausibly satisfy (regions don't combine)
+/// Reports whether a single allocation of `bytes` can plausibly be
+/// satisfied (regions don't combine).
 fn fits(bytes: usize) -> bool {
     free_sram().max(free_psram()) > bytes + 32 * 1024
 }
@@ -103,13 +109,15 @@ fn bench(label: &str, finder: &Finder, points: &[(f64, f64)]) {
     );
 }
 
-/// xip-flash leg: payload borrowed from memory-mapped flash, zero-copy
+/// Runs the xip-flash leg: the payload is borrowed from memory-mapped
+/// flash, zero-copy.
 fn xip_leg(label: &str, blob: &'static [u8], points: &[(f64, f64)]) {
     let finder = Finder::from_static(blob).expect("from_static");
     bench(label, &finder, points);
 }
 
-/// ram leg: uncompressed container copied to heap, PIP streams from RAM
+/// Runs the ram leg: the uncompressed container is copied to the heap, and
+/// PIP streams from RAM.
 fn ram_leg(
     label: &str,
     blob: &'static [u8],
@@ -129,7 +137,8 @@ fn ram_leg(
     bench(label, &finder, points);
 }
 
-/// decode leg: compressed asset read from flash, payload decoded into heap
+/// Runs the decode leg: the compressed asset is read from flash, and the
+/// payload is decoded into the heap.
 fn decode_leg(
     label: &str,
     blob: &'static [u8],
@@ -156,7 +165,8 @@ fn decode_leg(
     bench(label, &finder, points);
 }
 
-/// eager leg: payload stays in flash, all geometry decoded to heap once
+/// Runs the eager leg: the payload stays in flash, and all geometry is
+/// decoded to the heap once.
 fn eager_leg(label: &str, blob: &'static [u8], points: &[(f64, f64)]) {
     let mut finder = Finder::from_static(blob).expect("from_static");
     // exact requirement from the v2 header counts; preload reserves exactly
@@ -181,13 +191,14 @@ fn eager_leg(label: &str, blob: &'static [u8], points: &[(f64, f64)]) {
     bench(label, &finder, points);
 }
 
-/// partition leg: the dataset is NOT in the app image. It sits in its own
-/// `utzdata` flash partition (partitions.csv), written by flash-with-data.sh.
-/// At runtime: parse the ESP-IDF partition table, find the partition by
-/// label, size the read from the container's outer header (the partition is
-/// bigger than the asset; erased flash is 0xFF), copy to heap, bench. The
-/// asset is the tiny-static preset, so the bytes — and the checksum — must
-/// match the embedded TINY_NONE legs.
+/// Runs the partition leg, where the dataset is NOT in the app image. It
+/// sits in its own `utzdata` flash partition (partitions.csv), written by
+/// flash-with-data.sh. At runtime the leg parses the ESP-IDF partition
+/// table, finds the partition by label, sizes the read from the container's
+/// outer header (the partition is bigger than the asset; erased flash is
+/// 0xFF), copies to the heap, and benches. The asset is the tiny-static
+/// preset, so the bytes (and the checksum) must match the embedded
+/// TINY_NONE legs.
 fn partition_leg(
     label: &str,
     flash: esp_hal::peripherals::FLASH<'static>,
@@ -265,9 +276,10 @@ fn partition_leg(
     bench(label, &finder, points);
 }
 
-/// eager_from_slice leg: compressed asset decoded straight to eager, the
-/// geometry sections dropped: steady-state heap is the eager cache plus
-/// header/tzid/grid only (compare against decode + preload's payload+cache)
+/// Runs the eager_from_slice leg: the compressed asset is decoded straight
+/// to eager and the geometry sections are dropped, so the steady-state heap
+/// is the eager cache plus header/tzid/grid only (compare against
+/// decode + preload's payload+cache).
 fn eager_slice_leg(label: &str, blob: &'static [u8], points: &[(f64, f64)]) {
     let (sram_before, psram_before) = (free_sram() as isize, free_psram() as isize);
     let start_us = now_us();
@@ -388,13 +400,13 @@ fn main() -> ! {
     loop {}
 }
 
-/// PIP kernel comparison, no container involved: one synthetic i24-range
-/// ring folded through each arithmetic width on the identical slice.
-/// Random vertices are fine: even-odd parity is well-defined on any closed
-/// polyline and all three kernels implement the same rule, so verdicts must
-/// agree exactly (f64 is bit-exact at i24; pip.rs module docs). Branch mix
-/// differs from real geometry (~50% y-span hits), so read it as a kernel
-/// ratio, not an absolute lookup cost.
+/// Compares the PIP kernels with no container involved: one synthetic
+/// i24-range ring is folded through each arithmetic width on the identical
+/// slice. Random vertices are fine: even-odd parity is well-defined on any
+/// closed polyline and all three kernels implement the same rule, so
+/// results must agree exactly (f64 is bit-exact at i24; see the pip.rs
+/// module docs). The branch mix differs from real geometry (~50% y-span
+/// hits), so read it as a kernel ratio, not an absolute lookup cost.
 fn kernel_bench() {
     use utz::pip::{ring_hit, RingHit};
     const RING_LEN: usize = 8192;
@@ -417,7 +429,7 @@ fn kernel_bench() {
     };
     let run = |kernel: fn(&[(i32, i32)], i32, i32) -> RingHit| -> (u64, u64) {
         let start_us = now_us();
-        let mut fingerprint = 0u64; // verdict fingerprint; also defeats elision
+        let mut fingerprint = 0u64; // result fingerprint; also defeats elision
         for &(probe_x, probe_y) in &probes {
             fingerprint = fingerprint
                 .wrapping_mul(3)
@@ -433,11 +445,11 @@ fn kernel_bench() {
         i64_fingerprint == i128_fingerprint
             && i64_fingerprint == f64_fingerprint
             && i64_fingerprint == split_fingerprint,
-        "kernel verdicts disagree"
+        "kernel results disagree"
     );
     let edges = (RING_LEN * PROBES) as u64;
     println!(
-        "KERNEL {} edges: i64 {} us ({} ns/edge) · i128 {} us ({:.2}x) · f64 {} us ({:.2}x) · split-u64 {} us ({:.2}x) · verdicts agree",
+        "KERNEL {} edges: i64 {} us ({} ns/edge) · i128 {} us ({:.2}x) · f64 {} us ({:.2}x) · split-u64 {} us ({:.2}x) · results agree",
         edges,
         i64_us,
         i64_us * 1000 / edges,
@@ -450,10 +462,10 @@ fn kernel_bench() {
     );
 }
 
-/// The i32-quant kernel matrix: sign-split u64 vs the i128 kernel over a
-/// FULL-i32-range ring, the only two exact kernels at this width (i64
-/// overflows, f64 is inexact), so the pair must agree and their ratio is
-/// the "retire i128 on 32-bit cores" answer.
+/// Runs the i32-quant kernel matrix: the sign-split u64 kernel races the
+/// i128 kernel over a FULL-i32-range ring. They are the only two exact
+/// kernels at this width (i64 overflows, f64 is inexact), so the pair must
+/// agree, and their ratio is the "retire i128 on 32-bit cores" answer.
 fn kernel_bench_i32() {
     use utz::pip::{ring_hit, ring_hit_split, RingHit};
     const RING_LEN: usize = 8192;
@@ -485,10 +497,10 @@ fn kernel_bench_i32() {
     };
     let (i128_us, i128_fingerprint) = run(ring_hit::<i128, (i32, i32)>);
     let (split_us, split_fingerprint) = run(ring_hit_split::<(i32, i32)>);
-    assert!(i128_fingerprint == split_fingerprint, "i32 kernel verdicts disagree");
+    assert!(i128_fingerprint == split_fingerprint, "i32 kernel results disagree");
     let edges = (RING_LEN * PROBES) as u64;
     println!(
-        "KERNEL32 {} edges: i128 {} us ({} ns/edge) · split-u64 {} us ({:.2}x) · verdicts agree",
+        "KERNEL32 {} edges: i128 {} us ({} ns/edge) · split-u64 {} us ({:.2}x) · results agree",
         edges,
         i128_us,
         i128_us * 1000 / edges,
@@ -497,14 +509,15 @@ fn kernel_bench_i32() {
     );
 }
 
-/// The i16 kernel matrix: the shipped sign-split kernel
-/// (`pip::ring_hit_split()`: what i16-quant eager/image lookups dispatch)
-/// vs the generic i64 kernel on the identical `(i16, i16)` slice, plus the
-/// same geometry widened to `(i32, i32)` pairs for the load-width effect.
-/// Full-range i16 ring so worst-case products are exercised (65535² just
-/// fits u32; see `pip::edge_split()`); ring-level verdicts must agree
-/// exactly (the sign-split kernel may flag Boundary via a different edge of
-/// the same vertex, but Boundary short-circuits the ring either way).
+/// Runs the i16 kernel matrix: the shipped sign-split kernel
+/// (`pip::ring_hit_split()`, what i16-quant eager/image lookups dispatch)
+/// races the generic i64 kernel on the identical `(i16, i16)` slice, plus
+/// the same geometry widened to `(i32, i32)` pairs for the load-width
+/// effect. The ring spans the full i16 range so worst-case products are
+/// exercised (65535² just fits u32; see `pip::edge_split()`); ring-level
+/// results must agree exactly (the sign-split kernel may flag Boundary via
+/// a different edge of the same vertex, but Boundary short-circuits the
+/// ring either way).
 fn kernel_bench_i16() {
     use utz::pip::{ring_hit, ring_hit_split, RingHit};
     const RING_LEN: usize = 8192;
@@ -553,11 +566,11 @@ fn kernel_bench_i16() {
     assert!(
         narrow_i64_fingerprint == wide_i32_fingerprint
             && narrow_i64_fingerprint == split_u32_fingerprint,
-        "i16 kernel verdicts disagree"
+        "i16 kernel results disagree"
     );
     let edges = (RING_LEN * PROBES) as u64;
     println!(
-        "KERNEL16 {} edges: i64/i16-pairs {} us ({} ns/edge) · u32-signsplit/i16-pairs {} us ({:.2}x) · i64/i32-pairs {} us ({:.2}x) · verdicts agree",
+        "KERNEL16 {} edges: i64/i16-pairs {} us ({} ns/edge) · u32-signsplit/i16-pairs {} us ({:.2}x) · i64/i32-pairs {} us ({:.2}x) · results agree",
         edges,
         narrow_i64_us,
         narrow_i64_us * 1000 / edges,
@@ -568,12 +581,13 @@ fn kernel_bench_i16() {
     );
 }
 
-/// The 15-bit-quant question: quantizing one bit shy of the storage
-/// width (|coord| ≤ 2^14) makes the plain compare-form kernel exact at
-/// `W = i32` (differences fit 15 bits, each cross-product half fits 2^30)
-/// with no swap and no sign classification. Races it against the i64 kernel
-/// and the sign-split kernel on the identical 15-bit-range `(i16, i16)`
-/// slice; all three are exact here, so verdicts must agree.
+/// Answers the 15-bit-quant question: quantizing one bit shy of the
+/// storage width (|coord| ≤ 2^14) makes the plain compare-form kernel exact
+/// at `W = i32` (differences fit 15 bits, and each cross-product half fits
+/// 2^30) with no swap and no sign classification. The bench races it
+/// against the i64 kernel and the sign-split kernel on the identical
+/// 15-bit-range `(i16, i16)` slice; all three are exact here, so results
+/// must agree.
 fn kernel_bench_15_bit_quant() {
     use utz::pip::{ring_hit, ring_hit_split, RingHit};
     const RING_LEN: usize = 8192;
@@ -609,11 +623,11 @@ fn kernel_bench_15_bit_quant() {
     let (split_us, split_fingerprint) = run(ring_hit_split::<(i16, i16)>);
     assert!(
         i64_fingerprint == i32_fingerprint && i64_fingerprint == split_fingerprint,
-        "15-bit kernel verdicts disagree"
+        "15-bit kernel results disagree"
     );
     let edges = (RING_LEN * PROBES) as u64;
     println!(
-        "KERNEL15 {} edges: i64 {} us ({} ns/edge) · i32 {} us ({:.2}x) · split-u32 {} us ({:.2}x) · verdicts agree",
+        "KERNEL15 {} edges: i64 {} us ({} ns/edge) · i32 {} us ({:.2}x) · split-u32 {} us ({:.2}x) · results agree",
         edges,
         i64_us,
         i64_us * 1000 / edges,

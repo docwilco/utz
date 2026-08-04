@@ -1,6 +1,6 @@
-//! Does geo's integer PIP agree with its f64 PIP? Tests overflow behaviour
-//! of the `SimpleKernel` at different coord types/grids on the `now`
-//! dataset.
+//! Does geo's integer PIP agree with its f64 PIP? The command tests
+//! overflow behaviour of the `SimpleKernel` at different coord types/grids
+//! on the `now` dataset.
 
 use geo::Contains;
 use geo_types::{LineString, Point, Polygon};
@@ -9,7 +9,7 @@ use geo_types::{LineString, Point, Polygon};
 pub struct Args {}
 
 /// # Errors
-/// Dataset load/parse failure.
+/// The command fails on a dataset load/parse failure.
 pub fn run(_args: Args) -> utz_build::Result<()> {
     // load geometry once (f64), build parallel i64 / i32 copies at deg*1e6 (~0.11 m)
     let mut f64_polys: Vec<(String, Polygon<f64>)> = Vec::new();

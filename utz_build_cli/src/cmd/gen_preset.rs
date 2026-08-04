@@ -1,4 +1,4 @@
-//! Generate a preset asset from its canonical recipe: drives
+//! Generates a preset asset from its canonical recipe. The command drives
 //! `utz_build::Config::<preset>()` directly, so the recipe exists in
 //! exactly one place and `scripts/gen-presets.sh` cannot drift from the
 //! `Config` constructors (the data crates' build.rs recipe guards verify
@@ -14,17 +14,17 @@ use utz_build::{Codec, Config};
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// preset name: tiny|tiny-static|compact|balanced|accurate
+    /// The preset name, one of tiny|tiny-static|compact|balanced|accurate.
     preset: String,
-    /// output path (default: `utz_data_<preset>/data/<preset>.utz` with
-    /// `-` as `_` in the crate dir, relative to the current directory)
+    /// The output path (the default is `utz_data_<preset>/data/<preset>.utz`
+    /// with `-` as `_` in the crate dir, relative to the current directory).
     #[arg(long, short)]
     out: Option<PathBuf>,
 }
 
 /// # Errors
-/// Unknown preset name, dataset load or encode failure, or I/O writing
-/// the asset and its guard file.
+/// The command fails on an unknown preset name, a dataset load or encode
+/// failure, or an I/O error writing the asset and its guard file.
 pub fn run(args: Args) -> utz_build::Result<()> {
     let config = match args.preset.as_str() {
         "tiny" => Config::tiny(),

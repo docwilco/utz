@@ -1,6 +1,6 @@
-//! Exact memory of a grid at one cell size: measure candidate (zone)
-//! counts per border cell, then size several layouts, showing 32- vs
-//! 64-bit differences.
+//! Computes the exact memory of a grid at one cell size: it measures
+//! candidate (zone) counts per border cell, then sizes several layouts,
+//! showing 32- vs 64-bit differences.
 //!
 //! ```text
 //! utz_dev_cli grid2mem [ds] [deg]
@@ -9,19 +9,20 @@ use std::collections::HashSet;
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// dataset: [land-]now|1970|all
+    /// The dataset, one of [land-]now|1970|all.
     #[arg(default_value = "now")]
     ds: String,
-    /// grid cell size in degrees
+    /// The grid cell size in degrees.
     #[arg(default_value_t = 2.0)]
     deg: f64,
 }
 
 /// # Errors
-/// Dataset load/parse failure.
+/// The command fails on a dataset load/parse failure.
 ///
 /// # Panics
-/// If the dataset has more features than fit a `u16` id.
+/// The command panics if the dataset has more features than fit a `u16`
+/// id.
 #[expect(
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"

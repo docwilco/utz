@@ -1,7 +1,7 @@
-//! Types and utilities shared across the workspace: the asset codec
-//! identifiers, the payload header record both the encoder and the reader
-//! serialize through, and the deterministic LCG behind every reproducible
-//! test/bench sampler.
+//! This crate holds the types and utilities shared across the workspace:
+//! the asset codec identifiers, the payload header record that both the
+//! encoder and the reader serialize through, and the deterministic LCG
+//! behind every reproducible test/bench sampler.
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
@@ -13,20 +13,21 @@ extern crate alloc;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
-/// The magic bytes every `.utz` asset starts with. ASCII on purpose ("μ"
-/// is 2 bytes in UTF-8 and byte literals reject non-ASCII): the project
-/// brands as μTZ, the container as uTZ1.
+/// The magic bytes every `.utz` asset starts with. The bytes are ASCII on
+/// purpose ("μ" is 2 bytes in UTF-8 and byte literals reject non-ASCII):
+/// the project brands itself as μTZ, and the container as uTZ1.
 pub const MAGIC: [u8; 4] = *b"uTZ1";
 /// The container-format version this workspace reads and writes; a reader
 /// refuses any other value.
 pub const VERSION: u8 = 11;
 
-/// The container prologue: `MAGIC` (4), `VERSION` (1), 3 reserved bytes.
-/// The only part of the format whose layout is frozen across versions:
-/// everything after it is [`VERSION`]-specific.
+/// The byte length of the container prologue, which is `MAGIC` (4),
+/// `VERSION` (1), and 3 reserved bytes. The prologue is the only part of
+/// the format whose layout is frozen across versions; everything after it
+/// is [`VERSION`]-specific.
 pub const PROLOGUE_LEN: usize = 8;
 
-/// [`PayloadHeader`]'s serialized size: the section blob starts at
+/// [`PayloadHeader`]'s serialized size. The section blob starts at
 /// `PROLOGUE_LEN + PAYLOAD_HEADER_LEN`.
 pub const PAYLOAD_HEADER_LEN: usize = 64;
 
@@ -35,67 +36,78 @@ pub const PAYLOAD_HEADER_LEN: usize = 64;
 /// flags a border cell carrying a candidate-list index instead.
 pub const NO_ZONE: u16 = 0x7FFF;
 
-/// The container's one fixed header record: everything the reader needs to
-/// locate every section. It sits in PLAINTEXT right after the outer header
-/// (only the section blob after it is compressed), so any container is
-/// inspectable and validated before decompression. The encoder `Pwrite`s
-/// it, the reader `Pread`s it (both little-endian); field order is the wire
-/// order; all offsets are relative to the section blob that follows.
+/// The container's one fixed header record, which carries everything the
+/// reader needs to locate every section. It sits in PLAINTEXT right after
+/// the outer header (only the section blob after it is compressed), so
+/// any container is inspectable and validated before decompression. The
+/// encoder `Pwrite`s it, the reader `Pread`s it (both little-endian);
+/// field order is the wire order; all offsets are relative to the section
+/// blob that follows.
 ///
-/// Section blob layout: zone-string offsets + pool, the geometry-dependent
-/// sections at the stored offsets, the grid tables, and the TZBB release
-/// string at `release_off`.
+/// The section blob is laid out as the zone-string offsets and pool, the
+/// geometry-dependent sections at the stored offsets, the grid tables, and
+/// the TZBB release string at `release_off`.
 #[derive(Debug, Clone, Copy, PartialEq, Pread, Pwrite)]
 pub struct PayloadHeader {
-    /// arc store (geom 0/1) / `FullRings` coords (geom 2, 4-aligned)
+    /// The offset of the arc store (geom 0/1) or of the `FullRings`
+    /// coordinates (geom 2, 4-aligned).
     pub arcs_off: u32,
-    /// poly→feature parent table (+ ring records for geom 0/1)
+    /// The offset of the poly→feature parent table (plus the ring records
+    /// for geom 0/1).
     pub rings_off: u32,
-    /// grid tables: primary cells, then CSR list offsets + ids
+    /// The offset of the grid tables, which hold the primary cells
+    /// followed by the CSR list offsets and ids.
     pub grid_off: u32,
-    /// TZBB release string (`release_len` bytes at the payload tail)
+    /// The offset of the TZBB release string (`release_len` bytes at the
+    /// payload tail).
     pub release_off: u32,
-    /// eager-cache reservation counts: exact Vec sizes for `preload`
-    /// (coords is Σ referenced-arc vcounts; may only over-estimate)
+    /// The eager-cache reservation counts, which give exact Vec sizes for
+    /// `preload()` (the coords count is Σ referenced-arc vertex counts and
+    /// may only over-estimate).
     pub eager_coords: u32,
     pub eager_rings: u32,
     pub eager_polys: u32,
-    /// arc count (geom 0/1; zero when there is no arc store)
+    /// The arc count (geom 0/1), which is zero when there is no arc store.
     pub n_arcs: u32,
-    /// the section blob's decompressed size (so readers allocate once)
+    /// The section blob's decompressed size (so readers allocate once).
     pub raw_len: u32,
-    /// grid cell size in degrees; fractional (e.g. 0.5) allowed
+    /// The grid cell size in degrees; fractional sizes (e.g. 0.5) are
+    /// allowed.
     pub grid_deg: f32,
-    /// simplification tolerance the asset was built with (provenance)
+    /// The simplification tolerance the asset was built with (provenance).
     pub eps_m: f32,
     pub n_features: u16,
-    /// grid dimensions
+    /// The grid's column count.
     pub ncols: u16,
+    /// The grid's row count.
     pub nrows: u16,
-    /// distinct border-cell candidate lists (CSR)
+    /// The number of distinct border-cell candidate lists (CSR).
     pub uniq: u16,
     pub release_len: u16,
-    /// reserved, must be zero (room for future format flags)
+    /// This field is reserved and must be zero (room for future format
+    /// flags).
     pub flags: u16,
     pub dataset: Dataset,
     pub quant_bits: QuantBits,
     pub simplify_algo: SimplifyAlgo,
     pub geom: GeomEncoding,
-    /// the section blob's compression codec
+    /// The section blob's compression codec.
     pub codec: Codec,
-    /// Population-density weight floor in fixed-point 1e-4 (0 =
-    /// unweighted, 10000 = 1.0): provenance for the density-weighted
-    /// simplification knob, like `eps_m`.
+    /// The population-density weight floor in fixed-point 1e-4, where 0
+    /// means unweighted and 10000 means 1.0. Like `eps_m`, it is
+    /// provenance for the density-weighted simplification knob.
     pub density_weight_floor_e4: u16,
-    /// reserved, must be zero (pads the header to 64 bytes)
+    /// This byte is reserved and must be zero (it pads the header to 64
+    /// bytes).
     pub reserved: u8,
 }
 
 impl PayloadHeader {
-    /// Parse the plaintext header out of a complete asset, checking the
-    /// prologue first (magic + [`VERSION`]). `None` if the bytes are too
-    /// short, not a μTZ asset, or a different format version. Reads only
-    /// the first `PROLOGUE_LEN + PAYLOAD_HEADER_LEN` bytes: cheap
+    /// Parses the plaintext header out of a complete asset, checking the
+    /// prologue first (magic + [`VERSION`]). The result is `None` if the
+    /// bytes are too short, not a μTZ asset, or a different format
+    /// version. The parse reads only the first
+    /// `PROLOGUE_LEN + PAYLOAD_HEADER_LEN` bytes, which makes it cheap
     /// provenance sniffing without decompression.
     #[must_use]
     pub fn from_asset(bytes: &[u8]) -> Option<PayloadHeader> {
@@ -109,8 +121,8 @@ impl PayloadHeader {
     }
 }
 
-/// Coordinate quantization width: how many bits each stored coordinate
-/// occupies (the wire value IS the bit count).
+/// The coordinate quantization width, which is how many bits each stored
+/// coordinate occupies (the wire value IS the bit count).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Pread, Pwrite)]
 #[repr(u8)]
 pub enum QuantBits {
@@ -126,7 +138,7 @@ impl QuantBits {
         self as u32
     }
 
-    /// Bytes per stored coordinate (2 / 3 / 4).
+    /// The number of bytes per stored coordinate (2 / 3 / 4).
     #[must_use]
     pub const fn bytes(self) -> usize {
         (self as usize) / 8
@@ -144,8 +156,8 @@ impl QuantBits {
     }
 }
 
-/// Geometry encoding: how an asset stores its polygons and how lookups
-/// read them.
+/// The geometry encoding, which decides how an asset stores its polygons
+/// and how lookups read them.
 ///
 /// The three polygon encodings answer bit-identically; they trade storage
 /// for lookup speed. `Coarse` alone trades precision instead: it drops the
@@ -155,7 +167,7 @@ impl QuantBits {
 /// back to this table rather than restating numbers. Size columns are
 /// whole assets relative to the `VarintArcs` build of the same preset;
 /// lookup speed is the flash-XIP (execute-in-place, zero RAM) leg of the
-/// embedded bench, same baseline.
+/// embedded bench, against the same baseline.
 ///
 /// | encoding         | geometry section                          |        raw | best-compressed | XIP lookup      |
 /// |------------------|-------------------------------------------|-----------:|----------------:|-----------------|
@@ -169,8 +181,9 @@ impl QuantBits {
 /// overtakes brotli at every preset. `Coarse` shrinks with preset fineness
 /// twice over: the grid is all it keeps, and grids compress extremely well.
 ///
-/// Size columns: `utz_dev_cli whittle --extended` (2026-07, TZBB 2026c),
-/// full assets per preset recipe vs the `VarintArcs` build. The XIP
+/// The size columns come from `utz_dev_cli whittle --extended` (2026-07,
+/// TZBB 2026c), measuring full assets per preset recipe against the
+/// `VarintArcs` build. The XIP
 /// lookup column is from the 2026-07 bench-firmware runs against earlier
 /// payload revisions; read it as a relative ladder.
 // TODO(verify): re-run the XIP lookup column on target against the
@@ -178,31 +191,33 @@ impl QuantBits {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
 #[repr(u8)]
 pub enum GeomEncoding {
-    /// Shared arcs as delta + zigzag-varint streams: the default, for
-    /// minimal storage size.
+    /// This encoding stores shared arcs as delta + zigzag-varint streams;
+    /// it is the default, for minimal storage size.
     #[default]
     VarintArcs = 0,
-    /// Shared arcs as absolute fixed-width (quant-width) coordinates:
-    /// streaming lookups no longer decode a varint per vertex, the
-    /// dominant lookup cost on embedded targets. Near-eager speed with no
-    /// RAM cache, suited to uncompressed `-static` assets read in place
-    /// from memory-mapped flash. Costs storage (table above).
+    /// This encoding stores shared arcs as absolute fixed-width
+    /// (quant-width) coordinates, so streaming lookups no longer decode a
+    /// varint per vertex, the dominant lookup cost on embedded targets. It
+    /// reaches near-eager speed with no RAM cache and suits uncompressed
+    /// `-static` assets read in place from memory-mapped flash, at a
+    /// storage cost (table above).
     FixedWidthArcs = 1,
-    /// Each ring stored in full: coordinates flattened per ring as
-    /// quant-width pairs plus ring/poly index tables, 4-byte aligned; the
-    /// preload cache serialized. Slice kernels read it in place: from
-    /// memory-mapped flash via `from_static` (eager-lookup speed with no
-    /// RAM cache and no preload pass at boot) or from the decompressed
-    /// buffer via `from_slice`. There is no arc store, so borders shared
-    /// between zones are duplicated per ring, the largest encoding
-    /// (table above). Little-endian hosts only.
+    /// This encoding stores each ring in full: coordinates are flattened
+    /// per ring as quant-width pairs plus ring/poly index tables, 4-byte
+    /// aligned; it is the preload cache serialized. Slice kernels read it
+    /// in place: from memory-mapped flash via `from_static()`
+    /// (eager-lookup speed with no RAM cache and no preload pass at boot)
+    /// or from the decompressed buffer via `from_slice()`. There is no arc
+    /// store, so borders shared between zones are duplicated per ring,
+    /// making this the largest encoding (table above). It works on
+    /// little-endian hosts only.
     FullRings = 2,
-    /// Grid-only asset: header, tzid pool, parent table, and grid — no
-    /// geometry at all. `lookup()` answers at cell precision, the same
-    /// answer `lookup_coarse` gives; precision is a property of the
-    /// asset, like `eps_m`. By far the smallest storage (table above),
-    /// works on any endianness, and a reader built only for coarse
-    /// assets compiles no point-in-polygon code.
+    /// A grid-only asset carrying the header, tzid pool, parent table,
+    /// and grid, with no geometry at all. `lookup()` answers at cell
+    /// precision, the same answer `lookup_coarse()` gives; precision is a
+    /// property of the asset, like `eps_m`. It is by far the smallest
+    /// storage (table above) and works on any endianness, and a reader
+    /// built only for coarse assets compiles no point-in-polygon code.
     Coarse = 3,
 }
 
@@ -211,27 +226,27 @@ pub enum GeomEncoding {
     doc = "[`utz_simplify`]: https://docs.rs/utz_simplify/latest/utz_simplify/index.html"
 )]
 #[cfg_attr(on_docsrs, doc = "")]
-/// Simplification algorithm: which simplifier the encoder ran when the
-/// asset was generated. Each variant sketches its algorithm; guarantees,
-/// citations, and the density-weighted variants are documented in the
-/// [`utz_simplify`] crate.
+/// The simplification algorithm records which simplifier the encoder ran
+/// when the asset was generated. Each variant sketches its algorithm;
+/// guarantees, citations, and the density-weighted variants are
+/// documented in the [`utz_simplify`] crate.
 ///
 /// [`utz_simplify`]: ../utz_simplify/index.html
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
 #[repr(u8)]
 pub enum SimplifyAlgo {
-    /// No simplification: geometry stored as sourced.
+    /// No simplification runs; the geometry is stored as sourced.
     None = 0,
-    /// Ramer–Douglas–Peucker: keeps every point within a maximum deviation
-    /// of ε. The default.
+    /// Ramer–Douglas–Peucker keeps every point within a maximum deviation
+    /// of ε. This is the default.
     #[default]
     Rdp = 1,
-    /// Visvalingam–Whyatt: repeatedly drops the vertex spanning the
+    /// Visvalingam–Whyatt repeatedly drops the vertex spanning the
     /// smallest triangle; the ε-driven pipeline derives its area threshold
     /// as ε², matching the viewer.
     Visvalingam = 2,
-    /// Imai–Iri: provably minimum vertices for the same ε bound as RDP,
-    /// at a slower encode.
+    /// Imai–Iri produces provably minimum vertices for the same ε bound
+    /// as RDP, at a slower encode.
     ImaiIri = 3,
 }
 
@@ -249,33 +264,35 @@ impl SimplifyAlgo {
     }
 }
 
-/// The dataset an asset was built from: which
-/// [timezone-boundary-builder] release, as a zone set × ocean coverage
+/// The dataset an asset was built from, naming a
+/// [timezone-boundary-builder] release as a zone set × ocean coverage
 /// pair. The zone set trades zone count for historical fidelity: `now`
 /// and `1970` merge zones whose rules are identical since that date,
-/// `all` keeps every distinct tzid. Ocean coverage decides whether
+/// and `all` keeps every distinct tzid. Ocean coverage decides whether
 /// maritime timezones tile the rest of the planet or queries at sea
-/// return `None`. (Discriminants keep the wire bitfield: zone set in
-/// bits 0–1, bit 2 set = land-only.)
+/// return `None`. (The discriminants keep the wire bitfield: the zone
+/// set lives in bits 0–1, and a set bit 2 means land-only.)
 ///
 /// [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Pread, Pwrite)]
 #[repr(u8)]
 pub enum Dataset {
-    /// Zones whose rules are identical from today onward merged, oceans
-    /// covered: the smallest set, and the preset default.
+    /// Zones whose rules are identical from today onward are merged and
+    /// the oceans are covered. This is the smallest set, and the preset
+    /// default.
     Now = 0,
-    /// Zones identical since 1970 merged, oceans covered: enough to
-    /// resolve any post-1970 civil time correctly.
+    /// Zones identical since 1970 are merged and the oceans are covered,
+    /// which is enough to resolve any post-1970 civil time correctly.
     Since1970 = 1,
-    /// Every distinct tzid kept, oceans covered: full historical
-    /// fidelity, the largest set.
+    /// Every distinct tzid is kept and the oceans are covered, giving
+    /// full historical fidelity; this is the largest set.
     All = 2,
-    /// `Now` without maritime zones: queries at sea return `None`.
+    /// This is `Now` without maritime zones, so queries at sea return
+    /// `None`.
     NowLandOnly = 4,
-    /// `Since1970` without maritime zones.
+    /// This is `Since1970` without maritime zones.
     Since1970LandOnly = 5,
-    /// `All` without maritime zones.
+    /// This is `All` without maritime zones.
     AllLandOnly = 6,
 }
 
@@ -295,8 +312,8 @@ impl Dataset {
     }
 }
 
-/// How an asset's payload is compressed. The encoder picks one;
-/// loading the asset needs the matching decoder compiled in.
+/// The compression applied to an asset's payload. The encoder picks one
+/// codec; loading the asset needs the matching decoder compiled in.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Pread, Pwrite)]
 #[repr(u8)]
 pub enum Codec {
@@ -312,8 +329,9 @@ pub const MMIX_MUL: u64 = 0x5851_F42D_4C95_7F2D; // 6_364_136_223_846_793_005
 /// Knuth's MMIX LCG increment.
 pub const MMIX_ADD: u64 = 0x1405_7B7E_F767_814F; // 1_442_695_040_888_963_407
 
-/// Minimal MMIX LCG for reproducible test/bench data (not for cryptography).
-/// Callers keep their own seeds so historical sequences stay bit-identical.
+/// A minimal MMIX LCG for reproducible test/bench data (not for
+/// cryptography). Callers keep their own seeds so historical sequences
+/// stay bit-identical.
 pub struct Lcg(pub u64);
 
 impl Lcg {
@@ -322,13 +340,14 @@ impl Lcg {
         Self(seed)
     }
 
-    /// Advance and return the full 64-bit state.
+    /// Advances and returns the full 64-bit state.
     pub fn next_u64(&mut self) -> u64 {
         self.0 = self.0.wrapping_mul(MMIX_MUL).wrapping_add(MMIX_ADD);
         self.0
     }
 
-    /// Uniform in [0, 1): 53-bit mantissa construction.
+    /// Returns a uniform value in [0, 1) via a 53-bit mantissa
+    /// construction.
     #[expect(
         clippy::cast_precision_loss,
         reason = "53-bit mantissa construction: state>>11 < 2^53 and 2^53 are both exact"
@@ -338,9 +357,10 @@ impl Lcg {
     }
 }
 
-/// `count` uniform world points `(lon, lat)` from `seed`: the shared sampler
-/// behind the measurement commands and benches (same seed → same points, so
-/// numbers stay comparable across tools).
+/// Generates `count` uniform world points `(lon, lat)` from `seed`. This
+/// is the shared sampler behind the measurement commands and benches: the
+/// same seed gives the same points, so numbers stay comparable across
+/// tools.
 #[cfg(feature = "alloc")]
 #[must_use]
 pub fn gen_pts(seed: u64, count: usize) -> Vec<(f64, f64)> {

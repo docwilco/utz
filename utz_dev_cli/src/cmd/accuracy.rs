@@ -1,4 +1,4 @@
-//! Accuracy of simplified topologies vs the raw (ε=0) arcs.
+//! Measures the accuracy of simplified topologies vs the raw (ε=0) arcs.
 //!
 //! Every simplifier in the menu keeps a *subset* of the original vertices, so
 //! each output segment covers a contiguous run of raw vertices and the
@@ -6,11 +6,12 @@
 //! sub-chain and its shortcut (split where the chain crosses the shortcut
 //! line; the decomposition itself is `utz_viz::misassign`, shared
 //! with the viewer's simplify worker). Per config this reports:
-//!   - max deviation (m, same flat 111 320 m/deg convention as `eps_m`)
-//!   - misassigned area (km², sum of |pocket|)
-//!   - misassigned population (people: pocket area × GHS-POP density at the
-//!     pocket; pockets are ≤ ε wide, far below the 4′ grid, so one sample
-//!     per pocket is essentially exact)
+//!   - the max deviation (m, same flat 111 320 m/deg convention as
+//!     `eps_m`),
+//!   - the misassigned area (km², the sum of |pocket|), and
+//!   - the misassigned population (people: pocket area × GHS-POP density
+//!     at the pocket; pockets are ≤ ε wide, far below the 4′ grid, so one
+//!     sample per pocket is essentially exact).
 //!
 //! ```text
 //! utz_dev_cli accuracy [ds] [eps_m] [w_min] [rdp|vw|ii]
@@ -25,25 +26,25 @@ const KM_PER_DEG: f64 = 111.32;
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// dataset: [land-]now|1970|all
+    /// The dataset, one of [land-]now|1970|all.
     #[arg(default_value = "now")]
     ds: String,
-    /// simplification tolerance in meters
+    /// The simplification tolerance in meters.
     #[arg(default_value_t = 500.0)]
     eps_m: f64,
-    /// weighted-floor multiplier at max density
+    /// The weighted-floor multiplier at max density.
     #[arg(default_value_t = 0.052)]
     w_min: f64,
-    /// simplification algorithm: rdp|vw|ii
+    /// The simplification algorithm, one of rdp|vw|ii.
     #[arg(default_value = "rdp")]
     algo: String,
 }
 
 /// # Errors
-/// Dataset load/parse or density-grid load failure.
+/// The command fails on a dataset load/parse or density-grid load failure.
 ///
 /// # Panics
-/// If `algo` is not one of rdp|vw|ii.
+/// The command panics if `algo` is not one of rdp|vw|ii.
 pub fn run(args: Args) -> utz_build::Result<()> {
     let (dataset, eps_m, w_min, algo_key) = (args.ds, args.eps_m, args.w_min, args.algo);
     let algo = |eps_deg: f64| -> Simplify {

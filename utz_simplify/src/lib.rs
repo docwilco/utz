@@ -1,56 +1,60 @@
-//! Open-polyline simplification algorithms, shared between the
-//! builder (`utz_build`, per-arc topology-aware pass) and the tuning-viewer
+//! Open-polyline simplification algorithms, shared between the builder
+//! (`utz_build`, whose per-arc pass is topology-aware) and the tuning-viewer
 //! HTML (compiled to WASM so the browser preview runs the exact code the
-//! builder runs: no JS reimplementation drift).
+//! builder runs, with no JS reimplementation drift).
 //!
 //! All functions take an open polyline, always keep both endpoints, and return
 //! ≥ 2 points. Units are the caller's (the builder works in degrees; convert
-//! meters with ~111 320 m/deg, areas with its square). The menu:
+//! meters with ~111 320 m/deg and areas with its square). Three algorithms are
+//! on the menu:
 //!
-//! - [`rdp`]: Ramer–Douglas–Peucker (Ramer 1972; Douglas & Peucker 1973):
-//!   max perpendicular deviation ≤ ε guaranteed. The default.
-//! - [`visvalingam`]: Visvalingam–Whyatt (1993): iteratively drop the point
-//!   spanning the smallest triangle. Parameter is an *area*, not a distance:
-//!   no ε-style deviation bound, but often a cartographically nicer caricature
-//!   at the same vertex budget.
-//! - [`imai_iri`]: Imai–Iri (1988): the provably *minimum* number of vertices
-//!   for a given deviation bound ε (shortest path over the shortcut graph).
-//!   Same guarantee as RDP, fewer-or-equal points, more build time.
+//! - [`rdp()`] is Ramer–Douglas–Peucker (Ramer 1972; Douglas & Peucker 1973),
+//!   which guarantees a max perpendicular deviation ≤ ε. It is the default.
+//! - [`visvalingam()`] is Visvalingam–Whyatt (1993), which iteratively drops
+//!   the point spanning the smallest triangle. Its parameter is an *area*, not
+//!   a distance: there is no ε-style deviation bound, but the result is often
+//!   a cartographically nicer caricature at the same vertex budget.
+//! - [`imai_iri()`] is Imai–Iri (1988), which finds the provably *minimum*
+//!   number of vertices for a given deviation bound ε (the shortest path over
+//!   the shortcut graph). It gives the same guarantee as RDP with
+//!   fewer-or-equal points and more build time.
 //!
 //! Corridor/streaming algorithms (Reumann–Witkam, Opheim, Lang, Zhao–Saalfeld)
 //! were considered and rejected: they trade quality-per-vertex for single-pass
 //! speed, which is worthless at build time.
 //!
-//! Each algorithm also has a weighted variant ([`simplify_weighted`], `*_w`):
-//! a per-vertex tolerance multiplier `weights[i]` makes the effective
-//! parameter `eps * weights[i]` (Visvalingam: `min_area * weights[i]²`, areas
-//! scale as distance²). The builder uses this for population-density-aware
-//! refinement: denser areas get smaller multipliers, so boundaries stay
-//! precise where people live. `weights[i] = 1.0` everywhere reproduces the
-//! scalar functions exactly.
+//! Each algorithm also has a weighted variant ([`simplify_weighted()`],
+//! `*_w`): a per-vertex tolerance multiplier `weights[i]` makes the effective
+//! parameter `eps * weights[i]` (for Visvalingam it is
+//! `min_area * weights[i]²`, because areas scale as distance²). The builder
+//! uses this for population-density-aware refinement: denser areas get smaller
+//! multipliers, so boundaries stay precise where people live.
+//! `weights[i] = 1.0` everywhere reproduces the scalar functions exactly.
 //!
-//! [`rdp`]: ../utz_simplify/fn.rdp.html
-//! [`visvalingam`]: ../utz_simplify/fn.visvalingam.html
-//! [`imai_iri`]: ../utz_simplify/fn.imai_iri.html
-//! [`simplify_weighted`]: ../utz_simplify/fn.simplify_weighted.html
+//! [`rdp()`]: ../utz_simplify/fn.rdp.html
+//! [`visvalingam()`]: ../utz_simplify/fn.visvalingam.html
+//! [`imai_iri()`]: ../utz_simplify/fn.imai_iri.html
+//! [`simplify_weighted()`]: ../utz_simplify/fn.simplify_weighted.html
 
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
-/// Algorithm + parameter, for callers that thread the choice through knobs.
+/// The algorithm choice and its parameter, for callers that thread the choice
+/// through knobs.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Simplify {
-    /// Keep every vertex.
+    /// Keeps every vertex.
     None,
-    /// Ramer–Douglas–Peucker, max deviation `eps`.
+    /// Ramer–Douglas–Peucker with a max deviation of `eps`.
     Rdp { eps: f64 },
-    /// Visvalingam–Whyatt, drop triangles smaller than `min_area`.
+    /// Visvalingam–Whyatt, which drops triangles smaller than `min_area`.
     Visvalingam { min_area: f64 },
-    /// Imai–Iri minimum-vertex within max deviation `eps`.
+    /// Imai–Iri minimum-vertex simplification within a max deviation of
+    /// `eps`.
     ImaiIri { eps: f64 },
 }
 
-/// Dispatch on [`Simplify`].
+/// Dispatches on [`Simplify`].
 #[must_use]
 pub fn simplify(algo: Simplify, pts: &[(f64, f64)]) -> Vec<(f64, f64)> {
     match algo {
@@ -61,9 +65,10 @@ pub fn simplify(algo: Simplify, pts: &[(f64, f64)]) -> Vec<(f64, f64)> {
     }
 }
 
-/// [`simplify`] with per-vertex tolerance multipliers: the effective parameter
-/// at `pts[i]` is `param * weights[i]` (Visvalingam: `min_area * weights[i]²`).
-/// One strictly positive weight per point; all-ones reproduces [`simplify`].
+/// [`simplify()`] with per-vertex tolerance multipliers: the effective
+/// parameter at `pts[i]` is `param * weights[i]` (for Visvalingam,
+/// `min_area * weights[i]²`). Callers pass one strictly positive weight per
+/// point; all-ones weights reproduce [`simplify()`].
 #[must_use]
 pub fn simplify_weighted(algo: Simplify, pts: &[(f64, f64)], weights: &[f64]) -> Vec<(f64, f64)> {
     match algo {
@@ -74,26 +79,29 @@ pub fn simplify_weighted(algo: Simplify, pts: &[(f64, f64)], weights: &[f64]) ->
     }
 }
 
-/// Population density → tolerance-multiplier map, shared by the builder and
-/// the live viewer (compiled into the WASM module so the browser's weighting
-/// slider runs the same code). Refine-only: weight is 1 below `d_lo`
-/// (oceans, deserts; zero size regression there) and `w_min` above `d_hi`
-/// (city cores), log-log linear between the knees:
-/// `weight(d) = (d/d_lo)^-k`, `k = ln(1/w_min) / ln(d_hi/d_lo)`.
+/// The map from population density to tolerance multiplier, shared by the
+/// builder and the live viewer (it is compiled into the WASM module so the
+/// browser's weighting slider runs the same code). The map only refines: the
+/// weight is 1 below `d_lo` (oceans and deserts, so there is zero size
+/// regression there), `w_min` above `d_hi` (city cores), and log-log linear
+/// between the knees: `weight(d) = (d/d_lo)^-k` with
+/// `k = ln(1/w_min) / ln(d_hi/d_lo)`.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct DensityWeight {
-    /// multiplier at saturation (0.1 → dense areas get one tenth the eps)
+    /// The multiplier at saturation (0.1 gives dense areas one tenth the
+    /// eps).
     pub w_min: f64,
-    /// density (people/km²) below which the weight stays 1
+    /// The density (people/km²) below which the weight stays 1.
     pub d_lo: f64,
-    /// density above which the weight saturates at `w_min`
+    /// The density above which the weight saturates at `w_min`.
     pub d_hi: f64,
 }
 
 impl DensityWeight {
-    /// `d_lo` default: below ~5 people/km² nobody is misassigned that matters.
+    /// The default for `d_lo`: below ~5 people/km², nobody is misassigned
+    /// that matters.
     pub const DEFAULT_D_LO: f64 = 5.0;
-    /// `d_hi` default: ~2000 people/km² is already a dense city.
+    /// The default for `d_hi`: ~2000 people/km² is already a dense city.
     pub const DEFAULT_D_HI: f64 = 2000.0;
 
     #[must_use]
@@ -105,8 +113,9 @@ impl DensityWeight {
         }
     }
 
-    /// Tolerance multiplier ∈ [`w_min`, 1] for a density in people/km²
-    /// (NaN or `w_min ≥ 1` → 1: weighting off).
+    /// Returns the tolerance multiplier ∈ [`w_min`, 1] for a density in
+    /// people/km². A NaN density or `w_min ≥ 1` returns 1, which turns
+    /// weighting off.
     #[must_use]
     pub fn weight(&self, density: f64) -> f64 {
         if density.is_nan() || density <= self.d_lo || self.w_min >= 1.0 {
@@ -120,7 +129,7 @@ impl DensityWeight {
     }
 }
 
-/// Squared distance from `p` to the segment `a`–`b`.
+/// The squared distance from `p` to the segment `a`–`b`.
 fn seg_dist2(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
     let (dx, dy) = (b.0 - a.0, b.1 - a.1);
     let len2 = dx * dx + dy * dy;
@@ -132,7 +141,8 @@ fn seg_dist2(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
     (p.0 - cx).powi(2) + (p.1 - cy).powi(2)
 }
 
-/// Ramer–Douglas–Peucker keeping both endpoints; result has ≥ 2 points.
+/// Runs Ramer–Douglas–Peucker, keeping both endpoints; the result has
+/// ≥ 2 points.
 #[must_use]
 pub fn rdp(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
     if pts.len() < 3 || eps <= 0.0 {
@@ -147,8 +157,8 @@ pub fn rdp(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
         .collect()
 }
 
-/// [`rdp`] with per-vertex multipliers: deviation at `pts[i]` ≤
-/// `eps * weights[i]`.
+/// [`rdp()`] with per-vertex multipliers: the deviation at `pts[i]` stays
+/// ≤ `eps * weights[i]`.
 ///
 /// # Panics
 ///
@@ -171,8 +181,9 @@ pub fn rdp_w(pts: &[(f64, f64)], eps: f64, weights: &[f64]) -> Vec<(f64, f64)> {
         .collect()
 }
 
-/// Keep-mask form of RDP (the Imai–Iri prefilter needs kept points mapped
-/// back to original indices). `e2_of(i)` = squared tolerance at `pts[i]`.
+/// The keep-mask form of RDP (the Imai–Iri prefilter needs kept points mapped
+/// back to original indices). `e2_of(i)` gives the squared tolerance at
+/// `pts[i]`.
 fn rdp_keep(pts: &[(f64, f64)], e2_of: impl Fn(usize) -> f64 + Copy) -> Vec<bool> {
     let mut keep = vec![false; pts.len()];
     keep[0] = true;
@@ -207,16 +218,17 @@ fn rdp_rec(
     }
 }
 
-/// Visvalingam–Whyatt: repeatedly remove the interior point whose triangle
-/// (prev, point, next) has the smallest area, while that area < `min_area`.
-/// Ties break on lower index for reproducible builds.
+/// Runs Visvalingam–Whyatt: it repeatedly removes the interior point whose
+/// triangle (prev, point, next) has the smallest area, while that area is
+/// < `min_area`. Ties break on the lower index for reproducible builds.
 #[must_use]
 pub fn visvalingam(pts: &[(f64, f64)], min_area: f64) -> Vec<(f64, f64)> {
     vw_impl(pts, min_area, |_| 1.0)
 }
 
-/// [`visvalingam`] with per-vertex multipliers: `pts[i]` is dropped while its
-/// triangle area < `min_area * weights[i]²` (areas scale as distance²).
+/// [`visvalingam()`] with per-vertex multipliers: `pts[i]` is dropped while
+/// its triangle area is < `min_area * weights[i]²` (areas scale as
+/// distance²).
 ///
 /// # Panics
 ///
@@ -228,8 +240,8 @@ pub fn visvalingam_w(pts: &[(f64, f64)], min_area: f64, weights: &[f64]) -> Vec<
     vw_impl(pts, min_area, |i| w2[i])
 }
 
-/// [`vw_impl`] heap entry; max-heap ordered by Reverse-style negated
-/// comparison so the smallest effective area pops first.
+/// A heap entry for [`vw_impl()`]; the max-heap is ordered by a Reverse-style
+/// negated comparison so the smallest effective area pops first.
 #[derive(PartialEq)]
 struct VwEntry {
     area: f64,
@@ -252,8 +264,8 @@ impl PartialOrd for VwEntry {
     }
 }
 
-/// Shared VW core: heap entries hold the *effective* area
-/// `triangle_area / w2_of(index)` compared against the unscaled `min_area`
+/// The shared VW core: heap entries hold the *effective* area
+/// `triangle_area / w2_of(index)`, compared against the unscaled `min_area`
 /// (division by 1.0 is bit-exact, so the scalar path is unchanged).
 fn vw_impl(
     pts: &[(f64, f64)],
@@ -313,17 +325,19 @@ fn vw_impl(
         .collect()
 }
 
-/// Imai–Iri: the minimum-vertex polyline whose deviation from `pts` is ≤ `eps`
-/// (BFS for the fewest hops from first to last point over the graph of
-/// "shortcut" segments that stay within `eps` of every skipped point).
+/// Runs Imai–Iri: it returns the minimum-vertex polyline whose deviation from
+/// `pts` is ≤ `eps` (a BFS finds the fewest hops from the first to the last
+/// point over the graph of "shortcut" segments that stay within `eps` of
+/// every skipped point).
 ///
 /// The exact core is ~O(n²) (Chan–Chin wedges, O(1) amortized per shortcut
 /// check); very long inputs are RDP prefiltered with an *adaptive* slice of
-/// the budget: start at `eps/10` (Imai–Iri's vertex count is driven by its
-/// share, so give it as much as possible: an even split kept MORE points than
-/// plain RDP on real arcs) and escalate toward the `eps/2` cap only while the
-/// prefiltered arc stays too big. Deviation bounds compose, so the total
-/// stays ≤ `eps`; prefiltered results are near-optimal rather than optimal.
+/// the budget: the prefilter starts at `eps/10` (Imai–Iri's vertex count is
+/// driven by its share, so it gets as much as possible: an even split kept
+/// MORE points than plain RDP on real arcs) and escalates toward the `eps/2`
+/// cap only while the prefiltered arc stays too big. Deviation bounds
+/// compose, so the total stays ≤ `eps`; prefiltered results are near-optimal
+/// rather than optimal.
 #[must_use]
 pub fn imai_iri(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
     if pts.len() < 3 || eps <= 0.0 {
@@ -343,15 +357,16 @@ pub fn imai_iri(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
     }
 }
 
-/// caps the lazy backward-row bitsets at `2·II_MAX` ≈ 32 MB transient
+/// Caps the lazy backward-row bitsets at `2·II_MAX` points, ≈ 32 MB of
+/// transient memory.
 const II_MAX: usize = 8192;
 
-/// [`imai_iri`] with per-vertex multipliers: deviation at `pts[i]` ≤
-/// `eps * weights[i]`. Above `II_MAX` points the RDP prefilter composes per
-/// point, so that bound is exact only where `weights` is locally ~constant
-/// across a prefilter shortcut (negligible for weights sampled from a coarse
-/// grid through a smooth map); the global `eps * max(weights)` bound always
-/// holds.
+/// [`imai_iri()`] with per-vertex multipliers: the deviation at `pts[i]`
+/// stays ≤ `eps * weights[i]`. Above `II_MAX` points the RDP prefilter
+/// composes per point, so that bound is exact only where `weights` is locally
+/// ~constant across a prefilter shortcut (a negligible caveat for weights
+/// sampled from a coarse grid through a smooth map); the global
+/// `eps * max(weights)` bound always holds.
 ///
 /// # Panics
 ///
@@ -388,8 +403,8 @@ pub fn imai_iri_w(pts: &[(f64, f64)], eps: f64, weights: &[f64]) -> Vec<(f64, f6
     }
 }
 
-/// Angular interval of directions (≤ π wide, shrinks under intersection):
-/// `u` is inside iff `cross(lo, u) ≥ 0 ∧ cross(u, hi) ≥ 0`.
+/// An angular interval of directions, ≤ π wide and shrinking under
+/// intersection: `u` is inside iff `cross(lo, u) ≥ 0 ∧ cross(u, hi) ≥ 0`.
 struct Wedge {
     lo: (f64, f64),
     hi: (f64, f64),
@@ -410,9 +425,9 @@ impl Wedge {
             empty: false,
         }
     }
-    /// Intersect with the wedge of directions whose ray from the anchor
-    /// passes within ε of a point at unit direction `center`,
-    /// `sin_phi` = ε/dist.
+    /// Intersects with the wedge of directions whose ray from the anchor
+    /// passes within ε of a point at unit direction `center`; `sin_phi` is
+    /// ε/dist.
     fn add(&mut self, center: (f64, f64), sin_phi: f64) {
         let cos_phi = (1.0 - sin_phi * sin_phi).max(0.0).sqrt();
         let lo = (
@@ -456,10 +471,11 @@ impl Wedge {
     }
 }
 
-/// Ray-validity sweep from `pts[from]`: walk `ks` (the intermediate points in
-/// sweep order), calling `visit(k_target, ok)` where `ok` ⟺ the ray from
-/// `pts[from]` toward `pts[k_target]` stays within ε of every point already
-/// swept. `dist(p_k, seg(i,j)) ≤ ε_k ⟺ ray-from-i ok ∧ ray-from-j ok`, so two
+/// Runs the ray-validity sweep from `pts[from]`: it walks `ks` (the
+/// intermediate points in sweep order), calling `visit(k_target, ok)` where
+/// `ok` holds iff the ray from `pts[from]` toward `pts[k_target]` stays
+/// within ε of every point already swept.
+/// `dist(p_k, seg(i,j)) ≤ ε_k ⟺ ray-from-i ok ∧ ray-from-j ok`, so two
 /// sweeps decide segment validity exactly. The Chan–Chin lemma is pointwise
 /// in `k`, so each point may carry its own tolerance `eps_of(k)`.
 fn ray_sweep(

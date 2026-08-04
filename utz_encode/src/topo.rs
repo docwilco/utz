@@ -1,5 +1,6 @@
-//! TopoJSON-style shared-arc topology. Shared borders are cut into *arcs* at
-//! junctions, each arc stored ONCE as i24 delta+varint, and every ring is a list
+//! The TopoJSON-style shared-arc topology builder. Shared borders are cut
+//! into *arcs* at junctions, each arc is stored ONCE as i24 delta+varint,
+//! and every ring is a list
 //! of signed arc references. Optional topology-aware Ramer–Douglas–Peucker
 //! (RDP) line simplification runs on each arc a single time (endpoints fixed),
 //! so neighbouring polygons stay stitched. Other open-polyline simplifiers
@@ -40,28 +41,31 @@ type VId = u32;
 pub struct TopoOut {
     /// The serialized arc store (i24 delta+varint).
     pub bytes: Vec<u8>,
-    /// Shared arcs stored.
+    /// The number of shared arcs stored.
     pub arcs: usize,
-    /// Ring-to-arc references across all rings.
+    /// The number of ring-to-arc references across all rings.
     pub ring_refs: usize,
-    /// Vertices actually stored (after simplification).
+    /// The number of vertices actually stored (after simplification).
     pub verts: usize,
-    /// Geometry reconstructed from the (simplified) arcs.
+    /// The geometry reconstructed from the (simplified) arcs.
     pub simplified: Vec<Feat>,
 }
 
-/// The shared-arc topology itself, before any serialization: what the container
-/// encoder (encode.rs) consumes. Arc coords are f64, already RDP-simplified.
+/// The shared-arc topology itself, before any serialization: this is what
+/// the container encoder (encode.rs) consumes. Arc coords are f64 and
+/// already RDP-simplified.
 pub struct Topology {
     pub arc_coords: Vec<Arc>,
-    /// per ring: signed arc refs (`id << 1 | reversed`)
+    /// The signed arc refs of each ring (`id << 1 | reversed`).
     pub ring_refs: Vec<Vec<u32>>,
-    /// feature → polygon → ring indices into `ring_refs`
+    /// The feature → polygon → ring nesting; the innermost values index
+    /// into `ring_refs`.
     pub structure: Vec<Vec<Vec<usize>>>,
 }
 
 impl Topology {
-    /// Reconstruct feature geometry from (possibly re-quantized) arc coords.
+    /// Reconstructs feature geometry from (possibly re-quantized) arc
+    /// coords.
     #[must_use]
     pub fn reconstruct(&self, feats: &[Feat], arc_coords: &[Vec<(f64, f64)>]) -> Vec<Feat> {
         let ring_coords = |ring_index: usize| -> Vec<(f64, f64)> {
@@ -104,34 +108,38 @@ impl Topology {
     }
 }
 
-/// Build and serialize the shared-arc topology at the default i24
-/// quantization: [`build_topology()`] followed by arc-store serialization.
+/// Builds and serializes the shared-arc topology at the default i24
+/// quantization: [`build_topology()`] runs first, followed by arc-store
+/// serialization.
 #[must_use]
 pub fn encode_topology(feats: &[Feat], eps_deg: f64) -> TopoOut {
     encode_topology_q(feats, eps_deg, 24)
 }
 
-/// `qbits` selects the absolute grid: 16 = i16 (~611 m lon), 24 = i24 (~2.4 m), 32 = cm.
+/// `qbits` selects the absolute grid: 16 gives i16 (~611 m lon), 24 gives
+/// i24 (~2.4 m), and 32 gives cm precision.
 #[must_use]
 pub fn encode_topology_q(feats: &[Feat], eps_deg: f64, qbits: u32) -> TopoOut {
     encode_topology_qm(feats, eps_deg, qbits, false)
 }
 
-/// The topology build: dedup vertices, cut shared arcs at junctions,
-/// topology-aware RDP (each arc simplified exactly once, endpoints fixed).
+/// Builds the topology: vertices are deduped, shared arcs are cut at
+/// junctions, and topology-aware RDP runs on each arc exactly once with
+/// endpoints fixed.
 #[must_use]
 pub fn build_topology(feats: &[Feat], eps_deg: f64) -> Topology {
     build_topology_algo(feats, Simplify::Rdp { eps: eps_deg })
 }
 
-/// [`build_topology`] with the simplification algorithm as a knob
-/// (`utz_simplify` menu: RDP / Visvalingam–Whyatt / Imai–Iri / None).
+/// This is [`build_topology()`] with the simplification algorithm as a knob
+/// (the `utz_simplify` menu: RDP, Visvalingam–Whyatt, Imai–Iri, or None).
 #[must_use]
 pub fn build_topology_algo(feats: &[Feat], algo: Simplify) -> Topology {
     build_topology_impl(feats, algo, None)
 }
 
-/// [`build_topology_algo`] with spatially varying tolerance: `edge_weight(a, b)`
+/// This is [`build_topology_algo()`] with spatially varying tolerance:
+/// `edge_weight(a, b)`
 /// returns the tolerance multiplier for one arc edge (in practice
 /// `DensityWeight::weight(DensityGrid::max_along(a, b))`), and each vertex
 /// simplifies under the *smallest* multiplier of its incident edges, so a
@@ -146,7 +154,8 @@ pub fn build_topology_weighted(
     build_topology_impl(feats, algo, Some(edge_weight))
 }
 
-/// Tolerance multiplier for the edge `a`–`b` (see [`build_topology_weighted`]).
+/// The tolerance multiplier for the edge `a`–`b` (see
+/// [`build_topology_weighted()`]).
 pub type EdgeWeightFn<'a> = dyn Fn((f64, f64), (f64, f64)) -> f64 + 'a;
 
 #[expect(
@@ -345,12 +354,12 @@ fn build_topology_impl(
     }
 }
 
-/// `abs_fixed`: store arc vertices as fixed-width absolute ints (random-access)
-/// instead of the default delta + zigzag-varint stream.
+/// `abs_fixed` stores arc vertices as fixed-width absolute ints
+/// (random-access) instead of the default delta + zigzag-varint stream.
 #[must_use]
 ///
 /// # Panics
-/// If a count or quantized coordinate exceeds its serialized width
+/// Panics if a count or quantized coordinate exceeds its serialized width
 /// (u16 pool/poly counts, u32 arc ids, i32 coords).
 #[expect(
     clippy::too_many_lines,

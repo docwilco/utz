@@ -1,7 +1,7 @@
-//! Shared μTZ lookup-bench harness: deterministic points, an injected time
-//! source (host `Instant` / firmware timer), and elision-proof results.
-//! `no_std` + `alloc` so the exact same code runs on the CLI and the
-//! ESP32-S3 firmware.
+//! The shared μTZ lookup-bench harness. It provides deterministic points,
+//! an injected time source (host `Instant` or the firmware timer), and
+//! elision-proof results. The crate is `no_std` + `alloc` so the exact same
+//! code runs on the CLI and the ESP32-S3 firmware.
 
 #![no_std]
 
@@ -9,8 +9,9 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-/// Deterministic pseudo-random lon/lat points (same seed as the `utz_build`
-/// measurement commands, so numbers are comparable).
+/// Generates deterministic pseudo-random lon/lat points (with the same
+/// seed as the `utz_build` measurement commands, so numbers are
+/// comparable).
 #[must_use]
 pub fn gen_pts(count: usize) -> Vec<(f64, f64)> {
     utz_common::gen_pts(0x1234_5678, count)
@@ -18,11 +19,13 @@ pub fn gen_pts(count: usize) -> Vec<(f64, f64)> {
 
 pub struct BenchResult {
     pub lookups: u32,
-    /// points that resolved to a zone (all of them on with-oceans datasets)
+    /// The number of points that resolved to a zone (all of them on
+    /// with-oceans datasets).
     pub hits: u32,
     pub elapsed_us: u64,
-    /// sum of resolved tzid lengths: consumed so the compiler can't elide
-    /// the lookups; also a cheap cross-platform answer checksum
+    /// The sum of resolved tzid lengths. It is consumed so the compiler
+    /// can't elide the lookups, and it doubles as a cheap cross-platform
+    /// answer checksum.
     pub checksum: u64,
 }
 
@@ -37,7 +40,7 @@ impl BenchResult {
     }
 }
 
-/// Run one timed pass of `finder.lookup` over `points`. `now_us` is any
+/// Runs one timed pass of `finder.lookup()` over `points`. `now_us` is any
 /// monotonic microsecond source.
 ///
 /// # Panics
@@ -66,12 +69,14 @@ pub fn run(
     }
 }
 
-/// `warmup` + `rounds` passes; returns the fastest round (steady-state cost,
-/// robust against caches warming and interrupt noise).
+/// Runs one warmup pass plus `rounds` timed passes and returns the fastest
+/// round (the steady-state cost, robust against caches warming and
+/// interrupt noise).
 ///
 /// # Panics
 ///
-/// Never: `rounds` is clamped to ≥ 1, so a best round always exists.
+/// This function never panics: `rounds` is clamped to ≥ 1, so a best round
+/// always exists.
 pub fn run_rounds(
     finder: &utz::Finder,
     points: &[(f64, f64)],
@@ -92,8 +97,9 @@ pub fn run_rounds(
     best.unwrap()
 }
 
-/// The build.rs-generated custom shapes both benches embed: uncompressed
-/// twins of the presets across all geometry encodings (recipes in build.rs).
+/// The build.rs-generated custom shapes both benches embed: they are
+/// uncompressed twins of the presets across all geometry encodings (the
+/// recipes are in build.rs).
 pub mod assets {
     // uncompressed twins of the compact/balanced presets, and tiny-static
     // with fixed-width arcs — the XIP speed tier

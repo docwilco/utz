@@ -1,6 +1,7 @@
-//! Builder error type, following the workspace error pattern (see
-//! `utz::Error`): `derive_more` derives, foreign errors enter via
-//! `derive_more::From`, domain variants are `#[from(skip)]`. Library paths
+//! The builder error type follows the workspace error pattern (see
+//! `utz::Error`): the derives come from `derive_more`, foreign errors
+//! enter via `derive_more::From`, and domain variants are
+//! `#[from(skip)]`. Library paths
 //! use typed variants; the measurement tools in `utz_dev_cli` may use
 //! [`Error::Msg`] for one-off messages.
 
@@ -17,7 +18,8 @@ pub enum Error {
     Zip(zip::result::ZipError),
     /// Source `GeoJSON` would not parse.
     Json(serde_json::Error),
-    /// boxed: `ureq::Error` is large
+    /// An HTTP failure. The error is boxed because `ureq::Error` is
+    /// large.
     Http(Box<ureq::Error>),
     Tiff(tiff::TiffError),
     Encode(utz_encode::Error),
@@ -62,7 +64,7 @@ pub enum Error {
     #[from(skip)]
     #[display("no OUT_DIR (not in a build.rs?) — set .out_path()")]
     NoOutDir,
-    /// One-off messages in the `utz_dev_cli` measurement tools.
+    /// A one-off message from the `utz_dev_cli` measurement tools.
     #[from(skip)]
     #[display("{_0}")]
     Msg(#[error(not(source))] String),
@@ -74,7 +76,7 @@ impl From<ureq::Error> for Error {
     }
 }
 
-/// anyhow-style guard returning a typed [`Error`].
+/// An anyhow-style guard that returns a typed [`Error`].
 #[macro_export]
 macro_rules! ensure {
     ($cond:expr, $err:expr) => {

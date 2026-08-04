@@ -1,8 +1,10 @@
-//! Source loading. The source is OSM timezone-boundary-builder; datasets
-//! pick ocean cover (with-oceans or land-only) and the zone set:
-//! `now` (64 zones, default), `1970` (304 zones), or `all` (444 zones).
+//! This module loads the source data. The source is OSM
+//! timezone-boundary-builder; datasets pick ocean cover (with-oceans or
+//! land-only) and the zone set: `now` (64 zones, default), `1970`
+//! (304 zones), or `all` (444 zones).
 //!
-//! Download the `GeoJSON` zip (conditional GET) → parse.
+//! The flow downloads the `GeoJSON` zip (with a conditional GET) and
+//! parses it.
 
 use std::io::{BufReader, Read as _};
 use std::path::Path;
@@ -14,18 +16,19 @@ use utz_encode::{Poly, Ring};
 
 const REPO: &str = "https://github.com/evansiroky/timezone-boundary-builder";
 
-/// Resolve the tag `releases/latest` points at by reading its redirect
-/// (`…/releases/tag/<tag>`): no API, no auth. The tag is cached in
-/// `<cache_dir>/tzbb-release.tag` so offline regeneration keeps it;
-/// `UTZ_TZBB_RELEASE` pins a tag explicitly (skips the probe). With no
-/// network and no cached tag, falls back to `"dev"` with a warning; the
-/// per-release zip cache (`tzbb/<release>/`) will then be empty, so a
-/// first-ever offline run fails at download rather than serving
-/// mislabeled bytes.
+/// Resolves the tag `releases/latest` points at by reading its redirect
+/// (`…/releases/tag/<tag>`), so no API and no auth are needed. The tag is
+/// cached in `<cache_dir>/tzbb-release.tag` so offline regeneration keeps
+/// it, and `UTZ_TZBB_RELEASE` pins a tag explicitly (skipping the probe).
+/// With no network and no cached tag, the function falls back to `"dev"`
+/// with a warning; the per-release zip cache (`tzbb/<release>/`) will
+/// then be empty, so a first-ever offline run fails at download rather
+/// than serving mislabeled bytes.
 ///
 /// # Errors
-/// I/O failure caching the freshly probed tag (probe failures themselves
-/// fall back to the cached tag or `"dev"`).
+/// Returns an error only for an I/O failure while caching the freshly
+/// probed tag (probe failures themselves fall back to the cached tag or
+/// `"dev"`).
 pub fn resolve_release(cache_dir: &Path) -> crate::Result<String> {
     if let Ok(tag) = std::env::var("UTZ_TZBB_RELEASE") {
         if !tag.is_empty() {
@@ -75,10 +78,11 @@ pub fn resolve_release(cache_dir: &Path) -> crate::Result<String> {
     }
 }
 
-/// TZBB release asset for a dataset, pinned to `release` (so the bytes and
-/// the header tag can't skew). TZBB naming: the unsuffixed release is the
-/// "Comprehensive" set (μTZ `all`); `-1970` = "Same since 1970"; `-now` =
-/// "Same since now"; `with-oceans` selects ocean cover.
+/// Builds the URL of the TZBB release asset for a dataset, pinned to
+/// `release` (so the bytes and the header tag can't skew). In TZBB
+/// naming, the unsuffixed release is the "Comprehensive" set (μTZ `all`),
+/// the `-1970` suffix is "Same since 1970", `-now` is "Same since now",
+/// and `with-oceans` selects ocean cover.
 #[must_use]
 pub fn dataset_url(dataset: Dataset, release: &str) -> String {
     let oceans = if dataset.oceans { "-with-oceans" } else { "" };
@@ -89,11 +93,12 @@ pub fn dataset_url(dataset: Dataset, release: &str) -> String {
     format!("{REPO}/releases/download/{release}/timezones{oceans}{zone_set}.geojson.zip")
 }
 
-/// Download (revalidating) + parse a dataset into `Feat`s. Returns the
-/// features plus the TZBB release tag they came from.
+/// Downloads (revalidating) and parses a dataset into `Feat`s, returning
+/// the features plus the TZBB release tag they came from.
 ///
 /// # Errors
-/// Release-tag caching, download, or zip/`GeoJSON` parse failure.
+/// Returns any release-tag caching, download, or zip/`GeoJSON` parse
+/// failure.
 pub fn load_tzbb(dataset: Dataset, cache_dir: &Path) -> crate::Result<(Vec<Feat>, String)> {
     let release = resolve_release(cache_dir)?;
     // key the download by release: TZBB asset basenames are
@@ -104,11 +109,11 @@ pub fn load_tzbb(dataset: Dataset, cache_dir: &Path) -> crate::Result<(Vec<Feat>
     Ok((load_geojson_zip(&zip_path)?, release))
 }
 
-/// Parse the first `.json`/`.geojson` entry of a TZBB release zip.
+/// Parses the first `.json`/`.geojson` entry of a TZBB release zip.
 ///
 /// # Errors
-/// I/O or zip-archive failure, no `.json`/`.geojson` entry, or `GeoJSON`
-/// parse failure.
+/// Returns an I/O or zip-archive failure, an error when the zip has no
+/// `.json`/`.geojson` entry, or a `GeoJSON` parse failure.
 pub fn load_geojson_zip(path: &Path) -> crate::Result<Vec<Feat>> {
     let file = std::fs::File::open(path)?;
     let mut zip = zip::ZipArchive::new(BufReader::new(file))?;
@@ -151,10 +156,11 @@ enum Geom {
     },
 }
 
-/// Deserialize a TZBB `GeoJSON` `FeatureCollection` into `Feat`s.
+/// Deserializes a TZBB `GeoJSON` `FeatureCollection` into `Feat`s.
 ///
 /// # Errors
-/// JSON that doesn't deserialize as a Polygon/`MultiPolygon` `FeatureCollection`.
+/// Returns an error for JSON that doesn't deserialize as a
+/// Polygon/`MultiPolygon` `FeatureCollection`.
 pub fn parse_geojson(bytes: &[u8]) -> crate::Result<Vec<Feat>> {
     let collection: Fc = serde_json::from_slice(bytes)?;
     Ok(collection

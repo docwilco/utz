@@ -1,6 +1,7 @@
-//! Everything behind the deployed webdist viewer: the whittle stage
-//! ladder `utz_dev_cli whittle` prints, the misassignment pricing, the
-//! wasm surface the live page runs, and the site emitter.
+//! This crate holds everything behind the deployed webdist viewer: the
+//! whittle stage ladder that `utz_dev_cli whittle` prints, the
+//! misassignment pricing, the wasm surface the live page runs, and the
+//! site emitter.
 //!
 //! The ladder mirrors the utz crate docs' "How it works" stages: parsed
 //! f64 coordinates → shared-arc topology → simplification → quantized +
@@ -9,7 +10,7 @@
 //! pricing the viewer's simplify worker runs (through the `wasm`
 //! exports) and the accuracy command shares natively. The [`emit`]
 //! module (default `emit` feature; off for the wasm build) writes the
-//! static site: page, per-dataset blobs, heat raster.
+//! static site: the page, the per-dataset blobs, and the heat raster.
 //!
 //! [`misassign`]: ../utz_viz/misassign/index.html
 //! [`emit`]: ../utz_viz/emit/index.html
@@ -24,7 +25,7 @@ pub mod misassign;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
-/// Serialized-payload section sizes, straight from [`PayloadStats`].
+/// The serialized-payload section sizes, straight from [`PayloadStats`].
 #[derive(Clone, Copy, Debug)]
 pub struct Sections {
     pub header: u32,
@@ -34,24 +35,26 @@ pub struct Sections {
     pub grid: u32,
 }
 
-/// One preset's trip down the pipeline: counts and byte sizes per stage.
-/// Coordinate stages are counts; `*_bytes` helpers price them as f64
-/// pairs (16 bytes), the in-memory representation they reduce.
+/// One preset's trip down the pipeline, as counts and byte sizes per
+/// stage. Coordinate stages are counts; the `*_bytes` helpers price them
+/// as f64 pairs (16 bytes), the in-memory representation they reduce.
 #[derive(Clone, Copy, Debug)]
 pub struct StageLadder {
-    /// parsed source coordinates (all rings, closing vertex stripped)
+    /// The parsed source coordinates (all rings, with the closing vertex
+    /// stripped).
     pub coords: u64,
-    /// shared-arc topology before simplification
+    /// The shared-arc topology before simplification.
     pub n_arcs: u32,
     pub arc_verts: u64,
-    /// after the recipe's (optionally density-weighted) simplification
+    /// The vertex count after the recipe's (optionally density-weighted)
+    /// simplification.
     pub simplified_verts: u64,
-    /// stored after quantization + cleanup
+    /// The vertices stored after quantization and cleanup.
     pub stored_verts: u32,
     pub sections: Sections,
-    /// serialized payload bytes (uncompressed)
+    /// The serialized payload bytes (uncompressed).
     pub payload: u64,
-    /// full container bytes at the recipe codec
+    /// The full container bytes at the recipe codec.
     pub container: u64,
 }
 
@@ -70,7 +73,7 @@ impl StageLadder {
     }
 }
 
-/// Total ring coordinates across a parsed dataset.
+/// Counts the total ring coordinates across a parsed dataset.
 #[must_use]
 pub fn coord_count(feats: &[Feat]) -> u64 {
     feats
@@ -81,13 +84,14 @@ pub fn coord_count(feats: &[Feat]) -> u64 {
         .sum()
 }
 
-/// Total arc vertices of a topology (shared borders already deduplicated).
+/// Counts the total arc vertices of a topology (shared borders are already
+/// deduplicated).
 #[must_use]
 pub fn arc_verts(topology: &Topology) -> u64 {
     topology.arc_coords.iter().map(|arc| arc.len() as u64).sum()
 }
 
-/// Assemble the ladder from the pipeline's own artifacts: the parsed
+/// Assembles the ladder from the pipeline's own artifacts: the parsed
 /// features, the unsimplified and simplified topologies, the encoder's
 /// [`PayloadStats`], and the serialized/compressed byte counts.
 #[must_use]

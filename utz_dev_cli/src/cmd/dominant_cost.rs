@@ -1,17 +1,18 @@
-//! Dominant-first candidate-list ordering: how many extra unique lists /
-//! KB does it cost vs id-sorted interning, and how much PIP early-exit
-//! does each ordering actually buy?
+//! Prices dominant-first candidate-list ordering: how many extra unique
+//! lists / KB does it cost vs id-sorted interning, and how much PIP
+//! early-exit does each ordering actually buy?
 //!
-//! Orderings:
-//!   id-sorted          — baseline, maximal interning
-//!   area-desc          — global zone area descending; deterministic per set, so
-//!                        interning is preserved *by construction* (verified here)
-//!   cell-dominant-first — this cell's dominant zone first; best early-exit,
-//!                        breaks interning (the cost being measured)
+//! Three orderings compete:
+//! - `id-sorted` is the baseline, with maximal interning.
+//! - `area-desc` orders by global zone area descending; it is
+//!   deterministic per set, so interning is preserved *by construction*
+//!   (verified here).
+//! - `cell-dominant-first` puts this cell's dominant zone first; it gives
+//!   the best early-exit but breaks interning (the cost being measured).
 //!
-//! Early-exit quality = fraction of owned subcells (0.25° at 2°) inside border
-//! cells whose owner equals `list[0]` — i.e. P(first PIP hit) for area-uniform
-//! lookups landing in border cells.
+//! Early-exit quality is the fraction of owned subcells (0.25° at 2°)
+//! inside border cells whose owner equals `list[0]`, i.e. P(first PIP hit)
+//! for area-uniform lookups landing in border cells.
 //!
 //! ```text
 //! utz_dev_cli dominant-cost [deg] [datasets...]
@@ -21,16 +22,16 @@ use utz_encode::grid::{self, Order};
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// grid cell size in degrees
+    /// The grid cell size in degrees.
     #[arg(default_value_t = 2.0)]
     deg: f64,
-    /// datasets: [land-]now|1970|all
+    /// The datasets, each one of [land-]now|1970|all.
     #[arg(default_values_t = [String::from("now"), String::from("1970")])]
     ds: Vec<String>,
 }
 
 /// # Errors
-/// Dataset load/parse failure.
+/// The command fails on a dataset load/parse failure.
 pub fn run(args: Args) -> utz_build::Result<()> {
     let (deg, datasets) = (args.deg, args.ds);
     for dataset in &datasets {
@@ -77,7 +78,8 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     Ok(())
 }
 
-/// P(subcell owner == `list[0]`) over owned subcells in border cells.
+/// Computes P(subcell owner == `list[0]`) over owned subcells in border
+/// cells.
 fn early_exit(grid: &grid::CellGrid, csr: &grid::Csr) -> f64 {
     let (mut hit, mut total) = (0u64, 0u64);
     // row-major zip: primary cell c ↔ tallies cell c

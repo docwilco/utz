@@ -1,9 +1,9 @@
-//! Codec backends. You pick codecs with cargo *features*; every
+//! The codec backends. You pick codecs with cargo *features*; every
 //! [`Finder`](crate::Finder) constructor calls this module for you, and
 //! it is public mainly so the backend table below has a home. Each
 //! feature compiles in the decoder for one payload [`Codec`]; an asset
 //! whose codec is not compiled in fails with
-//! [`Error::CodecNotCompiledIn`]. Backends:
+//! [`Error::CodecNotCompiledIn`]. The backends are:
 //!
 //! | feature    | codec                   | crate                               | minimum environment |
 //! |------------|-------------------------|-------------------------------------|---------------------|
@@ -29,14 +29,14 @@ use alloc::vec::Vec;
 
 use crate::{Codec, Error, Result};
 
-/// Decompress `body` into an owned buffer of exactly `raw_len` bytes
+/// Decompresses `body` into an owned buffer of exactly `raw_len` bytes
 /// (`raw_len` comes from the outer header). [`Codec::Uncompressed`] copies.
 ///
 /// # Errors
-/// [`Error::CodecNotCompiledIn`] if the codec has no compiled-in backend;
-/// [`Error::DecoderFailed`] if the stream is corrupt (carries the backend's
-/// own diagnostic); [`Error::RawLengthMismatch`] if the decoded size
-/// disagrees with `raw_len`.
+/// Returns [`Error::CodecNotCompiledIn`] if the codec has no compiled-in
+/// backend, [`Error::DecoderFailed`] if the stream is corrupt (carrying
+/// the backend's own diagnostic), and [`Error::RawLengthMismatch`] if the
+/// decoded size disagrees with `raw_len`.
 pub fn decompress(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     let out = match codec {
         Codec::Uncompressed => body.to_vec(),
@@ -66,14 +66,15 @@ pub fn decompress(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> 
     Ok(out)
 }
 
-/// Inflate straight into a `raw_len`-sized buffer: the output slice doubles
-/// as the DEFLATE history, so `miniz_oxide` needs no separate 32 KB window and
-/// decode RAM is decoded + ~10 K tables. `decompress_to_vec_zlib` would grow
-/// an unhinted Vec instead: realloc overlap peaks at ~1.4× decoded
-/// (measured by the window-sweep bench).
+/// Inflates straight into a `raw_len`-sized buffer: the output slice
+/// doubles as the DEFLATE history, so `miniz_oxide` needs no separate
+/// 32 KB window and decode RAM is the decoded size plus ~10 K of tables.
+/// `decompress_to_vec_zlib()` would grow an unhinted Vec instead: realloc
+/// overlap peaks at ~1.4× decoded (measured by the window-sweep bench).
 ///
-/// Status mapping: `FailedCannotMakeProgress` = input exhausted mid-stream
-/// (truncated); `HasMoreOutput` = the stream outgrows `raw_len` (header lied).
+/// The statuses map as follows: `FailedCannotMakeProgress` means the
+/// input was exhausted mid-stream (truncated), and `HasMoreOutput` means
+/// the stream outgrows `raw_len` (the header lied).
 #[cfg(feature = "gzip")]
 fn decompress_gzip(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use miniz_oxide::inflate::TINFLStatus;
@@ -95,9 +96,10 @@ fn decompress_gzip(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>>
     Ok(out)
 }
 
-/// Decode via C libzstd (the `zstd` crate). `decode_all` sizes the output
-/// itself; the shared `raw_len` check in [`decompress`] validates it.
-/// libzstd reports a truncated input as `UnexpectedEof` ("incomplete frame").
+/// Decodes via C libzstd (the `zstd` crate). `decode_all()` sizes the
+/// output itself; the shared `raw_len` check in [`decompress()`]
+/// validates it. libzstd reports a truncated input as `UnexpectedEof`
+/// ("incomplete frame").
 #[cfg(feature = "zstd-sys")]
 fn decompress_zstd_sys(codec: Codec, body: &[u8]) -> Result<Vec<u8>> {
     zstd::stream::decode_all(body).map_err(|source| match source.kind() {
@@ -106,11 +108,11 @@ fn decompress_zstd_sys(codec: Codec, body: &[u8]) -> Result<Vec<u8>> {
     })
 }
 
-/// Drive the pure-Rust zstd decoder block-by-block, draining after each
-/// block: `decode_all_to_vec` batches up to 1 MiB in the internal decode
-/// buffer before draining, peaking at ~2× decoded regardless of the frame's
-/// window and defeating the window knob. This loop keeps the internal buffer
-/// at window + one block.
+/// Drives the pure-Rust zstd decoder block-by-block, draining after each
+/// block: `decode_all_to_vec()` batches up to 1 MiB in the internal
+/// decode buffer before draining, peaking at ~2× decoded regardless of
+/// the frame's window and defeating the window knob. This loop keeps the
+/// internal buffer at the window plus one block.
 #[cfg(all(feature = "ruzstd", not(feature = "zstd-sys")))]
 fn decompress_ruzstd(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use ruzstd::decoding::{BlockDecodingStrategy, FrameDecoder};
@@ -144,11 +146,11 @@ fn decompress_ruzstd(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8
     Ok(out)
 }
 
-/// Decode the whole input into an exact-size output in one call, making the
-/// two needs-more statuses terminal: input exhausted mid-frame is a truncated
-/// asset, output exhausted means the frame outgrows what `raw_len` declared.
-/// `ResultFailure` carries the specific libbrotli code from
-/// `state.error_code` (`BrotliResult` itself is a bare status).
+/// Decodes the whole input into an exact-size output in one call, making
+/// the two needs-more statuses terminal: input exhausted mid-frame means
+/// a truncated asset, and output exhausted means the frame outgrows what
+/// `raw_len` declared. `ResultFailure` carries the specific libbrotli
+/// code from `state.error_code` (`BrotliResult` itself is a bare status).
 #[cfg(feature = "brotli")]
 fn decompress_brotli(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use brotli_decompressor::{BrotliDecompressStream, BrotliResult, BrotliState};
@@ -183,12 +185,12 @@ fn decompress_brotli(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8
     Ok(out)
 }
 
-/// Decode via `lzma-rust2` in `no_std` mode. Its `std` feature must stay OFF
-/// tree-wide: with it on, the crate's Read/Write become `pub(crate)`
+/// Decodes via `lzma-rust2` in `no_std` mode. Its `std` feature must stay
+/// OFF tree-wide: with it on, the crate's Read/Write become `pub(crate)`
 /// re-exports of `std::io` and the `Read as _` import below breaks.
 ///
-/// A read failing with `Eof` means input exhausted mid-stream: a truncated
-/// asset.
+/// A read failing with `Eof` means the input was exhausted mid-stream: a
+/// truncated asset.
 #[cfg(feature = "xz")]
 fn decompress_xz(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     use lzma_rust2::Read as _;
@@ -217,9 +219,9 @@ fn decompress_xz(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-/// Global-allocator-backed allocator for the no-stdlib brotli decoder:
-/// mirrors alloc-stdlib's `StandardAlloc` (zero-initialized cells), which
-/// is `std`-only.
+/// A global-allocator-backed allocator for the no-stdlib brotli decoder.
+/// It mirrors alloc-stdlib's `StandardAlloc` (zero-initialized cells),
+/// which is `std`-only.
 // brotli-decompressor has an equivalent Vec-backed allocator
 // (brotli_alloc::BrotliAlloc), but it sits in a private module behind
 // cfg(feature = "std"); this shim can go if upstream ever exposes it on

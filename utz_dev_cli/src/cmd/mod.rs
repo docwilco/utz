@@ -1,7 +1,7 @@
-//! One module per `utz_dev_cli` subcommand, named after it. Each exposes
-//! `Args` (clap; field docs are the `--help` text) and `run(Args)`. The
-//! module docs carry the question the subcommand answers and its method;
-//! the crate root groups them by area.
+//! Each `utz_dev_cli` subcommand gets one module here, named after it.
+//! Each module exposes `Args` (clap; the field docs are the `--help` text)
+//! and `run(Args)`. The module docs carry the question the subcommand
+//! answers and its method; the crate root groups them by area.
 
 pub mod accuracy;
 pub mod amscan;

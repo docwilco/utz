@@ -1,15 +1,17 @@
 //! What does dropping delta+varint geometry cost in flash? (The
 //! fixed-width-arcs / streaming-eager question.)
 //!
-//! For a codec-*none* asset, rebuilds the payload in two variants and
-//! compresses all three with the preset encoders (`utz_encode::compress()`):
+//! For a codec-*none* asset, the command rebuilds the payload in two
+//! variants and compresses all three with the preset encoders
+//! (`utz_encode::compress()`):
 //!
-//! - **A (fixed-width arcs)**: the interned arc store re-emitted as absolute
-//!   fixed-width coords (no deltas, no varints). Streaming/XIP lookups would
-//!   skip the per-vertex varint decode: near-eager speed, zero RAM cache.
-//! - **B (eager layout)**: geometry flattened per ring as i32 pairs, the
-//!   exact `preload()` cache image, so after decompression the buffer *is* the
-//!   eager cache (shared arcs duplicated, like preload does).
+//! - Variant **A (fixed-width arcs)** re-emits the interned arc store as
+//!   absolute fixed-width coords (no deltas, no varints). Streaming/XIP
+//!   lookups would skip the per-vertex varint decode, giving near-eager
+//!   speed with zero RAM cache.
+//! - Variant **B (eager layout)** flattens geometry per ring as i32 pairs,
+//!   the exact `preload()` cache image, so after decompression the buffer
+//!   *is* the eager cache (shared arcs are duplicated, like preload does).
 //!
 //! Section splicing only rewrites the geometry blocks; header offset fields
 //! go stale, which is fine for a size measurement.
@@ -39,7 +41,7 @@ fn write_fixed(value: i32, coord_bytes: usize, out: &mut Vec<u8>) {
     out.extend_from_slice(&value.cast_unsigned().to_le_bytes()[..coord_bytes]);
 }
 
-/// Decode one arc (forward orientation) into (i32, i32) coords.
+/// Decodes one arc (forward orientation) into (i32, i32) coords.
 fn arc_coords(payload: &[u8], header: &format::PayloadLayout, id: usize) -> Vec<(i32, i32)> {
     let coord_bytes = header.quant_bits.bytes();
     let mut position = header.arc_data + read_u32(payload, header.arc_offsets + id * 4) as usize;
@@ -68,17 +70,18 @@ fn arc_coords(payload: &[u8], header: &format::PayloadLayout, id: usize) -> Vec<
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// codec-none .utz asset path(s)
+    /// The codec-none .utz asset path(s).
     #[arg(required = true)]
     paths: Vec<String>,
 }
 
 /// # Errors
-/// I/O reading an input asset or a compression backend failure.
+/// The command fails on an I/O error reading an input asset or on a
+/// compression backend failure.
 ///
 /// # Panics
-/// If an input is not a codec-none arc-store .utz asset (geom 0/1), or its
-/// path has no file stem.
+/// The command panics if an input is not a codec-none arc-store .utz asset
+/// (geom 0/1), or if its path has no file stem.
 pub fn run(args: &Args) -> utz_build::Result<()> {
     println!(
         "{:<28} {:>9} {:>9} {:>9} {:>9}",

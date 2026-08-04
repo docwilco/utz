@@ -13,10 +13,10 @@ use utz_build_cli::cmd;
     about = "μTZ asset generation (the CLI counterpart of a utz_build build.rs)"
 )]
 enum Cmd {
-    /// Generate a .utz asset to disk from explicit knobs
+    /// Generates a .utz asset to disk from explicit knobs.
     #[command(visible_alias = "encode")]
     Gen(cmd::encode::Args),
-    /// Generate a preset asset from its canonical Config recipe
+    /// Generates a preset asset from its canonical Config recipe.
     GenPreset(cmd::gen_preset::Args),
 }
 

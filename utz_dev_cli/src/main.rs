@@ -13,49 +13,65 @@ use utz_dev_cli::cmd;
     about = "μTZ development toolbox: measurement, bench, and viewer commands"
 )]
 enum Cmd {
-    /// Generate the webdist viewer (static page + per-dataset binary blobs)
+    /// Generates the webdist viewer (static page + per-dataset binary
+    /// blobs).
     Visualize(cmd::visualize::Args),
-    /// Misassigned area/population of simplified topologies vs raw arcs
+    /// Measures the misassigned area/population of simplified topologies
+    /// vs raw arcs.
     Accuracy(cmd::accuracy::Args),
-    /// Uniform vs population-weighted simplification: verts by density band
+    /// Compares uniform vs population-weighted simplification, tabulating
+    /// vertices by density band.
     DensityCompare(cmd::density_compare::Args),
-    /// Spot-check the GHS-POP ingest (downloads ~460 MB once)
+    /// Spot-checks the GHS-POP ingest (downloads ~460 MB once).
     DensityProbe(cmd::density_probe::Args),
-    /// End-to-end asset roundtrip: encode, decode, validate vs linear PIP
+    /// Runs the end-to-end asset roundtrip: it encodes, decodes, and
+    /// validates vs linear PIP.
     Roundtrip(cmd::roundtrip::Args),
-    /// Full-asset size table: eps × quant × codec
+    /// Prints the full-asset size table: eps × quant × codec.
     SizeTable(cmd::size_table::Args),
-    /// Per-stage pipeline size reduction on the preset recipes
+    /// Measures the per-stage pipeline size reduction on the preset
+    /// recipes.
     Whittle(cmd::whittle::Args),
-    /// Ratio vs window/dict size per codec + measured peak decode RAM
+    /// Measures ratio vs window/dict size per codec, plus peak decode RAM.
     WindowSweep(cmd::window_sweep::Args),
-    /// Arc-store encoding shootout (delta+varint vs abs-fixed)
+    /// Runs the arc-store encoding shootout (delta+varint vs abs-fixed).
     QuantSize(cmd::quant_size::Args),
-    /// Quantization-artifact report: mangled rings before/after cleanup
+    /// Prints the quantization-artifact report (mangled rings before/after
+    /// cleanup).
     QuantClean(cmd::quant_clean::Args),
-    /// Topology-aware RDP sweep: size + lookup accuracy per eps
+    /// Runs the topology-aware RDP sweep (size and lookup accuracy per
+    /// eps).
     RdpSweep(cmd::rdp_sweep::Args),
-    /// Grid size × P(PIP) × memory with the real interned-CSR builder
+    /// Sweeps grid size × P(PIP) × memory with the real interned-CSR
+    /// builder.
     CsrSweep(cmd::csr_sweep::Args),
-    /// Crude grid-size sweep (border cells / P(PIP) / memory estimate)
+    /// Runs the crude grid-size sweep (border cells / P(PIP) / memory
+    /// estimate).
     Gridsweep(cmd::gridsweep::Args),
-    /// Exact memory of a grid at one cell size, across layouts
+    /// Computes the exact memory of a grid at one cell size, across
+    /// layouts.
     Grid2mem(cmd::grid2mem::Args),
-    /// Real grid lookup bench: interned-CSR prefilter vs linear scan
+    /// Runs the real grid lookup bench (interned-CSR prefilter vs linear
+    /// scan).
     GridBench(cmd::grid_bench::Args),
-    /// Candidate-list ordering cost/benefit (id-sorted vs dominant-first)
+    /// Measures the candidate-list ordering cost/benefit (id-sorted vs
+    /// dominant-first).
     DominantCost(cmd::dominant_cost::Args),
-    /// μTZ's i64 PIP vs geo vs geometry-rs: correctness + speed
+    /// Races μTZ's i64 PIP vs geo vs geometry-rs for correctness and
+    /// speed.
     PipBench(cmd::pip_bench::Args),
-    /// geo integer PIP vs f64 PIP agreement (i32 overflow check)
+    /// Checks geo integer PIP vs f64 PIP agreement (the i32 overflow
+    /// check).
     Geoquant(cmd::geoquant::Args),
-    /// Antimeridian scan: is TZBB already split at ±180°?
+    /// Scans the antimeridian: is TZBB already split at ±180°?
     Amscan(cmd::amscan::Args),
-    /// Fixed-width arc-store size vs delta+varint (from codec-none assets)
+    /// Compares fixed-width arc-store size vs delta+varint (from
+    /// codec-none assets).
     FixedwidthSize(cmd::fixedwidth_size::Args),
-    /// Poly-granular grid vs per-poly bboxes probe
+    /// Probes a poly-granular grid vs per-poly bboxes.
     PolygridProbe(cmd::polygrid_probe::Args),
-    /// Packed `FullRings` coords vs general compression (geom=2 assets)
+    /// Compares packed `FullRings` coords vs general compression (geom=2
+    /// assets).
     ImagepackSize(cmd::imagepack_size::Args),
 }
 

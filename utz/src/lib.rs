@@ -17,21 +17,21 @@
 //! μTZ (micro-timezone): tiny, tunable, embeddable lat/lon → IANA timezone-id
 //! lookup.
 //!
-//! - **Tiny**: [OpenStreetMap] timezone data down from ~80 MB to ~71 KB via
-//!   shared-arc topology, tunable map simplification, integer quantization,
-//!   and general compression. Larger, more accurate options available as
-//!   well.
-//! - **Embeddable**: pure-Rust codecs, integer point-in-polygon, `no_std`
-//!   capable.
+//! - **Tiny**: shared-arc topology, tunable map simplification, integer
+//!   quantization, and general compression take [OpenStreetMap] timezone
+//!   data down from ~80 MB to ~71 KB. Larger, more accurate options are
+//!   available as well.
+//! - **Embeddable**: the codecs are pure Rust, the point-in-polygon test is
+//!   integer-only, and the crate is `no_std` capable.
 //! - **Tunable**: pick dataset, simplification parameters, data types,
 //!   quantization grid, grid cell size, and compression codec to hit your exact
 //!   size / RAM / accuracy point, guided by a [visualization
 //!   tool](https://docwilco.github.io/utz/live/index.html). Or use no
-//!   compression for direct from flash.
-//! - **DST-correct**: returns the IANA `tzid`; resolve offsets/DST downstream
-//!   with [`jiff`](https://crates.io/crates/jiff) (whose compile-time static
-//!   zones pair well with μTZ's embedded nature) or the prevalent
-//!   [`chrono-tz`](https://crates.io/crates/chrono-tz).
+//!   compression to run straight from flash.
+//! - **DST-correct**: lookups return the IANA `tzid`; resolve offsets/DST
+//!   downstream with [`jiff`](https://crates.io/crates/jiff) (whose
+//!   compile-time static zones pair well with μTZ's embedded nature) or the
+//!   prevalent [`chrono-tz`](https://crates.io/crates/chrono-tz).
 //!
 //! # Getting started
 //!
@@ -118,10 +118,10 @@
 //!
 //! ## Geometry decoders
 //!
-//! One feature per geometry encoding; an asset whose encoding has no
-//! compiled decoder is refused at load. Presets enable the decoder their recipe
-//! uses; `custom` users pick the one(s) their assets use. The measured
-//! size/speed ladder is the table on [`GeomEncoding`].
+//! Each geometry encoding has its own feature; an asset whose encoding
+//! has no compiled decoder is refused at load. Presets enable the decoder
+//! their recipe uses; `custom` users pick the one(s) their assets use.
+//! The measured size/speed ladder is the table on [`GeomEncoding`].
 //!
 //! | feature                 | decodes                             | notes |
 //! |-------------------------|-------------------------------------|-------|
@@ -132,9 +132,9 @@
 //!
 //! ## Compression codecs
 //!
-//! Additive; each compiles the decoder for one payload codec. Uncompressed
-//! assets need none of them. The backend crates are listed in the
-//! [`decompress`] module docs.
+//! Codec features are additive; each compiles the decoder for one payload
+//! codec. Uncompressed assets need none of them. The backend crates are
+//! listed in the [`decompress`] module docs.
 //!
 //! | feature    | codec  | minimum environment |
 //! |------------|--------|---------------------|
@@ -146,7 +146,7 @@
 //!
 //! ## Datasets
 //!
-//! Not a feature: the dataset picks which [timezone-boundary-builder]
+//! The dataset is not a feature: it picks which [timezone-boundary-builder]
 //! release an asset is generated from, baked in at generation time. Its
 //! main knob is the zone set: `now` and `1970` merge zones whose rules are
 //! identical since that date, while `all` keeps every distinct tzid. Every
@@ -173,27 +173,28 @@
 //! use then follows from how the asset was loaded:
 //!
 //! - **zero-copy** ([`Finder::from_static()`]): the asset is borrowed in
-//!   place and lookups stream geometry straight off the stored bytes; no heap
-//!   allocation at all.
+//!   place and lookups stream geometry straight off the stored bytes, with
+//!   no heap allocation at all.
 //! - **lazy** ([`Finder::from_slice()`] and friends): the decompressed payload
 //!   lives in owned RAM and nothing else is cached (the RAM notes in the
 //!   [preset table](#presets) are this buffer).
 //! - **eager** ([`Finder::preload()`]): all rings are additionally decoded up
 //!   front into a flat cache, the fastest mode; [`Finder::preload_bytes()`]
 //!   tells you the exact cost before you pay it.
-//! - **eager from compressed** ([`Finder::eager_from_slice()`]): decode
-//!   straight to the eager cache and drop the encoded geometry, for less
-//!   steady-state RAM than lazy + [`Finder::preload()`] combined.
+//! - **eager from compressed** ([`Finder::eager_from_slice()`]): the asset
+//!   decodes straight to the eager cache and the encoded geometry is
+//!   dropped, for less steady-state RAM than lazy + [`Finder::preload()`]
+//!   combined.
 //!
 //! ## Pairing assets with constructors
 //!
 //! Three choices together set where a build lands on RAM and speed: the
 //! asset's codec, its [geometry encoding](#geometry-decoders), and the
-//! constructor that loads it. The recurring trade: spending storage (a
-//! larger encoding, no compression) removes lookup work and RAM. Every
-//! row below is a one- or two-knob
-//! variant of the `compact` recipe ([`utz_build::Config`] code in the
-//! first column); the relative ladder holds for the other recipes and is
+//! constructor that loads it. The recurring trade is that spending storage
+//! (a larger encoding, no compression) removes lookup work and RAM. Every
+//! row below is a one- or two-knob variant of the `compact` recipe
+//! ([`utz_build::Config`] code in the first column); the relative ladder
+//! holds for the other recipes and is
 //! quantified on [`GeomEncoding`].
 //!
 //! | asset | loaded with | minimum environment | asset size | steady-state RAM | lookup speed |
@@ -207,19 +208,19 @@
 //! | <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)<br>&nbsp;&nbsp;.geom(GeomEncoding::Coarse)</code> | [`Finder::from_static()`] | `core` | ~81 KB | none | grid probe |
 //!
 //! All rows share the `compact` recipe's simplification and quantization
-//! (RDP ε 1 km, population-weighted, i24 coordinates); sizes measured on
-//! TZBB 2026c.
+//! (RDP ε 1 km, population-weighted, i24 coordinates); the sizes were
+//! measured on TZBB 2026c.
 //!
 //! `FullRings` + [`Finder::from_static()`] is the standout: the encoding is
 //! the preload cache serialized, so lookups run at eager speed straight off
 //! flash with no heap and no preload pass at boot; it just costs the most
 //! storage (and less than the cache it replaces: flash coordinates stay
 //! quant-width while the RAM cache rounds up to i32). Compression pulls
-//! the other way: the smallest asset, but the decoded payload (or
+//! the other way: it yields the smallest asset, but the decoded payload (or
 //! after [`Finder::eager_from_slice()`], the eager cache) must live in
 //! RAM. `Coarse` sidesteps the trade entirely by dropping the polygons:
-//! near-nothing to store, and via [`Finder::from_static()`] no RAM either
-//! (the floor of both ladders), at cell precision.
+//! there is near-nothing to store and, via [`Finder::from_static()`], no
+//! RAM either (the floor of both ladders), at cell precision.
 //!
 //! ## Handling failures
 //!
@@ -243,10 +244,10 @@
 //!   [`Error::UnsupportedVersion`], and the other header/decode errors):
 //!   the bytes are not a readable μTZ asset. This is the family an OTA
 //!   update path should expect and handle by rejecting the download.
-//! - **usage errors** ([`Error::StaticAssetCompressed`]: decompression
-//!   needs an owned buffer, use [`Finder::from_slice()`];
-//!   [`Error::Misaligned`]: embed `FullRings` assets with
-//!   [`include_bytes_aligned!`]).
+//! - **usage errors**: [`Error::StaticAssetCompressed`] means decompression
+//!   needs an owned buffer, so use [`Finder::from_slice()`], and
+//!   [`Error::Misaligned`] is fixed by embedding `FullRings` assets with
+//!   [`include_bytes_aligned!`].
 //!
 //! # Building a custom asset
 //!
@@ -349,8 +350,8 @@
 //!    small plaintext header stays readable so any tool can identify the
 //!    asset without decompressing it.
 //!
-//! Measured per preset (TZBB release 2026c; the workspace's `utz_dev_cli
-//! whittle` command reproduces every row):
+//! The stages were measured per preset (TZBB release 2026c; the workspace's
+//! `utz_dev_cli whittle` command reproduces every row):
 //!
 //! <table>
 //!   <thead>
@@ -372,7 +373,7 @@
 //! stage-1 merge), so their rows only diverge once simplification applies
 //! each recipe's tolerance; `accurate` starts from the full `all` set
 //! (444 zones). `tiny-static` is `tiny`'s serialized payload shipped
-//! uncompressed: the 124.9 KB row, skipping stage 7.
+//! uncompressed: it is the 124.9 KB row with stage 7 skipped.
 //!
 //! ## Shipping the asset
 //!
@@ -400,13 +401,15 @@
 //! μTZ stands on the shoulders of three excellent projects; it reuses their
 //! ideas and pushes on size and embeddability:
 //!
-//! - **[spatialtime](https://github.com/moranbw/spatialtime)**: the crate μTZ
-//!   grew out of. The build-once/query-many API shape and the
+//! - **[spatialtime](https://github.com/moranbw/spatialtime)** is the crate
+//!   μTZ grew out of. The build-once/query-many API shape and the
 //!   compression approach come from here.
-//! - **[rtz](https://github.com/twitchax/rtz)**: the 1°×1° grid prefilter.
-//! - **[tzf-rs](https://github.com/ringsaturn/tzf-rs)**: shared-edge (topology)
-//!   boundary deduplication, the grid/preindex fast-path (its "Fuzzy" finder,
-//!   μTZ's `lookup_coarse`), and delta+varint coordinate encoding.
+//! - **[rtz](https://github.com/twitchax/rtz)** contributed the 1°×1° grid
+//!   prefilter.
+//! - **[tzf-rs](https://github.com/ringsaturn/tzf-rs)** contributed
+//!   shared-edge (topology) boundary deduplication, the grid/preindex
+//!   fast-path (its "Fuzzy" finder, μTZ's `lookup_coarse()`), and
+//!   delta+varint coordinate encoding.
 //!
 //! Where those ship one fixed size/accuracy point, μTZ makes the tradeoff a
 //! build-time knob and adds integer quantization to go ~10× smaller, with a
@@ -489,9 +492,9 @@ mod finder;
 pub use finder::{Finder, Position};
 pub use utz_common::{Codec, Dataset, GeomEncoding, QuantBits, SimplifyAlgo};
 
-/// Preset assets baked in by the asset-source features. With exactly one
+/// The preset assets baked in by the asset-source features. With exactly one
 /// preset enabled, `Finder::new()` loads it; with several in the tree, pick
-/// explicitly: `Finder::from_slice(utz::data::TINY)` /
+/// one explicitly with `Finder::from_slice(utz::data::TINY)` or
 /// `Finder::from_static(utz::data::TINY_STATIC)`.
 // `doc` keeps the module (and intra-doc links to it) present in rustdoc
 // builds without preset features, e.g. docs.rs; the statics inside stay
@@ -505,59 +508,67 @@ pub use utz_common::{Codec, Dataset, GeomEncoding, QuantBits, SimplifyAlgo};
     feature = "accurate"
 ))]
 pub mod data {
-    /// accurate preset: dataset `all` (every distinct tzid), RDP ε=10 m
-    /// (pop-density floor 1e-1), i32, 0.5° grid, brotli.
+    /// The `accurate` preset's asset. Its recipe is dataset `all` (every
+    /// distinct tzid), RDP ε=10 m (pop-density floor 1e-1), i32, a 0.5°
+    /// grid, and brotli.
     #[cfg(feature = "accurate")]
     pub use utz_data_accurate::ACCURATE;
-    /// balanced preset: dataset `now`, RDP ε=50 m (pop-density floor 2e-2),
-    /// i24, 2/3° grid, brotli.
+    /// The `balanced` preset's asset. Its recipe is dataset `now`, RDP
+    /// ε=50 m (pop-density floor 2e-2), i24, a 2/3° grid, and brotli.
     #[cfg(feature = "balanced")]
     pub use utz_data_balanced::BALANCED;
-    /// compact preset: dataset `now`, RDP ε=1 000 m (pop-density floor 1e-3),
-    /// i24, 4/3° grid, xz.
+    /// The `compact` preset's asset. Its recipe is dataset `now`, RDP
+    /// ε=1 000 m (pop-density floor 1e-3), i24, a 4/3° grid, and xz.
     #[cfg(feature = "compact")]
     pub use utz_data_compact::COMPACT;
-    /// tiny preset: dataset `now`, RDP ε=10 000 m (pop-density floor 1e-3),
-    /// i16, 2° grid, gzip; ~71 K flash, peak decode RAM 125 K.
+    /// The `tiny` preset's asset. Its recipe is dataset `now`, RDP
+    /// ε=10 000 m (pop-density floor 1e-3), i16, a 2° grid, and gzip; it
+    /// takes ~71 K of flash and peaks at 125 K of decode RAM.
     #[cfg(feature = "tiny")]
     pub use utz_data_tiny::TINY;
-    /// tiny-static preset: tiny's decoded asset shipped flat; ~125 K
-    /// flash, zero-copy via [`Finder::from_static()`](crate::Finder::from_static),
-    /// ~0 RAM, no decoder, bare-`core` capable.
+    /// The `tiny-static` preset's asset, which is `tiny`'s decoded asset
+    /// shipped flat. It takes ~125 K of flash, loads zero-copy via
+    /// [`Finder::from_static()`](crate::Finder::from_static), needs ~0 RAM
+    /// and no decoder, and runs on bare `core`.
     #[cfg(feature = "tiny-static")]
     pub use utz_data_tiny_static::TINY_STATIC;
 }
 
-/// Compile-time capabilities of THIS utz build (its resolved features).
+/// The compile-time capabilities of THIS utz build (its resolved features).
 ///
-/// For asset guards: `utz_build::Config::generate()` writes a
+/// For asset guards, `utz_build::Config::generate()` writes a
 /// `<asset>.guard.rs` next to each asset, asserting the caps it needs.
 /// `include!` it beside the `include_bytes!` and a feature mismatch becomes
-/// a compile error in your crate instead of a load error in the field.
-/// Also useful directly for OTA/file-loaded assets:
+/// a compile error in your crate instead of a load error in the field. The
+/// constants are also useful directly for OTA/file-loaded assets: run
 /// `assert!(utz::caps::CODEC_XZ)` at startup.
 pub mod caps {
     use crate::GeomEncoding;
 
-    /// delta+varint arc geometry decoder (`geom-varint-arcs`)
+    /// Whether the delta+varint arc geometry decoder (`geom-varint-arcs`)
+    /// is compiled in.
     pub const GEOM_VARINT_ARCS: bool = cfg!(feature = "geom-varint-arcs");
-    /// fixed-width arc geometry decoder (`geom-fixed-width-arcs`)
+    /// Whether the fixed-width arc geometry decoder
+    /// (`geom-fixed-width-arcs`) is compiled in.
     pub const GEOM_FIXED_WIDTH_ARCS: bool = cfg!(feature = "geom-fixed-width-arcs");
-    /// `FullRings` geometry decoder (`geom-full-rings`)
+    /// Whether the `FullRings` geometry decoder (`geom-full-rings`) is
+    /// compiled in.
     pub const GEOM_FULL_RINGS: bool = cfg!(feature = "geom-full-rings");
-    /// grid-only coarse assets (`geom-coarse`)
+    /// Whether the decoder for grid-only coarse assets (`geom-coarse`) is
+    /// compiled in.
     pub const GEOM_COARSE: bool = cfg!(feature = "geom-coarse");
-    /// gzip payload decoder (`gzip`)
+    /// Whether the gzip payload decoder (`gzip`) is compiled in.
     pub const CODEC_GZIP: bool = cfg!(feature = "gzip");
-    /// zstd payload decoder (either backend: `ruzstd` / `zstd-sys`)
+    /// Whether a zstd payload decoder (either backend: `ruzstd` /
+    /// `zstd-sys`) is compiled in.
     pub const CODEC_ZSTD: bool = cfg!(any(feature = "ruzstd", feature = "zstd-sys"));
-    /// brotli payload decoder (`brotli`)
+    /// Whether the brotli payload decoder (`brotli`) is compiled in.
     pub const CODEC_BROTLI: bool = cfg!(feature = "brotli");
-    /// xz payload decoder (`xz`)
+    /// Whether the xz payload decoder (`xz`) is compiled in.
     pub const CODEC_XZ: bool = cfg!(feature = "xz");
 
-    /// Whether this build carries the decoder for `geom`: the
-    /// [`GeomEncoding`]-to-`GEOM_*` mapping in one place.
+    /// Reports whether this build carries the decoder for `geom`; this is
+    /// the [`GeomEncoding`]-to-`GEOM_*` mapping in one place.
     #[must_use]
     pub const fn geom_compiled_in(geom: GeomEncoding) -> bool {
         match geom {
@@ -569,7 +580,7 @@ pub mod caps {
     }
 }
 
-/// Errors surfaced by the reader.
+/// The errors surfaced by the reader.
 ///
 /// Variants carrying captured text (`DecoderFailed`, `ReadFailed`) exist only
 /// on the feature rungs whose code can produce them; the text is best-effort
@@ -584,23 +595,24 @@ pub enum Error {
     /// from a corrupt one, it surfaces as `DecoderFailed` instead.
     #[display("byte source ends before the asset does (truncated)")]
     Truncated,
-    /// The magic bytes don't match: not a μTZ asset.
+    /// The magic bytes don't match: the bytes are not a μTZ asset.
     #[display("not a μTZ asset (bad magic)")]
     BadMagic,
-    /// A μTZ asset, but a format version this reader doesn't speak.
+    /// The bytes are a μTZ asset, but of a format version this reader
+    /// doesn't speak.
     #[display("unsupported asset version {_0}")]
     UnsupportedVersion(#[error(not(source))] u8),
     /// The asset's header holds a value this reader considers invalid
     /// (quantization width, geometry encoding, flags, or grid degrees):
-    /// corrupt data or an encoder ahead of this reader.
+    /// the cause is corrupt data or an encoder ahead of this reader.
     #[display("invalid payload header field")]
     InvalidHeaderField,
-    /// The asset's contents are shorter than its header declares:
-    /// corrupt or truncated data.
+    /// The asset's contents are shorter than its header declares: the data
+    /// is corrupt or truncated.
     #[display("section overruns the payload")]
     SectionOverrun,
     /// Decompression produced a different size than the asset's header
-    /// declares: corrupt data.
+    /// declares: the data is corrupt.
     #[display("decoded size disagrees with the header's raw length")]
     RawLengthMismatch,
     /// The asset's codec has no compiled-in backend. Enable the
@@ -616,7 +628,8 @@ pub enum Error {
         /// The backend's own diagnostic text.
         detail: alloc::string::String,
     },
-    /// Reading the byte source failed; carries the I/O error's text.
+    /// Reading the byte source failed; the variant carries the I/O error's
+    /// text.
     #[cfg(feature = "std")]
     #[display("reading the asset failed: {_0}")]
     ReadFailed(#[error(not(source))] alloc::string::String),
@@ -633,11 +646,11 @@ pub enum Error {
     Misaligned,
     /// A `FullRings` asset's coordinates are misaligned within the
     /// payload itself (not the embedding problem of
-    /// [`Error::Misaligned`]): corrupt data.
+    /// [`Error::Misaligned`]): the data is corrupt.
     #[display("FullRings coordinate section misaligned within the payload")]
     FullRingsSectionMisaligned,
-    /// A `FullRings` asset's internal tables disagree with each other:
-    /// corrupt data.
+    /// A `FullRings` asset's internal tables disagree with each other: the
+    /// data is corrupt.
     #[display("FullRings ring-end table disagrees with the coordinate count")]
     FullRingsCountsDisagree,
     /// The geometry encoding byte has no compiled-in decoder. Enable the
@@ -648,19 +661,19 @@ pub enum Error {
     GeometryNotCompiledIn(#[error(not(source))] GeomEncoding),
     /// A cross-reference inside the asset's tables points outside its
     /// target (a zone id, poly id, or candidate-list index out of range):
-    /// corrupt data, caught at load.
+    /// the data is corrupt, and this is caught at load.
     #[display("table cross-reference out of range (corrupt asset)")]
     TableOutOfRange,
     /// [`Finder::lookup()`] / [`Finder::lookup_coarse()`] was handed a
     /// [`Position`] outside lon −180..=180 / lat −90..=90 (or NaN).
-    /// The only error a lookup can produce; validate with
+    /// This is the only error a lookup can produce; validate with
     /// [`Position::is_valid()`] or use the `_unchecked` variants to skip
     /// the check.
     #[display("position out of range (lon beyond ±180, lat beyond ±90, or NaN)")]
     InvalidPosition,
 }
 
-/// Shorthand for `Result` with this crate's [`Error`].
+/// A shorthand for `Result` with this crate's [`Error`].
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[cfg(any(
@@ -671,10 +684,10 @@ pub type Result<T> = core::result::Result<T, Error>;
     feature = "xz"
 ))]
 impl Error {
-    /// A `DecoderFailed` capturing the backend's diagnostic. Callers pass
-    /// `format_args!` over the source error: `{source}` where the backend
-    /// implements `Display`, `{source:?}` otherwise (`Debug` is the one
-    /// trait every backend's error type implements).
+    /// Builds a `DecoderFailed` capturing the backend's diagnostic. Callers
+    /// pass `format_args!` over the source error, using `{source}` where the
+    /// backend implements `Display` and `{source:?}` otherwise (`Debug` is
+    /// the one trait every backend's error type implements).
     pub(crate) fn decoder_failed(codec: Codec, detail: core::fmt::Arguments<'_>) -> Error {
         Error::DecoderFailed {
             codec,
@@ -683,10 +696,11 @@ impl Error {
     }
 }
 
-/// Embed a `.utz` asset with `include_bytes_aligned!(4, path)`. Required
-/// for [`Finder::from_static()`] on `FullRings` assets: the PIP kernels read
-/// `(i32, i32)` pairs straight from the embedded bytes, and a bare
-/// `include_bytes!` guarantees no alignment. Harmless for any other asset.
+/// Embed a `.utz` asset with `include_bytes_aligned!(4, path)`. This is
+/// required for [`Finder::from_static()`] on `FullRings` assets: the PIP
+/// kernels read `(i32, i32)` pairs straight from the embedded bytes, and a
+/// bare `include_bytes!` guarantees no alignment. It is harmless for any
+/// other asset.
 // Re-exported so consumers don't need their own copy of the dependency. Both
 // the re-export and the dependency can go once RFC 3806's `static_align`
 // stabilizes (`#[align(4)]` on a static holding `*include_bytes!(path)`):

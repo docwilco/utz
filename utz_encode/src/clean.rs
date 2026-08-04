@@ -1,9 +1,9 @@
-//! Post-quantization cleanup. Snapping arc vertices to a coarse grid
-//! (especially i16, ~611 m cells) collapses nearby vertices and folds thin
-//! features onto themselves: consecutive duplicates, zero-area spurs where
-//! the path reverses over itself ("spikes"), and rings whose area vanishes
-//! entirely. Left in, the spurs self-overlap and flip the runtime's even-odd
-//! PIP parity inside the fold.
+//! Post-quantization cleanup of the shared arcs. Snapping arc vertices to a
+//! coarse grid (especially i16, ~611 m cells) collapses nearby vertices and
+//! folds thin features onto themselves, leaving consecutive duplicates,
+//! zero-area spurs where the path reverses over itself ("spikes"), and
+//! rings whose area vanishes entirely. Left in, the spurs self-overlap and
+//! flip the runtime's even-odd PIP parity inside the fold.
 //!
 //! Every fix runs on the shared arcs (or drops whole rings), never on one
 //! polygon in isolation, so neighbouring zones stay stitched by
@@ -13,17 +13,22 @@ use crate::{Arc, Ring};
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct CleanStats {
-    /// consecutive duplicate vertices removed
+    /// The number of consecutive duplicate vertices removed.
     pub dups: u32,
-    /// zero-area spur vertices removed (path reverses along the same line)
+    /// The number of zero-area spur vertices removed (the path reverses
+    /// along the same line).
     pub spikes: u32,
-    /// collinear pass-through vertices removed (no geometry change)
+    /// The number of collinear pass-through vertices removed (no geometry
+    /// change).
     pub collinear: u32,
-    /// degenerate rings dropped (fewer than 3 distinct vertices or area 0)
+    /// The number of degenerate rings dropped (fewer than 3 distinct
+    /// vertices, or area 0).
     pub rings_dropped: u32,
-    /// polygons dropped because their exterior ring degenerated
+    /// The number of polygons dropped because their exterior ring
+    /// degenerated.
     pub polys_dropped: u32,
-    /// arcs left unreferenced by ring drops (removed, ids compacted)
+    /// The number of arcs left unreferenced by ring drops; they are removed
+    /// and the ids compacted.
     pub arcs_dropped: u32,
 }
 
@@ -33,7 +38,8 @@ enum Kind {
     Keep,
 }
 
-/// How the path bends at `q` between `p` and `r` (all distinct from `q`).
+/// Classifies how the path bends at `q` between `p` and `r` (both distinct
+/// from `q`).
 fn classify(p: (i32, i32), q: (i32, i32), r: (i32, i32)) -> Kind {
     let (ax, ay) = (i64::from(q.0 - p.0), i64::from(q.1 - p.1));
     let (bx, by) = (i64::from(r.0 - q.0), i64::from(r.1 - q.1));
@@ -47,11 +53,12 @@ fn classify(p: (i32, i32), q: (i32, i32), r: (i32, i32)) -> Kind {
     }
 }
 
-/// Remove quantization artifacts from one quantized arc, in place.
+/// Removes quantization artifacts from one quantized arc, in place.
 ///
 /// An interior vertex goes when it duplicates its predecessor, when the path
-/// reverses over it along the same line (zero-area spike; iterated, so
-/// multi-vertex spurs unwind fully), or when it lies collinearly between its
+/// reverses over it along the same line (a zero-area spike; the pass
+/// iterates, so multi-vertex spurs unwind fully), or when it lies
+/// collinearly between its
 /// neighbours. `closed` arcs (cut-free rings, stored with first == last) are
 /// cleaned cyclically so artifacts at the arbitrary start vertex are caught
 /// too; open arcs never lose their endpoints: those are junctions shared
@@ -146,7 +153,7 @@ fn clean_cyclic(arc: &mut Arc<i32>, stats: &mut CleanStats) {
     }
 }
 
-/// Assemble one ring's quantized coords from its signed arc refs: the
+/// Assembles one ring's quantized coords from its signed arc refs, the
 /// integer twin of `Topology::reconstruct()`'s ring assembly.
 #[must_use]
 pub fn ring_coords_q(refs: &[u32], arcs: &[Arc<i32>]) -> Ring<i32> {
@@ -168,11 +175,12 @@ pub fn ring_coords_q(refs: &[u32], arcs: &[Arc<i32>]) -> Ring<i32> {
     coords
 }
 
-/// Ring collapsed under quantization: fewer than 3 vertices, or shoelace
-/// area exactly 0 with no proper self-crossing. The crossing exemption
+/// Reports whether the ring collapsed under quantization: fewer than 3
+/// vertices remain, or the shoelace area is exactly 0 with no proper
+/// self-crossing. The crossing exemption
 /// matters: a bowtie with equal opposite lobes has signed area 0 yet still
 /// covers both lobes under the runtime's even-odd rule. Dropping it would
-/// lose real coverage. Exact in i128 for all qbits.
+/// lose real coverage. The computation is exact in i128 for all qbits.
 #[must_use]
 pub fn ring_degenerate(coords: &[(i32, i32)]) -> bool {
     if coords.len() < 3 {
@@ -186,9 +194,9 @@ pub fn ring_degenerate(coords: &[(i32, i32)]) -> bool {
     doubled_area == 0 && !has_proper_cross(coords)
 }
 
-/// Any pair of non-adjacent ring segments that properly cross (interiors
-/// intersect). O(n²), but only reached for zero-area rings, which
-/// quantization keeps tiny.
+/// Reports whether any pair of non-adjacent ring segments properly crosses
+/// (their interiors intersect). The scan is O(n²), but it is only reached
+/// for zero-area rings, which quantization keeps tiny.
 fn has_proper_cross(coords: &[(i32, i32)]) -> bool {
     let len = coords.len();
     let orient = |a: (i32, i32), b: (i32, i32), p: (i32, i32)| -> i8 {
@@ -213,19 +221,20 @@ fn has_proper_cross(coords: &[(i32, i32)]) -> bool {
     false
 }
 
-/// `(ring_refs, structure, arcs)` mirroring `Topology`'s fields, with arcs
-/// quantized to integer coordinates.
+/// The `(ring_refs, structure, arcs)` triple mirroring `Topology`'s fields,
+/// with arcs quantized to integer coordinates.
 pub type CleanedTopo = (Vec<Vec<u32>>, Vec<Vec<Vec<usize>>>, Vec<Arc<i32>>);
 
-/// Drop rings that quantization collapsed to zero area: a degenerate hole
-/// vanishes alone, a degenerate exterior takes its holes with it. Arcs no
-/// surviving ring references are removed and arc ids compacted. Returns the
+/// Drops rings that quantization collapsed to zero area: a degenerate hole
+/// vanishes alone, and a degenerate exterior takes its holes with it. Arcs
+/// that no surviving ring references are removed, and their ids are
+/// compacted. Returns the
 /// filtered `(ring_refs, structure, arcs)` mirroring `Topology`'s fields.
 /// Dropping a zero-area ring can't open a crack with a neighbour: there was
 /// no area to disagree about.
 ///
 /// # Panics
-/// If a polygon has more than `u32::MAX` rings.
+/// Panics if a polygon has more than `u32::MAX` rings.
 pub fn drop_degenerate_rings(
     ring_refs: &[Vec<u32>],
     structure: &[Vec<Vec<usize>>],

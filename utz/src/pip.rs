@@ -28,7 +28,7 @@
 //! sign-split family avoids the wide type altogether and is the fast path
 //! on 32-bit cores. The finder dispatches lookups to the sign-split
 //! family when `target_pointer_width = "32"` and to the wide-product
-//! family everywhere else; the verdicts are identical either way.
+//! family everywhere else; the results are identical either way.
 //!
 //! The wide-product kernels ([`contains`], [`ring_hit`], and [`edge`])
 //! share one generic implementation with two type parameters. `W` is the
@@ -127,7 +127,7 @@ impl CoordPair for (i16, i16) {
     }
 }
 
-/// The verdict for one ring. `Inside` toggles the polygon's parity, and
+/// The result for one ring. `Inside` toggles the polygon's parity, and
 /// `Boundary` claims the point immediately.
 pub enum RingHit {
     /// The +x ray crossed this ring an odd number of times, so the
@@ -139,7 +139,7 @@ pub enum RingHit {
     Boundary,
 }
 
-/// The verdict for one edge, the unit of streaming accumulation.
+/// The result for one edge, the unit of streaming accumulation.
 pub enum EdgeHit {
     /// The +x ray crosses this edge, so parity toggles.
     Cross,
@@ -170,7 +170,7 @@ where
 }
 
 /// Scans one open ring with the even-odd rule; the closing edge from the
-/// last vertex back to the first is implied. The verdict is `Inside` when
+/// last vertex back to the first is implied. The result is `Inside` when
 /// the +x ray from `(px, py)` crosses an odd number of edges.
 #[must_use]
 pub fn ring_hit<W, P>(ring: &[P], px: P::Narrow, py: P::Narrow) -> RingHit
@@ -205,7 +205,7 @@ where
 ///
 /// Only an edge whose y-span touches the scanline is examined. If the
 /// point is collinear with the edge and `px` falls within the edge's
-/// x-span, the verdict is `Boundary`; this covers edge interiors,
+/// x-span, the result is `Boundary`; this covers edge interiors,
 /// vertices, and horizontal edges, because every vertex is an endpoint of
 /// some edge that touches the scanline. Crossings are counted so that a
 /// ray through a vertex counts exactly once: an upward edge excludes its
@@ -334,7 +334,7 @@ where
 /// single instruction and the extra branches only cost; that is why
 /// lookups use it on 32-bit targets alone.
 ///
-/// Per-edge `Cross` verdicts match [`edge`] exactly. A `Boundary` verdict
+/// Per-edge `Cross` results match [`edge`] exactly. A `Boundary` result
 /// may fire from a different edge of the same shared vertex, but
 /// ring-level results cannot observe the difference, because `Boundary`
 /// short-circuits the ring.
@@ -509,17 +509,17 @@ mod tests {
                 assert_eq!(
                     code(ring_hit::<i64, _>(&ring16, px, py)),
                     wide,
-                    "i16/i32 verdicts disagree at ({px},{py})"
+                    "i16/i32 results disagree at ({px},{py})"
                 );
                 assert_eq!(
                     code(ring_hit_split(&ring16, px, py)),
                     wide,
-                    "sign-split verdict disagrees at ({px},{py})"
+                    "sign-split result disagrees at ({px},{py})"
                 );
                 assert_eq!(
                     code(ring_hit_split(&ring32, i32::from(px), i32::from(py))),
                     wide,
-                    "i32 sign-split verdict disagrees at ({px},{py})"
+                    "i32 sign-split result disagrees at ({px},{py})"
                 );
             }
         }
@@ -552,7 +552,7 @@ mod tests {
                 assert_eq!(
                     code(ring_hit::<i32, _>(&ring, px, py)),
                     code(ring_hit::<i64, _>(&ring, px, py)),
-                    "i32/i64 verdicts disagree at ({px},{py})"
+                    "i32/i64 results disagree at ({px},{py})"
                 );
             }
         }
@@ -578,7 +578,7 @@ mod tests {
                 assert_eq!(
                     code(ring_hit_split(&ring, px, py)),
                     code(ring_hit::<i128, _>(&ring, px, py)),
-                    "i32 sign-split/i128 verdicts disagree at ({px},{py})"
+                    "i32 sign-split/i128 results disagree at ({px},{py})"
                 );
             }
         }

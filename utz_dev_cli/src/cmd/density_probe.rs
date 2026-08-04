@@ -1,6 +1,6 @@
-//! Acceptance test for the GHS-POP ingest: first run downloads the ~460 MB
-//! zip and builds the density sidecar; prints spot checks that fail loudly if
-//! the tiff decode or geotransform is off.
+//! The acceptance test for the GHS-POP ingest. The first run downloads the
+//! ~460 MB zip and builds the density sidecar; the command prints spot
+//! checks that fail loudly if the tiff decode or geotransform is off.
 //!
 //! ```text
 //! utz_dev_cli density-probe
@@ -13,8 +13,9 @@ use utz_build::{ensure, Error};
 pub struct Args {}
 
 /// # Errors
-/// GHS-POP download or density-sidecar build/load failure, or a spot-check
-/// probe landing outside its expected density range.
+/// The command fails on a GHS-POP download or density-sidecar build/load
+/// failure, or on a spot-check probe landing outside its expected density
+/// range.
 pub fn run(_args: Args) -> utz_build::Result<()> {
     let timer = std::time::Instant::now();
     let grid = DensityGrid::load(&utz_build::cache_dir())?;

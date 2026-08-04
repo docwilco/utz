@@ -1,6 +1,6 @@
-//! Antimeridian scan: is TZBB with-oceans already split at ±180°? Flags
-//! any edge whose lon span exceeds 180° (a true crossing stored planar)
-//! and any coordinate outside [-180, 180] / [-90, 90].
+//! Scans the antimeridian: is TZBB with-oceans already split at ±180°?
+//! The command flags any edge whose lon span exceeds 180° (a true crossing
+//! stored planar) and any coordinate outside [-180, 180] / [-90, 90].
 //!
 //! ```text
 //! utz_dev_cli amscan [datasets...]
@@ -8,13 +8,13 @@
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// datasets to scan: [land-]now|1970|all
+    /// The datasets to scan, each one of [land-]now|1970|all.
     #[arg(default_values_t = [String::from("now"), String::from("1970")])]
     ds: Vec<String>,
 }
 
 /// # Errors
-/// Dataset load/parse failure.
+/// The command fails on a dataset load/parse failure.
 pub fn run(args: Args) -> utz_build::Result<()> {
     let datasets = args.ds;
     for dataset in &datasets {

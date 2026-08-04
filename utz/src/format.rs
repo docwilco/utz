@@ -3,7 +3,7 @@
 //! calls it internally. It is public for the cases where you want to
 //! look at an asset without loading it: sniff its provenance (dataset,
 //! ε, codec, release) or cheaply validate an OTA download via
-//! [`outer()`] + [`parse()`] before committing it to flash.
+//! [`outer()`] and [`parse()`] before committing it to flash.
 //!
 //! The parser stores OFFSETS into the section blob (no self-referential
 //! slices), so the same code serves borrowed (`&'static`, zero-copy) and
@@ -11,12 +11,12 @@
 //!
 //! # Byte-level format (container version 11)
 //!
-//! Normative for [`VERSION`] = 11. Every multi-byte integer is
-//! little-endian, and nothing is implicitly padded; the one alignment
-//! rule is the `FullRings` coordinate section below. A container is
-//! three parts: prologue, payload header, section blob. Only the blob
-//! is ever compressed, so an asset is identified and validated before
-//! any decompression.
+//! This section is normative for [`VERSION`] 11. Every multi-byte
+//! integer is little-endian, and nothing is implicitly padded; the one
+//! alignment rule is the `FullRings` coordinate section below. A
+//! container has three parts: the prologue, the payload header, and the
+//! section blob. Only the blob is ever compressed, so an asset is
+//! identified and validated before any decompression.
 //!
 //! ## Prologue (8 bytes, frozen across versions)
 //!
@@ -28,11 +28,12 @@
 //!
 //! ## Payload header (64 bytes, plaintext)
 //!
-//! The serialized [`PayloadHeader`]: its field order is the wire order
-//! (encoder and reader both serialize through the struct, so the two
-//! cannot drift; this table spells out the resulting offsets). All
-//! `*_off` fields are blob-relative byte offsets; fields the active
-//! `geom` does not use are ignored by readers.
+//! The payload header is the serialized [`PayloadHeader`]: its field
+//! order is the wire order (the encoder and reader both serialize
+//! through the struct, so the two cannot drift; this table spells out
+//! the resulting offsets). All `*_off` fields are blob-relative byte
+//! offsets; fields the active `geom` does not use are ignored by
+//! readers.
 //!
 //! | offset | type | field |
 //! |-------:|------|-------|
@@ -66,78 +67,81 @@
 //!
 //! ## Coordinate quantization
 //!
-//! With `qmax = 2^(quant_bits−1) − 1`: `qlon = round(lon / 180 · qmax)`
-//! and `qlat = round(lat / 90 · qmax)`, rounding half away from zero.
-//! A stored coordinate is a two's-complement integer of `quant_bits`
-//! bits (2 / 3 / 4 bytes, little-endian, sign-extended on read); a
-//! vertex is a `(qlon, qlat)` pair, `2 · quant_bits/8` bytes.
+//! With `qmax = 2^(quant_bits−1) − 1`, coordinates quantize as
+//! `qlon = round(lon / 180 · qmax)` and `qlat = round(lat / 90 · qmax)`,
+//! rounding half away from zero. A stored coordinate is a
+//! two's-complement integer of `quant_bits` bits (2 / 3 / 4 bytes,
+//! little-endian, sign-extended on read); a vertex is a `(qlon, qlat)`
+//! pair of `2 · quant_bits/8` bytes.
 //!
 //! ## Section blob
 //!
-//! Compressed as one unit when `codec` ≠ 0 (`raw_len` is the
-//! decompressed size); all offsets index the decompressed bytes. The
+//! The blob is compressed as one unit when `codec` ≠ 0 (`raw_len` is
+//! the decompressed size); all offsets index the decompressed bytes. The
 //! encoder writes sections in this physical order, but readers navigate
 //! purely by the header offsets:
 //!
-//! 1. **Zone string-offset table**, at blob offset 0: `u16 × (n_features+1)`
-//!    monotone fenceposts. Entries `i` and `i+1` delimit tzid `i` in the
-//!    pool; the last entry is the pool's total length.
-//! 2. **Tzid pool**, immediately after (offset `(n_features+1)·2`):
-//!    the concatenated UTF-8 tzid strings, no separators; the fencepost
-//!    offsets are pool-relative. An empty string is a nameless feature:
-//!    lookups resolving to it answer `None`.
-//! 3. **Geometry sections** per `geom`, below.
-//! 4. **Grid tables**, at `grid_off`.
-//! 5. **TZBB release string**, at `release_off`: `release_len` bytes of
-//!    UTF-8 (provenance, e.g. `"2026c"`).
+//! 1. The **zone string-offset table**, at blob offset 0, holds
+//!    `u16 × (n_features+1)` monotone fenceposts. Entries `i` and `i+1`
+//!    delimit tzid `i` in the pool; the last entry is the pool's total
+//!    length.
+//! 2. The **tzid pool**, immediately after (offset `(n_features+1)·2`),
+//!    holds the concatenated UTF-8 tzid strings with no separators; the
+//!    fencepost offsets are pool-relative. An empty string is a nameless
+//!    feature: lookups resolving to it answer `None`.
+//! 3. The **geometry sections** follow, per `geom` as described below.
+//! 4. The **grid tables** sit at `grid_off`.
+//! 5. The **TZBB release string** sits at `release_off` as `release_len`
+//!    bytes of UTF-8 (provenance, e.g. `"2026c"`).
 //!
 //! ### Geometry, geom 0/1 (arc store + ring records)
 //!
-//! At `arcs_off`, the arc store: `u32 × (n_arcs+1)` fencepost offsets,
-//! relative to the arc data that starts right after the table. Arc `i`
-//! occupies `[offset[i], offset[i+1])` and is: a varint vertex count,
-//! the first vertex as an absolute quant-width pair, then per remaining
-//! vertex either two zigzag varints (Δlon, Δlat; geom 0) or an absolute
-//! quant-width pair (geom 1).
+//! The arc store sits at `arcs_off` and opens with `u32 × (n_arcs+1)`
+//! fencepost offsets, relative to the arc data that starts right after
+//! the table. Arc `i` occupies `[offset[i], offset[i+1])` and consists
+//! of a varint vertex count, the first vertex as an absolute quant-width
+//! pair, then per remaining vertex either two zigzag varints (Δlon,
+//! Δlat; geom 0) or an absolute quant-width pair (geom 1).
 //!
-//! At `rings_off`, the poly tables: the parent table
+//! The poly tables sit at `rings_off`: the parent table
 //! `u16 × eager_polys` (poly id → feature id), then a fencepost table
 //! `u32 × (eager_polys+1)` of ring-record offsets relative to the ring
-//! data that follows it. A poly's ring record is: bbox as 4 quant-width
-//! coords (min lon, min lat, max lon, max lat), a `u16` ring count,
-//! then per ring a varint arc-ref count followed by that many varint
-//! arc refs. An arc ref is `arc_id << 1 | reversed`: the ring walks the
-//! arc backwards when the low bit is set. Consecutive arcs share their
-//! junction vertex and a ring's last vertex repeats its first; readers
-//! drop the duplicates while stitching.
+//! data that follows it. A poly's ring record consists of a bbox as 4
+//! quant-width coords (min lon, min lat, max lon, max lat), a `u16`
+//! ring count, then per ring a varint arc-ref count followed by that
+//! many varint arc refs. An arc ref is `arc_id << 1 | reversed`: the
+//! ring walks the arc backwards when the low bit is set. Consecutive
+//! arcs share their junction vertex and a ring's last vertex repeats
+//! its first; readers drop the duplicates while stitching.
 //!
 //! ### Geometry, geom 2 (`FullRings`)
 //!
-//! The preload cache serialized; read in place via slice casts, so
-//! little-endian hosts only, and `arcs_off` must be a multiple of 4
-//! (the encoder pads before it; prologue + header = 72 keeps blob
-//! alignment in an uncompressed file). Three sections back to back
-//! starting at `arcs_off`:
+//! This encoding is the preload cache serialized. It is read in place
+//! via slice casts, so it serves little-endian hosts only, and
+//! `arcs_off` must be a multiple of 4 (the encoder pads before it;
+//! prologue + header = 72 keeps blob alignment in an uncompressed
+//! file). Three sections sit back to back starting at `arcs_off`:
 //! coordinates as `eager_coords` quant-width pairs (4 / 6 / 8 bytes per
 //! vertex), then ring ends `u32 × eager_rings` (cumulative exclusive
 //! vertex indices; the last must equal `eager_coords`), then per-poly
-//! records of 20 bytes: bbox as 4 × `i32` (always full width, unlike
-//! the quant-width ring-record bbox) + `u32` exclusive ring-end index.
-//! A poly's rings start where the previous poly's ended. Ring closure
-//! vertices are already dropped. `rings_off` holds only the parent
-//! table; there is no arc store and `n_arcs` = 0.
+//! records of 20 bytes, each a bbox as 4 × `i32` (always full width,
+//! unlike the quant-width ring-record bbox) followed by a `u32`
+//! exclusive ring-end index. A poly's rings start where the previous
+//! poly's ended. Ring closure vertices are already dropped. `rings_off`
+//! holds only the parent table; there is no arc store and `n_arcs` is
+//! zero.
 //!
 //! ### Geometry, geom 3 (`Coarse`)
 //!
-//! None. `rings_off` holds the parent table; lookups answer from the
-//! grid alone at cell precision.
+//! A coarse container has no geometry sections. `rings_off` holds the
+//! parent table; lookups answer from the grid alone at cell precision.
 //!
 //! ### Grid tables
 //!
-//! At `grid_off`, the primary table: `u16 × ncols·nrows`, row-major
+//! The primary table sits at `grid_off`: `u16 × ncols·nrows`, row-major
 //! with cell (0, 0) at (lon −180°, lat −90°); a query point maps to
 //! `col = ⌊(lon + 180) / grid_deg⌋`, `row = ⌊(lat + 90) / grid_deg⌋`,
-//! clamped to the grid. Cell values:
+//! clamped to the grid. Cell values decode as follows:
 //!
 //! | value | meaning |
 //! |-------|---------|
@@ -166,91 +170,93 @@ pub use utz_common::{MAGIC, PAYLOAD_HEADER_LEN, PROLOGUE_LEN, VERSION};
 
 use crate::{caps, Error, Result};
 
-/// Parsed header: every section position needed for O(1) access.
+/// The parsed header, which records every section position needed for
+/// O(1) access.
 #[derive(Clone, Copy)]
 pub struct PayloadLayout {
-    /// the section blob's compression codec
+    /// The section blob's compression codec.
     pub codec: Codec,
-    /// the blob's decompressed size (every stored offset stays within it)
+    /// The blob's decompressed size (every stored offset stays within it).
     pub sections_len: usize,
     pub dataset: Dataset,
     pub quant_bits: QuantBits,
     pub geom: GeomEncoding,
-    /// reserved, must be zero (room for future format flags)
+    /// A reserved field that must be zero (room for future format flags).
     pub flags: u16,
-    /// provenance, not decode logic
+    /// This field is provenance, not decode logic.
     pub simplify_algo: SimplifyAlgo,
-    /// cell size in degrees; fractional (e.g. 0.5) allowed
+    /// The cell size in degrees; fractional values (e.g. 0.5) are allowed.
     pub grid_deg: f32,
     pub eps_m: f32,
-    /// population-density weight floor ×1e-4 the asset was built with
-    /// (0 = unweighted; provenance, exposed as
-    /// [`Finder::density_weight_floor()`](crate::Finder::density_weight_floor))
+    /// The population-density weight floor ×1e-4 the asset was built with
+    /// (0 means unweighted; provenance, exposed as
+    /// [`Finder::density_weight_floor()`](crate::Finder::density_weight_floor)).
     pub density_weight_floor_e4: u16,
     pub n_features: u16,
     /// The tzid pool; the zone string-offset table (`u16[n_features+1]`)
-    /// starts the section blob at offset 0, this pool follows it.
+    /// starts the section blob at offset 0, and this pool follows it.
     pub pool: usize,
-    /// Arcs in the arc store.
+    /// The number of arcs in the arc store.
     pub n_arcs: u32,
-    /// Arc offset table, `u32[n_arcs+1]`.
+    /// The arc offset table, `u32[n_arcs+1]`.
     pub arc_offsets: usize,
     /// The arc coordinate data the offset table indexes.
     pub arc_data: usize,
-    /// Poly id → feature id, `u16[eager_polys]` (grid candidates are
-    /// polys; per-poly ring records follow).
+    /// The parent table mapping poly id → feature id, `u16[eager_polys]`
+    /// (grid candidates are polys; per-poly ring records follow).
     pub parent: usize,
-    /// Per-poly ring-record offsets, `u32[eager_polys+1]`.
+    /// The per-poly ring-record offsets, `u32[eager_polys+1]`.
     pub poly_offsets: usize,
     /// The ring records the poly offsets index.
     pub ring_data: usize,
-    /// `FullRings` coords, `(i32, i32)[eager_coords]`, 4-aligned within
-    /// the payload (geom=2 only; `usize::MAX` otherwise — the
-    /// preload-cache layout serialized).
+    /// The `FullRings` coordinates (the preload-cache layout
+    /// serialized), `(i32, i32)[eager_coords]`, 4-aligned within the
+    /// payload (geom=2 only; `usize::MAX` otherwise).
     pub full_coords: usize,
-    /// `FullRings` ring ends, `u32[eager_rings]` (geom=2 only).
+    /// The `FullRings` ring ends, `u32[eager_rings]` (geom=2 only).
     pub full_ring_ends: usize,
-    /// `FullRings` per-poly records, bbox `[i32; 4]` + ring-end `u32`
-    /// (geom=2 only).
+    /// The `FullRings` per-poly records, each a bbox `[i32; 4]` followed
+    /// by a ring-end `u32` (geom=2 only).
     pub full_polys: usize,
-    /// Eager-cache coordinate reservation: exact `Vec` size for
-    /// `preload` (Σ referenced-arc vcounts; may only over-estimate).
+    /// The eager-cache coordinate reservation, the exact `Vec` size for
+    /// [`preload()`](crate::Finder::preload) (Σ referenced-arc vertex
+    /// counts; it may only over-estimate).
     pub eager_coords: u32,
-    /// Eager-cache ring reservation.
+    /// The eager-cache ring reservation.
     pub eager_rings: u32,
-    /// Eager-cache poly reservation.
+    /// The eager-cache poly reservation.
     pub eager_polys: u32,
-    /// Grid columns.
+    /// The number of grid columns.
     pub ncols: u16,
-    /// Grid rows.
+    /// The number of grid rows.
     pub nrows: u16,
-    /// Primary grid table, `u16[ncols*nrows]`.
+    /// The primary grid table, `u16[ncols*nrows]`.
     pub primary: usize,
-    /// Distinct border-cell candidate lists.
+    /// The number of distinct border-cell candidate lists.
     pub uniq: u16,
-    /// Candidate-list offsets, `u16[uniq+1]`.
+    /// The candidate-list offsets, `u16[uniq+1]`.
     pub list_offsets: usize,
     /// The interned candidate lists the offsets index.
     pub list_ids: usize,
-    /// TZBB release string offset (the payload tail).
+    /// The TZBB release string offset (the payload tail).
     pub release_off: usize,
-    /// TZBB release string length.
+    /// The TZBB release string length.
     pub release_len: usize,
 }
 
-/// Little-endian u16 at `position`.
+/// Reads the little-endian u16 at `position`.
 ///
 /// # Panics
-/// If `position + 2` exceeds `bytes` (all `read_*` helpers assume offsets
-/// already validated by [`parse()`]).
+/// Panics if `position + 2` exceeds `bytes` (all `read_*` helpers assume
+/// offsets already validated by [`parse()`]).
 #[must_use]
 pub fn read_u16(bytes: &[u8], position: usize) -> u16 {
     u16::from_le_bytes([bytes[position], bytes[position + 1]])
 }
-/// Little-endian u32 at `position`.
+/// Reads the little-endian u32 at `position`.
 ///
 /// # Panics
-/// If `position + 4` exceeds `bytes`.
+/// Panics if `position + 4` exceeds `bytes`.
 #[must_use]
 pub fn read_u32(bytes: &[u8], position: usize) -> u32 {
     u32::from_le_bytes([
@@ -261,10 +267,11 @@ pub fn read_u32(bytes: &[u8], position: usize) -> u32 {
     ])
 }
 
-/// Fixed-width signed coord: 2/3/4 bytes little-endian, sign-extended.
+/// Reads a fixed-width signed coordinate: 2/3/4 bytes little-endian,
+/// sign-extended.
 ///
 /// # Panics
-/// If the coord's bytes run past `bytes`.
+/// Panics if the coordinate's bytes run past `bytes`.
 #[must_use]
 pub fn read_fixed(bytes: &[u8], position: usize, quant_bits: QuantBits) -> i32 {
     match quant_bits {
@@ -283,10 +290,10 @@ pub fn read_fixed(bytes: &[u8], position: usize, quant_bits: QuantBits) -> i32 {
     }
 }
 
-/// Varint; returns (value, `next_position`).
+/// Reads a varint and returns (value, `next_position`).
 ///
 /// # Panics
-/// If the varint runs past `bytes`.
+/// Panics if the varint runs past `bytes`.
 #[must_use]
 pub fn read_varint(bytes: &[u8], mut position: usize) -> (u64, usize) {
     let (mut value, mut shift) = (0u64, 0u32);
@@ -300,18 +307,20 @@ pub fn read_varint(bytes: &[u8], mut position: usize) -> (u64, usize) {
         shift += 7;
     }
 }
-/// Undo zigzag encoding: map `0, 1, 2, 3, …` back to `0, -1, 1, -2, …`.
+/// Undoes zigzag encoding, mapping `0, 1, 2, 3, …` back to
+/// `0, -1, 1, -2, …`.
 #[must_use]
 pub fn unzigzag(value: u64) -> i64 {
     (value >> 1).cast_signed() ^ -((value & 1).cast_signed())
 }
 
-/// Validate the prologue (format identity only: magic + version) and
-/// return the payload header's offset.
+/// Validates the prologue (format identity only: magic and version) and
+/// returns the payload header's offset.
 ///
 /// # Errors
-/// [`Error::Truncated`] / [`Error::BadMagic`] / [`Error::UnsupportedVersion`]
-/// if the bytes are too short or the magic/version don't match.
+/// Returns [`Error::Truncated`], [`Error::BadMagic`], or
+/// [`Error::UnsupportedVersion`] if the bytes are too short or the
+/// magic/version don't match.
 pub fn outer(bytes: &[u8]) -> Result<usize> {
     if bytes.len() < PROLOGUE_LEN {
         return Err(Error::Truncated);
@@ -325,15 +334,15 @@ pub fn outer(bytes: &[u8]) -> Result<usize> {
     Ok(PROLOGUE_LEN)
 }
 
-/// Parse the plaintext payload header. Every section bound is validated
+/// Parses the plaintext payload header. Every section bound is validated
 /// against the header's own declared blob size, so a container is fully
 /// checked before any decompression happens.
 ///
 /// # Errors
-/// [`Error::Truncated`] if `header_bytes` is short;
+/// Returns [`Error::Truncated`] if `header_bytes` is short,
 /// [`Error::InvalidHeaderField`] for invalid header fields (including
-/// unknown codec / geometry / quantization / dataset bytes);
-/// [`Error::SectionOverrun`] for a section overrunning the blob;
+/// unknown codec / geometry / quantization / dataset bytes),
+/// [`Error::SectionOverrun`] for a section overrunning the blob, and
 /// [`Error::GeometryNotCompiledIn`] if the geometry encoding has no
 /// compiled-in decoder.
 pub fn parse(header_bytes: &[u8]) -> Result<PayloadLayout> {
@@ -428,16 +437,16 @@ pub fn parse(header_bytes: &[u8]) -> Result<PayloadLayout> {
     })
 }
 
-/// Reject a section end past the blob end.
-/// Validate every cross-reference inside the (decompressed) section
+/// Validates every cross-reference inside the (decompressed) section
 /// tables that [`crate::Finder::lookup()`] follows without further
 /// checks: zone-string offsets, the parent table, grid cell values,
-/// and the candidate lists. One linear pass at load time, so a corrupt
-/// or hostile asset is refused with a typed error instead of panicking
-/// a lookup later.
+/// and the candidate lists. The check is one linear pass at load time,
+/// so a corrupt or hostile asset is refused with a typed error instead
+/// of panicking a lookup later.
 ///
 /// # Errors
-/// [`Error::TableOutOfRange`] on the first out-of-range reference.
+/// Returns [`Error::TableOutOfRange`] on the first out-of-range
+/// reference.
 pub fn check_tables(payload: &[u8], layout: &PayloadLayout) -> Result<()> {
     let out_of_range = Error::TableOutOfRange;
     let feature_count = usize::from(layout.n_features);
@@ -493,6 +502,7 @@ pub fn check_tables(payload: &[u8], layout: &PayloadLayout) -> Result<()> {
     Ok(())
 }
 
+/// Rejects a section end past the blob end.
 fn need(sections_len: usize, end: usize) -> Result<()> {
     if sections_len < end {
         Err(Error::SectionOverrun)
@@ -501,8 +511,9 @@ fn need(sections_len: usize, end: usize) -> Result<()> {
     }
 }
 
-/// Geometry-dependent section offsets for [`PayloadLayout`]; the fields a given
-/// encoding doesn't use stay at [`GeometrySections::NONE`]'s markers.
+/// The geometry-dependent section offsets for [`PayloadLayout`]; the
+/// fields a given encoding doesn't use stay at
+/// [`GeometrySections::NONE`]'s markers.
 struct GeometrySections {
     n_arcs: u32,
     arc_offsets: usize,
@@ -515,7 +526,8 @@ struct GeometrySections {
 }
 
 impl GeometrySections {
-    /// No sections present: zero arcs, every offset `usize::MAX`.
+    /// No sections are present: zero arcs, and every offset is
+    /// `usize::MAX`.
     const NONE: GeometrySections = GeometrySections {
         n_arcs: 0,
         arc_offsets: usize::MAX,
@@ -529,15 +541,16 @@ impl GeometrySections {
 }
 
 /// Coarse containers (geom 3) have no geometry sections at all: just the
-/// parent table + grid.
+/// parent table and the grid.
 fn coarse_sections(sections_len: usize, parent: usize, n_polys: usize) -> Result<GeometrySections> {
     need(sections_len, parent + n_polys * 2)?;
     Ok(GeometrySections::NONE)
 }
 
-/// `FullRings` (geom 2): the preload-cache layout in place of arc store +
-/// ring records. Coords must be 4-aligned within the payload (encoder pads;
-/// the 12-byte outer header preserves it in flash).
+/// `FullRings` (geom 2) stores the preload-cache layout in place of the
+/// arc store and ring records. Coordinates must be 4-aligned within the
+/// payload (the encoder pads; the 12-byte outer header preserves it in
+/// flash).
 fn full_rings_sections(
     sections_len: usize,
     quant_bits: QuantBits,
@@ -564,7 +577,8 @@ fn full_rings_sections(
     })
 }
 
-/// Arc-store encodings (geom 0/1): arc offsets + data, per-poly ring records.
+/// The arc-store encodings (geom 0/1) carry the arc offset table and
+/// data, plus the per-poly ring records.
 fn arc_sections(
     sections_len: usize,
     arcs_off: usize,
@@ -587,7 +601,7 @@ fn arc_sections(
     })
 }
 
-/// TZBB release string recorded in the header.
+/// Returns the TZBB release string recorded in the header.
 #[must_use]
 pub fn release<'p>(layout: &PayloadLayout, payload: &'p [u8]) -> &'p [u8] {
     &payload[layout.release_off..layout.release_off + layout.release_len]

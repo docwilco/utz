@@ -1,6 +1,7 @@
-//! Host-side μTZ lookup bench: same harness (`utz_bench_common`) and the same
-//! deterministic points as the ESP32-S3 firmware, so host and target numbers
-//! (and answer checksums) are directly comparable.
+//! The host-side μTZ lookup bench. It uses the same harness
+//! (`utz_bench_common`) and the same deterministic points as the ESP32-S3
+//! firmware, so host and target numbers (and answer checksums) are directly
+//! comparable.
 //!
 //! ```text
 //! cargo run --release -p utz_bench_cli -- <shape|asset.utz> [npts] [rounds]
@@ -63,22 +64,24 @@ fn embedded(name: &str) -> Option<&'static [u8]> {
     about = "μTZ lookup benchmark over a built-in shape or .utz asset"
 )]
 struct Args {
-    /// built-in shape name (a preset: tiny, tiny-static, compact, balanced,
-    /// accurate; or an uncompressed variant: compact-none, balanced-none,
-    /// tiny-fixed-static, compact-fixed-none, tiny-eager-static,
-    /// compact-eager-static, tiny-coarse — the crate docs table explains
-    /// each) or a .utz asset path
+    /// The built-in shape name (a preset: tiny, tiny-static, compact,
+    /// balanced, accurate; or an uncompressed variant: compact-none,
+    /// balanced-none, tiny-fixed-static, compact-fixed-none,
+    /// tiny-eager-static, compact-eager-static, tiny-coarse; the crate docs
+    /// table explains each) or a .utz asset path.
     asset: String,
-    /// number of uniform lon/lat sample points
+    /// The number of uniform lon/lat sample points.
     #[arg(default_value_t = 100_000)]
     npts: usize,
-    /// timed rounds (fastest wins; one untimed warmup pass first)
+    /// The number of timed rounds (the fastest wins; one untimed warmup
+    /// pass runs first).
     #[arg(default_value_t = 5)]
     rounds: usize,
 }
 
-/// Workspace error pattern (see `utz::Error`): `derive_more`, foreign errors
-/// via `derive_more::From`.
+/// The workspace error pattern (see `utz::Error`): the enum derives its
+/// traits with `derive_more`, and foreign errors convert in via
+/// `derive_more::From`.
 #[derive(Debug, derive_more::Display, derive_more::Error, derive_more::From)]
 enum Error {
     Io(std::io::Error),

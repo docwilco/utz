@@ -3,8 +3,8 @@
     doc = "[`utz_build::Config`]: https://docs.rs/utz_build/latest/utz_build/config/struct.Config.html"
 )]
 #![cfg_attr(on_docsrs, doc = "")]
-//! Encode an asset to disk from explicit knobs: the input for
-//! `utz_bench_cli`, the embedded bench firmware (which embeds an
+//! Encodes an asset to disk from explicit knobs. The asset is the input
+//! for `utz_bench_cli`, the embedded bench firmware (which embeds an
 //! *uncompressed* asset and borrows it zero-copy from flash via
 //! `Finder::from_static()`), and any flash-partition/OTA image.
 //! Every flag maps to one [`utz_build::Config`] knob.
@@ -24,41 +24,44 @@ use utz_build::{Codec, Config, Error, GeomEncoding, SimplifyAlgo};
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// dataset: [land-]now|1970|all
+    /// The dataset, one of [land-]now|1970|all.
     #[arg(default_value = "now")]
     ds: String,
-    /// simplification tolerance ceiling in meters
+    /// The simplification tolerance ceiling in meters.
     #[arg(default_value_t = 500.0)]
     eps_m: f64,
-    /// payload codec: none|gzip|zstd|brotli|xz (firmware wants none)
+    /// The payload codec, one of none|gzip|zstd|brotli|xz (firmware wants
+    /// none).
     #[arg(long, default_value = "zstd")]
     codec: String,
-    /// quantization width: 16/24/32
+    /// The quantization width, one of 16/24/32.
     #[arg(long, default_value_t = 24)]
     qbits: u32,
-    /// grid cell size in degrees (fractional allowed, e.g. 4/3 as 1.333…)
+    /// The grid cell size in degrees (fractional values are allowed, e.g.
+    /// 4/3 as 1.333…).
     #[arg(long, default_value_t = 2.0)]
     grid_deg: f64,
-    /// simplification algorithm: none|rdp|vw|ii
+    /// The simplification algorithm, one of none|rdp|vw|ii.
     #[arg(long, default_value = "rdp")]
     algo: String,
-    /// geometry encoding: varint-arcs|fixed-width-arcs|full-rings|coarse
-    /// (see `GeomEncoding` for the size/speed ladder)
+    /// The geometry encoding, one of
+    /// varint-arcs|fixed-width-arcs|full-rings|coarse (see `GeomEncoding`
+    /// for the size/speed ladder).
     #[arg(long, default_value = "varint-arcs")]
     geom: String,
-    /// enable population weighting with this floor multiplier, strictly
-    /// between 0 and 1 (the presets use 0.001-0.10)
+    /// Enables population weighting with this floor multiplier, strictly
+    /// between 0 and 1 (the presets use 0.001-0.10).
     #[arg(long)]
     w_min: Option<f64>,
-    /// output path (default: `<ds>-<eps>m[-w<min>]-<codec>.utz`)
+    /// The output path (the default is `<ds>-<eps>m[-w<min>]-<codec>.utz`).
     #[arg(long, short)]
     out: Option<PathBuf>,
 }
 
 /// # Errors
-/// Unknown codec/algo/geom name, dataset load/parse or encode failure, the
-/// verify lookup coming back empty, or I/O writing the asset and its guard
-/// file.
+/// The command fails on an unknown codec/algo/geom name, a dataset
+/// load/parse or encode failure, the verify lookup coming back empty, or
+/// an I/O error writing the asset and its guard file.
 pub fn run(args: Args) -> utz_build::Result<()> {
     let codec = match args.codec.as_str() {
         "none" | "uncompressed" => Codec::Uncompressed,

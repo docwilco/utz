@@ -1,35 +1,36 @@
 //! Misassigned-area/population pricing of a simplified arc versus its raw
-//! (pre-quantization) form: the math behind the viewer's "misassigned"
-//! stats, previously a JS reimplementation inside the simplify worker.
+//! (pre-quantization) form, the math behind the viewer's "misassigned"
+//! stats (previously a JS reimplementation inside the simplify worker).
 //!
 //! Every simplifier in the menu keeps a subset of the input vertices, so
 //! each output segment covers a contiguous run of raw vertices and the
 //! misassigned region decomposes exactly into "pockets" between the raw
 //! sub-chain and its shortcut (split where the chain crosses the shortcut
-//! line). [`arc_misassign`] runs the whole per-arc worker pipeline:
-//! optional pre-snap (Q→S order), simplify via `utz_simplify`, walk-match of
-//! kept vertices back to input indices, pocket pricing ([`pockets`]),
-//! per-segment deviations ([`dev_max`]) and display-snap pricing
-//! ([`quant_quad`]).
+//! line). [`arc_misassign()`] runs the whole per-arc worker pipeline: an
+//! optional pre-snap (the Q→S order), simplification via `utz_simplify`, a
+//! walk-match of kept vertices back to input indices, pocket pricing
+//! ([`pockets()`]), per-segment deviations ([`dev_max()`]), and
+//! display-snap pricing ([`quant_quad()`]).
 //!
 //! Float semantics follow the original JS exactly (f64 throughout, JS
-//! `Math.round`/`Math.fround` rounding in [`qc`]); deviations narrow to f32
-//! like the worker's `Float32Array`.
+//! `Math.round`/`Math.fround` rounding in [`qc()`]); deviations narrow to
+//! f32 like the worker's `Float32Array`.
 
 use utz_simplify::{simplify, simplify_weighted, DensityWeight, Simplify};
 
-/// Display quantization mode: the viewer's quant knob (`f64` is "no snap").
+/// The display quantization mode, the viewer's quant knob (`f64` is "no
+/// snap").
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Quant {
-    /// no snap: coordinates pass through unchanged
+    /// Coordinates pass through unchanged (no snap).
     F64,
-    /// round to the nearest f32
+    /// Rounds to the nearest f32.
     F32,
-    /// round to 1e-7 degrees (the common "integer degrees ×10^7" lattice)
+    /// Rounds to 1e-7 degrees (the common "integer degrees ×10^7" lattice).
     I32,
-    /// snap to the signed 24-bit lattice over the axis span
+    /// Snaps to the signed 24-bit lattice over the axis span.
     I24,
-    /// snap to the signed 16-bit lattice over the axis span
+    /// Snaps to the signed 16-bit lattice over the axis span.
     I16,
 }
 
@@ -89,17 +90,17 @@ pub struct Acc {
 /// grid at (`lon_sum / count`, `lat_sum / count`).
 #[derive(Clone, Copy, Debug)]
 pub struct Pocket {
-    /// signed anchored-shoelace area of the pocket (deg²)
+    /// The signed anchored-shoelace area of the pocket (deg²).
     pub area: f64,
-    /// sum of the pocket's chain-vertex longitudes (crossing points count
-    /// as chain vertices)
+    /// The sum of the pocket's chain-vertex longitudes (crossing points
+    /// count as chain vertices).
     pub lon_sum: f64,
-    /// sum of the pocket's chain-vertex latitudes
+    /// The sum of the pocket's chain-vertex latitudes.
     pub lat_sum: f64,
-    /// sum of the per-vertex densities behind the chain vertices (0 when
-    /// no densities were given)
+    /// The sum of the per-vertex densities behind the chain vertices
+    /// (0 when no densities were given).
     pub dens_sum: f64,
-    /// number of chain vertices behind the sums
+    /// The number of chain vertices behind the sums.
     pub count: f64,
 }
 
@@ -268,12 +269,13 @@ pub fn dev_max(arc: &[(f64, f64)], i0: usize, i1: usize) -> f64 {
 /// The knobs of one worker run, applied to every arc.
 #[derive(Clone, Copy, Debug)]
 pub struct ArcParams {
-    /// algorithm + parameter handed to `utz_simplify` (the parameter is in
-    /// degrees; Visvalingam takes degrees squared)
+    /// The algorithm and parameter handed to `utz_simplify` (the
+    /// parameter is in degrees; Visvalingam takes degrees squared).
     pub algo: Simplify,
-    /// density weighting floor; `>= 1` (or no densities) turns weighting off
+    /// The density weighting floor; `>= 1` (or no densities) turns
+    /// weighting off.
     pub density_weight_floor: f64,
-    /// display quantization mode
+    /// The display quantization mode.
     pub quant: Quant,
     /// Q→S order: snap to the display lattice BEFORE simplifying (ignored
     /// for [`Quant::F64`], where there is no lattice)

@@ -1,7 +1,8 @@
-//! Ring-geometry validation: find where assembled rings self-cross, overlap
-//! themselves collinearly, self-touch, or collapse entirely. Shared by the
-//! `utz_dev_cli quant-clean` report and the viewer's live problems panel
-//! (wasm.rs), so both agree on what "problematic geometry" means.
+//! Ring-geometry validation, which finds where assembled rings
+//! self-cross, overlap themselves collinearly, self-touch, or collapse
+//! entirely. It is shared by the `utz_dev_cli quant-clean` report and the
+//! viewer's live problems panel (wasm.rs), so both agree on what
+//! "problematic geometry" means.
 
 use crate::clean::{self, CleanStats};
 use crate::topo::Topology;
@@ -16,7 +17,7 @@ pub enum Kind {
 /// One located defect, in quantized grid units (see [`Bad::locs`]).
 #[derive(Clone, Copy, Debug)]
 pub struct Loc {
-    /// ring ordinal within the measured iteration
+    /// The ring ordinal within the measured iteration.
     pub ring: usize,
     pub kind: Kind,
     pub x: f64,
@@ -25,20 +26,24 @@ pub struct Loc {
 
 #[derive(Default, Clone)]
 pub struct Bad {
-    /// non-adjacent segment pairs that properly cross
+    /// The number of non-adjacent segment pairs that properly cross.
     pub crossings: usize,
-    /// non-adjacent collinear segment pairs overlapping in more than a point
+    /// The number of non-adjacent collinear segment pairs overlapping in
+    /// more than a point.
     pub overlaps: usize,
-    /// non-adjacent segment pairs touching in exactly one point
+    /// The number of non-adjacent segment pairs touching in exactly one
+    /// point.
     pub touches: usize,
-    /// rings with < 3 distinct vertices or zero area
+    /// The number of rings with fewer than 3 distinct vertices or zero
+    /// area.
     pub degenerate: usize,
     pub verts: usize,
-    /// crossing/overlap spots (touches are counted but not located)
+    /// The located crossing/overlap spots (touches are counted but not
+    /// located).
     pub locs: Vec<Loc>,
 }
 
-/// Sweep every ring and tally the problems: self-crossings, collinear
+/// Sweeps every ring and tallies the problems: self-crossings, collinear
 /// overlaps, self-touches, and degenerate rings.
 #[must_use]
 pub fn measure(rings: impl Iterator<Item = Ring<i32>>) -> Bad {
@@ -54,21 +59,21 @@ pub fn measure(rings: impl Iterator<Item = Ring<i32>>) -> Bad {
     bad
 }
 
-/// A surviving defect of one feature's geometry, in degrees: what the
-/// viewer's problems panel lists.
+/// A surviving defect of one feature's geometry, in degrees. This is
+/// what the viewer's problems panel lists.
 #[derive(Clone, Copy, Debug)]
 pub struct Problem {
     pub lon: f64,
     pub lat: f64,
     pub kind: Kind,
-    /// owning feature index
+    /// The owning feature index.
     pub feat: usize,
 }
 
-/// Run the encoder's quantize → clean → drop pipeline on already-simplified
-/// arcs at `qbits`, then locate every surviving crossing/overlap. A spot on a
-/// shared border is reported once per owning ring (dedupe by coordinates for
-/// display).
+/// Runs the encoder's quantize, clean, and drop-degenerate pipeline on
+/// already-simplified arcs at `qbits`, then locates every surviving
+/// crossing/overlap. A spot on a shared border is reported once per
+/// owning ring (dedupe by coordinates for display).
 #[must_use]
 pub fn find_problems(
     topology: &Topology,
@@ -118,12 +123,13 @@ pub fn find_problems(
         .collect()
 }
 
-/// Count non-adjacent segment pairs of one ring that intersect, split by
-/// kind. Sweep over min-x-sorted segments: O(n log n + pairs-in-x-overlap),
-/// fine at report scale. Crossing/overlap spots land in `bad.locs`.
+/// Counts the non-adjacent segment pairs of one ring that intersect,
+/// split by kind. The sweep runs over min-x-sorted segments in
+/// O(n log n + pairs-in-x-overlap), which is fine at report scale.
+/// Crossing/overlap spots land in `bad.locs`.
 ///
 /// # Panics
-/// If a ring has more than `u32::MAX` segments.
+/// Panics if a ring has more than `u32::MAX` segments.
 pub fn ring_bad(ring_index: usize, ring: &[(i32, i32)], bad: &mut Bad) {
     let len = ring.len();
     if len < 4 {
@@ -187,8 +193,8 @@ pub fn ring_bad(ring_index: usize, ring: &[(i32, i32)], bad: &mut Bad) {
     }
 }
 
-/// Intersection point of two properly crossing segments (denominator is
-/// nonzero exactly because they properly cross).
+/// Computes the intersection point of two properly crossing segments
+/// (the denominator is nonzero exactly because they properly cross).
 fn cross_point(
     (p1, p2): ((i32, i32), (i32, i32)),
     (q1, q2): ((i32, i32), (i32, i32)),

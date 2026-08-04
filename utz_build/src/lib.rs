@@ -9,7 +9,8 @@
 )]
 #![cfg_attr(on_docsrs, doc = "[reader]: https://docs.rs/utz/latest/utz/index.html")]
 #![cfg_attr(on_docsrs, doc = "")]
-//! μTZ builder library: generate custom `.utz` assets from a `build.rs`.
+//! The μTZ builder library generates custom `.utz` assets from a
+//! `build.rs`.
 //!
 //! Everything routes through the typed builder, [`Config`]. In a
 //! `build.rs` (with `utz_build` as a build-dependency):
@@ -110,22 +111,24 @@ pub use config::Config;
 
 use std::path::PathBuf;
 
-/// The two dataset knobs: zone set × ocean coverage.
-/// TZBB's terminology: `now` = "Same since now", `1970` = "Same since 1970",
-/// `all` = "Comprehensive" (every tzid, unsuffixed release). μTZ defaults to
-/// with-oceans; a `land-` prefix selects the land-only releases.
+/// The two dataset knobs, zone set × ocean coverage. In TZBB's
+/// terminology, `now` is "Same since now", `1970` is "Same since 1970",
+/// and `all` is "Comprehensive" (every tzid, the unsuffixed release). μTZ
+/// defaults to with-oceans; a `land-` prefix selects the land-only
+/// releases.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Dataset {
-    /// `"now"` | `"1970"` | `"all"`: how aggressively zones with
-    /// identical rules are merged.
+    /// The zone set (`"now"`, `"1970"`, or `"all"`), which picks how
+    /// aggressively zones with identical rules are merged.
     pub zone_set: &'static str,
-    /// Whether maritime timezones cover the oceans (`false` = the
+    /// Whether maritime timezones cover the oceans (`false` selects the
     /// `land-` releases).
     pub oceans: bool,
 }
 
 impl Dataset {
-    /// Canonical name: `now`, `1970`, `all`, `land-now`, …
+    /// Returns the canonical name: `now`, `1970`, `all`, `land-now`, and
+    /// so on.
     #[must_use]
     pub fn name(&self) -> String {
         if self.oceans {
@@ -134,8 +137,9 @@ impl Dataset {
             format!("land-{}", self.zone_set)
         }
     }
-    /// Header byte (see encode.rs): bits 0–1 zone set (0=now, 1=1970, 2=all),
-    /// bit 2 set = land-only.
+    /// Returns the header byte (see encode.rs): the zone set sits in bits
+    /// 0–1 (0 is now, 1 is 1970, 2 is all), and a set bit 2 means
+    /// land-only.
     #[must_use]
     pub fn code(&self) -> u8 {
         let zone_set_code = match self.zone_set {
@@ -147,10 +151,11 @@ impl Dataset {
     }
 }
 
-/// Parse a dataset name (`[land-]now|1970|all`; legacy `osm`/`osm1970` accepted).
+/// Parses a dataset name (`[land-]now|1970|all`; the legacy
+/// `osm`/`osm1970` are accepted).
 ///
 /// # Errors
-/// Unrecognized dataset name.
+/// Returns an error for an unrecognized dataset name.
 pub fn dataset(name: &str) -> crate::Result<Dataset> {
     let (land_only, rest) = match name.strip_prefix("land-") {
         Some(stripped) => (true, stripped),
@@ -168,30 +173,31 @@ pub fn dataset(name: &str) -> crate::Result<Dataset> {
     })
 }
 
-/// Load a dataset via the download+`GeoJSON` pipeline (conditional-GET
+/// Loads a dataset via the download+`GeoJSON` pipeline (conditional-GET
 /// cached).
 ///
 /// # Errors
-/// See [`load_with_release`].
+/// See [`load_with_release()`].
 pub fn load(dataset_name: &str) -> crate::Result<Vec<Feat>> {
     Ok(load_with_release(dataset_name)?.0)
 }
 
-/// [`load`] plus the TZBB release tag the features came from, for stamping
-/// container headers (provenance). `"dev"` when the source isn't a
-/// pinned release (offline fallback).
+/// Runs [`load()`] and also returns the TZBB release tag the features
+/// came from, for stamping container headers (provenance). The tag is
+/// `"dev"` when the source isn't a pinned release (the offline fallback).
 ///
 /// # Errors
-/// Invalid dataset name, or TZBB download/parse failure.
+/// Returns an error for an invalid dataset name or a TZBB download/parse
+/// failure.
 pub fn load_with_release(dataset_name: &str) -> crate::Result<(Vec<Feat>, String)> {
     load_with_release_in(dataset_name, &cache_dir())
 }
 
-/// [`load_with_release`] against an explicit cache directory instead of
-/// the [`cache_dir()`] chain.
+/// Runs [`load_with_release()`] against an explicit cache directory
+/// instead of the [`cache_dir()`] chain.
 ///
 /// # Errors
-/// As [`load_with_release`].
+/// Fails as [`load_with_release()`] does.
 pub fn load_with_release_in(
     dataset_name: &str,
     cache_dir: &std::path::Path,
@@ -199,13 +205,13 @@ pub fn load_with_release_in(
     loader::load_tzbb(dataset(dataset_name)?, cache_dir)
 }
 
-/// `encode::encode()` with population-density-weighted simplification: the
-/// per-edge ε multiplier is a simplification knob, so it lives here with the
-/// density code; `utz_encode` itself stays density-agnostic (see the
-/// `encode::encode()` docs).
+/// Runs `encode::encode()` with population-density-weighted
+/// simplification. The per-edge ε multiplier is a simplification knob, so
+/// it lives here with the density code; `utz_encode` itself stays
+/// density-agnostic (see the `encode::encode()` docs).
 ///
 /// # Errors
-/// Payload encoding failure.
+/// Returns an error when payload encoding fails.
 pub fn encode_weighted(
     features: &[Feat],
     params: &utz_encode::encode::Params,
@@ -229,20 +235,22 @@ pub fn encode_weighted(
     )?)
 }
 
-/// The source-data cache directory, resolved at call time:
+/// Returns the source-data cache directory, resolved at call time as the
+/// first match in this chain:
 ///
 /// 1. `$UTZ_CACHE_DIR` (the μTZ workspace pins this to its `cache/`
-///    via `.cargo/config.toml`, so in-repo builds share one cache)
-/// 2. `$XDG_CACHE_HOME/utz_build`
-/// 3. `%LOCALAPPDATA%\utz_build` (Windows) or `$HOME/.cache/utz_build`
-/// 4. `$OUT_DIR/utz_build-cache` (build-script last resort), else
-///    `./utz_build-cache` relative to the current directory
+///    via `.cargo/config.toml`, so in-repo builds share one cache).
+/// 2. `$XDG_CACHE_HOME/utz_build`.
+/// 3. `%LOCALAPPDATA%\utz_build` (Windows) or `$HOME/.cache/utz_build`.
+/// 4. `$OUT_DIR/utz_build-cache` (the build-script last resort), and
+///    otherwise `./utz_build-cache` relative to the current directory.
 ///
 /// [`Config::cache_dir()`] overrides the
 /// chain per build. Everything inside is a re-fetchable download (TZBB
 /// zips keyed per release, the ~460 MB GHS-POP raster and its decoded
-/// sidecar): safe to delete. Build scripts that depend on the chain
-/// should emit `cargo:rerun-if-env-changed=UTZ_CACHE_DIR`.
+/// sidecar), so the directory is safe to delete. Build scripts that
+/// depend on the chain should emit
+/// `cargo:rerun-if-env-changed=UTZ_CACHE_DIR`.
 #[must_use]
 pub fn cache_dir() -> PathBuf {
     use std::path::Path;

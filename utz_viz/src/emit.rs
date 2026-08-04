@@ -1,47 +1,51 @@
-//! Webdist viewer emission: one static Leaflet page plus binary
-//! data blobs per TZBB dataset (arcs + per-vertex densities) and a shared
-//! heat raster. Everything is generated on demand, never a committed asset.
+//! Webdist viewer emission: this module writes one static Leaflet page plus
+//! binary data blobs per TZBB dataset (arcs and per-vertex densities) and a
+//! shared heat raster. Everything is generated on demand, never committed as
+//! an asset.
 
 fn template_path(name: &str) -> String {
     format!("{}/templates/{name}", env!("CARGO_MANIFEST_DIR"))
 }
 
-/// The static webdist viewer page (`webdist_index.html`, no substitutions):
-/// fetches per-dataset `.bin.z` blobs + `utz_viz.wasm` at runtime.
+/// Returns the static webdist viewer page (`webdist_index.html`, with no
+/// substitutions), which fetches per-dataset `.bin.z` blobs and
+/// `utz_viz.wasm` at runtime.
 ///
 /// # Errors
-/// I/O failure reading the template file.
+/// Fails on an I/O error reading the template file.
 pub fn webdist_index() -> utz_build::Result<String> {
     Ok(std::fs::read_to_string(template_path(
         "webdist_index.html",
     ))?)
 }
 
-/// Binary dataset blob for the webdist viewer (all little-endian):
+/// Builds the binary dataset blob for the webdist viewer (all
+/// little-endian). The layout is:
 /// `"uTZv" | u32 flags (bit0 = densities, bit1 = topology, bit2 = raw
 /// coordinate count) | u32 n_arcs | u32 n_verts | u32 raw_coords (bit2)
 /// | u32 offs[n_arcs+1] | pad to 8 | f64 xy[2·n_verts]
 /// | f32 dens[n_verts] | topology`. `raw_coords` is the ring-coordinate
 /// count before topology dedup, so the viewer's Reduction ladder can show
 /// what shared arcs saved.
-/// Densities are per-vertex, flat in arc order: max of the vertex's incident
-/// edges via `max_along` (the same edge sampling the builder's weighted path
-/// uses), so the browser only maps density → weight (in WASM), never
-/// re-samples geometry.
+/// Densities are per-vertex, flat in arc order: each is the max of the
+/// vertex's incident edges via `max_along()` (the same edge sampling the
+/// builder's weighted path uses), so the browser only maps density to weight
+/// (in WASM) and never re-samples geometry.
 ///
-/// The topology section carries everything `payload_from_topology` needs
-/// beyond the arcs, so the viewer can run the asset encoder live
-/// (src/wasm.rs (this crate) parses it; the JS only reads the prefix
-/// above):
+/// The topology section carries everything `payload_from_topology()` needs
+/// beyond the arcs, so the viewer can run the asset encoder live (this
+/// crate's src/wasm.rs parses it; the JS only reads the prefix above). Its
+/// layout is:
 /// `u8 dataset_code | u8 rel_len | release bytes | u16 n_features
 /// | per feature: f32 offset | u8 len | tzid bytes
 /// | u32 n_rings | per ring: u32 nrefs | u32 refs (id<<1|rev)
 /// | per feature: u16 npolys | per poly: u16 nrings | u32 ring_idx[nrings]`.
-/// All byte-packed, no alignment (the WASM parser reads bytewise).
+/// Everything is byte-packed with no alignment (the WASM parser reads
+/// bytewise).
 ///
 /// # Panics
-/// If `release` or any tzid is 256 bytes or longer (they're stored with
-/// one-byte lengths).
+/// Panics if `release` or any tzid is 256 bytes or longer (they are stored
+/// with one-byte lengths).
 #[must_use]
 pub fn dataset_bin(
     topology: &utz_encode::topo::Topology,
@@ -151,14 +155,16 @@ pub fn dataset_bin(
     out
 }
 
-/// Heat raster for the viewer's density layer (little-endian):
+/// Builds the heat raster for the viewer's density layer (little-endian).
+/// The layout is:
 /// `"uTZh" | u32 w | u32 h | u32 pad | f64 lon0, lat0, dlon, dlat
 /// | u8 cells[w·h]`. Cells are the grid max-pooled 4× and log-quantized
-/// (0 = unpopulated → transparent, 255 ≈ 50k p/km²); the JS reprojects
-/// rows to Mercator when drawing.
+/// (0 means unpopulated and draws transparent, 255 ≈ 50k p/km²); the JS
+/// reprojects rows to Mercator when drawing.
 ///
 /// # Panics
-/// If the binned grid dimensions exceed u32 (not reachable at 4' input).
+/// Panics if the binned grid dimensions exceed u32 (not reachable at 4'
+/// input).
 #[must_use]
 pub fn heat_bin(grid: &utz_build::density::DensityGrid) -> Vec<u8> {
     const DOWNSAMPLE: usize = 4;

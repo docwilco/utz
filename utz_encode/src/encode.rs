@@ -1,6 +1,6 @@
-//! Self-describing container serializer.
+//! The self-describing container serializer.
 //!
-//! Layout (all little-endian):
+//! The layout is as follows (all little-endian):
 //! ```text
 //! prologue: magic "uTZ1" | version u8 | 3 reserved bytes — format identity,
 //!           the only layout frozen across versions
@@ -23,8 +23,8 @@
 //!   release:    the TZBB release string bytes (the payload tail)
 //! ```
 //! The header records every knob, so the runtime decoder stays generic.
-//! Grid + bboxes are derived from the QUANTIZED geometry, so what the runtime
-//! PIPs is exactly what the grid indexed.
+//! The grid and bboxes are derived from the QUANTIZED geometry, so what the
+//! runtime PIPs is exactly what the grid indexed.
 
 use scroll::{Pread, Pwrite, LE};
 use utz_common::{Dataset, PayloadHeader, QuantBits, PAYLOAD_HEADER_LEN, PROLOGUE_LEN};
@@ -33,8 +33,9 @@ pub use utz_common::{MAGIC, VERSION};
 use crate::error::ensure;
 use crate::grid::{self, Order};
 use crate::{clean, q_lat, q_lon, qmax_for, topo, Arc, Error, Feat};
-/// Checked narrowing for serializer counts/offsets: the format stores these
-/// at fixed width and a wrap would silently corrupt the container, so panic.
+/// Checked narrowing for serializer counts and offsets: the format stores
+/// these at fixed width and a wrap would silently corrupt the container, so
+/// the helpers panic.
 /// Data-dependent limits (feature count, tzid pool, CSR tables) are
 /// `ensure!`-guarded with [`Error::FormatLimit`] before these run.
 fn c32(value: usize) -> u32 {
@@ -46,10 +47,10 @@ fn c16(value: usize) -> u16 {
 
 pub use utz_common::{Codec, GeomEncoding, SimplifyAlgo};
 
-/// ε-driven `Simplify` for the topology builder: ε is a max deviation in
-/// degrees for RDP / Imai–Iri; Visvalingam's area threshold is derived as
-/// ε². The viewer uses the same convention, so parameters found in the
-/// viewer plug straight into build scripts.
+/// Builds the ε-driven `Simplify` for the topology builder: ε is a max
+/// deviation in degrees for RDP and Imai–Iri, and Visvalingam's area
+/// threshold is derived as ε². The viewer uses the same convention, so
+/// parameters found in the viewer plug straight into build scripts.
 #[must_use]
 pub fn to_simplify(algo: SimplifyAlgo, eps_deg: f64) -> utz_simplify::Simplify {
     match algo {
@@ -62,35 +63,38 @@ pub fn to_simplify(algo: SimplifyAlgo, eps_deg: f64) -> utz_simplify::Simplify {
     }
 }
 
-/// Everything one encode run needs to know: the recipe knobs plus the
+/// The parameters of one encode run: they carry the recipe knobs plus the
 /// provenance recorded in the asset's header.
 #[derive(Clone, Copy)]
 pub struct Params<'a> {
-    /// The dataset code byte: bits 0–1 zone set (0 = now, 1 = 1970,
-    /// 2 = all/comprehensive), bit 2 set = land-only (clear = with-oceans).
+    /// The dataset code byte. Bits 0–1 select the zone set (0 is now, 1 is
+    /// 1970, 2 is all/comprehensive), and a set bit 2 means land-only
+    /// (clear means with-oceans).
     pub dataset: u8,
-    /// TZBB release tag recorded in the header (rules snapshot / cache key)
+    /// The TZBB release tag recorded in the header (the rules snapshot and
+    /// cache key).
     pub tzbb_release: &'a str,
     pub eps_m: f64,
-    /// 16 / 24 / 32
+    /// The quantization bit width: 16, 24, or 32.
     pub quant_bits: u32,
-    /// grid cell size in degrees, 0.1–45; fractional (0.5, 4/3, …) allowed
+    /// The grid cell size in degrees, within 0.1–45; fractional values
+    /// (0.5, 4/3, …) are allowed.
     pub grid_deg: f64,
     pub codec: Codec,
-    /// simplification algorithm: applied by [`build_payload`],
-    /// recorded in the header either way
+    /// The simplification algorithm, applied by [`build_payload()`] and
+    /// recorded in the header either way.
     pub simplify: SimplifyAlgo,
-    /// arc-store encoding: delta+varint (default) or fixed-width
+    /// The arc-store encoding, delta+varint (the default) or fixed-width.
     pub geom: GeomEncoding,
-    /// Population-density weight floor, recorded in the header as
-    /// provenance (`None` = unweighted). The weighting itself is applied
-    /// by the caller's simplification pass (`utz_build`'s
-    /// `encode_weighted()`); this only stamps the knob.
+    /// The population-density weight floor, recorded in the header as
+    /// provenance (`None` means unweighted). The weighting itself is
+    /// applied by the caller's simplification pass (`utz_build`'s
+    /// `encode_weighted()`); this field only stamps the knob.
     pub density_weight_floor: Option<f64>,
 }
 
-/// Byte size of each payload section + post-simplification geometry counts:
-/// the viewer's "delta+varint" stage stats.
+/// The byte size of each payload section plus post-simplification geometry
+/// counts: these are the viewer's "delta+varint" stage stats.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct PayloadStats {
     pub header: u32,
@@ -99,31 +103,33 @@ pub struct PayloadStats {
     pub rings: u32,
     pub grid: u32,
     pub n_arcs: u32,
-    /// vertices actually stored (post-simplify, post-quantize-clean)
+    /// The number of vertices actually stored (post-simplify,
+    /// post-quantize-clean).
     pub n_verts: u32,
-    /// what the post-quantization cleanup removed (see clean.rs)
+    /// The tallies of what the post-quantization cleanup removed (see
+    /// clean.rs).
     pub clean: clean::CleanStats,
 }
 
-/// Full uniform-ε pipeline: topology → RDP → quantize → grid → serialize →
-/// compress. Spatially varying tolerance (population weighting) is a
-/// simplification concern, not a serialization one: build the topology
+/// Runs the full uniform-ε pipeline: topology → RDP → quantize → grid →
+/// serialize → compress. Spatially varying tolerance (population weighting)
+/// is a simplification concern, not a serialization one: build the topology
 /// yourself (`topo::build_topology_weighted()`) and use
-/// [`payload_from_topology`] + [`finish`] (see `utz_build`'s wrapper).
+/// [`payload_from_topology()`] and [`finish()`] (see `utz_build`'s wrapper).
 ///
 /// # Errors
 ///
-/// Same as [`build_payload`].
+/// The errors are the same as [`build_payload()`]'s.
 pub fn encode(feats: &[Feat], params: &Params) -> crate::Result<Vec<u8>> {
     finish(&build_payload(feats, params)?, params.codec)
 }
 
-/// Everything but the outer header + compression (so size sweeps can compress
-/// one payload with several codecs).
+/// Builds everything but the outer header and compression, so size sweeps
+/// can compress one payload with several codecs.
 ///
 /// # Errors
 ///
-/// As [`payload_from_topology`].
+/// The errors are those of [`payload_from_topology()`].
 pub fn build_payload(feats: &[Feat], params: &Params) -> crate::Result<Vec<u8>> {
     let algo = to_simplify(params.simplify, params.eps_m / 111_320.0);
     let topology = topo::build_topology_algo(feats, algo);
@@ -135,8 +141,8 @@ pub fn build_payload(feats: &[Feat], params: &Params) -> crate::Result<Vec<u8>> 
 /// weighting off, which callers express as `None`.
 ///
 /// # Errors
-/// [`Error::DensityWeightFloor`] for a non-finite floor or one outside
-/// (0, 1).
+/// Returns [`Error::DensityWeightFloor`] for a non-finite floor or one
+/// outside (0, 1).
 fn density_weight_floor_e4(floor: Option<f64>) -> crate::Result<u16> {
     match floor {
         None => Ok(0),
@@ -155,7 +161,7 @@ fn density_weight_floor_e4(floor: Option<f64>) -> crate::Result<u16> {
     }
 }
 
-/// Serialize an already-simplified topology: quantize → grid → sections.
+/// Serializes an already-simplified topology: quantize → grid → sections.
 /// `arc_coords` may differ from `topology.arc_coords` (the wasm viewer
 /// simplifies per-arc itself); `feats` supplies only per-feature metadata
 /// (tzid, offset). Geometry comes from the arcs. `params.eps_m` is recorded
@@ -163,15 +169,15 @@ fn density_weight_floor_e4(floor: Option<f64>) -> crate::Result<u16> {
 ///
 /// # Errors
 ///
-/// Out-of-range params (`quant_bits` not 16/24/32, `grid_deg` outside 0.1–45,
-/// `tzbb_release` ≥ 256 bytes) or format-limit overflows (feature/polygon
-/// counts past 15-bit zone ids, CSR list tables past their 15-bit/u16 space,
-/// eager coordinate count past u32).
+/// The call errors on out-of-range params (`quant_bits` not 16/24/32,
+/// `grid_deg` outside 0.1–45, `tzbb_release` ≥ 256 bytes) or format-limit
+/// overflows (feature/polygon counts past 15-bit zone ids, CSR list tables
+/// past their 15-bit/u16 space, eager coordinate count past u32).
 ///
 /// # Panics
-/// If a serialized section outgrows its u16/u32 format width where no
-/// [`Error::FormatLimit`] guard applies (payload over 4 GiB, unreachable
-/// for real datasets).
+/// Panics if a serialized section outgrows its u16/u32 format width where
+/// no [`Error::FormatLimit`] guard applies (a payload over 4 GiB,
+/// unreachable for real datasets).
 pub fn payload_from_topology(
     topology: &topo::Topology,
     arc_coords: &[Arc],
@@ -284,19 +290,20 @@ pub fn payload_from_topology(
     Ok((out, stats))
 }
 
-/// Cleaned, quantized geometry: the topology whose rings/structure survived
-/// the degenerate-drop, plus the quantized shared arcs they reference.
+/// The cleaned, quantized geometry, made of the topology whose rings and
+/// structure survived the degenerate-drop plus the quantized shared arcs
+/// they reference.
 struct CleanGeom {
-    /// `arc_coords` empty: geometry lives in `arcs_q`
+    /// `arc_coords` is empty; the geometry lives in `arcs_q`.
     topology: topo::Topology,
     arcs_q: Vec<Arc<i32>>,
     stats: clean::CleanStats,
 }
 
-/// Quantize arcs at `qmax`, then clean the snapping artifacts per shared arc
-/// (dups, zero-area spikes, collinear pass-throughs) and drop rings that
-/// collapsed to zero area (see clean.rs). Junction endpoints stay put, so
-/// neighbouring zones remain stitched.
+/// Quantizes arcs at `qmax`, then cleans the snapping artifacts per shared
+/// arc (dups, zero-area spikes, collinear pass-throughs) and drops rings
+/// that collapsed to zero area (see clean.rs). Junction endpoints stay put,
+/// so neighbouring zones remain stitched.
 fn quantize_clean(topology: &topo::Topology, arc_coords: &[Arc], qmax: f64) -> CleanGeom {
     let mut stats = clean::CleanStats::default();
     let arcs_q: Vec<Arc<i32>> = arc_coords
@@ -324,12 +331,14 @@ fn quantize_clean(topology: &topo::Topology, arc_coords: &[Arc], qmax: f64) -> C
     }
 }
 
-/// Grid over the snapped (dequantized) geometry = exactly what the runtime
-/// sees. Rasterized per POLYGON, not per feature: border-cell candidate
+/// Builds the grid over the snapped (dequantized) geometry, which is
+/// exactly what the runtime sees. Rasterization runs per POLYGON, not per
+/// feature: border-cell candidate
 /// lists carry poly ids, so lookups jump straight to the ~2 polys whose rings
 /// touch the cell instead of bbox-scanning every poly of every candidate
-/// feature (the `polygrid_probe` bench: 20-24 polys parsed → 2.1, per-poly bboxes
-/// redundant, CSR growth ≈ dropped bbox bytes). Returns the cell grid, the
+/// feature (in the `polygrid_probe` bench, parsed polys fell from 20-24 to
+/// 2.1, per-poly bboxes became redundant, and CSR growth ≈ the dropped
+/// bbox bytes). Returns the cell grid, the
 /// interned CSR (interior cells rewritten to FEATURE ids: coarse answers
 /// need no parent hop; border lists keep poly ids), and the poly→feature
 /// parent table.
@@ -399,17 +408,19 @@ fn poly_grid(
     Ok((cell_grid, csr, parent))
 }
 
-/// The flattened preload-cache shape (geom=2): per-ring coord runs +
-/// ring/poly index tables. Built before the header so the eager counts are
-/// exact and serialization just copies.
+/// The flattened preload-cache shape (geom=2): per-ring coordinate runs
+/// plus the ring/poly index tables. It is built before the header so the
+/// eager counts are exact and serialization just copies.
 struct FullRingsSections {
     coords: Vec<(i32, i32)>,
     ring_ends: Vec<u32>,
-    /// per poly: bbox + `ring_ends` index one past its last ring
+    /// One entry per poly: the bbox plus the `ring_ends` index one past
+    /// its last ring.
     polys: Vec<([i32; 4], u32)>,
 }
 
-/// Assemble the [`FullRingsSections`]. Junction dedup stays within a ring.
+/// Assembles the [`FullRingsSections`]. Junction dedup stays within a
+/// ring.
 fn flatten_full_rings(clean_geom: &CleanGeom, n_features: usize) -> FullRingsSections {
     let (mut coords, mut ring_ends, mut polys) = (Vec::new(), Vec::new(), Vec::new());
     for feature_index in 0..n_features {

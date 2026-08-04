@@ -1,16 +1,18 @@
-//! Conditional-GET download cache: store `ETag` /
-//! `Last-Modified` next to each cached file and revalidate with
-//! `If-None-Match` / `If-Modified-Since`; a 304 reuses the cache untouched.
+//! The conditional-GET download cache stores `ETag` / `Last-Modified`
+//! next to each cached file and revalidates with `If-None-Match` /
+//! `If-Modified-Since`; a 304 reuses the cache untouched.
 
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
-/// Fetch `url` into `cache_dir`, revalidating any cached copy. Returns the
-/// cached file path. Offline with a cached copy present → warn + reuse.
+/// Fetches `url` into `cache_dir`, revalidating any cached copy, and
+/// returns the cached file path. When offline with a cached copy present,
+/// it warns and reuses the copy.
 ///
 /// # Errors
-/// URL without a filename component, HTTP failure with no cached copy to
-/// fall back on, or I/O failure writing the cache.
+/// Returns an error on a URL without a filename component, an HTTP
+/// failure with no cached copy to fall back on, or an I/O failure writing
+/// the cache.
 pub fn fetch(url: &str, cache_dir: &Path) -> crate::Result<PathBuf> {
     std::fs::create_dir_all(cache_dir)?;
     let name = url

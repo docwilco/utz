@@ -1,10 +1,11 @@
-//! Raw `extern "C"` surface for the tuning-viewer HTML (wasm32 only).
+//! The raw `extern "C"` surface for the tuning-viewer HTML (wasm32 only).
 //!
-//! No wasm-bindgen: the viz HTML loads the module with a few lines of hand
-//! written glue, so the artifact stays a single self-contained file and the
-//! browser preview runs byte-for-byte the same algorithms as the builder.
+//! There is no wasm-bindgen involved: the viz HTML loads the module with a
+//! few lines of hand-written glue, so the artifact stays a single
+//! self-contained file and the browser preview runs byte-for-byte the same
+//! algorithms as the builder.
 //!
-//! JS usage sketch:
+//! The JS side uses the module like this:
 //! ```js
 //! const { instance } = await WebAssembly.instantiate(wasmBytes);
 //! const { memory, utz_alloc, utz_free, utz_simplify } = instance.exports;
@@ -25,7 +26,8 @@ pub const ALGO_RDP: u32 = 1;
 pub const ALGO_VISVALINGAM: u32 = 2;
 pub const ALGO_IMAI_IRI: u32 = 3;
 
-/// Allocate space for `n_f64` doubles; pair every call with [`utz_free`].
+/// Allocates space for `n_f64` doubles; every call must be paired with
+/// [`utz_free()`].
 #[no_mangle]
 pub extern "C" fn utz_alloc(n_f64: usize) -> *mut f64 {
     let mut buffer = Vec::<f64>::with_capacity(n_f64);
@@ -34,7 +36,7 @@ pub extern "C" fn utz_alloc(n_f64: usize) -> *mut f64 {
     ptr
 }
 
-/// Release a buffer from [`utz_alloc`] (same `n_f64`).
+/// Releases a buffer from [`utz_alloc()`] (with the same `n_f64`).
 ///
 /// # Safety
 /// `ptr`/`n_f64` must come from a single prior `utz_alloc(n_f64)` call.
@@ -43,12 +45,12 @@ pub unsafe extern "C" fn utz_free(ptr: *mut f64, n_f64: usize) {
     drop(Vec::from_raw_parts(ptr, 0, n_f64));
 }
 
-/// Simplify `n_pts` interleaved `x,y` doubles IN PLACE; returns the number of
-/// points kept (the buffer's first `kept * 2` doubles). Unknown `algo` or a
-/// non-positive parameter leaves the polyline unchanged.
+/// Simplifies `n_pts` interleaved `x,y` doubles IN PLACE and returns the
+/// number of points kept (the buffer's first `kept * 2` doubles). An unknown
+/// `algo` or a non-positive parameter leaves the polyline unchanged.
 ///
 /// # Safety
-/// `xy` must point at `n_pts * 2` valid doubles (e.g. from [`utz_alloc`]).
+/// `xy` must point at `n_pts * 2` valid doubles (e.g. from [`utz_alloc()`]).
 #[no_mangle]
 pub unsafe extern "C" fn utz_simplify(algo: u32, xy: *mut f64, n_pts: usize, param: f64) -> usize {
     let buffer = core::slice::from_raw_parts_mut(xy, n_pts * 2);
@@ -75,15 +77,15 @@ pub unsafe extern "C" fn utz_simplify(algo: u32, xy: *mut f64, n_pts: usize, par
     out.len()
 }
 
-/// [`utz_simplify`] with population-density weighting: `densities` points at
-/// `n_pts` per-vertex densities (people/km²), mapped through
+/// [`utz_simplify()`] with population-density weighting: `densities` points
+/// at `n_pts` per-vertex densities (people/km²), mapped through
 /// [`DensityWeight::new()`]`(w_min)`, so the browser's weighting slider runs
 /// the exact map the builder uses, not a JS reimplementation. `w_min ≥ 1`
-/// turns weighting off (identical to [`utz_simplify`]).
+/// turns weighting off (identical to [`utz_simplify()`]).
 ///
 /// # Safety
 /// `xy` must point at `n_pts * 2` valid doubles and `densities` at `n_pts`
-/// valid doubles (e.g. from [`utz_alloc`]).
+/// valid doubles (e.g. from [`utz_alloc()`]).
 #[no_mangle]
 pub unsafe extern "C" fn utz_simplify_w(
     algo: u32,

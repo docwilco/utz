@@ -1,21 +1,22 @@
 //! Population density for density-weighted simplification ([GHS-POP
 //! R2023A]).
 //!
-//! Source: the European Commission Joint Research Centre's Global
+//! The source is the European Commission Joint Research Centre's Global
 //! Human Settlement Layer population grid, © European Union 1995–2023
 //! ([CC BY 4.0]; Schiavina, Freire, Carioli, MacManus 2023,
 //! <https://doi.org/10.2905/2FF68A52-5B5B-4A22-8F40-C41DA8332CFE>).
-//! A single global `GeoTIFF`, WGS84, 30 arc-seconds (~1 km),
-//! population *count* per cell, free direct download. One-time: fetch
-//! the ~460 MB zip through the
-//! [`crate::download`] cache, stream-decode the tif tile by tile summing 8×8
-//! blocks into a 4-arc-minute grid, convert counts → people/km², and cache
-//! the result as a small flat sidecar (~58 MB). Steady-state builds read only
-//! the sidecar.
+//! It is a single global `GeoTIFF` in WGS84 at 30 arc-seconds (~1 km),
+//! storing the population *count* per cell, as a free direct download.
+//! The one-time build fetches the ~460 MB zip through the
+//! [`crate::download`] cache, stream-decodes the tif tile by tile while
+//! summing 8×8 blocks into a 4-arc-minute grid, converts counts to
+//! people/km², and caches the result as a small flat sidecar (~58 MB).
+//! Steady-state builds read only the sidecar.
 //!
-//! Resolution rationale: weighting only needs order-of-magnitude density near
-//! a boundary; 4′ (~7.4 km) cells are far below any useful eps ceiling while
-//! keeping the grid in-memory cheap.
+//! The resolution rationale is that weighting only needs
+//! order-of-magnitude density near a boundary: 4′ (~7.4 km) cells are far
+//! below any useful eps ceiling while keeping the grid cheap to hold in
+//! memory.
 //!
 //! [GHS-POP R2023A]: https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php
 //! [CC BY 4.0]: https://creativecommons.org/licenses/by/4.0/
@@ -28,19 +29,20 @@ use tiff::decoder::{Decoder, DecodingResult, Limits};
 use crate::Error;
 use tiff::tags::Tag;
 
-/// Where the GHS-POP population raster downloads from (JRC open data).
+/// The URL the GHS-POP population raster downloads from (JRC open data).
 pub const GHS_POP_URL: &str = "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/\
 GHS_POP_GLOBE_R2023A/GHS_POP_E2020_GLOBE_R2023A_4326_30ss/V1-0/\
 GHS_POP_E2020_GLOBE_R2023A_4326_30ss_V1_0.zip";
 
-/// 30″ source cells summed into 8×8 blocks → 4′ grid.
+/// 30″ source cells are summed in 8×8 blocks into the 4′ grid.
 const DOWNSAMPLE: usize = 8;
-/// Sidecar magic + version (bump on layout change).
+/// The sidecar magic and version; bump it on a layout change.
 const SIDECAR_MAGIC: &[u8; 4] = b"uTZd";
 const SIDECAR_NAME: &str = "ghs_pop_e2020_4326_ds8.bin";
 
-/// Path of the decoded density sidecar inside `cache_dir`: lets callers
-/// fingerprint the density data without loading it (webdist blob cache).
+/// Returns the path of the decoded density sidecar inside `cache_dir`,
+/// which lets callers fingerprint the density data without loading it
+/// (the webdist blob cache).
 #[must_use]
 pub fn sidecar_path(cache_dir: &Path) -> PathBuf {
     cache_dir.join(SIDECAR_NAME)
@@ -49,29 +51,31 @@ pub fn sidecar_path(cache_dir: &Path) -> PathBuf {
 /// Population density (people/km²) on a coarse global lon/lat grid.
 /// Row 0 is the northernmost; `dlat` is positive.
 pub struct DensityGrid {
-    /// Grid columns.
+    /// The grid's column count.
     pub width: usize,
-    /// Grid rows.
+    /// The grid's row count.
     pub height: usize,
-    /// West edge of cell (0,0).
+    /// The west edge of cell (0,0).
     pub lon0: f64,
-    /// North edge of cell (0,0).
+    /// The north edge of cell (0,0).
     pub lat0: f64,
-    /// Cell width in degrees.
+    /// The cell width in degrees.
     pub dlon: f64,
-    /// Cell height in degrees (positive; rows run north to south).
+    /// The cell height in degrees (positive; rows run north to south).
     pub dlat: f64,
-    /// Row-major density samples, people/km².
+    /// The row-major density samples in people/km².
     pub cells: Vec<f32>,
 }
 
 impl DensityGrid {
-    /// Load from the sidecar cache, building it from GHS-POP on first use
-    /// (downloads the zip via [`crate::download::fetch()`] if needed).
+    /// Loads the grid from the sidecar cache, building it from GHS-POP on
+    /// first use (downloading the zip via [`crate::download::fetch()`] if
+    /// needed).
     ///
     /// # Errors
-    /// Corrupt sidecar, or on first build: GHS-POP download failure, zip
-    /// extraction/TIFF decode failure, or I/O writing the sidecar.
+    /// Returns an error on a corrupt sidecar, or, on the first build, a
+    /// GHS-POP download failure, a zip extraction or TIFF decode failure,
+    /// or an I/O failure writing the sidecar.
     pub fn load(cache_dir: &Path) -> crate::Result<Self> {
         let sidecar = sidecar_path(cache_dir);
         if sidecar.exists() {
@@ -86,7 +90,7 @@ impl DensityGrid {
         Ok(grid)
     }
 
-    /// Density at a point; outside the grid → 0.
+    /// Returns the density at a point; outside the grid the density is 0.
     #[must_use]
     pub fn sample(&self, lon: f64, lat: f64) -> f64 {
         #[expect(
@@ -102,10 +106,11 @@ impl DensityGrid {
         self.cell_val(ix, iy)
     }
 
-    /// Max density over every grid cell the segment `a`–`b` crosses
-    /// (Amanatides–Woo traversal in cell space). This — not per-vertex
-    /// sampling — is what boundary weighting uses: a long straight edge can
-    /// cross a metro area without placing a vertex in it.
+    /// Returns the maximum density over every grid cell the segment
+    /// `a`–`b` crosses (an Amanatides–Woo traversal in cell space). This,
+    /// not per-vertex sampling, is what boundary weighting uses: a long
+    /// straight edge can cross a metro area without placing a vertex in
+    /// it.
     #[must_use]
     pub fn max_along(&self, a: (f64, f64), b: (f64, f64)) -> f64 {
         // continuous cell-space coordinates (x → lon cells, y → rows south)
@@ -184,16 +189,16 @@ impl DensityGrid {
         f64::from(self.cells[iy * self.width + ix])
     }
 
-    /// Decode the GHS-POP `GeoTIFF`, summing 8×8 pixel blocks and converting
-    /// population counts to people/km².
+    /// Decodes the GHS-POP `GeoTIFF`, summing 8×8 pixel blocks and
+    /// converting population counts to people/km².
     ///
     /// # Errors
-    /// I/O or TIFF decode failure, missing geotransform tags, or a sample
-    /// format other than f32/f64.
+    /// Returns an error on an I/O or TIFF decode failure, missing
+    /// geotransform tags, or a sample format other than f32/f64.
     ///
     /// # Panics
-    /// If the source raster's dimensions or chunk count exceed u32 (not
-    /// reachable for GHS-POP).
+    /// Panics if the source raster's dimensions or chunk count exceed u32
+    /// (not reachable for GHS-POP).
     pub fn from_ghs_pop_tif(tif_path: &Path) -> crate::Result<Self> {
         const KM_PER_DEG: f64 = 111.32;
         let mut decoder = Decoder::new(BufReader::new(std::fs::File::open(tif_path)?))?
@@ -367,7 +372,7 @@ impl DensityGrid {
     }
 }
 
-/// Extract the single `.tif` entry from the GHS-POP zip next to it
+/// Extracts the single `.tif` entry from the GHS-POP zip next to it
 /// (the tiff decoder needs `Seek`, which zip entries don't offer).
 fn extract_tif(zip_path: &Path, cache_dir: &Path) -> crate::Result<PathBuf> {
     let mut archive = zip::ZipArchive::new(std::fs::File::open(zip_path)?)?;

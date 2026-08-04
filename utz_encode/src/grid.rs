@@ -1,11 +1,13 @@
-//! Grid + interned-CSR builder.
+//! The grid and interned-CSR builder.
 //!
-//! Two passes over the geometry:
-//! 1. edge walk: every cell a ring passes through collects that feature id
-//!    (candidate sets; ≥2 candidates = border cell needing PIP);
-//! 2. scanline fill on a subdivision-finer grid: even-odd span fill per polygon
-//!    gives per-subcell ownership, aggregated to a dominant zone per cell
-//!    (interior fill for the primary array + the `lookup_coarse` answer).
+//! The builder makes two passes over the geometry:
+//! 1. The edge walk: every cell a ring passes through collects that feature
+//!    id into its candidate set, and a cell with ≥2 candidates is a border
+//!    cell needing PIP.
+//! 2. The scanline fill on a subdivision-finer grid: an even-odd span fill
+//!    per polygon gives per-subcell ownership, aggregated to a dominant
+//!    zone per cell (the interior fill for the primary array and the
+//!    `lookup_coarse` answer).
 
 use std::collections::{HashMap, HashSet};
 
@@ -18,11 +20,14 @@ use utz_common::NO_ZONE;
 /// order the primary table serializes in.
 pub struct CellGrid {
     pub deg: f64,
-    /// sorted candidate feature ids per cell (from the edge walk; empty = no ring)
+    /// The sorted candidate feature ids per cell, from the edge walk; an
+    /// empty set means no ring passes through the cell.
     pub sets: Array2<Vec<u16>>,
-    /// dominant zone per cell from subcell ownership (`NO_ZONE` if nothing filled)
+    /// The dominant zone per cell from subcell ownership, or `NO_ZONE` if
+    /// nothing filled the cell.
     pub dominant: Array2<u16>,
-    /// per-cell subcell ownership tallies (candidate id -> subcells owned)
+    /// The per-cell subcell ownership tallies, mapping a candidate id to
+    /// the number of subcells it owns.
     pub tallies: Array2<Vec<(u16, u32)>>,
 }
 
@@ -38,8 +43,8 @@ impl CellGrid {
     }
 }
 
-/// Rasterize `feats` onto a `deg`-cell grid; ownership sampled on a grid
-/// `subdivision`× finer (subdivision=8 at 2° → 0.25° subcells).
+/// Rasterizes `feats` onto a `deg`-cell grid, with ownership sampled on a
+/// grid `subdivision`× finer (subdivision = 8 at 2° gives 0.25° subcells).
 ///
 /// # Panics
 ///
@@ -106,9 +111,9 @@ pub fn build(feats: &[Feat], deg: f64, subdivision: usize) -> CellGrid {
     }
 }
 
-/// Pass 1: walk every ring edge in `deg`-sized steps. Every cell an edge
-/// passes through collects that feature id (candidate sets; ≥2 candidates =
-/// border cell needing PIP).
+/// Pass 1 walks every ring edge in `deg`-sized steps. Every cell an edge
+/// passes through collects that feature id into its candidate set, and a
+/// cell with ≥2 candidates is a border cell needing PIP.
 fn edge_walk(feats: &[Feat], deg: f64, ncols: usize, nrows: usize) -> Array2<HashSet<u16>> {
     let mut sets: Array2<HashSet<u16>> = Array2::from_elem((nrows, ncols), HashSet::new());
     #[expect(
@@ -153,12 +158,12 @@ fn edge_walk(feats: &[Feat], deg: f64, ncols: usize, nrows: usize) -> Array2<Has
     sets
 }
 
-/// Pass 2: even-odd scanline fill per polygon on the `subdivision`×-finer
-/// grid, yielding per-subcell ownership (later aggregated to a dominant zone
-/// per cell).
+/// Pass 2 runs an even-odd scanline fill per polygon on the
+/// `subdivision`×-finer grid, yielding per-subcell ownership (later
+/// aggregated to a dominant zone per cell).
 ///
 /// # Panics
-/// If any coordinate is NaN (crossing xs become unsortable).
+/// Panics if any coordinate is NaN (the crossing xs become unsortable).
 fn subcell_owners(
     feats: &[Feat],
     deg: f64,
@@ -269,28 +274,31 @@ fn subcell_owners(
     owner
 }
 
-/// Candidate-list ordering inside the interned CSR.
+/// The candidate-list ordering inside the interned CSR.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Order {
-    /// ascending feature id: maximal interning (baseline)
+    /// Ascending feature id, which gives maximal interning (the baseline).
     IdSorted,
-    /// descending global zone area: deterministic per set, same interning as `IdSorted`
+    /// Descending global zone area, which is deterministic per set and
+    /// interns the same as `IdSorted`.
     AreaDesc,
-    /// this cell's dominant zone first, rest id-sorted: best early-exit, breaks interning
+    /// This cell's dominant zone first with the rest id-sorted, which gives
+    /// the best early-exit but breaks interning.
     CellDominantFirst,
 }
 
-/// The serializable grid prefilter: one u16 per cell plus the interned
-/// candidate lists in compressed-sparse-row form.
+/// The serializable grid prefilter: it stores one u16 per cell plus the
+/// interned candidate lists in compressed-sparse-row form.
 pub struct Csr {
-    /// u16 per cell: high bit 0 = zone id (or `NO_ZONE` marker semantics left to
-    /// the container), high bit 1 = index into the interned lists
+    /// One u16 per cell. With the high bit clear the value is a zone id
+    /// (`NO_ZONE` marker semantics are left to the container); with the
+    /// high bit set it is an index into the interned lists.
     pub primary: Vec<u16>,
-    /// Start offset of each interned list in [`Csr::list_ids`].
+    /// The start offset of each interned list in [`Csr::list_ids`].
     pub list_offsets: Vec<u16>,
     /// The interned candidate lists, concatenated.
     pub list_ids: Vec<u16>,
-    /// Distinct interned lists.
+    /// The number of distinct interned lists.
     pub uniq_lists: usize,
 }
 
@@ -301,8 +309,8 @@ impl Csr {
     }
 }
 
-/// Build the interned CSR. `areas` (global zone area, any consistent unit) is
-/// used by `AreaDesc`/`CellDominantFirst`.
+/// Builds the interned CSR. `areas` (global zone area, in any consistent
+/// unit) is used by `AreaDesc` and `CellDominantFirst`.
 ///
 /// # Panics
 ///
@@ -371,8 +379,9 @@ pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
     }
 }
 
-/// Approximate global area per feature (equirectangular shoelace with cos-lat
-/// correction; exteriors minus holes, clamped ≥ 0). Ranking only.
+/// Approximates the global area per feature (an equirectangular shoelace
+/// with cos-lat correction; exteriors minus holes, clamped ≥ 0). The
+/// values serve ranking only.
 #[must_use]
 pub fn feat_areas(feats: &[Feat]) -> Vec<f64> {
     feats

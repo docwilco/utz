@@ -1,24 +1,27 @@
-//! Shared geometry types + quantization helpers for the encoder and measurements.
+//! The shared geometry types and quantization helpers for the encoder and
+//! the measurement tools.
 
 // Coordinate tuples are (lon, lat) — equivalently (x, y) with x = lon —
 // everywhere in the workspace: builder f64 degrees and quantized i32 grid
 // units alike. The aliases carry the semantic split: a Ring is closed
 // (implicitly; no duplicated closing vertex), an Arc is an open polyline
 // shared between the rings that reference it.
-/// One closed ring: no duplicated closing vertex.
+/// One closed ring. The closing vertex is not duplicated.
 pub type Ring<T = f64> = Vec<(T, T)>;
-/// Exterior ring first, then interior (hole) rings.
+/// One polygon's rings, the exterior ring first and the interior (hole)
+/// rings after.
 pub type Poly<T = f64> = Vec<Ring<T>>;
-/// One open shared-boundary polyline (see `topo`); NOT `std::sync::Arc`.
+/// One open shared-boundary polyline (see `topo`). This is NOT
+/// `std::sync::Arc`.
 pub type Arc<T = f64> = Vec<(T, T)>;
 
-/// One timezone feature as loaded from the source `GeoJSON`: its polygons
-/// plus the tzid and UTC offset metadata.
+/// One timezone feature as loaded from the source `GeoJSON`: it carries the
+/// polygons plus the tzid and UTC offset metadata.
 pub struct Feat {
-    /// UTC offset in hours (fractional allowed), for ocean zones without
-    /// a tzid.
+    /// The UTC offset in hours (fractional values allowed), which serves
+    /// ocean zones without a tzid.
     pub offset: f64,
-    /// IANA timezone id; `None` for pure-offset ocean zones.
+    /// The IANA timezone id, or `None` for pure-offset ocean zones.
     pub tzid: Option<String>,
     /// The feature's polygons (exterior ring first, holes after).
     pub polys: Vec<Poly>,
@@ -33,7 +36,7 @@ pub struct Feat {
 // variable-width equivalents are local closures over a `qmax` (encode/topo).
 pub const QMAX_I24: f64 = 8_388_607.0; // 2^23 - 1
 
-/// Half-range of an `i{bits}` quantization grid (`2^(bits-1) - 1`).
+/// The half-range of an `i{bits}` quantization grid (`2^(bits-1) - 1`).
 #[must_use]
 #[expect(
     clippy::cast_precision_loss,
@@ -43,7 +46,8 @@ pub fn qmax_for(bits: u32) -> f64 {
     ((1u64 << (bits - 1)) - 1) as f64
 }
 
-/// Quantize a longitude onto a grid with half-range `qmax` (see [`qmax_for`]).
+/// Quantizes a longitude onto a grid with half-range `qmax` (see
+/// [`qmax_for()`]).
 #[must_use]
 #[expect(
     clippy::cast_possible_truncation,
@@ -52,7 +56,7 @@ pub fn qmax_for(bits: u32) -> f64 {
 pub fn q_lon(lon: f64, qmax: f64) -> i32 {
     (lon / 180.0 * qmax).round() as i32
 }
-/// Quantize a latitude onto a grid with half-range `qmax`.
+/// Quantizes a latitude onto a grid with half-range `qmax`.
 #[must_use]
 #[expect(
     clippy::cast_possible_truncation,
@@ -71,7 +75,7 @@ pub fn q24_lat(lat: f64) -> i32 {
     q_lat(lat, QMAX_I24)
 }
 
-/// Append `value`'s low three little-endian bytes: the stored form of an
+/// Appends `value`'s low three little-endian bytes, the stored form of an
 /// i24-quantized coordinate.
 pub fn push_i24(out: &mut Vec<u8>, value: i32) {
     let bytes = value.to_le_bytes();

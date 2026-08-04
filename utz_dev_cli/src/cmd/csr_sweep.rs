@@ -1,8 +1,9 @@
-//! Grid size × P(PIP) × memory with the *real* grid + interned-CSR builder
-//! ([`utz_encode::grid`]), replacing gridsweep's crude border-cell
-//! estimate. For each cell size: border-cell fraction, sampled P(PIP) over
-//! uniform lon/lat points, unique interned lists, and the memory split
-//! (primary array vs CSR side table), dominant-first ordering as decided.
+//! Sweeps grid size × P(PIP) × memory with the *real* grid + interned-CSR
+//! builder ([`utz_encode::grid`]), replacing gridsweep's crude border-cell
+//! estimate. For each cell size it reports the border-cell fraction, the
+//! sampled P(PIP) over uniform lon/lat points, the unique interned lists,
+//! and the memory split (primary array vs CSR side table), with
+//! dominant-first ordering as decided.
 //!
 //! ```text
 //! utz_dev_cli csr-sweep [eps_m]
@@ -18,17 +19,18 @@ const NPTS: usize = 200_000;
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// simplification tolerance in meters
+    /// The simplification tolerance in meters.
     #[arg(default_value_t = 500.0)]
     eps_m: f64,
 }
 
 /// # Errors
-/// Dataset load/parse failure.
+/// The command fails on a dataset load/parse failure.
 ///
 /// # Panics
-/// If a cell size overflows the 16-bit CSR encoding: unique-list index
-/// past the 15-bit tag, or `list_ids` length past `u16`.
+/// The command panics if a cell size overflows the 16-bit CSR encoding: a
+/// unique-list index past the 15-bit tag, or a `list_ids` length past
+/// `u16`.
 pub fn run(args: &Args) -> utz_build::Result<()> {
     let eps_m = args.eps_m;
     let points = gen_pts(NPTS);

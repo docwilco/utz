@@ -1,25 +1,29 @@
-//! `Finder`: grid prefilter → per-polygon integer PIP.
+//! `Finder` answers lookups with a grid prefilter followed by
+//! per-polygon integer PIP.
 //!
-//! Three memory modes, selected automatically by how the asset is loaded
-//! (only eager is an explicit request); availability falls out of the
-//! environment rung:
-//! - **zero-copy** (`from_static`, uncompressed): the payload is borrowed
-//!   from static storage (flash partition, `include_bytes!`, …). No RAM
-//!   payload at all; flash pays the uncompressed size. `core` rung.
-//! - **lazy** (`from_slice`/`from_vec`/`from_reader`): the payload lives in
-//!   owned RAM, typically because the asset is compressed and flash can't
-//!   fit it uncompressed. No decoded-geometry cache: RAM = the decompressed
-//!   payload, nothing more.
-//! - **eager** ([`Finder::preload()`], `alloc`): additionally decode all rings
-//!   into RAM once; lookups then scan decoded slices. Most RAM, fastest
-//!   repeat lookups.
+//! There are three memory modes, selected automatically by how the asset
+//! is loaded (only eager is an explicit request); availability falls out
+//! of the environment rung:
+//! - In **zero-copy** mode (`from_static()`, uncompressed) the payload is
+//!   borrowed from static storage (flash partition, `include_bytes!`, …).
+//!   There is no RAM payload at all; flash pays the uncompressed size.
+//!   This is the `core` rung.
+//! - In **lazy** mode (`from_slice()`/`from_vec()`/`from_reader()`) the
+//!   payload lives in owned RAM, typically because the asset is
+//!   compressed and flash can't fit it uncompressed. There is no
+//!   decoded-geometry cache: RAM holds the decompressed payload, nothing
+//!   more.
+//! - In **eager** mode ([`Finder::preload()`], `alloc`) all rings are
+//!   additionally decoded into RAM once; lookups then scan decoded
+//!   slices. It uses the most RAM and gives the fastest repeat lookups.
 //!
-//! Zero-copy and lazy share the identical lookup mechanism: candidates are
-//! PIP-tested by walking their arcs directly off the payload bytes through
-//! the per-edge kernel, O(1) state, no allocation. They differ only in
-//! where the payload resides (borrowed static vs owned RAM), i.e. the
-//! `Cow` variant of [`Payload`]. Interior cells touch zero geometry in every
-//! mode, and [`Finder::lookup_coarse()`] never touches geometry at all.
+//! Zero-copy and lazy share the identical lookup mechanism: candidates
+//! are PIP-tested by walking their arcs directly off the payload bytes
+//! through the per-edge kernel, with O(1) state and no allocation. They
+//! differ only in where the payload resides (borrowed static vs owned
+//! RAM), that is, in the `Cow` variant of [`Payload`]. Interior cells
+//! touch zero geometry in every mode, and [`Finder::lookup_coarse()`]
+//! never touches geometry at all.
 
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
@@ -30,33 +34,34 @@ use crate::format::{self, read_fixed, read_u16, read_u32, read_varint, unzigzag,
 use crate::{caps, pip, Codec, Error, Result};
 use utz_common::{GeomEncoding, QuantBits, NO_ZONE};
 
-/// A geographic position in degrees, **order-neutral by design**:
-/// construct with named fields, so there is no argument order to get wrong,
-/// only values. `Position { lat: 51.5, lon: -0.13 }` and
+/// A geographic position in degrees, **order-neutral by design**: you
+/// construct it with named fields, so there is no argument order to get
+/// wrong, only values. `Position { lat: 51.5, lon: -0.13 }` and
 /// `Position { lon: -0.13, lat: 51.5 }` are the same position.
 ///
-/// Deliberately no positional constructor and no `From<(f64, f64)>`: either
-/// would reintroduce the lon/lat-swap footgun this type exists to kill.
+/// There is deliberately no positional constructor and no
+/// `From<(f64, f64)>`: either would reintroduce the lon/lat-swap footgun
+/// this type exists to kill.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Position {
-    /// longitude in degrees, −180..=180 (x)
+    /// The longitude in degrees, −180..=180 (x).
     pub lon: f64,
-    /// latitude in degrees, −90..=90 (y)
+    /// The latitude in degrees, −90..=90 (y).
     pub lat: f64,
 }
 
 impl Position {
-    /// Whether both coordinates are in range (lon −180..=180,
-    /// lat −90..=90); `false` for NaN. What [`Finder::lookup()`] checks
-    /// before answering.
+    /// Reports whether both coordinates are in range (lon −180..=180,
+    /// lat −90..=90); NaN reports `false`. This is what
+    /// [`Finder::lookup()`] checks before answering.
     #[must_use]
     pub fn is_valid(&self) -> bool {
         (-180.0..=180.0).contains(&self.lon) && (-90.0..=90.0).contains(&self.lat)
     }
 }
 
-/// The asset's payload section. `Cow::Borrowed` = zero-copy mode,
-/// `Cow::Owned` = lazy/eager. `Cow` itself lives in `alloc`; on the
+/// The asset's payload section. `Cow::Borrowed` is zero-copy mode and
+/// `Cow::Owned` is lazy/eager. `Cow` itself lives in `alloc`; on the
 /// bare-`core` rung borrowed is the only possible variant.
 #[cfg(feature = "alloc")]
 type Payload = alloc::borrow::Cow<'static, [u8]>;
@@ -74,10 +79,11 @@ const _: () = assert!(
         && core::mem::align_of::<crate::pip::Pack24>() == 1
 );
 
-/// `FullRings` load-time check: the coords are read via typed slice casts,
-/// so the payload must land them 4-aligned (static assets:
-/// [`crate::include_bytes_aligned!`]`(4, ..)`). Endianness is a compile-time
-/// refusal (see the `geom-full-rings` `compile_error` in lib.rs).
+/// Performs the `FullRings` load-time check: the coords are read via
+/// typed slice casts, so the payload must land them 4-aligned (static
+/// assets use [`crate::include_bytes_aligned!`]`(4, ..)`). Endianness is
+/// a compile-time refusal (see the `geom-full-rings` `compile_error` in
+/// lib.rs).
 #[cfg_attr(
     not(feature = "geom-full-rings"),
     expect(
@@ -107,38 +113,40 @@ fn check_full_rings(payload: &[u8], layout: &PayloadLayout) -> Result<()> {
     Ok(())
 }
 
-/// Eager-mode storage: every ring decoded, flat. Ranges are exclusive
-/// ends; a range's start is the previous entry's end (global across
-/// features, so no per-item start field).
+/// Eager-mode storage, which holds every ring decoded into flat arrays.
+/// Ranges are stored as exclusive ends; a range's start is the previous
+/// entry's end (global across features, so there is no per-item start
+/// field).
 #[cfg(feature = "alloc")]
 struct Eager {
     coords: EagerCoords,
-    /// exclusive end into `coords` per ring
+    /// The exclusive end into `coords` for each ring.
     ring_ends: Vec<u32>,
-    /// per polygon (indexed by poly id): bbox (read from the poly record) +
-    /// exclusive end into `ring_ends`. The bbox skips whole-ring folds for
-    /// candidates that touch the cell but not the point.
+    /// One entry per polygon (indexed by poly id): the bbox (read from
+    /// the poly record) plus the exclusive end into `ring_ends`. The bbox
+    /// skips whole-ring folds for candidates that touch the cell but not
+    /// the point.
     polys: Vec<([i32; 4], u32)>,
 }
 
-/// Per-polygon eager records: bbox + exclusive `ring_ends` end (see
-/// [`Eager::polys`]).
+/// The per-polygon eager records, each a bbox plus an exclusive
+/// `ring_ends` end (see [`Eager::polys`]).
 #[cfg(feature = "alloc")]
 type Polys = Vec<([i32; 4], u32)>;
 
-/// The eager cache's coordinate store, at quant-nearest width:
-/// i16-quant assets keep i16 pairs (half the cache RAM) and PIP widens
+/// The eager cache's coordinate store, kept at quant-nearest width:
+/// i16-quant assets keep i16 pairs (half the cache RAM), and PIP widens
 /// per edge inside the kernel (still to i64: crosses of i16 coords reach
-/// 2^33, see the pip module docs).
+/// 2^33; see the pip module docs).
 #[cfg(feature = "alloc")]
 enum EagerCoords {
     Narrow(Vec<(i16, i16)>),
     Wide(Vec<(i32, i32)>),
 }
 
-/// Eager-cache element construction: narrow a decoded (i32-accumulated)
-/// quant coordinate to the storage width. `PartialEq` powers the arc-join
-/// and ring-closure vertex dedup during decode.
+/// Constructs an eager-cache element by narrowing a decoded
+/// (i32-accumulated) quant coordinate to the storage width. `PartialEq`
+/// powers the arc-join and ring-closure vertex dedup during decode.
 #[cfg(feature = "alloc")]
 trait EagerCoord: pip::CoordPair + PartialEq {
     fn from_q(x: i32, y: i32) -> Self;
@@ -160,31 +168,32 @@ impl EagerCoord for (i16, i16) {
     }
 }
 
-/// A loaded timezone index. Build once, query many.
+/// A loaded timezone index. Build it once and query it many times.
 ///
 /// Availability follows the environment ladder; each row adds to the
 /// ones above it:
 ///
 /// | feature | adds mode    | API |
 /// |---------|--------------|-----|
-/// | `core`  | zero-copy    | [`from_static`](Finder::from_static), [`lookup`](Finder::lookup), [`lookup_coarse`](Finder::lookup_coarse) (and their `_unchecked` variants) |
-/// | `alloc` | lazy + eager | [`from_slice`](Finder::from_slice), [`from_vec`](Finder::from_vec), [`eager_from_slice`](Finder::eager_from_slice), [`preload`](Finder::preload), [`preload_bytes`](Finder::preload_bytes) |
-/// | `std`   |              | [`from_reader`](Finder::from_reader) |
+/// | `core`  | zero-copy    | [`from_static()`](Finder::from_static), [`lookup()`](Finder::lookup), [`lookup_coarse()`](Finder::lookup_coarse) (and their `_unchecked` variants) |
+/// | `alloc` | lazy + eager | [`from_slice()`](Finder::from_slice), [`from_vec()`](Finder::from_vec), [`eager_from_slice()`](Finder::eager_from_slice), [`preload()`](Finder::preload), [`preload_bytes()`](Finder::preload_bytes) |
+/// | `std`   |              | [`from_reader()`](Finder::from_reader) |
 pub struct Finder {
     payload: Payload,
     layout: PayloadLayout,
-    /// eager-mode geometry, populated by `preload`
+    /// The eager-mode geometry, populated by `preload()`.
     #[cfg(feature = "alloc")]
     eager: Option<Eager>,
 }
 
 impl Finder {
-    /// Load the preset selected by the (single) enabled preset feature.
-    /// Documented here always, but cfg'd out of real builds when zero or
-    /// several presets are in the tree — there, load explicitly with
-    /// `from_slice`/`from_static` on the statics in [`crate::data`] instead.
-    /// `tiny-static` is the zero-copy one (`from_static`, bare `core`); the
-    /// rest are compressed and load lazy (`from_slice`).
+    /// Loads the preset selected by the (single) enabled preset feature.
+    /// It is documented here always, but cfg'd out of real builds when
+    /// zero or several presets are in the tree; there, load explicitly
+    /// with `from_slice()`/`from_static()` on the statics in
+    /// [`crate::data`] instead. `tiny-static` is the zero-copy one
+    /// (`from_static()`, bare `core`); the rest are compressed and load
+    /// lazy (`from_slice()`).
     ///
     /// # Example
     ///
@@ -225,8 +234,9 @@ impl Finder {
     /// ```
     ///
     /// # Errors
-    /// As [`Finder::from_slice()`] (or [`Finder::from_static()`] for
-    /// `tiny-static`) on the baked preset asset.
+    /// The errors are as for [`Finder::from_slice()`] (or
+    /// [`Finder::from_static()`] for `tiny-static`) on the baked preset
+    /// asset.
     // `doc` is in the cfg so the method appears in rustdoc output, which
     // is built with several presets unified (workspace docs) or none
     // (docs.rs); in real builds it exists only with exactly one preset.
@@ -330,15 +340,16 @@ impl Finder {
         finder
     }
 
-    /// Borrow an asset from `&'static` bytes (flash partition,
-    /// `include_bytes!`, …). Zero-copy mode: no RAM payload. Only the
-    /// `uncompressed` codec is accepted here.
+    /// Borrows an asset from `&'static` bytes (flash partition,
+    /// `include_bytes!`, …). This is zero-copy mode: there is no RAM
+    /// payload. Only the `uncompressed` codec is accepted here.
     ///
     /// # Errors
-    /// [`Error::StaticAssetCompressed`] if the asset is compressed;
-    /// [`Error::BadMagic`] / [`Error::UnsupportedVersion`] / the other
-    /// header-validation errors if the bytes are not a readable μTZ
-    /// asset; [`Error::Misaligned`] for unaligned `FullRings` coords.
+    /// Returns [`Error::StaticAssetCompressed`] if the asset is
+    /// compressed; [`Error::BadMagic`], [`Error::UnsupportedVersion`], or
+    /// the other header-validation errors if the bytes are not a readable
+    /// μTZ asset; and [`Error::Misaligned`] for unaligned `FullRings`
+    /// coords.
     pub fn from_static(bytes: &'static [u8]) -> Result<Finder> {
         let start = format::outer(bytes)?;
         let layout = format::parse(&bytes[start..])?;
@@ -364,8 +375,8 @@ impl Finder {
         })
     }
 
-    /// The payload bytes, out of whichever representation this rung's
-    /// [`Payload`] is.
+    /// Returns the payload bytes out of whichever representation this
+    /// rung's [`Payload`] is.
     fn payload_bytes(&self) -> &[u8] {
         #[cfg(feature = "alloc")]
         {
@@ -377,20 +388,20 @@ impl Finder {
         }
     }
 
-    /// Decode a borrowed asset into an owned `Finder` (lazy mode),
+    /// Decodes a borrowed asset into an owned `Finder` (lazy mode),
     /// decompressing as needed. For compressed assets already in
-    /// memory/flash (preset statics, OTA blobs): no copy of the compressed
+    /// memory/flash (preset statics, OTA blobs), no copy of the compressed
     /// input is made. An uncompressed asset is copied into owned RAM
     /// wholesale; if you own the buffer, [`Finder::from_vec()`] reuses its
     /// allocation instead, and for `&'static` data
     /// [`Finder::from_static()`] borrows it with no copy at all.
     ///
     /// # Errors
-    /// [`Error::BadMagic`] / [`Error::UnsupportedVersion`] / the other
-    /// header-validation errors if the bytes are not a readable μTZ
-    /// asset; [`Error::CodecNotCompiledIn`] /
-    /// [`Error::DecoderFailed`] if the payload can't be decoded;
-    /// [`Error::Misaligned`] for unaligned `FullRings` coords.
+    /// Returns [`Error::BadMagic`], [`Error::UnsupportedVersion`], or the
+    /// other header-validation errors if the bytes are not a readable μTZ
+    /// asset; [`Error::CodecNotCompiledIn`] or [`Error::DecoderFailed`]
+    /// if the payload can't be decoded; and [`Error::Misaligned`] for
+    /// unaligned `FullRings` coords.
     #[cfg(feature = "alloc")]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     pub fn from_slice(bytes: &[u8]) -> Result<Finder> {
@@ -416,16 +427,17 @@ impl Finder {
         })
     }
 
-    /// Take ownership of an asset buffer: the entry point when the asset
-    /// arrives at runtime (an OTA download, a network fetch) or when you
-    /// bring your own decompression and hand over the result. A compressed
-    /// asset is decompressed if its codec is compiled in; an
-    /// uncompressed one is adopted in place, reusing the allocation. Lazy
-    /// mode either way: even an uncompressed owned buffer keeps the payload
-    /// in RAM. Zero-copy needs [`from_static`](Finder::from_static).
+    /// Takes ownership of an asset buffer. This is the entry point when
+    /// the asset arrives at runtime (an OTA download, a network fetch) or
+    /// when you bring your own decompression and hand over the result. A
+    /// compressed asset is decompressed if its codec is compiled in; an
+    /// uncompressed one is adopted in place, reusing the allocation. The
+    /// result is lazy mode either way: even an uncompressed owned buffer
+    /// keeps the payload in RAM. Zero-copy needs
+    /// [`from_static()`](Finder::from_static).
     ///
     /// # Errors
-    /// As [`Finder::from_slice()`].
+    /// The errors are as for [`Finder::from_slice()`].
     #[cfg(feature = "alloc")]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     pub fn from_vec(bytes: Vec<u8>) -> Result<Finder> {
@@ -458,10 +470,11 @@ impl Finder {
         })
     }
 
-    /// Decode straight to eager mode: all polygons decoded up front into
-    /// a flat in-RAM cache so lookups never touch the encoded geometry,
-    /// the fastest mode (what [`preload()`](Finder::preload) switches a
-    /// `Finder` into). The encoded geometry is then dropped: steady-state
+    /// Decodes straight to eager mode: all polygons are decoded up front
+    /// into a flat in-RAM cache so lookups never touch the encoded
+    /// geometry, which is the fastest mode (the mode
+    /// [`preload()`](Finder::preload) switches a `Finder` into). The
+    /// encoded geometry is then dropped: steady-state
     /// RAM is the eager cache plus the small lookup tables, less than
     /// [`from_slice()`](Finder::from_slice) + `preload()` keeping the full
     /// decoded payload (−17% on the compact preset). Peak RAM during
@@ -472,7 +485,8 @@ impl Finder {
     /// still: the payload stays in flash.
     ///
     /// # Errors
-    /// As [`Finder::from_slice()`], which performs the load.
+    /// The errors are as for [`Finder::from_slice()`], which performs the
+    /// load.
     #[cfg(feature = "alloc")]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     pub fn eager_from_slice(bytes: &[u8]) -> Result<Finder> {
@@ -513,11 +527,11 @@ impl Finder {
         Ok(finder)
     }
 
-    /// Read an asset from any `Read` source into an owned buffer.
+    /// Reads an asset from any `Read` source into an owned buffer.
     ///
     /// # Errors
-    /// [`Error::ReadFailed`] if reading fails; otherwise as
-    /// [`Finder::from_vec()`].
+    /// Returns [`Error::ReadFailed`] if reading fails; otherwise the
+    /// errors are as for [`Finder::from_vec()`].
     #[cfg(feature = "std")]
     pub fn from_reader(mut reader: impl std::io::Read) -> Result<Finder> {
         let mut bytes = Vec::new();
@@ -527,11 +541,12 @@ impl Finder {
         Finder::from_vec(bytes)
     }
 
-    /// The population-density weight floor the asset was simplified
-    /// with (the `Config::density_weight_floor()` knob), as recorded in
-    /// its header: `None` means uniform, unweighted simplification.
-    /// Provenance, like [`tzbb_release()`](Finder::tzbb_release); it does
-    /// not affect lookups.
+    /// Returns the population-density weight floor the asset was
+    /// simplified with (the `Config::density_weight_floor()` knob), as
+    /// recorded in its header; `None` means uniform, unweighted
+    /// simplification. It is provenance, like
+    /// [`tzbb_release()`](Finder::tzbb_release), and does not affect
+    /// lookups.
     #[must_use]
     pub fn density_weight_floor(&self) -> Option<f64> {
         match self.layout.density_weight_floor_e4 {
@@ -540,9 +555,9 @@ impl Finder {
         }
     }
 
-    /// The [timezone-boundary-builder] (TZBB) release the asset was
-    /// generated from, as recorded in its header; an empty string if the
-    /// recorded bytes are not valid UTF-8.
+    /// Returns the [timezone-boundary-builder] (TZBB) release the asset
+    /// was generated from, as recorded in its header; the result is an
+    /// empty string if the recorded bytes are not valid UTF-8.
     ///
     /// [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
     #[must_use]
@@ -550,11 +565,11 @@ impl Finder {
         core::str::from_utf8(format::release(&self.layout, self.payload_bytes())).unwrap_or("")
     }
 
-    /// Heap bytes [`preload`](Finder::preload) will reserve: the exact
-    /// eager-cache size. The asset records how many coordinates, rings,
-    /// and polygons its geometry decodes to, so this is pure arithmetic
-    /// (no trial decode); a constrained caller can check fit before
-    /// committing.
+    /// Returns the heap bytes [`preload()`](Finder::preload) will
+    /// reserve, which is the exact eager-cache size. The asset records
+    /// how many coordinates, rings, and polygons its geometry decodes to,
+    /// so this is pure arithmetic (no trial decode); a constrained caller
+    /// can check fit before committing.
     #[cfg(feature = "alloc")]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     #[must_use]
@@ -577,14 +592,14 @@ impl Finder {
             + layout.eager_polys as usize * core::mem::size_of::<([i32; 4], u32)>()
     }
 
-    /// Decode all polygons into RAM once (eager mode): repeat lookups
-    /// then skip decoding entirely, the fastest mode. Costs
-    /// [`preload_bytes`](Finder::preload_bytes)
+    /// Decodes all polygons into RAM once (eager mode): repeat lookups
+    /// then skip decoding entirely, making this the fastest mode. It
+    /// costs [`preload_bytes()`](Finder::preload_bytes)
     /// (≈ uncompressed geometry at quant-nearest width: i16 pairs for
-    /// i16-quant assets — half the cache — i32 otherwise) in heap. The
+    /// i16-quant assets, half the cache, and i32 otherwise) in heap. The
     /// whole cache is reserved exactly up front, so peak use equals the
-    /// final size: no reallocation on the way. A no-op if already
-    /// preloaded.
+    /// final size with no reallocation on the way. It is a no-op if
+    /// already preloaded.
     #[cfg(feature = "alloc")]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     pub fn preload(&mut self) {
@@ -615,8 +630,8 @@ impl Finder {
         });
     }
 
-    /// [`preload`](Finder::preload)'s decode pass, generic over the cache's
-    /// coordinate width.
+    /// Runs [`preload()`](Finder::preload)'s decode pass, generic over
+    /// the cache's coordinate width.
     #[cfg(feature = "alloc")]
     #[expect(
         clippy::cast_possible_truncation,
@@ -660,21 +675,22 @@ impl Finder {
         (coords, ring_ends, polys)
     }
 
-    /// Accurate lookup: grid cell → interior zone (O(1)) or candidates → PIP.
+    /// Performs the accurate lookup: the grid cell yields either an
+    /// interior zone (O(1)) or candidates that go through PIP.
     ///
-    /// `Ok(None)` means no zone claims the point: at sea on a `land-`
-    /// dataset. With oceans covered (the default datasets) every valid
+    /// `Ok(None)` means no zone claims the point (at sea on a `land-`
+    /// dataset). With oceans covered (the default datasets) every valid
     /// position resolves to some zone. On a `Coarse` (grid-only) asset
     /// the answer is at cell precision, identical to
     /// [`lookup_coarse()`](Finder::lookup_coarse): cell precision is that
     /// asset's precision.
     ///
-    /// Zero-copy/lazy Finders test candidates directly off the payload bytes
-    /// (zero alloc); eager ones (after `preload()`) scan
+    /// Zero-copy/lazy Finders test candidates directly off the payload
+    /// bytes (zero alloc); eager ones (after `preload()`) scan
     /// pre-decoded rings.
     ///
     /// # Errors
-    /// [`Error::InvalidPosition`] if `position` fails
+    /// Returns [`Error::InvalidPosition`] if `position` fails
     /// [`Position::is_valid()`]: lon beyond ±180, lat beyond ±90, or NaN.
     /// Pre-validated hot loops can skip the check with
     /// [`lookup_unchecked()`](Finder::lookup_unchecked).
@@ -686,11 +702,12 @@ impl Finder {
         }
     }
 
-    /// [`lookup()`](Finder::lookup) without the position check, for hot
-    /// loops whose inputs are valid by construction. Memory-safe for any
-    /// input, but an invalid position returns an arbitrary nearby answer
-    /// instead of an error: out-of-range coordinates clamp to the nearest
-    /// edge of the world, NaN behaves as 0.
+    /// Runs [`lookup()`](Finder::lookup) without the position check, for
+    /// hot loops whose inputs are valid by construction. It is
+    /// memory-safe for any input, but an invalid position returns an
+    /// arbitrary nearby answer instead of an error: out-of-range
+    /// coordinates clamp to the nearest edge of the world, and NaN
+    /// behaves as 0.
     #[must_use]
     pub fn lookup_unchecked(&self, position: Position) -> Option<&str> {
         let (px, py) = self.quantize(position);
@@ -722,14 +739,14 @@ impl Finder {
         }
     }
 
-    /// Grid-only approximate lookup on any asset: no geometry decoded,
-    /// ~cell-size border error. Border cells answer with the cell's
-    /// dominant zone; `Ok(None)` means no zone touches the cell (at sea
-    /// on a `land-` dataset).
+    /// Performs a grid-only approximate lookup on any asset: no geometry
+    /// is decoded, and the border error is ~cell-size. Border cells
+    /// answer with the cell's dominant zone; `Ok(None)` means no zone
+    /// touches the cell (at sea on a `land-` dataset).
     ///
     /// # Errors
-    /// [`Error::InvalidPosition`], exactly as
-    /// [`lookup()`](Finder::lookup).
+    /// Returns [`Error::InvalidPosition`], exactly as
+    /// [`lookup()`](Finder::lookup) does.
     pub fn lookup_coarse(&self, position: Position) -> Result<Option<&str>> {
         if position.is_valid() {
             Ok(self.lookup_coarse_unchecked(position))
@@ -738,8 +755,8 @@ impl Finder {
         }
     }
 
-    /// [`lookup_coarse()`](Finder::lookup_coarse) without the position
-    /// check; the same contract as
+    /// Runs [`lookup_coarse()`](Finder::lookup_coarse) without the
+    /// position check, under the same contract as
     /// [`lookup_unchecked()`](Finder::lookup_unchecked).
     #[must_use]
     pub fn lookup_coarse_unchecked(&self, position: Position) -> Option<&str> {
@@ -811,7 +828,7 @@ impl Finder {
             .filter(|tzid| !tzid.is_empty())
     }
 
-    /// poly id → feature id (parent table).
+    /// Maps a poly id to its feature id via the parent table.
     fn parent_of(&self, poly_id: u16) -> u16 {
         read_u16(
             self.payload_bytes(),
@@ -819,16 +836,16 @@ impl Finder {
         )
     }
 
-    /// Per-polygon test: bbox gate, then even-odd PIP at the width the
-    /// header demands. Grid candidates are polys localized to the
-    /// CELL; the record's bbox is the point-granular refinement: a
-    /// miss returns before touching any arc. Lazy path streams the arcs
-    /// straight off the asset bytes through the per-edge kernel:
-    /// junction vertices are shared by consecutive arcs and the ring closure
-    /// is a shared junction too, so the ring's segment set is exactly the
+    /// Tests one polygon: a bbox gate, then even-odd PIP at the width the
+    /// header demands. Grid candidates are polys localized to the CELL;
+    /// the record's bbox is the point-granular refinement, so a miss
+    /// returns before touching any arc. The lazy path streams the arcs
+    /// straight off the asset bytes through the per-edge kernel: junction
+    /// vertices are shared by consecutive arcs and the ring closure is a
+    /// shared junction too, so the ring's segment set is exactly the
     /// union of each arc's internal segments. Every arc is walked FORWARD
-    /// (orientation bit ignored) with O(1) state, and parity XORs across
-    /// arcs order-independently.
+    /// (the orientation bit is ignored) with O(1) state, and parity XORs
+    /// across arcs order-independently.
     fn poly_contains(&self, poly_id: u16, px: i32, py: i32) -> bool {
         #[cfg(feature = "geom-full-rings")]
         if self.layout.geom == GeomEncoding::FullRings {
@@ -875,8 +892,9 @@ impl Finder {
         poly_inside
     }
 
-    /// Fold one arc's internal segments through the edge kernel. `Inside` =
-    /// this arc contributed an odd number of ray crossings.
+    /// Folds one arc's internal segments through the edge kernel. An
+    /// `Inside` result means this arc contributed an odd number of ray
+    /// crossings.
     #[expect(
         clippy::cast_possible_truncation,
         reason = "coords accumulate i16/i24/i32-width deltas; sums fit i32 by format"
@@ -933,11 +951,12 @@ impl Finder {
         }
     }
 
-    /// `FullRings` path (geom=2): the payload geometry IS the eager cache.
-    /// One generic slice kernel folds straight off the payload bytes (flash
-    /// in zero-copy mode). Coord width follows the quant width: i16 /
-    /// i32 as typed pairs, i24 as [`pip::Pack24`] (align 1, no alignment
-    /// requirement). Works on the bare `core` rung.
+    /// Tests one polygon on the `FullRings` path (geom=2), where the
+    /// payload geometry IS the eager cache. One generic slice kernel
+    /// folds straight off the payload bytes (flash in zero-copy mode).
+    /// The coord width follows the quant width: i16 and i32 are read as
+    /// typed pairs, and i24 as [`pip::Pack24`] (align 1, so no alignment
+    /// requirement). This path works on the bare `core` rung.
     #[cfg(feature = "geom-full-rings")]
     fn full_rings_poly_contains(&self, poly_id: u16, px: i32, py: i32) -> bool {
         let (layout, payload) = (&self.layout, self.payload_bytes());
@@ -973,13 +992,14 @@ impl Finder {
         }
     }
 
-    /// Even-odd fold over one poly's rings `[ring_start, ring_end)` at pair
-    /// type `P`: `size_of::<P>()` IS the stored coordinate stride; `scan`
-    /// is the width-matched per-target ring kernel ([`ring_hit_narrow`] /
-    /// [`ring_hit_wide`]).
-    /// (No `cast_ptr_alignment` expect needed anymore: the cast target is
-    /// the opaque `P`, so the lint can't see a concrete alignment; the
-    /// invariant itself is stated in the SAFETY comment below.)
+    /// Runs the even-odd fold over one poly's rings
+    /// `[ring_start, ring_end)` at pair type `P`: `size_of::<P>()` IS the
+    /// stored coordinate stride, and `scan` is the width-matched
+    /// per-target ring kernel ([`ring_hit_narrow()`] /
+    /// [`ring_hit_wide()`]). (No `cast_ptr_alignment` expect is needed
+    /// anymore: the cast target is the opaque `P`, so the lint can't see
+    /// a concrete alignment; the invariant itself is stated in the SAFETY
+    /// comment below.)
     #[cfg(feature = "geom-full-rings")]
     fn full_rings_fold<P: pip::CoordPair>(
         &self,
@@ -1022,9 +1042,10 @@ impl Finder {
         inside
     }
 
-    /// Eager path: same even-odd fold over the pre-decoded poly (indexed
-    /// directly by poly id). The preload-computed bbox still skips whole
-    /// folds for candidates that touch the cell but not the point.
+    /// Runs the eager path: the same even-odd fold over the pre-decoded
+    /// poly (indexed directly by poly id). The preload-computed bbox
+    /// still skips whole folds for candidates that touch the cell but not
+    /// the point.
     #[cfg(feature = "alloc")]
     fn eager_poly_contains(&self, eager: &Eager, poly_id: u16, px: i32, py: i32) -> bool {
         let poly_index = poly_id as usize;
@@ -1075,8 +1096,9 @@ impl Finder {
         }
     }
 
-    /// Decode one signed arc ref onto the end of `coords` (join-deduplicated).
-    /// Eager-mode decode only; the lazy path streams via `scan_arc` instead.
+    /// Decodes one signed arc ref onto the end of `coords`
+    /// (join-deduplicated). This is eager-mode decode only; the lazy path
+    /// streams via `scan_arc()` instead.
     #[cfg(feature = "alloc")]
     #[expect(
         clippy::cast_possible_truncation,
@@ -1125,13 +1147,13 @@ impl Finder {
     }
 }
 
-/// The ring-scan kernel for i16/i24-quant geometry: the
+/// The ring-scan kernel for i16/i24-quant geometry. It dispatches to the
 /// sign-split kernel on 32-bit targets (0.61–0.72× the i64 kernel there:
 /// its magnitudes take single widening multiplies where the W kernels'
-/// (b+1)-bit differences force full wide ones), the generic i64 kernel on
-/// 64-bit targets (one-instruction wide multiplies; sign-split measured
-/// 2.3× SLOWER on a 64-bit host). Ring verdicts are identical either way,
-/// so answers stay platform-independent.
+/// (b+1)-bit differences force full wide ones) and to the generic i64
+/// kernel on 64-bit targets (one-instruction wide multiplies; sign-split
+/// measured 2.3× SLOWER on a 64-bit host). Ring results are identical
+/// either way, so answers stay platform-independent.
 #[cfg(any(feature = "alloc", feature = "geom-full-rings"))]
 fn ring_hit_narrow<P>(ring: &[P], px: P::Narrow, py: P::Narrow) -> pip::RingHit
 where
@@ -1145,9 +1167,10 @@ where
     pip::ring_hit::<i64, _>(ring, px, py)
 }
 
-/// [`ring_hit_narrow`]'s i32-quant sibling: sign-split on 32-bit targets
-/// (0.24× the i128 kernel there), i128 on 64-bit ones (where i128
-/// measured 0.75× of even the i64 kernel).
+/// The i32-quant sibling of [`ring_hit_narrow()`]: it dispatches to
+/// sign-split on 32-bit targets (0.24× the i128 kernel there) and to
+/// i128 on 64-bit ones (where i128 measured 0.75× of even the i64
+/// kernel).
 #[cfg(any(feature = "alloc", feature = "geom-full-rings"))]
 fn ring_hit_wide(ring: &[(i32, i32)], px: i32, py: i32) -> pip::RingHit {
     #[cfg(target_pointer_width = "32")]
@@ -1156,8 +1179,8 @@ fn ring_hit_wide(ring: &[(i32, i32)], px: i32, py: i32) -> pip::RingHit {
     pip::ring_hit::<i128, _>(ring, px, py)
 }
 
-/// Streaming per-edge kernels (`scan_arc`), same per-target policy as the
-/// ring dispatchers above.
+/// The streaming per-edge kernel for `scan_arc()`, which follows the same
+/// per-target policy as the ring dispatchers above.
 fn edge_narrow(a: (i32, i32), b: (i32, i32), px: i32, py: i32) -> pip::EdgeHit {
     #[cfg(target_pointer_width = "32")]
     return pip::edge_split(a, b, px, py);
@@ -1165,7 +1188,7 @@ fn edge_narrow(a: (i32, i32), b: (i32, i32), px: i32, py: i32) -> pip::EdgeHit {
     pip::edge::<i64, _>(a, b, px, py)
 }
 
-/// [`edge_narrow`]'s i32-quant sibling.
+/// The i32-quant sibling of [`edge_narrow()`].
 fn edge_wide(a: (i32, i32), b: (i32, i32), px: i32, py: i32) -> pip::EdgeHit {
     #[cfg(target_pointer_width = "32")]
     return pip::edge_split(a, b, px, py);
@@ -1173,10 +1196,10 @@ fn edge_wide(a: (i32, i32), b: (i32, i32), px: i32, py: i32) -> pip::EdgeHit {
     pip::edge::<i128, _>(a, b, px, py)
 }
 
-/// Even-odd fold over consecutive rings `[ring_start, ring_end)` of a flat
-/// eager cache, shared by both cache widths ([`EagerCoords`]); `scan` is the
-/// width-matched per-target ring kernel ([`ring_hit_narrow`] /
-/// [`ring_hit_wide`]).
+/// Runs the even-odd fold over consecutive rings `[ring_start, ring_end)`
+/// of a flat eager cache, shared by both cache widths ([`EagerCoords`]);
+/// `scan` is the width-matched per-target ring kernel
+/// ([`ring_hit_narrow()`] / [`ring_hit_wide()`]).
 #[cfg(feature = "alloc")]
 fn rings_hit<P: pip::CoordPair>(
     coords: &[P],

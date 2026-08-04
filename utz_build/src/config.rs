@@ -1,7 +1,7 @@
-//! Consumer-facing builder API for the `custom` tier: the typed config IS
-//! the build config (rustdoc'd, IDE-completable, no file discovery). Meant
-//! for a consumer `build.rs` with `utz_build` as a
-//! build-dependency (`prost-build` pattern):
+//! The consumer-facing builder API for the `custom` tier, where the typed
+//! config IS the build config (rustdoc'd, IDE-completable, with no file
+//! discovery). It is meant for a consumer `build.rs` with `utz_build` as
+//! a build-dependency (the `prost-build` pattern):
 //!
 //! ```no_run
 //! // build.rs
@@ -16,8 +16,8 @@
 //! ```
 //!
 //! Source data (TZBB, optionally GHS-POP for density weighting) is fetched
-//! into the cache, never committed; downloads are cond-GET-cached so
-//! regeneration is cheap.
+//! into the cache, never committed; downloads are conditional-GET-cached
+//! so regeneration is cheap.
 //!
 //! The preset recipes double as constructors. Start from one and
 //! override a single knob instead of spelling the whole recipe:
@@ -27,9 +27,9 @@ use std::path::PathBuf;
 
 use utz_encode::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgo};
 
-/// Builder for a custom `.utz` asset. Defaults: dataset `now`, RDP
-/// ε=500 m, no density weighting, i24, 2° grid, gzip, varint-arcs
-/// geometry, output `$OUT_DIR/tz.utz`.
+/// The builder for a custom `.utz` asset. The defaults are dataset `now`,
+/// RDP ε=500 m, no density weighting, i24, a 2° grid, gzip, varint-arcs
+/// geometry, and output to `$OUT_DIR/tz.utz`.
 #[derive(Clone, Debug)]
 pub struct Config {
     dataset: String,
@@ -62,16 +62,16 @@ impl Default for Config {
 }
 
 impl Config {
-    /// A config at the documented defaults; chain knob methods to
-    /// override, then [`generate()`](Config::generate).
+    /// Returns a config at the documented defaults; chain knob methods to
+    /// override them, then call [`generate()`](Config::generate).
     #[must_use]
     pub fn new() -> Self {
         Config::default()
     }
 
-    /// The `tiny` preset recipe: RDP ε=10 000 m with pop-density
-    /// floor 0.001, i16, 2° grid, gzip. A preset constructor is a starting
-    /// point for one-knob variants: `tiny-static` is
+    /// Returns the `tiny` preset recipe: RDP ε=10 000 m with pop-density
+    /// floor 0.001, i16, a 2° grid, and gzip. A preset constructor is a
+    /// starting point for one-knob variants: `tiny-static` is
     /// `Config::tiny().codec(Codec::Uncompressed)`.
     #[must_use]
     pub fn tiny() -> Self {
@@ -83,8 +83,8 @@ impl Config {
             .codec(Codec::Gzip)
     }
 
-    /// The `compact` preset recipe: RDP ε=1 000 m with pop-density
-    /// floor 0.001, i24, 4/3° grid, xz.
+    /// Returns the `compact` preset recipe: RDP ε=1 000 m with
+    /// pop-density floor 0.001, i24, a 4/3° grid, and xz.
     #[must_use]
     pub fn compact() -> Self {
         Config::new()
@@ -95,8 +95,8 @@ impl Config {
             .codec(Codec::Xz)
     }
 
-    /// The `balanced` preset recipe: RDP ε=50 m with pop-density
-    /// floor 0.020, i24, 2/3° grid, brotli.
+    /// Returns the `balanced` preset recipe: RDP ε=50 m with pop-density
+    /// floor 0.020, i24, a 2/3° grid, and brotli.
     #[must_use]
     pub fn balanced() -> Self {
         Config::new()
@@ -107,9 +107,9 @@ impl Config {
             .codec(Codec::Brotli)
     }
 
-    /// The `accurate` preset recipe: dataset `all` (the full
+    /// Returns the `accurate` preset recipe: dataset `all` (the full
     /// Comprehensive zone set; the other presets use `now`), RDP ε=10 m
-    /// with pop-density floor 0.10, i32, 0.5° grid, brotli.
+    /// with pop-density floor 0.10, i32, a 0.5° grid, and brotli.
     #[must_use]
     pub fn accurate() -> Self {
         Config::new()
@@ -121,51 +121,53 @@ impl Config {
             .codec(Codec::Brotli)
     }
 
-    /// Dataset: `[land-]now|1970|all` (see [`Dataset`](crate::Dataset)).
+    /// Sets the dataset: `[land-]now|1970|all` (see
+    /// [`Dataset`](crate::Dataset)).
     #[must_use]
     pub fn dataset(mut self, dataset: &str) -> Self {
         self.dataset = dataset.into();
         self
     }
 
-    /// Simplification tolerance ceiling in meters (default 500). The
-    /// value is the ε of whichever [`simplify_algo`](Config::simplify_algo)
-    /// runs: a max-deviation bound for RDP and Imai–Iri; Visvalingam
-    /// derives its area threshold as ε².
+    /// Sets the simplification tolerance ceiling in meters (default 500).
+    /// The value is the ε of whichever
+    /// [`simplify_algo()`](Config::simplify_algo) runs: it is a
+    /// max-deviation bound for RDP and Imai–Iri, and Visvalingam derives
+    /// its area threshold as ε².
     #[must_use]
     pub fn rdp_meters(mut self, eps_m: f64) -> Self {
         self.eps_m = eps_m;
         self
     }
 
-    /// Quantization width: 16 / 24 / 32 (default 24). Any other value
-    /// fails at [`generate()`](Config::generate), not here.
+    /// Sets the quantization width: 16 / 24 / 32 (default 24). Any other
+    /// value fails at [`generate()`](Config::generate), not here.
     #[must_use]
     pub fn quant_bits(mut self, bits: u32) -> Self {
         self.quant_bits = bits;
         self
     }
 
-    /// Grid cell size in degrees, 0.1–45 (default 2). Fractional sizes
-    /// are fine (the presets use 4/3, 2/3, and 0.5); out-of-range values
-    /// fail at [`generate()`](Config::generate).
+    /// Sets the grid cell size in degrees, 0.1–45 (default 2). Fractional
+    /// sizes are fine (the presets use 4/3, 2/3, and 0.5); out-of-range
+    /// values fail at [`generate()`](Config::generate).
     #[must_use]
     pub fn grid_deg(mut self, degrees: f64) -> Self {
         self.grid_deg = degrees;
         self
     }
 
-    /// Payload codec. `Codec::Uncompressed` gives a `core`-rung asset:
-    /// zero decode RAM, more flash.
+    /// Sets the payload codec. `Codec::Uncompressed` gives a `core`-rung
+    /// asset: zero decode RAM at the cost of more flash.
     #[must_use]
     pub fn codec(mut self, codec: Codec) -> Self {
         self.codec = codec;
         self
     }
 
-    /// Simplification algorithm, default [`SimplifyAlgo::Rdp`].
+    /// Sets the simplification algorithm, default [`SimplifyAlgo::Rdp`].
     /// [`SimplifyAlgo::ImaiIri`] gives provably minimum vertices for the
-    /// same ε (−4 to −19% measured, slower encode);
+    /// same ε (−4 to −19% measured, at a slower encode);
     /// [`SimplifyAlgo::Visvalingam`] trades the deviation bound for a
     /// cartographically smoother caricature; [`SimplifyAlgo::None`] keeps
     /// every source vertex.
@@ -175,34 +177,35 @@ impl Config {
         self
     }
 
-    /// Geometry encoding. Default [`GeomEncoding::VarintArcs`] (smallest
-    /// flash); the measured size/speed ladder is the table on
-    /// [`GeomEncoding`].
+    /// Sets the geometry encoding. The default is
+    /// [`GeomEncoding::VarintArcs`] (smallest flash); the measured
+    /// size/speed ladder is the table on [`GeomEncoding`].
     #[must_use]
     pub fn geom(mut self, geom: GeomEncoding) -> Self {
         self.geom = geom;
         self
     }
 
-    /// Population-density-weighted simplification: ε multiplier floor in
-    /// the densest cells, strictly between 0 and 1 (the presets use
-    /// 0.001–0.10; default off, uniform ε; out-of-range fails at
-    /// [`generate()`](Config::generate)). First use downloads GHS-POP
-    /// (~460 MB, cached).
+    /// Enables population-density-weighted simplification. The value is
+    /// the ε multiplier floor in the densest cells, strictly between 0
+    /// and 1 (the presets use 0.001–0.10; the default is off, uniform ε;
+    /// out-of-range values fail at [`generate()`](Config::generate)).
+    /// First use downloads GHS-POP (~460 MB, cached).
     #[must_use]
     pub fn density_weight_floor(mut self, floor: f64) -> Self {
         self.density_weight_floor = Some(floor);
         self
     }
 
-    /// Where to write the asset. Default: `$OUT_DIR/tz.utz` (build.rs context).
+    /// Sets where to write the asset. The default is `$OUT_DIR/tz.utz`
+    /// (the build.rs context).
     #[must_use]
     pub fn out_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.out = Some(path.into());
         self
     }
 
-    /// Where source downloads are cached. Default: the
+    /// Sets where source downloads are cached. The default is the
     /// [`cache_dir()`](crate::cache_dir) chain (`UTZ_CACHE_DIR`, then the
     /// per-user cache directory). Point this at a pre-fetched directory
     /// for hermetic builds with no network. Build scripts relying on the
@@ -215,16 +218,17 @@ impl Config {
         self
     }
 
-    /// Fetch sources (cached), build the asset, write it, return the
-    /// path. Also writes `<out>.guard.rs`: a compile-time assertion of the
-    /// `utz` features this asset needs (via `utz::caps`); `include!` it
-    /// next to the `include_bytes!` so a feature mismatch fails the build
-    /// instead of the first load.
+    /// Fetches the sources (cached), builds the asset, writes it, and
+    /// returns the path. It also writes `<out>.guard.rs`, a compile-time
+    /// assertion of the `utz` features this asset needs (via `utz::caps`);
+    /// `include!` it next to the `include_bytes!` so a feature mismatch
+    /// fails the build instead of the first load.
     ///
     /// # Errors
-    /// Invalid dataset name, out-of-range `quant_bits`/`grid_deg`, source
-    /// download/parse failure, encoding failure, missing `OUT_DIR` when no
-    /// `out_path` is set, or I/O writing the asset and its guard file.
+    /// Returns an error for an invalid dataset name, out-of-range
+    /// `quant_bits`/`grid_deg`, a source download/parse failure, an
+    /// encoding failure, a missing `OUT_DIR` when no `out_path` is set,
+    /// or an I/O failure writing the asset and its guard file.
     pub fn generate(self) -> crate::Result<PathBuf> {
         let cache = self.cache_dir.clone().unwrap_or_else(crate::cache_dir);
         let (features, release) = crate::load_with_release_in(&self.dataset, &cache)?;
@@ -266,12 +270,12 @@ impl Config {
     }
 }
 
-/// Emit `<asset>.guard.rs`: `const _` assertions against `utz::caps` for
-/// the geometry decoder and codec the asset needs (shared by
+/// Emits `<asset>.guard.rs`, the `const _` assertions against `utz::caps`
+/// for the geometry decoder and codec the asset needs (shared by
 /// [`Config::generate()`] and the `gen` CLI).
 ///
 /// # Errors
-/// I/O failure writing `<out>.guard.rs`.
+/// Returns an error on an I/O failure writing `<out>.guard.rs`.
 pub fn write_guard(out: &std::path::Path, geom: GeomEncoding, codec: Codec) -> crate::Result<()> {
     let name = out
         .file_name()
