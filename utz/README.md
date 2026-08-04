@@ -10,21 +10,21 @@
 μTZ (micro-timezone): tiny, tunable, embeddable lat/lon → IANA timezone-id
 lookup.
 
-- **Tiny**: [OpenStreetMap] timezone data down from ~80 MB to ~71 KB via
-  shared-arc topology, tunable map simplification, integer quantization,
-  and general compression. Larger, more accurate options available as
-  well.
-- **Embeddable**: pure-Rust codecs, integer point-in-polygon, `no_std`
-  capable.
+- **Tiny**: shared-arc topology, tunable map simplification, integer
+  quantization, and general compression take [OpenStreetMap] timezone
+  data down from ~80 MB to ~71 KB. Larger, more accurate options are
+  available as well.
+- **Embeddable**: the codecs are pure Rust, the point-in-polygon test is
+  integer-only, and the crate is `no_std` capable.
 - **Tunable**: pick dataset, simplification parameters, data types,
   quantization grid, grid cell size, and compression codec to hit your exact
   size / RAM / accuracy point, guided by a [visualization
   tool](https://docwilco.github.io/utz/live/index.html). Or use no
-  compression for direct from flash.
-- **DST-correct**: returns the IANA `tzid`; resolve offsets/DST downstream
-  with [`jiff`](https://crates.io/crates/jiff) (whose compile-time static
-  zones pair well with μTZ's embedded nature) or the prevalent
-  [`chrono-tz`](https://crates.io/crates/chrono-tz).
+  compression to run straight from flash.
+- **DST-correct**: lookups return the IANA `tzid`; resolve offsets/DST
+  downstream with [`jiff`](https://crates.io/crates/jiff) (whose
+  compile-time static zones pair well with μTZ's embedded nature) or the
+  prevalent [`chrono-tz`](https://crates.io/crates/chrono-tz).
 
 ## Getting started
 
@@ -111,10 +111,10 @@ the build gets `std` and both keep working.
 
 ### Geometry decoders
 
-One feature per geometry encoding; an asset whose encoding has no
-compiled decoder is refused at load. Presets enable the decoder their recipe
-uses; `custom` users pick the one(s) their assets use. The measured
-size/speed ladder is the table on [`GeomEncoding`].
+Each geometry encoding has its own feature; an asset whose encoding
+has no compiled decoder is refused at load. Presets enable the decoder
+their recipe uses; `custom` users pick the one(s) their assets use.
+The measured size/speed ladder is the table on [`GeomEncoding`].
 
 | feature                 | decodes                             | notes |
 |-------------------------|-------------------------------------|-------|
@@ -125,9 +125,9 @@ size/speed ladder is the table on [`GeomEncoding`].
 
 ### Compression codecs
 
-Additive; each compiles the decoder for one payload codec. Uncompressed
-assets need none of them. The backend crates are listed in the
-[`decompress`] module docs.
+Codec features are additive; each compiles the decoder for one payload
+codec. Uncompressed assets need none of them. The backend crates are
+listed in the [`decompress`] module docs.
 
 | feature    | codec  | minimum environment |
 |------------|--------|---------------------|
@@ -139,7 +139,7 @@ assets need none of them. The backend crates are listed in the
 
 ### Datasets
 
-Not a feature: the dataset picks which [timezone-boundary-builder]
+The dataset is not a feature: it picks which [timezone-boundary-builder]
 release an asset is generated from, baked in at generation time. Its
 main knob is the zone set: `now` and `1970` merge zones whose rules are
 identical since that date, while `all` keeps every distinct tzid. Every
@@ -166,27 +166,28 @@ exactly one buffer: the header states the decompressed size up front. RAM
 use then follows from how the asset was loaded:
 
 - **zero-copy** ([`Finder::from_static()`]): the asset is borrowed in
-  place and lookups stream geometry straight off the stored bytes; no heap
-  allocation at all.
+  place and lookups stream geometry straight off the stored bytes, with
+  no heap allocation at all.
 - **lazy** ([`Finder::from_slice()`] and friends): the decompressed payload
   lives in owned RAM and nothing else is cached (the RAM notes in the
   [preset table](#presets) are this buffer).
 - **eager** ([`Finder::preload()`]): all rings are additionally decoded up
   front into a flat cache, the fastest mode; [`Finder::preload_bytes()`]
   tells you the exact cost before you pay it.
-- **eager from compressed** ([`Finder::eager_from_slice()`]): decode
-  straight to the eager cache and drop the encoded geometry, for less
-  steady-state RAM than lazy + [`Finder::preload()`] combined.
+- **eager from compressed** ([`Finder::eager_from_slice()`]): the asset
+  decodes straight to the eager cache and the encoded geometry is
+  dropped, for less steady-state RAM than lazy + [`Finder::preload()`]
+  combined.
 
 ### Pairing assets with constructors
 
 Three choices together set where a build lands on RAM and speed: the
 asset's codec, its [geometry encoding](#geometry-decoders), and the
-constructor that loads it. The recurring trade: spending storage (a
-larger encoding, no compression) removes lookup work and RAM. Every
-row below is a one- or two-knob
-variant of the `compact` recipe ([`utz_build::Config`] code in the
-first column); the relative ladder holds for the other recipes and is
+constructor that loads it. The recurring trade is that spending storage
+(a larger encoding, no compression) removes lookup work and RAM. Every
+row below is a one- or two-knob variant of the `compact` recipe
+([`utz_build::Config`] code in the first column); the relative ladder
+holds for the other recipes and is
 quantified on [`GeomEncoding`].
 
 | asset | loaded with | minimum environment | asset size | steady-state RAM | lookup speed |
@@ -200,19 +201,19 @@ quantified on [`GeomEncoding`].
 | <code>Config::compact()<br>&nbsp;&nbsp;.codec(Codec::Uncompressed)<br>&nbsp;&nbsp;.geom(GeomEncoding::Coarse)</code> | [`Finder::from_static()`] | `core` | ~81 KB | none | grid probe |
 
 All rows share the `compact` recipe's simplification and quantization
-(RDP ε 1 km, population-weighted, i24 coordinates); sizes measured on
-TZBB 2026c.
+(RDP ε 1 km, population-weighted, i24 coordinates); the sizes were
+measured on TZBB 2026c.
 
 `FullRings` + [`Finder::from_static()`] is the standout: the encoding is
 the preload cache serialized, so lookups run at eager speed straight off
 flash with no heap and no preload pass at boot; it just costs the most
 storage (and less than the cache it replaces: flash coordinates stay
 quant-width while the RAM cache rounds up to i32). Compression pulls
-the other way: the smallest asset, but the decoded payload (or
+the other way: it yields the smallest asset, but the decoded payload (or
 after [`Finder::eager_from_slice()`], the eager cache) must live in
 RAM. `Coarse` sidesteps the trade entirely by dropping the polygons:
-near-nothing to store, and via [`Finder::from_static()`] no RAM either
-(the floor of both ladders), at cell precision.
+there is near-nothing to store and, via [`Finder::from_static()`], no
+RAM either (the floor of both ladders), at cell precision.
 
 ### Handling failures
 
@@ -236,10 +237,10 @@ sort into three families:
   [`Error::UnsupportedVersion`], and the other header/decode errors):
   the bytes are not a readable μTZ asset. This is the family an OTA
   update path should expect and handle by rejecting the download.
-- **usage errors** ([`Error::StaticAssetCompressed`]: decompression
-  needs an owned buffer, use [`Finder::from_slice()`];
-  [`Error::Misaligned`]: embed `FullRings` assets with
-  [`include_bytes_aligned!`]).
+- **usage errors**: [`Error::StaticAssetCompressed`] means decompression
+  needs an owned buffer, so use [`Finder::from_slice()`], and
+  [`Error::Misaligned`] is fixed by embedding `FullRings` assets with
+  [`include_bytes_aligned!`].
 
 ## Building a custom asset
 
@@ -342,8 +343,8 @@ generated:
    small plaintext header stays readable so any tool can identify the
    asset without decompressing it.
 
-Measured per preset (TZBB release 2026c; the workspace's `utz_dev_cli
-whittle` command reproduces every row):
+The stages were measured per preset (TZBB release 2026c; the workspace's
+`utz_dev_cli whittle` command reproduces every row):
 
 <table>
   <thead>
@@ -365,7 +366,7 @@ The first three presets share the `now` dataset (64 zones after the
 stage-1 merge), so their rows only diverge once simplification applies
 each recipe's tolerance; `accurate` starts from the full `all` set
 (444 zones). `tiny-static` is `tiny`'s serialized payload shipped
-uncompressed: the 124.9 KB row, skipping stage 7.
+uncompressed: it is the 124.9 KB row with stage 7 skipped.
 
 ### Shipping the asset
 
@@ -393,13 +394,15 @@ answers at cell precision from any asset.
 μTZ stands on the shoulders of three excellent projects; it reuses their
 ideas and pushes on size and embeddability:
 
-- **[spatialtime](https://github.com/moranbw/spatialtime)**: the crate μTZ
-  grew out of. The build-once/query-many API shape and the
+- **[spatialtime](https://github.com/moranbw/spatialtime)** is the crate
+  μTZ grew out of. The build-once/query-many API shape and the
   compression approach come from here.
-- **[rtz](https://github.com/twitchax/rtz)**: the 1°×1° grid prefilter.
-- **[tzf-rs](https://github.com/ringsaturn/tzf-rs)**: shared-edge (topology)
-  boundary deduplication, the grid/preindex fast-path (its "Fuzzy" finder,
-  μTZ's `lookup_coarse`), and delta+varint coordinate encoding.
+- **[rtz](https://github.com/twitchax/rtz)** contributed the 1°×1° grid
+  prefilter.
+- **[tzf-rs](https://github.com/ringsaturn/tzf-rs)** contributed
+  shared-edge (topology) boundary deduplication, the grid/preindex
+  fast-path (its "Fuzzy" finder, μTZ's `lookup_coarse()`), and
+  delta+varint coordinate encoding.
 
 Where those ship one fixed size/accuracy point, μTZ makes the tradeoff a
 build-time knob and adds integer quantization to go ~10× smaller, with a

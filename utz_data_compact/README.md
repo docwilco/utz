@@ -1,8 +1,9 @@
 # utz_data_compact
 
-μTZ `compact` preset asset: dataset `now`, RDP
-ε=1 000 m with pop-density weight floor 1e-3, i24, 4/3° grid, xz —
-~445 KB flash, peak decode RAM = decoded size (~608 KB).
+The μTZ `compact` preset asset. Its recipe is dataset `now`, RDP
+ε=1 000 m with pop-density weight floor 1e-3, i24, a 4/3° grid, and xz;
+it costs ~445 KB of flash, and peak decode RAM equals the decoded size
+(~608 KB).
 
 Regenerate (writes `data/compact.utz`, gitignored) from the canonical
 recipe; the build script refuses assets that do not match it:

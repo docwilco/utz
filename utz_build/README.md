@@ -1,6 +1,7 @@
 # utz_build
 
-μTZ builder library: generate custom `.utz` assets from a `build.rs`.
+The μTZ builder library generates custom `.utz` assets from a
+`build.rs`.
 
 Everything routes through the typed builder, [`Config`]. In a
 `build.rs` (with `utz_build` as a build-dependency):

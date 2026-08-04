@@ -1,17 +1,19 @@
-//! Raw `extern "C"` surface for the webdist viewer's live container encode
-//! and simplify-worker misassignment stats (wasm32 only). Same no-bindgen
-//! style as `utz_simplify/src/wasm.rs` (whose
-//! `utz_alloc`/`utz_simplify`/`utz_simplify_w` exports this cdylib links in).
+//! The raw `extern "C"` surface for the webdist viewer's live container
+//! encode and simplify-worker misassignment stats (wasm32 only). It keeps
+//! the same no-bindgen style as `utz_simplify/src/wasm.rs`, whose
+//! `utz_alloc()`/`utz_simplify()`/`utz_simplify_w()` exports this cdylib
+//! links in.
 //!
-//! Stateful by design: the encode worker uploads the `<ds>.bin.z` blob once
-//! (`utz_enc_init` parses the topology section written by
-//! [`crate::emit::dataset_bin()`]), then every parameter change is one cheap
-//! `utz_enc_payload` call (simplify → quantize → clean → grid → serialize)
-//! followed by one `utz_enc_compress` call per codec, so the JS can post
-//! stats after every step instead of waiting for the slowest codec.
-//! Cancellation is the worker's job: terminate + respawn + re-init.
+//! The surface is stateful by design: the encode worker uploads the
+//! `<ds>.bin.z` blob once (`utz_enc_init()` parses the topology section
+//! written by [`crate::emit::dataset_bin()`]), and then every parameter
+//! change is one cheap `utz_enc_payload()` call (simplify → quantize →
+//! clean → grid → serialize) followed by one `utz_enc_compress()` call per
+//! codec, so the JS can post stats after every step instead of waiting for
+//! the slowest codec. Cancellation is the worker's job: it terminates,
+//! respawns, and re-inits the instance.
 //!
-//! JS usage sketch (inside the encode worker):
+//! The encode worker's JS uses the surface roughly like this:
 //! ```js
 //! const ptr = utz_enc_alloc(blob.byteLength);
 //! new Uint8Array(memory.buffer).set(blob, ptr);
@@ -22,13 +24,14 @@
 //! ```
 //!
 //! The simplify worker's per-arc surface (`utz_ws_*`, backed by
-//! [`crate::misassign`]) replaces what used to be JS math: upload one arc's
-//! raw coords (and densities) into `utz_alloc` buffers, call [`utz_ws_arc`],
-//! read the simplified coords back from the same buffer and the per-vertex
-//! deviations via [`utz_ws_devs_ptr`]; the four misassignment accumulators
-//! run across arcs ([`utz_ws_stat`]) until [`utz_ws_reset`].
+//! [`crate::misassign`]) replaces what used to be JS math: the worker
+//! uploads one arc's raw coords (and densities) into buffers from
+//! `utz_alloc()`, calls [`utz_ws_arc()`], and reads the simplified coords
+//! back from the same buffer and the per-vertex deviations via
+//! [`utz_ws_devs_ptr()`]; the four misassignment accumulators run across
+//! arcs ([`utz_ws_stat()`]) until [`utz_ws_reset()`].
 //!
-//! JS usage sketch (inside the simplify worker, per run):
+//! The simplify worker's JS uses it roughly like this, once per run:
 //! ```js
 //! utz_ws_reset();
 //! for (each arc) {
@@ -49,16 +52,20 @@ use utz_simplify::{simplify_weighted, DensityWeight, Simplify};
 
 struct State {
     topo: Topology,
-    /// per-vertex density (people/km², arc order); empty when not shipped
+    /// The per-vertex densities (people/km², in arc order); the vector is
+    /// empty when the blob did not ship densities.
     densities: Vec<f32>,
-    /// tzid/offset metadata only (empty polys); geometry lives in `topo`
+    /// The features carry tzid/offset metadata only (their polys are
+    /// empty); the geometry lives in `topo`.
     feats: Vec<Feat>,
     dataset_code: u8,
     release: String,
-    /// last `utz_enc_payload` result (input to `utz_enc_compress`)
+    /// The result of the last `utz_enc_payload()` call, which is the
+    /// input to `utz_enc_compress()`.
     payload: Vec<u8>,
     stats: PayloadStats,
-    /// last `utz_enc_problems` result: 12-byte records (see `utz_enc_problems`)
+    /// The result of the last `utz_enc_problems()` call, stored as the
+    /// 12-byte records that `utz_enc_problems()` documents.
     problems: Vec<u8>,
 }
 
@@ -66,7 +73,8 @@ struct State {
 // dataset. `static mut` keeps the no-bindgen ABI flat.
 static mut STATE: Option<State> = None;
 
-/// Allocate `n` bytes for the blob upload; `utz_enc_init` takes ownership.
+/// Allocates `n` bytes for the blob upload; `utz_enc_init()` takes
+/// ownership.
 #[no_mangle]
 pub extern "C" fn utz_enc_alloc(n: usize) -> *mut u8 {
     let mut buffer = Vec::<u8>::with_capacity(n);
@@ -195,9 +203,9 @@ fn parse_blob(bytes: &[u8]) -> Option<State> {
     })
 }
 
-/// Parse a `<ds>.bin.z` blob (uTZv with the topology section) previously
-/// copied into a `utz_enc_alloc(len)` buffer at `ptr`. Takes ownership of the
-/// buffer. Returns 1 on success, 0 on a malformed/legacy blob.
+/// Parses a `<ds>.bin.z` blob (uTZv with the topology section) previously
+/// copied into a `utz_enc_alloc(len)` buffer at `ptr`. Takes ownership of
+/// the buffer. Returns 1 on success and 0 on a malformed or legacy blob.
 ///
 /// # Safety
 /// `ptr`/`len` must come from a single prior `utz_enc_alloc(len)` call whose
@@ -215,16 +223,15 @@ pub unsafe extern "C" fn utz_enc_init(ptr: *mut u8, len: usize) -> u32 {
     u32::from(ok)
 }
 
-/// Stage 1: simplify (algo ids as in `utz_simplify/src/wasm.rs`; ε in meters,
-/// converted like the builder: /111 320, squared for Visvalingam) with
-/// optional density weighting (`w_min < 1`, needs shipped densities), then
-/// quantize → clean → grid → serialize via `payload_from_topology`. Returns
-/// the payload length in bytes (0 = error / no init), stats via
-/// [`utz_enc_stat`], the payload staying resident for [`utz_enc_compress`].
-/// The simplify stage shared by [`utz_enc_payload`] and
-/// [`utz_enc_problems`]. `pre_snap_bits` = Some(qbits) snaps every arc to
-/// that grid BEFORE simplifying (the viewer's Q→S order); the later
-/// quantize step then re-snaps the already-on-grid coords, a no-op.
+/// The simplify stage shared by [`utz_enc_payload()`] and
+/// [`utz_enc_problems()`]. The `algo` ids are as in
+/// `utz_simplify/src/wasm.rs`, ε arrives in meters and is converted the
+/// way the builder converts it (divided by 111 320, and squared for
+/// Visvalingam), and density weighting is optional (`w_min < 1`, which
+/// needs shipped densities). Passing `pre_snap_bits` as `Some(qbits)`
+/// snaps every arc to that grid BEFORE simplifying (the viewer's Q→S
+/// order); the later quantize step then re-snaps the already-on-grid
+/// coords, which is a no-op.
 fn simplified_arcs(
     state: &State,
     algo: u32,
@@ -283,7 +290,8 @@ fn simplified_arcs(
         .collect()
 }
 
-/// A buffer length heading back over the JS boundary as `u32`.
+/// Narrows a buffer length to the `u32` that heads back over the JS
+/// boundary.
 #[expect(
     clippy::cast_possible_truncation,
     reason = "usize is 32 bits on wasm32, so lengths cross the JS boundary losslessly"
@@ -292,6 +300,12 @@ fn len_u32(n: usize) -> u32 {
     n as u32
 }
 
+/// Runs stage 1 of the live encode: simplify, then quantize → clean →
+/// grid → serialize via `payload_from_topology()`. Returns the payload
+/// length in bytes (0 on error or before a successful init); the stats
+/// become readable via [`utz_enc_stat()`], and the payload stays resident
+/// for [`utz_enc_compress()`].
+///
 /// `geom` is a [`GeomEncoding`] header byte (0 varint arcs, 1 fixed-width
 /// arcs, 2 full rings, 3 coarse); unknown values fall back to varint arcs.
 #[no_mangle]
@@ -337,11 +351,12 @@ pub extern "C" fn utz_enc_payload(
     }
 }
 
-/// Stats of the last [`utz_enc_payload`] (0 for an unknown index):
-/// 0 header, 1 zone-table, 2 arc-store, 3 ring-index, 4 grid (section bytes);
-/// 5 arcs, 6 verts (post-simplify+clean counts);
-/// 7 dups, 8 spikes, 9 collinear, 10 rings dropped, 11 polys dropped,
-/// 12 arcs dropped (cleanup removals).
+/// Returns one stat of the last [`utz_enc_payload()`] call (0 for an
+/// unknown index). Indices 0-4 are section byte counts: 0 header,
+/// 1 zone-table, 2 arc-store, 3 ring-index, 4 grid. Indices 5 and 6 are
+/// the post-simplify+clean counts of arcs and verts. Indices 7-12 are the
+/// cleanup removals: 7 dups, 8 spikes, 9 collinear, 10 rings dropped,
+/// 11 polys dropped, 12 arcs dropped.
 #[no_mangle]
 pub extern "C" fn utz_enc_stat(i: u32) -> u32 {
     let Some(state) = (unsafe { &*core::ptr::addr_of!(STATE) }) else {
@@ -366,9 +381,10 @@ pub extern "C" fn utz_enc_stat(i: u32) -> u32 {
     }
 }
 
-/// Pointer to the resident payload of the last [`utz_enc_payload`] (whose
-/// return value is its length; null if none), letting the JS read the exact
-/// bytes back, e.g. to offer a `.utz` download or diff against the builder.
+/// Returns a pointer to the resident payload of the last
+/// [`utz_enc_payload()`] call (whose return value is its length; null when
+/// there is none). This lets the JS read the exact bytes back, e.g. to
+/// offer a `.utz` download or diff against the builder.
 #[no_mangle]
 pub extern "C" fn utz_enc_payload_ptr() -> *const u8 {
     match unsafe { &*core::ptr::addr_of!(STATE) } {
@@ -377,11 +393,12 @@ pub extern "C" fn utz_enc_payload_ptr() -> *const u8 {
     }
 }
 
-/// Locate problematic geometry (surviving ring self-crossings / collinear
-/// overlaps) for the given knobs: the viewer's problems panel. Runs
-/// simplify (Q→S when `pre` != 0: arcs snap to the `quant_bits` grid first)
-/// → quantize → clean → drop, then sweeps every ring. Returns the record
-/// count; records via [`utz_enc_problems_ptr`], 12 bytes each:
+/// Locates problematic geometry (surviving ring self-crossings and
+/// collinear overlaps) for the given knobs, which backs the viewer's
+/// problems panel. It runs simplify (Q→S when `pre` != 0, so arcs snap to
+/// the `quant_bits` grid first) → quantize → clean → drop, and then
+/// sweeps every ring. Returns the record count; the records are readable
+/// via [`utz_enc_problems_ptr()`], 12 bytes each:
 /// f32 lon | f32 lat | u16 kind (0 cross, 1 overlap) | u16 feature.
 /// A spot on a shared border yields one record per owning ring; the JS
 /// dedupes by location and joins the zone names.
@@ -420,7 +437,8 @@ pub extern "C" fn utz_enc_problems(
     len_u32(problems.len())
 }
 
-/// Pointer to the records of the last [`utz_enc_problems`] (null if none).
+/// Returns a pointer to the records of the last [`utz_enc_problems()`]
+/// call (null when there are none).
 #[no_mangle]
 pub extern "C" fn utz_enc_problems_ptr() -> *const u8 {
     match unsafe { &*core::ptr::addr_of!(STATE) } {
@@ -429,7 +447,8 @@ pub extern "C" fn utz_enc_problems_ptr() -> *const u8 {
     }
 }
 
-/// tzid of feature `i` as (ptr, len), for labelling problem records.
+/// Returns the tzid of feature `i` as (ptr, len) together with
+/// `utz_enc_tzid_len()`, for labelling problem records.
 #[no_mangle]
 pub extern "C" fn utz_enc_tzid_ptr(i: u32) -> *const u8 {
     match unsafe { &*core::ptr::addr_of!(STATE) } {
@@ -453,10 +472,11 @@ pub extern "C" fn utz_enc_tzid_len(i: u32) -> u32 {
     }
 }
 
-/// Stage 2: compress the resident payload with one codec byte (1 gzip/zlib,
-/// 3 brotli, 4 xz; zstd is feature-gated off in the wasm build) and return
-/// the compressed size in bytes; the shipped `.utz` adds a 10-byte outer
-/// header. Returns 0 on error / unsupported codec / no payload.
+/// Runs stage 2 of the live encode: it compresses the resident payload
+/// with one codec byte (1 gzip/zlib, 3 brotli, 4 xz; zstd is feature-gated
+/// off in the wasm build) and returns the compressed size in bytes; the
+/// shipped `.utz` adds a 10-byte outer header. Returns 0 on error, on an
+/// unsupported codec, or when there is no payload.
 #[no_mangle]
 pub extern "C" fn utz_enc_compress(codec: u32) -> u32 {
     let Some(state) = (unsafe { &*core::ptr::addr_of!(STATE) }) else {
@@ -474,9 +494,10 @@ pub extern "C" fn utz_enc_compress(codec: u32) -> u32 {
     encode::compress(&state.payload, codec).map_or(0, |compressed| len_u32(compressed.len()))
 }
 
-/// Simplify-worker misassignment state: the last arc's deviations plus the
-/// accumulators running across arcs (single-threaded wasm32, same `static
-/// mut` convention as `STATE`).
+/// The simplify worker's misassignment state holds the last arc's
+/// deviations plus the accumulators that run across arcs (wasm32 is
+/// single-threaded, and the same `static mut` convention as `STATE`
+/// applies).
 struct WsState {
     deviations: Vec<f32>,
     simplify_acc: Acc,
@@ -495,7 +516,8 @@ static mut WS: WsState = WsState {
     },
 };
 
-/// Zero the four running misassignment accumulators (start of a run).
+/// Zeroes the four running misassignment accumulators at the start of a
+/// run.
 #[no_mangle]
 pub extern "C" fn utz_ws_reset() {
     let ws = unsafe { &mut *core::ptr::addr_of_mut!(WS) };
@@ -504,19 +526,20 @@ pub extern "C" fn utz_ws_reset() {
     ws.deviations.clear();
 }
 
-/// One arc through the whole simplify-worker pipeline
-/// ([`misassign::arc_misassign()`]): pre-snap when `pre` != 0 (Q→S), simplify
-/// (`algo` ids and `param` as in `utz_simplify`; density-weighted when
-/// `densities` is non-null and `w_min` < 1), pocket + display-snap pricing
-/// into the running accumulators. `quant` codes are the viewer's quant-knob
+/// Runs one arc through the whole simplify-worker pipeline
+/// ([`misassign::arc_misassign()`]): it pre-snaps when `pre` != 0 (the
+/// Q→S order), simplifies (the `algo` ids and `param` are as in
+/// `utz_simplify`, density-weighted when `densities` is non-null and
+/// `w_min` < 1), and prices the pockets and the display snap into the
+/// running accumulators. The `quant` codes are the viewer's quant-knob
 /// indices (0 f64, 1 f32, 2 i32, 3 i24, 4 i16). Returns the kept count:
 /// the simplified coords overwrite the first `kept * 2` doubles of `xy`
 /// (already display-snapped in Q→S order, raw copies otherwise), and the
-/// per-kept-vertex deviations are readable via [`utz_ws_devs_ptr`].
+/// per-kept-vertex deviations are readable via [`utz_ws_devs_ptr()`].
 ///
 /// # Safety
 /// `xy` must point at `n_pts * 2` valid doubles and `densities` at `n_pts`
-/// valid doubles or be null (e.g. from `utz_alloc`).
+/// valid doubles or be null (e.g. from `utz_alloc()`).
 #[no_mangle]
 pub unsafe extern "C" fn utz_ws_arc(
     algo: u32,
@@ -562,9 +585,10 @@ pub unsafe extern "C" fn utz_ws_arc(
     result.kept.len()
 }
 
-/// Pointer to the last [`utz_ws_arc`]'s deviations (one f32 per kept
-/// vertex; null if none). `devs[v]` prices the output segment `v-1`→`v`; 0
-/// at the arc start and wherever nothing was dropped.
+/// Returns a pointer to the last [`utz_ws_arc()`] call's deviations (one
+/// f32 per kept vertex; null when there are none). `devs[v]` prices the
+/// output segment `v-1`→`v`, and it is 0 at the arc start and wherever
+/// nothing was dropped.
 #[no_mangle]
 pub extern "C" fn utz_ws_devs_ptr() -> *const f32 {
     let ws = unsafe { &*core::ptr::addr_of!(WS) };
@@ -575,9 +599,9 @@ pub extern "C" fn utz_ws_devs_ptr() -> *const f32 {
     }
 }
 
-/// A running misassignment accumulator (0 for an unknown index):
-/// 0 simplification area (km²), 1 simplification people,
-/// 2 display-snap area (km²), 3 display-snap people.
+/// Returns one running misassignment accumulator (0 for an unknown
+/// index): 0 is the simplification area (km²), 1 the simplification
+/// people, 2 the display-snap area (km²), and 3 the display-snap people.
 #[no_mangle]
 pub extern "C" fn utz_ws_stat(i: u32) -> f64 {
     let ws = unsafe { &*core::ptr::addr_of!(WS) };

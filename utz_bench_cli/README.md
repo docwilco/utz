@@ -1,8 +1,9 @@
 # utz_bench_cli
 
-Host-side μTZ lookup bench: same harness (`utz_bench_common`) and the same
-deterministic points as the ESP32-S3 firmware, so host and target numbers
-(and answer checksums) are directly comparable.
+The host-side μTZ lookup bench. It uses the same harness
+(`utz_bench_common`) and the same deterministic points as the ESP32-S3
+firmware, so host and target numbers (and answer checksums) are directly
+comparable.
 
 ```
 cargo run --release -p utz_bench_cli -- <shape|asset.utz> [npts] [rounds]

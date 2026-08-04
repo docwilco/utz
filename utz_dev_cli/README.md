@@ -1,9 +1,10 @@
 # utz_dev_cli
 
-μTZ development toolbox: the `utz_dev_cli` binary.
+The μTZ development toolbox, shipped as the `utz_dev_cli` binary.
 
-Repo-internal measurement, bench, and viewer commands: the tools μTZ
-is developed with, never published. The user-facing asset generation
+This crate holds the repo-internal measurement, bench, and viewer
+commands: the tools μTZ is developed with, never published. The
+user-facing asset generation
 (`gen`, `gen-preset`) lives in the `utz_build_cli` crate; the library
 consumers build against is `utz_build`.
 
@@ -15,18 +16,19 @@ cargo run --release -p utz_dev_cli -- <subcommand> [args]
 viewer (page + wasm + per-dataset blobs, via the `utz_viz` crate).
 
 Everything else measures or validates a design decision; each module's
-docs state the question it answers and how. By area:
+docs state the question it answers and how. The commands group by area:
 
-- **simplification accuracy**: [`cmd::accuracy`],
-  [`cmd::density_compare`], [`cmd::rdp_sweep`], [`cmd::quant_clean`]
-- **asset size**: [`cmd::size_table`], [`cmd::whittle`],
+- The **simplification accuracy** commands are [`cmd::accuracy`],
+  [`cmd::density_compare`], [`cmd::rdp_sweep`], and [`cmd::quant_clean`].
+- The **asset size** commands are [`cmd::size_table`], [`cmd::whittle`],
   [`cmd::window_sweep`], [`cmd::quant_size`], [`cmd::fixedwidth_size`],
-  [`cmd::imagepack_size`]
-- **grid prefilter design**: [`cmd::csr_sweep`], [`cmd::gridsweep`],
-  [`cmd::grid2mem`], [`cmd::grid_bench`], [`cmd::dominant_cost`],
-  [`cmd::polygrid_probe`]
-- **validation and sanity**: [`cmd::roundtrip`], [`cmd::pip_bench`],
-  [`cmd::geoquant`], [`cmd::amscan`], [`cmd::density_probe`]
+  and [`cmd::imagepack_size`].
+- The **grid prefilter design** commands are [`cmd::csr_sweep`],
+  [`cmd::gridsweep`], [`cmd::grid2mem`], [`cmd::grid_bench`],
+  [`cmd::dominant_cost`], and [`cmd::polygrid_probe`].
+- The **validation and sanity** commands are [`cmd::roundtrip`],
+  [`cmd::pip_bench`], [`cmd::geoquant`], [`cmd::amscan`], and
+  [`cmd::density_probe`].
 
 Source data downloads once into the workspace `cache/` (conditional
 GETs keep it fresh); density-weighted runs additionally fetch GHS-POP
