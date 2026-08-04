@@ -1,0 +1,47 @@
+# ESP32-S3 lookup-bench firmware. Excluded from the main workspace: the
+# Xtensa target needs the esp toolchain (see README.md). Standalone root:
+[workspace]
+
+[package]
+name = "utz_bench_firmware"
+version = "0.3.0+2026c"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[dependencies]
+# XIP legs borrow uncompressed containers zero-copy from flash
+# (Finder::from_static); the buffered-decode legs need the preset codecs
+# (gzip/xz/brotli — all no_std-clean). Preset blobs come from the
+# utz_data_* crates via the preset features; the codec-none twins (and the
+# geom-* decoder features they need) come via utz_bench_common::assets.
+utz = { path = "../utz", default-features = false, features = [
+    "alloc", "gzip", "xz", "brotli",
+    "tiny", "tiny-static", "compact", "balanced",
+    "custom",
+] }
+utz_bench_common = { path = "../utz_bench_common" }
+esp-hal = { version = "1.0.0", features = ["esp32s3", "unstable"] }
+esp-alloc = "0.8"
+esp-println = { version = "0.15", features = ["esp32s3"] }
+esp-backtrace = { version = "0.17", features = ["esp32s3", "panic-handler", "println"] }
+esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32s3"] }
+# the partition leg: raw flash reads (esp-storage) + the ESP-IDF partition
+# table parser (esp-bootloader-esp-idf::partitions) to find `utzdata`
+esp-storage = { version = "0.9.0", features = ["esp32s3"] }
+embedded-storage = "0.3"
+
+# utz_bench_common's build.rs runs the encoder (compiled for the host by the
+# esp toolchain) — at the default build-override opt-level 0 the weighted RDP
+# pass takes minutes, so optimize build scripts and their deps
+[profile.release.build-override]
+opt-level = 3
+
+[profile.release]
+# size-optimized like a shipping firmware, so the bench measures what an
+# embedded consumer build would actually see (build-std recompiles
+# core/alloc at "z" too)
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+debug = true # symbols for espflash stack traces; not flashed

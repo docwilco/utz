@@ -1,0 +1,29 @@
+[package]
+name = "utz_simplify"
+version = "0.3.0+2026c"
+edition.workspace = true
+license = "MIT"
+repository.workspace = true
+rust-version.workspace = true
+homepage = "https://docwilco.github.io/utz/"
+documentation = "https://docwilco.github.io/utz/docs/utz_simplify/"
+description = "Open-polyline simplification: RDP, Visvalingam-Whyatt, Imai-Iri, each with density-weighted variants"
+keywords = ["simplification", "rdp", "polyline", "geo"]
+categories = ["science::geo", "algorithms"]
+
+# `lib` for the builder (utz_build). The tuning-viewer HTML
+# wants a WASM cdylib — requested per-build, NOT via crate-type (which
+# would give unhashed artifact names that collide in workspace builds; see
+# utz_encode/Cargo.toml):
+#   cargo rustc -p utz_simplify --release --target wasm32-unknown-unknown --crate-type cdylib
+[lib]
+path = "src/lib.rs" # explicit: cargo-readme cannot infer the default
+crate-type = ["lib"]
+
+[dependencies]
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+utz_common = { path = "../utz_common", version = "0.3.0" }

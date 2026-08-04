@@ -1,0 +1,27 @@
+[package]
+name = "utz_data_compact"
+version = "0.3.0+2026c"
+edition.workspace = true
+license = "MIT AND ODbL-1.0"
+repository.workspace = true
+rust-version.workspace = true
+homepage = "https://docwilco.github.io/utz/"
+documentation = "https://docwilco.github.io/utz/docs/utz_data_compact/"
+description = "Pregenerated uTZ compact preset asset (embedded timezone-boundary data, ODbL)"
+keywords = ["timezone", "data", "embedded"]
+categories = ["date-and-time", "embedded"]
+include = ["src/**/*", "build.rs", "data/compact.utz", "README.md", "LICENSE*"]
+
+# Preset data crate: one generated `.utz` asset as a static. The asset
+# is gitignored and regenerated, never committed; the include list above
+# forces it into the published package, and build.rs refuses to compile
+# an asset that does not match the recipe (see RELEASING.md).
+
+[dependencies]
+
+[lints]
+workspace = true
+
+# the recipe guard in build.rs parses the asset header
+[build-dependencies]
+utz_common = { path = "../utz_common", version = "0.3.0" }

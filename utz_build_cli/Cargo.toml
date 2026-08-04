@@ -1,0 +1,32 @@
+[package]
+name = "utz_build_cli"
+version = "0.3.0+2026c"
+edition.workspace = true
+license = "MIT"
+repository.workspace = true
+rust-version.workspace = true
+homepage = "https://docwilco.github.io/utz/"
+documentation = "https://docwilco.github.io/utz/docs/utz_build_cli/"
+description = "CLI for generating uTZ timezone-lookup assets: gen (explicit knobs) and gen-preset (canonical recipes)"
+keywords = ["timezone", "cli", "geolocation"]
+categories = ["command-line-utilities", "science::geo"]
+
+# The user-facing asset-generation CLI: `gen` (arbitrary knobs) and
+# `gen-preset` (the canonical preset recipes), both driving
+# utz_build::Config. The repo-internal measurement/bench/viewer commands
+# live in utz_dev_cli.
+[[bin]]
+name = "utz_build_cli"
+doc = false
+path = "src/main.rs"
+
+[dependencies]
+utz_build = { path = "../utz_build", version = "0.3.0", features = ["utz-error"] }
+utz = { path = "../utz", version = "0.3.0", features = ["std", "custom", "gzip", "ruzstd", "brotli", "xz", "geom-varint-arcs", "geom-fixed-width-arcs", "geom-full-rings", "geom-coarse"] }
+clap = { version = "4", features = ["derive"] }
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--cfg", "on_docsrs"]

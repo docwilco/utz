@@ -35,7 +35,7 @@ exist for server use).
 
 ```
 utz/                 workspace root
-  Cargo.toml         [workspace] members = ["utz", "utz-build"]
+  Cargo.toml         [workspace] members = ["utz", "utz_build"]
   PLAN.md            this file
   .gitignore         cache/, assets/, *.geojson, *.utz, viewers
 
@@ -48,16 +48,16 @@ utz/                 workspace root
       pip.rs         hand-rolled per-polygon integer PIP (i64/i128)
       finder.rs      Finder: new()/from_static()/from_reader() + lookup()/lookup_coarse()
 
-  utz-simplify/      open-polyline simplification menu (RDP / Visvalingam–Whyatt /
-    src/             Imai–Iri), shared by utz-build and — as a wasm32 cdylib —
+  utz_simplify/      open-polyline simplification menu (RDP / Visvalingam–Whyatt /
+    src/             Imai–Iri), shared by utz_build and — as a wasm32 cdylib —
       lib.rs         the tuning HTML (§14.8); wasm.rs = raw extern "C" surface
       wasm.rs
 
-  utz-data-*/        preset data crates (§11): tiny/tiny-static/compact/
+  utz_data_*/        preset data crates (§11): tiny/tiny-static/compact/
                      balanced/accurate — generated + published by CI per TZBB
                      release, not committed (scripts/gen-presets.sh)
 
-  utz-build/         consumer build-dependency (builder API) + CLI (`gen`)
+  utz_build/         consumer build-dependency (builder API) + CLI (`gen`)
     src/             + dev/exploration + viz tool
       lib.rs         re-exports encoder + measurement helpers
       types.rs       Feat/Ring/Poly, quantization helpers
@@ -70,9 +70,9 @@ utz/                 workspace root
     src/cmd/         measurement subcommands (sweeps, probes) — continue here
 ```
 
-`utz-build` is where the exploration/measurement continues (the `formatlab`
+`utz_build` is where the exploration/measurement continues (the `formatlab`
 prototypes get ported here). It is a build-dependency of *consumers* (custom tier,
-§11), the CLI, the generator behind the `utz-data-*` crates, and the home of the
+§11), the CLI, the generator behind the `utz_data_*` crates, and the home of the
 viz tool and benchmarks. `utz` itself never depends on it.
 
 ---
@@ -107,7 +107,7 @@ impl Finder {
   + `preload` (eager mode); `std` adds `from_reader`.
 - **No-embed deployment** (= no preset feature enabled): ship the binary *without*
   the asset, load it at runtime from a flash partition (`from_static`) or file
-  (`from_reader`); generate the asset with the `utz-build` CLI (§11). Enables
+  (`from_reader`); generate the asset with the `utz_build` CLI (§11). Enables
   **OTA-updatable tz data** (swap `-now`↔`-1970`, new TZBB vintage) without
   reflashing firmware.
 - **`lookup_coarse`** (learned from tzf's FuzzyFinder): answer from the grid alone — no arcs
@@ -160,7 +160,7 @@ edges; validated by tzf/ZoneDetect-v1 independently converging on the same desig
 
 ---
 
-## 5. Build pipeline (runs in `utz-build`: consumer build.rs, CLI, or data-crate CI — §11)
+## 5. Build pipeline (runs in `utz_build`: consumer build.rs, CLI, or data-crate CI — §11)
 
 1. **Download** `timezones-with-oceans[-now|-1970].geojson.zip` (no suffix =
    `all`) → `cache/`.
@@ -230,11 +230,11 @@ pure Rust (Xtensa-friendly). Decoder features on `utz` are **additive** (§11); 
 codec byte with no compiled decoder is a runtime `Err`. `uncompressed` enables
 zero-copy `from_static` and is all the `core` rung can read.
 
-**Encoders live only in `utz-build`.** Codec choice and window/dict size are
+**Encoders live only in `utz_build`.** Codec choice and window/dict size are
 asset-shape knobs (§11): set via the build.rs builder API / CLI flags — never
 via `utz` features. Encoder and decoder only need to agree on the codec *byte*:
 CI encodes presets with C `zstd` on the host, devices decode with `ruzstd`.
-`utz-build` mirrors the codec set as features, `default = all` (CLI installs
+`utz_build` mirrors the codec set as features, `default = all` (CLI installs
 get everything); build.rs consumers trim compile time via
 `default-features = false, features = ["zstd"]`. Keeping trimmed encoders in
 sync with `utz`'s decoders is the **consumer's responsibility** (§14.9);
@@ -256,7 +256,7 @@ doubles as the DEFLATE history — the one decoder that reuses output as
 history). Rules:
 - **Always cap window at decoded size** — beyond it back-references can't reach,
   so larger is pure RAM waste at zero ratio gain. The xz/LZMA defaults (8–64 MB
-  dict) are the trap; encoder defaults in `utz-build` apply this cap.
+  dict) are the trap; encoder defaults in `utz_build` apply this cap.
 - **Below decoded size is the real knob** — trades ratio for decode RAM;
   exposed on builder + CLI, preset values picked from the §15 ratio-vs-window
   sweep: ratio turned out nearly window-insensitive (zstd knees at 8–16 K,
@@ -440,7 +440,7 @@ onboarding (embedded-friendlier than the ecosystem's silent `default = ["std"]`,
 where a forgotten `default-features = false` drags `std` into firmware):
 ```rust
 compile_error!("utz: pick a data tier: a preset (`tiny`/`tiny-static`/`compact`/`balanced`/`accurate`) \
-                or `custom` (bring your own asset, generated with utz-build)");
+                or `custom` (bring your own asset, generated with utz_build)");
 compile_error!("utz: choose an environment: `std`, `alloc` (no_std + allocator), \
                 or `core` (bare metal: uncompressed assets only, ~zero heap)");
 ```
@@ -475,9 +475,9 @@ deliberate bare-metal intent and satisfies choice 2:
 
 **The tiers:**
 
-- **Presets (features → data crates):** `utz-data-tiny` … `utz-data-accurate`,
+- **Presets (features → data crates):** `utz_data_tiny` … `utz_data_accurate`,
   each containing one CI-generated `.utz` as a static. Each preset enables
-  **one or zero decoders**. Compressed preset: `tiny = ["dep:utz-data-tiny",
+  **one or zero decoders**. Compressed preset: `tiny = ["dep:utz_data_tiny",
   "alloc", <its codec>]` — the codec must be no_std-clean (any pure-Rust
   codec since 2026-07: `gzip`/`ruzstd`/`brotli`/`xz`; only `zstd-sys` is
   out — §7, §14.5) and `alloc` comes along for decompression. Uncompressed
@@ -489,12 +489,12 @@ deliberate bare-metal intent and satisfies choice 2:
 - **Custom (the fifth tier):** a marker feature — gates nothing
   (`from_static`/`from_reader` stay available to everyone; preset users want
   them for OTA), it states intent and satisfies choice 1. Generate the bytes with:
-  - *consumer `build.rs`* (`prost-build` pattern): `utz-build` as a
+  - *consumer `build.rs`* (`prost-build` pattern): `utz_build` as a
     build-dependency; typed builder API **is** the config — rustdoc'd,
     IDE-completable, no file discovery (`CARGO_MANIFEST_DIR`/`OUT_DIR` are the
     consumer's own): `utz_build::Config::new().dataset(Now).rdp_meters(500.0)
     .generate()?` → `include_bytes!(concat!(env!("OUT_DIR"), "/tz.utz"))`.
-  - *CLI* (`icu_datagen` pattern): `utz-build-cli gen 500 -o tz.utz` — for
+  - *CLI* (`icu_datagen` pattern): `utz_build_cli gen 500 -o tz.utz` — for
     flash-partition/OTA images, experiments, and the CI that builds the data
     crates. Assets are **never committed to a repo**; they're regenerated
     (downloads are cond-GET-cached, so regeneration is cheap).
@@ -537,7 +537,7 @@ mandatory choices (tier: `tiny`/`tiny-static`/`compact`/`balanced`/
 compile_error onboarding, and API availability follows the rung:
 `from_static` (zero-copy) + `lookup` + `lookup_coarse` on `core`;
 `from_slice`/`from_vec` + `preload` (eager) on `alloc`; `from_reader` on
-`std`. Each `utz-data-*` crate bakes its §14.5 recipe (assets gitignored,
+`std`. Each `utz_data_*` crate bakes its §14.5 recipe (assets gitignored,
 regenerated via `scripts/gen-presets.sh`); `Finder::new()` is wired per
 preset (integration-tested, including the multi-preset new()-absent build
 and the tiny vs tiny-static agreement check). `tiny-static` is the `core`
@@ -555,13 +555,13 @@ data-in-crate), `getrandom` (why one-of-N features fail: additivity).
 
 ## 12. Visualization
 
-`utz-viz` (emit + templates) + `cargo run -p utz-dev-cli -- visualize` regenerates the
+`utz_viz` (emit + templates) + `cargo run -p utz_dev_cli -- visualize` regenerates the
 viewers (keyless Carto/Esri tiles, scale bar, on-the-fly JS quantization; HTML
 self-embeds data → generated artifact, not a committed asset). Users tune
 ε/quant/grid **before** committing the build knobs. Link a CI-built copy from docs.
 - **overlay**: precomputed RDP ε levels × quant grids, reduction-stats panel
   (stored arc verts vs ε=0, raw coord bytes at the chosen width).
-- **live**: full-res arcs + `utz-simplify` compiled to WASM — three independent
+- **live**: full-res arcs + `utz_simplify` compiled to WASM — three independent
   "sets" (algorithm/ε/quant dropdowns, per-set color), raw-f64 overlay toggle,
   per-set reduction stats. Each set computes in a Web Worker (spinner, UI stays
   live); changing settings terminates the worker and recomputes fresh.
@@ -600,7 +600,7 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
 
 1. ~~**Build-knob mechanism**~~ — **decided** (§11): preset data crates
    (`tiny`/`tiny-static`/`compact`/`balanced`/`accurate` features) +
-   consumer-side custom generation via the `utz-build` builder API / CLI.
+   consumer-side custom generation via the `utz_build` builder API / CLI.
    Supersedes the earlier `utz.toml`/`UTZ_CONFIG` `[env]` design (rejected:
    silent cwd-discovery failure, non-hermetic build.rs downloads in every
    consumer).
@@ -671,11 +671,11 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
    fixed-width arc-encoding asset variant (§13); no conflict with deciding
    streaming now.
 8. ~~**Simplification algorithm menu**~~ — **decided + built**: the
-   `utz-simplify` crate (workspace member, `lib` + `cdylib`) holds the
+   `utz_simplify` crate (workspace member, `lib` + `cdylib`) holds the
    open-polyline menu, shared by the builder (`topo::build_topology_algo`,
    RDP default via `Simplify` enum) and — compiled to wasm32-unknown-unknown,
    ~33 KB — the tuning HTML, so the browser preview runs the exact builder
-   code (raw `extern "C"` surface in `utz-simplify/src/wasm.rs`, no
+   code (raw `extern "C"` surface in `utz_simplify/src/wasm.rs`, no
    wasm-bindgen). Menu:
    - **Ramer–Douglas–Peucker** (`rdp`): max deviation ≤ ε; the default.
      (Port fix: distance is now to the *segment* (clamped projection), the
@@ -709,7 +709,7 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
    default is ever revisited.
 9. ~~**Custom-tier encoder/decoder sync check**~~ — **decided: consumer's
    responsibility.** Build scripts cannot select features (resolution precedes
-   all build scripts), so the sync cannot be automated away; `utz-build`
+   all build scripts), so the sync cannot be automated away; `utz_build`
    defaults to all encoders, and a consumer who trims them (or `utz`'s
    decoders) owns keeping the two aligned — a mismatch surfaces as the runtime
    `Err` from the self-describing header. Zero decoders (uncompressed assets
@@ -755,7 +755,7 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
     stays `W = i64` for i16/i24 (per §pip's own `4·coord_max²` bound). The
     win is the halved cache + halved load traffic, not the product width.
     Coverage: pip unit test (full-range i16 vs widened i32 agreement) +
-    `utz-bench-common/tests/encodings_agree.rs` (fixed/preload/image twins
+    `utz_bench_common/tests/encodings_agree.rs` (fixed/preload/image twins
     agree, both quant widths) + accurate-preset preload test (i128 arm).
     Measured on the S3 (§15, 2026-07-12): narrow pairs are 1.15× at the
     kernel and **tiny eager dropped 108 → 66 µs/lookup**, overtaking the
@@ -770,9 +770,9 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
     present); `utz/src/finder.rs` `image_rings` zero-copy
     `from_raw_parts` slice cast (alignment parse-validated via
     `Error::Misaligned`; the cast target is the generic `P`, so no
-    `cast_ptr_alignment` expect anymore — §14.11); `utz-encode`
+    `cast_ptr_alignment` expect anymore — §14.11); `utz_encode`
     wasm.rs static `STATE` accessors (~10 sites, single-threaded wasm
-    assumption); `utz-build` window_sweep `GlobalAlloc` tracking shim.
+    assumption); `utz_build` window_sweep `GlobalAlloc` tracking shim.
     The audit: per site, check the stated invariant actually covers all
     callers (esp. adversarial container bytes for the decoder sites —
     `from_slice` accepts arbitrary input even if embedded assets are
@@ -889,7 +889,7 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
   agree; lazy 3.0 µs/pt streaming vs 4.1–4.5 with the old decode-into-scratch
   loop; eager 0.54 µs after 3.1 MB preload). **Embedded: measured 2026-07-07
   on ESP32-S3 @ 240 MHz** (N16R8 — 16 MB flash, 8 MB octal PSRAM;
-  `utz-bench-firmware`, 2000 uniform pts, fastest of 3 rounds, every leg's
+  `utz_bench_firmware`, 2000 uniform pts, fastest of 3 rounds, every leg's
   checksum = the host run's). µs/lookup:
 
   | mode | tiny | compact | balanced |

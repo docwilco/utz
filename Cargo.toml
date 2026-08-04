@@ -2,23 +2,23 @@
 resolver = "2"
 members = [
     "utz",
-    "utz-common",
-    "utz-build",
-    "utz-build-cli",
-    "utz-dev-cli",
-    "utz-viz",
-    "utz-data-tiny",
-    "utz-data-tiny-static",
-    "utz-data-compact",
-    "utz-data-balanced",
-    "utz-data-accurate",
-    "utz-encode",
-    "utz-simplify",
-    "utz-bench-common",
-    "utz-bench-cli",
+    "utz_common",
+    "utz_build",
+    "utz_build_cli",
+    "utz_dev_cli",
+    "utz_viz",
+    "utz_data_tiny",
+    "utz_data_tiny_static",
+    "utz_data_compact",
+    "utz_data_balanced",
+    "utz_data_accurate",
+    "utz_encode",
+    "utz_simplify",
+    "utz_bench_common",
+    "utz_bench_cli",
 ]
 # Xtensa target — needs the esp toolchain (espup); built standalone, see its README
-exclude = ["utz-bench-firmware"]
+exclude = ["utz_bench_firmware"]
 
 [workspace.package]
 edition = "2021"
@@ -52,8 +52,8 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(on_docsrs)"
 # that makes it safe (2026-07 campaign).
 pedantic = { level = "warn", priority = -1 }
 
-# utz-bench-common's build.rs runs the encoder (codec-none twins via the
-# utz-build builder API) — at the default build-override opt-level 0 the
+# utz_bench_common's build.rs runs the encoder (codec-none twins via the
+# utz_build builder API) — at the default build-override opt-level 0 the
 # weighted RDP pass takes minutes, so optimize build scripts and their deps
 [profile.dev.build-override]
 opt-level = 3

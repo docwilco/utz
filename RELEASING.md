@@ -3,9 +3,9 @@
 ## Before the first publish
 
 - [ ] Verify the crate names are free (or already yours) on crates.io:
-      `utz`, `utz-common`, `utz-simplify`, `utz-encode`, `utz-build`,
-      `utz-build-cli`, `utz-data-tiny`, `utz-data-tiny-static`,
-      `utz-data-compact`, `utz-data-balanced`, `utz-data-accurate`.
+      `utz`, `utz_common`, `utz_simplify`, `utz_encode`, `utz_build`,
+      `utz_build_cli`, `utz_data_tiny`, `utz_data_tiny_static`,
+      `utz_data_compact`, `utz_data_balanced`, `utz_data_accurate`.
 - [ ] `cargo login` with a token that has publish scope.
 - [ ] Fresh assets: `./scripts/gen-presets.sh` (the data crates' build.rs
       recipe guards refuse mismatched assets, so a stale asset cannot
@@ -31,10 +31,10 @@ crates.io will reject the second as a duplicate. Therefore:
 Internal dependencies force this order; wait for the registry to serve
 each crate (usually well under a minute) before publishing its
 dependents. `cargo publish` runs a verify build resolving deps from the
-registry, which is also why only `utz-common` and `utz-simplify` can be
+registry, which is also why only `utz_common` and `utz_simplify` can be
 package-verified before anything is published (CI's `package` job does
-exactly those two, in a single `cargo package` invocation: utz-simplify's
-dev-dependency on utz-common resolves against the sibling there).
+exactly those two, in a single `cargo package` invocation: utz_simplify's
+dev-dependency on utz_common resolves against the sibling there).
 
 `utz` publishes with `--no-verify`: its deliberate compile-error guards
 (pick an asset source / environment / geometry decoder) fire on the
@@ -43,44 +43,44 @@ built by `./scripts/checks.sh all` beforehand, on the same sources the
 package contains.
 
 ```sh
-cargo publish -p utz-common
-cargo publish -p utz-simplify
-cargo publish -p utz-encode
-cargo publish -p utz-data-tiny
-cargo publish -p utz-data-tiny-static
-cargo publish -p utz-data-compact
-cargo publish -p utz-data-balanced
-cargo publish -p utz-data-accurate
+cargo publish -p utz_common
+cargo publish -p utz_simplify
+cargo publish -p utz_encode
+cargo publish -p utz_data_tiny
+cargo publish -p utz_data_tiny_static
+cargo publish -p utz_data_compact
+cargo publish -p utz_data_balanced
+cargo publish -p utz_data_accurate
 cargo publish -p utz --no-verify
-cargo publish -p utz-build
-cargo publish -p utz-build-cli
+cargo publish -p utz_build
+cargo publish -p utz_build_cli
 ```
 
 Notes per crate:
 
-- **utz-data-***: the `.utz` assets are gitignored but force-included by
-  each crate's `include` list; `cargo package --list -p utz-data-tiny`
+- **utz_data_***: the `.utz` assets are gitignored but force-included by
+  each crate's `include` list; `cargo package --list -p utz_data_tiny`
   should show `data/tiny.utz`, `build.rs`, `src/lib.rs`, `README.md`,
   `LICENSE`, and `LICENSE-DATA` (plus cargo's own metadata files).
   These crates are `license = "MIT AND ODbL-1.0"`: the packaged asset is
   a derivative database of timezone-boundary-builder (OpenStreetMap,
   ODbL); LICENSE-DATA carries the attribution.
-- **utz-build**: consumers' build scripts download sources at build time
+- **utz_build**: consumers' build scripts download sources at build time
   (never on docs.rs, which has no network — the crate docs tell users
   to vendor via `UTZ_CACHE_DIR` / `Config::cache_dir()` for hermetic
   builds).
-- **utz-data-accurate**: ~8.1 MB of already-compressed asset, ~81% of
+- **utz_data_accurate**: ~8.1 MB of already-compressed asset, ~81% of
   crates.io's default 10 MiB upload limit. Watch the size on every TZBB
   refresh and request a per-crate limit raise from the crates.io team
   before it crosses.
-- **utz-build-cli**: after publishing, `cargo install utz-build-cli`
+- **utz_build_cli**: after publishing, `cargo install utz_build_cli`
   is the supported way to get `gen`/`gen-preset` outside a checkout.
 
 ## Never published
 
-`utz-dev-cli`, `utz-viz`, `utz-bench-common`, `utz-bench-cli`, and
-`utz-bench-firmware` are repo tooling, `publish = false` on purpose. The
-deployed viewer (github.io) is built by `utz-dev-cli visualize` from a
+`utz_dev_cli`, `utz_viz`, `utz_bench_common`, `utz_bench_cli`, and
+`utz_bench_firmware` are repo tooling, `publish = false` on purpose. The
+deployed viewer (github.io) is built by `utz_dev_cli visualize` from a
 checkout.
 
 ## After publishing

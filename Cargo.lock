@@ -1247,37 +1247,37 @@ dependencies = [
  "ruzstd",
  "scroll",
  "test-case",
- "utz-common",
- "utz-data-accurate",
- "utz-data-balanced",
- "utz-data-compact",
- "utz-data-tiny",
- "utz-data-tiny-static",
- "utz-encode",
+ "utz_common",
+ "utz_data_accurate",
+ "utz_data_balanced",
+ "utz_data_compact",
+ "utz_data_tiny",
+ "utz_data_tiny_static",
+ "utz_encode",
  "zstd",
 ]
 
 [[package]]
-name = "utz-bench-cli"
+name = "utz_bench_cli"
 version = "0.3.0+2026c"
 dependencies = [
  "clap",
  "derive_more",
  "utz",
- "utz-bench-common",
+ "utz_bench_common",
 ]
 
 [[package]]
-name = "utz-bench-common"
+name = "utz_bench_common"
 version = "0.3.0+2026c"
 dependencies = [
  "utz",
- "utz-build",
- "utz-common",
+ "utz_build",
+ "utz_common",
 ]
 
 [[package]]
-name = "utz-build"
+name = "utz_build"
 version = "0.3.0+2026c"
 dependencies = [
  "derive_more",
@@ -1286,66 +1286,66 @@ dependencies = [
  "tiff",
  "ureq",
  "utz",
- "utz-common",
- "utz-encode",
- "utz-simplify",
+ "utz_common",
+ "utz_encode",
+ "utz_simplify",
  "zip",
 ]
 
 [[package]]
-name = "utz-build-cli"
+name = "utz_build_cli"
 version = "0.3.0+2026c"
 dependencies = [
  "clap",
  "utz",
- "utz-build",
+ "utz_build",
 ]
 
 [[package]]
-name = "utz-common"
+name = "utz_common"
 version = "0.3.0+2026c"
 dependencies = [
  "scroll",
 ]
 
 [[package]]
-name = "utz-data-accurate"
+name = "utz_data_accurate"
 version = "0.3.0+2026c"
 dependencies = [
- "utz-common",
+ "utz_common",
 ]
 
 [[package]]
-name = "utz-data-balanced"
+name = "utz_data_balanced"
 version = "0.3.0+2026c"
 dependencies = [
- "utz-common",
+ "utz_common",
 ]
 
 [[package]]
-name = "utz-data-compact"
+name = "utz_data_compact"
 version = "0.3.0+2026c"
 dependencies = [
- "utz-common",
+ "utz_common",
 ]
 
 [[package]]
-name = "utz-data-tiny"
+name = "utz_data_tiny"
 version = "0.3.0+2026c"
 dependencies = [
- "utz-common",
+ "utz_common",
 ]
 
 [[package]]
-name = "utz-data-tiny-static"
+name = "utz_data_tiny_static"
 version = "0.3.0+2026c"
 dependencies = [
  "include_bytes_aligned",
- "utz-common",
+ "utz_common",
 ]
 
 [[package]]
-name = "utz-dev-cli"
+name = "utz_dev_cli"
 version = "0.3.0+2026c"
 dependencies = [
  "brotli",
@@ -1357,17 +1357,17 @@ dependencies = [
  "miniz_oxide 0.9.1",
  "tiff",
  "utz",
- "utz-build",
- "utz-common",
- "utz-encode",
- "utz-simplify",
- "utz-viz",
+ "utz_build",
+ "utz_common",
+ "utz_encode",
+ "utz_simplify",
+ "utz_viz",
  "zip",
  "zstd",
 ]
 
 [[package]]
-name = "utz-encode"
+name = "utz_encode"
 version = "0.3.0+2026c"
 dependencies = [
  "brotli",
@@ -1376,25 +1376,25 @@ dependencies = [
  "miniz_oxide 0.9.1",
  "ndarray",
  "scroll",
- "utz-common",
- "utz-simplify",
+ "utz_common",
+ "utz_simplify",
  "zstd",
 ]
 
 [[package]]
-name = "utz-simplify"
+name = "utz_simplify"
 version = "0.3.0+2026c"
 dependencies = [
- "utz-common",
+ "utz_common",
 ]
 
 [[package]]
-name = "utz-viz"
+name = "utz_viz"
 version = "0.3.0+2026c"
 dependencies = [
- "utz-build",
- "utz-encode",
- "utz-simplify",
+ "utz_build",
+ "utz_encode",
+ "utz_simplify",
 ]
 
 [[package]]

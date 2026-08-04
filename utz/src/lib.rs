@@ -3,15 +3,15 @@
 // these must precede the doc comment. See [workspace.lints.rust].
 #![cfg_attr(
     on_docsrs,
-    doc = "[`utz_build::Config`]: https://docs.rs/utz-build/latest/utz_build/config/struct.Config.html"
+    doc = "[`utz_build::Config`]: https://docs.rs/utz_build/latest/utz_build/config/struct.Config.html"
 )]
 #![cfg_attr(
     on_docsrs,
-    doc = "[`utz_build`]: https://docs.rs/utz-build/latest/utz_build/index.html#datasets"
+    doc = "[`utz_build`]: https://docs.rs/utz_build/latest/utz_build/index.html#datasets"
 )]
 #![cfg_attr(
     on_docsrs,
-    doc = "[`utz-simplify`]: https://docs.rs/utz-simplify/latest/utz_simplify/index.html"
+    doc = "[`utz_simplify`]: https://docs.rs/utz_simplify/latest/utz_simplify/index.html"
 )]
 #![cfg_attr(on_docsrs, doc = "")]
 //! μTZ (micro-timezone): tiny, tunable, embeddable lat/lon → IANA timezone-id
@@ -65,7 +65,7 @@
 //! # Presets
 //!
 //! One Cargo feature picks a ready-made size/accuracy point; `custom` instead
-//! generates your own asset with `utz-build`:
+//! generates your own asset with `utz_build`:
 //!
 //! | feature       | simplification | geometry    | codec  | size    | notes |
 //! |---------------|----------------|-------------|--------|--------:|-------|
@@ -250,8 +250,8 @@
 //!
 //! # Building a custom asset
 //!
-//! The `custom` asset source pairs with the `utz-build` crate. In a
-//! `build.rs` (with `utz-build` as a build-dependency), the typed builder
+//! The `custom` asset source pairs with the `utz_build` crate. In a
+//! `build.rs` (with `utz_build` as a build-dependency), the typed builder
 //! ([`utz_build::Config`]) fetches the source data into a cache, encodes, and
 //! writes the asset plus a guard file:
 //!
@@ -280,7 +280,7 @@
 //! utz = { version = "0.3", features = ["std", "custom", "gzip", "geom-varint-arcs"] }
 //!
 //! [build-dependencies]
-//! utz-build = "0.3"
+//! utz_build = "0.3"
 //! ```
 //!
 //! The generated guard file asserts exactly this match. Embed the asset and
@@ -296,7 +296,7 @@
 //! Uncompressed assets can instead be borrowed zero-copy with
 //! [`Finder::from_static()`] (full-rings assets must be 4-byte aligned: embed
 //! those with the re-exported [`include_bytes_aligned!`]). Outside a
-//! `build.rs`, the `utz-build-cli` binary writes the same assets: `utz-build-cli gen
+//! `build.rs`, the `utz_build_cli` binary writes the same assets: `utz_build_cli gen
 //! now 500 --qbits 24 --codec gzip -o tz.utz`.
 //!
 //! What the built asset then costs at runtime is set by which constructor
@@ -349,7 +349,7 @@
 //!    small plaintext header stays readable so any tool can identify the
 //!    asset without decompressing it.
 //!
-//! Measured per preset (TZBB release 2026c; the workspace's `utz-dev-cli
+//! Measured per preset (TZBB release 2026c; the workspace's `utz_dev_cli
 //! whittle` command reproduces every row):
 //!
 //! <table>
@@ -418,12 +418,12 @@
 //! [GHS-POP](https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php)
 //! raster (CC BY 4.0). The simplification menu is classic computational
 //! geometry: Ramer–Douglas–Peucker (1972/1973), Visvalingam–Whyatt (1993),
-//! and Imai–Iri (1988); the [`utz-simplify`] crate documents each with
+//! and Imai–Iri (1988); the [`utz_simplify`] crate documents each with
 //! citations and guarantees.
 //!
 //! [`utz_build::Config`]: ../utz_build/config/struct.Config.html
 //! [`utz_build`]: ../utz_build/index.html#datasets
-//! [`utz-simplify`]: ../utz_simplify/index.html
+//! [`utz_simplify`]: ../utz_simplify/index.html
 //! [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
 //! [OpenStreetMap]: https://www.openstreetmap.org/
 //! [ODbL]: https://opendatacommons.org/licenses/odbl/
@@ -447,7 +447,7 @@
 )))]
 compile_error!(
     "utz: pick an asset source: a preset (`tiny`/`tiny-static`/`compact`/`balanced`/`accurate`) \
-     or `custom` (bring your own asset, generated with utz-build)"
+     or `custom` (bring your own asset, generated with utz_build)"
 );
 #[cfg(not(any(feature = "core", feature = "alloc", feature = "std")))]
 compile_error!(

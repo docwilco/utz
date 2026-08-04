@@ -1,0 +1,27 @@
+[package]
+name = "utz_bench_common"
+version = "0.3.0+2026c"
+edition.workspace = true
+license = "MIT"
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+# Shared lookup-bench harness for utz_bench_cli (host) and utz_bench_firmware
+# (ESP32-S3). no_std + alloc; the time source is injected by the caller.
+# Also home of the build.rs-generated custom shapes both benches embed
+# (`assets`) — the geom features cover every encoding those assets span.
+[dependencies]
+utz_common = { path = "../utz_common" }
+utz = { path = "../utz", default-features = false, features = [
+    "alloc", "custom",
+    "geom-varint-arcs", "geom-fixed-width-arcs", "geom-full-rings", "geom-coarse",
+] }
+
+[build-dependencies]
+# consumer builder API for the codec-none twins in build.rs (compiled for the
+# host, also under the firmware's esp toolchain)
+utz_build = { path = "../utz_build" }
+
+[lints]
+workspace = true

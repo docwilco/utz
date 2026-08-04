@@ -1,0 +1,27 @@
+[package]
+name = "utz_bench_cli"
+version = "0.3.0+2026c"
+edition.workspace = true
+license = "MIT"
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+# Host-side lookup bench: the preset shapes by name (baked in via the utz
+# preset features), their codec-none twins (utz_bench_common::assets), or any
+# .utz container file.
+[dependencies]
+derive_more = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+# the geom-* decoders for the custom shapes come via utz_bench_common
+utz = { path = "../utz", features = [
+    "std", "gzip", "ruzstd", "brotli", "xz",
+    # presets, for benching by shape name
+    "tiny", "tiny-static", "compact", "balanced", "accurate",
+    # arbitrary .utz file paths
+    "custom",
+] }
+utz_bench_common = { path = "../utz_bench_common" }
+
+[lints]
+workspace = true

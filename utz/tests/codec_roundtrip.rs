@@ -1,4 +1,4 @@
-//! Cross-crate codec roundtrips: encode with utz-encode's real
+//! Cross-crate codec roundtrips: encode with `utz_encode`'s real
 //! compressors, decode with utz's real backends, at a size where
 //! window/dictionary parameters matter. The decompress unit tests use
 //! baked vectors, so without this nothing catches the encoder declaring

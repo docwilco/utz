@@ -1,0 +1,46 @@
+[package]
+name = "utz_encode"
+version = "0.3.0+2026c"
+edition.workspace = true
+license = "MIT"
+repository.workspace = true
+rust-version.workspace = true
+homepage = "https://docwilco.github.io/utz/"
+documentation = "https://docwilco.github.io/utz/docs/utz_encode/"
+description = "uTZ asset encoder: shared-arc topology, quantization, grid prefilter, serialization"
+keywords = ["timezone", "geo", "encoder"]
+categories = ["science::geo", "encoding"]
+
+# `lib` for the builder (utz_build). The webdist viewer's wasm build lives
+# in utz_viz, which wraps this encoder.
+[lib]
+path = "src/lib.rs" # explicit: cargo-readme cannot infer the default
+crate-type = ["lib"]
+
+[features]
+# zstd wraps C libzstd (zstd-sys) — fine natively, a toolchain headache on
+# wasm32-unknown-unknown. utz_build enables it; the wasm build leaves it off
+# (Codec::Zstd then panics with a clear message).
+zstd = ["dep:zstd"]
+
+[dependencies]
+derive_more = { workspace = true }
+# the shared Codec types + PayloadHeader (also used by the utz reader)
+utz_common = { path = "../utz_common", version = "0.3.0", default-features = false }
+scroll = { version = "0.13", default-features = false }
+# 2D cell grids without hand-rolled index arithmetic
+ndarray = { version = "0.17", default-features = false, features = ["std"] }
+# simplification menu + DensityWeight (shared with the viewer via this cdylib)
+utz_simplify = { path = "../utz_simplify", version = "0.3.0" }
+# codecs (all pure Rust except optional zstd)
+miniz_oxide = "0.9"
+brotli = "8.0"
+lzma-rust2 = { version = "0.18", default-features = false, features = ["xz", "encoder", "optimization"] }
+zstd = { version = "0.13", optional = true }
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs", "--cfg", "on_docsrs"]

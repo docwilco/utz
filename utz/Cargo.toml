@@ -26,19 +26,19 @@ default = []
 
 # ---- choice 1: asset source ---------------------------------------------------
 # Presets bake one CI-generated asset + the codec to read it (`alloc` comes
-# along for decompression); recipes are pinned in utz-build's Config. Naming
+# along for decompression); recipes are pinned in utz_build's Config. Naming
 # grammar: a
 # bare tier name is the compressed asset (lazy/eager modes), `<tier>-static`
 # is the same decoded asset shipped flat — zero-copy via `from_static`,
 # no alloc, no codec, `core`-rung capable. `custom` is a marker: bring your
-# own asset, generated with utz-build.
+# own asset, generated with utz_build.
 # Each preset also enables the geometry decoder its recipe uses (all preset
 # recipes are delta+varint today), so `tiny` alone is a complete build.
-tiny = ["dep:utz-data-tiny", "alloc", "gzip", "geom-varint-arcs"]
-tiny-static = ["dep:utz-data-tiny-static", "geom-varint-arcs"]
-compact = ["dep:utz-data-compact", "alloc", "xz", "geom-varint-arcs"]
-balanced = ["dep:utz-data-balanced", "alloc", "brotli", "geom-varint-arcs"]
-accurate = ["dep:utz-data-accurate", "alloc", "brotli", "geom-varint-arcs"]
+tiny = ["dep:utz_data_tiny", "alloc", "gzip", "geom-varint-arcs"]
+tiny-static = ["dep:utz_data_tiny_static", "geom-varint-arcs"]
+compact = ["dep:utz_data_compact", "alloc", "xz", "geom-varint-arcs"]
+balanced = ["dep:utz_data_balanced", "alloc", "brotli", "geom-varint-arcs"]
+accurate = ["dep:utz_data_accurate", "alloc", "brotli", "geom-varint-arcs"]
 custom = []
 
 # ---- choice 2: environment ladder: std ⊃ alloc ⊃ core -----------------------
@@ -86,11 +86,11 @@ zstd = { version = "0.13", optional = true }
 # shim (decompress.rs), keeping the decoder alloc-clean → preset-eligible
 brotli-decompressor = { version = "5.0", optional = true, default-features = false }
 lzma-rust2 = { version = "0.18", optional = true, default-features = false, features = ["xz"] }
-utz-data-tiny = { path = "../utz-data-tiny", version = "0.3.0", optional = true }
-utz-data-tiny-static = { path = "../utz-data-tiny-static", version = "0.3.0", optional = true }
-utz-data-compact = { path = "../utz-data-compact", version = "0.3.0", optional = true }
-utz-data-balanced = { path = "../utz-data-balanced", version = "0.3.0", optional = true }
-utz-data-accurate = { path = "../utz-data-accurate", version = "0.3.0", optional = true }
+utz_data_tiny = { path = "../utz_data_tiny", version = "0.3.0", optional = true }
+utz_data_tiny_static = { path = "../utz_data_tiny_static", version = "0.3.0", optional = true }
+utz_data_compact = { path = "../utz_data_compact", version = "0.3.0", optional = true }
+utz_data_balanced = { path = "../utz_data_balanced", version = "0.3.0", optional = true }
+utz_data_accurate = { path = "../utz_data_accurate", version = "0.3.0", optional = true }
 # re-exported for embedding FullRings assets 4-aligned (see workspace toml)
 include_bytes_aligned = { workspace = true }
 
@@ -99,23 +99,23 @@ include_bytes_aligned = { workspace = true }
 version = "0.13"
 default-features = false
 
-[dependencies.utz-common]
+[dependencies.utz_common]
 # the shared Codec types; no alloc — the enum must exist on the core rung
-path = "../utz-common"
+path = "../utz_common"
 default-features = false
 version = "0.3.0"
 
 [dev-dependencies]
-utz-common = { path = "../utz-common", version = "0.3.0" }
+utz_common = { path = "../utz_common", version = "0.3.0" }
 # the real encoder, for cross-crate codec roundtrip tests (the unit-test
 # vectors alone can't catch encoder/decoder parameter drift)
-utz-encode = { path = "../utz-encode", version = "0.3.0", features = ["zstd"] }
+utz_encode = { path = "../utz_encode", version = "0.3.0", features = ["zstd"] }
 geo = { workspace = true }
 geo-types = { workspace = true }
 test-case = "3.3"
 
 # No build.rs / build-dependencies by design: preset data ships
-# as utz-data-* crates; custom assets are generated consumer-side via utz-build.
+# as utz_data_* crates; custom assets are generated consumer-side via utz_build.
 
 [lints]
 workspace = true

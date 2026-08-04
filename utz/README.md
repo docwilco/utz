@@ -58,7 +58,7 @@ beyond the presets, see
 ## Presets
 
 One Cargo feature picks a ready-made size/accuracy point; `custom` instead
-generates your own asset with `utz-build`:
+generates your own asset with `utz_build`:
 
 | feature       | simplification | geometry    | codec  | size    | notes |
 |---------------|----------------|-------------|--------|--------:|-------|
@@ -243,8 +243,8 @@ sort into three families:
 
 ## Building a custom asset
 
-The `custom` asset source pairs with the `utz-build` crate. In a
-`build.rs` (with `utz-build` as a build-dependency), the typed builder
+The `custom` asset source pairs with the `utz_build` crate. In a
+`build.rs` (with `utz_build` as a build-dependency), the typed builder
 ([`utz_build::Config`]) fetches the source data into a cache, encodes, and
 writes the asset plus a guard file:
 
@@ -273,7 +273,7 @@ feature](#compression-codecs) for its compression (none for
 utz = { version = "0.3", features = ["std", "custom", "gzip", "geom-varint-arcs"] }
 
 [build-dependencies]
-utz-build = "0.3"
+utz_build = "0.3"
 ```
 
 The generated guard file asserts exactly this match. Embed the asset and
@@ -289,7 +289,7 @@ let finder = utz::Finder::from_slice(TZ)?;
 Uncompressed assets can instead be borrowed zero-copy with
 [`Finder::from_static()`] (full-rings assets must be 4-byte aligned: embed
 those with the re-exported [`include_bytes_aligned!`]). Outside a
-`build.rs`, the `utz-build-cli` binary writes the same assets: `utz-build-cli gen
+`build.rs`, the `utz_build_cli` binary writes the same assets: `utz_build_cli gen
 now 500 --qbits 24 --codec gzip -o tz.utz`.
 
 What the built asset then costs at runtime is set by which constructor
@@ -342,7 +342,7 @@ generated:
    small plaintext header stays readable so any tool can identify the
    asset without decompressing it.
 
-Measured per preset (TZBB release 2026c; the workspace's `utz-dev-cli
+Measured per preset (TZBB release 2026c; the workspace's `utz_dev_cli
 whittle` command reproduces every row):
 
 <table>
@@ -411,12 +411,12 @@ simplification, the European Commission JRC's
 [GHS-POP](https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php)
 raster (CC BY 4.0). The simplification menu is classic computational
 geometry: Ramer–Douglas–Peucker (1972/1973), Visvalingam–Whyatt (1993),
-and Imai–Iri (1988); the [`utz-simplify`] crate documents each with
+and Imai–Iri (1988); the [`utz_simplify`] crate documents each with
 citations and guarantees.
 
 [`utz_build::Config`]: https://docwilco.github.io/utz/docs/utz_build/config/struct.Config.html
 [`utz_build`]: https://docwilco.github.io/utz/docs/utz_build/index.html#datasets
-[`utz-simplify`]: https://docwilco.github.io/utz/docs/utz_simplify/index.html
+[`utz_simplify`]: https://docwilco.github.io/utz/docs/utz_simplify/index.html
 [timezone-boundary-builder]: https://github.com/evansiroky/timezone-boundary-builder
 [OpenStreetMap]: https://www.openstreetmap.org/
 [ODbL]: https://opendatacommons.org/licenses/odbl/

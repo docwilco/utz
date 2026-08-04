@@ -1,0 +1,31 @@
+[package]
+name = "utz_data_tiny_static"
+version = "0.3.0+2026c"
+edition.workspace = true
+license = "MIT AND ODbL-1.0"
+repository.workspace = true
+rust-version.workspace = true
+homepage = "https://docwilco.github.io/utz/"
+documentation = "https://docwilco.github.io/utz/docs/utz_data_tiny_static/"
+description = "Pregenerated uTZ tiny-static preset asset (embedded timezone-boundary data, ODbL)"
+keywords = ["timezone", "data", "embedded"]
+categories = ["date-and-time", "embedded"]
+include = ["src/**/*", "build.rs", "data/tiny-static.utz", "README.md", "LICENSE*"]
+
+# Preset data crate: one generated `.utz` asset as a static. The asset
+# is gitignored and regenerated, never committed; the include list above
+# forces it into the published package, and build.rs refuses to compile
+# an asset that does not match the recipe (see RELEASING.md).
+
+[dependencies]
+# 4-aligned embedding: this is the one preset borrowed in place by
+# Finder::from_static, so keep it alignment-proof against recipe changes
+# (only FullRings geometry actually requires it; today's varint does not)
+include_bytes_aligned = { workspace = true }
+
+[lints]
+workspace = true
+
+# the recipe guard in build.rs parses the asset header
+[build-dependencies]
+utz_common = { path = "../utz_common", version = "0.3.0" }

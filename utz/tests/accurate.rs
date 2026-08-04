@@ -38,7 +38,7 @@ fn new_loads_the_accurate_preset() {
 
 /// i32 quant is the only tier on the i128 kernel — pin its eager dispatch
 /// (the other widths' lazy/eager agreement lives in `eager_slice.rs` and
-/// utz-bench-common's `encodings_agree.rs`).
+/// `utz_bench_common`'s `encodings_agree.rs`).
 #[test]
 fn preload_agrees_with_lazy_at_i32_quant() {
     let f = utz::Finder::new().expect("accurate asset decodes");

@@ -1,6 +1,6 @@
 /target
-# utz-bench-firmware is a standalone workspace (esp toolchain) with its own target dir
-/utz-bench-firmware/target
+# utz_bench_firmware is a standalone workspace (esp toolchain) with its own target dir
+/utz_bench_firmware/target
 # Downloaded source data + built assets are never committed — built on demand.
 /cache/
 *.geojson
@@ -9,5 +9,5 @@
 # Generated assets (all knob variants) and the built container(s).
 /assets/
 *.utz
-# Generated viewer site (regenerate: cargo run --release -p utz-dev-cli -- visualize).
+# Generated viewer site (regenerate: cargo run --release -p utz_dev_cli -- visualize).
 /webdist/

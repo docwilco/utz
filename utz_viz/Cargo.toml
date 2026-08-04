@@ -1,0 +1,31 @@
+[package]
+name = "utz_viz"
+version = "0.3.0+2026c"
+edition.workspace = true
+license = "MIT"
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+# Everything behind the publicly deployed webdist viewer, in one private
+# crate: the whittle stage-ladder types the `utz_dev_cli whittle` command
+# prints, the misassignment pricing, the wasm stats surface the live page
+# runs (src/wasm.rs, compiled to wasm32 by `utz_dev_cli visualize`;
+# cdylib is requested per-build, not via crate-type, so native builds
+# keep hashed artifact names), and the site emitter (src/emit.rs +
+# templates/, behind the default `emit` feature).
+#
+# The wasm build compiles with --no-default-features: `emit` pulls in
+# utz_build, whose std-only dependencies (ureq, tiff, zstd-sys) cannot
+# target wasm32-unknown-unknown.
+[features]
+default = ["emit"]
+emit = ["dep:utz_build"]
+
+[dependencies]
+utz_encode = { path = "../utz_encode" }
+utz_simplify = { path = "../utz_simplify" }
+utz_build = { path = "../utz_build", optional = true }
+
+[lints]
+workspace = true

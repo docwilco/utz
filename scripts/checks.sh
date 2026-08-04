@@ -30,9 +30,9 @@ ensure_nightly() {
 # artifact; locally, regenerate only if some are missing.
 stage_presets() {
   local f missing=()
-  for f in utz-data-tiny/data/tiny.utz utz-data-tiny-static/data/tiny-static.utz \
-           utz-data-compact/data/compact.utz utz-data-balanced/data/balanced.utz \
-           utz-data-accurate/data/accurate.utz; do
+  for f in utz_data_tiny/data/tiny.utz utz_data_tiny_static/data/tiny-static.utz \
+           utz_data_compact/data/compact.utz utz_data_balanced/data/balanced.utz \
+           utz_data_accurate/data/accurate.utz; do
     [[ -f "$f" ]] || missing+=("$f")
   done
   if ((${#missing[@]})); then
@@ -68,7 +68,7 @@ jobs_test() {
   # pure-Rust codec's corrupt-stream error test; the C-backed zstd decoder
   # is tested separately (workspace tests use the pure-Rust ruzstd
   # backend); the wasm cdylib is per-build, not via crate-type — see
-  # utz-simplify/Cargo.toml
+  # utz_simplify/Cargo.toml
   printf '%s\t%s\n' \
     test-workspace "cargo test --workspace" \
     test-tiny "cargo test -p utz --no-default-features --features std,tiny" \
@@ -79,8 +79,8 @@ jobs_test() {
     test-two-presets "cargo test -p utz --no-default-features --features std,tiny,tiny-static" \
     test-codecs "cargo test -p utz --no-default-features --features std,custom,gzip,ruzstd,brotli,xz,geom-varint-arcs" \
     test-zstd-sys "cargo test -p utz --no-default-features --features std,custom,geom-varint-arcs,zstd-sys" \
-    test-wasm-simplify "cargo clippy -p utz-simplify --release --target $WASM -- -D warnings && cargo rustc -p utz-simplify --release --target $WASM --crate-type cdylib" \
-    test-wasm-viz "cargo clippy -p utz-viz --no-default-features --release --target $WASM -- -D warnings && cargo rustc -p utz-viz --no-default-features --release --target $WASM --crate-type cdylib"
+    test-wasm-simplify "cargo clippy -p utz_simplify --release --target $WASM -- -D warnings && cargo rustc -p utz_simplify --release --target $WASM --crate-type cdylib" \
+    test-wasm-viz "cargo clippy -p utz_viz --no-default-features --release --target $WASM -- -D warnings && cargo rustc -p utz_viz --no-default-features --release --target $WASM --crate-type cdylib"
 }
 
 jobs_no_std() {
@@ -98,7 +98,7 @@ jobs_no_std() {
     nostd-accurate "cargo build -p utz --target $BARE_METAL --no-default-features --features alloc,accurate" \
     nostd-geom-static "cargo build -p utz --target $BARE_METAL --no-default-features --features core,custom,geom-full-rings,geom-coarse" \
     nostd-geom-alloc "cargo build -p utz --target $BARE_METAL --no-default-features --features alloc,custom,gzip,ruzstd,geom-varint-arcs,geom-fixed-width-arcs" \
-    nostd-bench-common "cargo build -p utz-bench-common --target $BARE_METAL"
+    nostd-bench-common "cargo build -p utz_bench_common --target $BARE_METAL"
 }
 
 jobs_docs() {
