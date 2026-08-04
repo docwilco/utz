@@ -207,7 +207,9 @@ fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> utz_build::Result<Vec<u8>> 
         eps_m: 100.0,
         quant_bits: 24,
         grid_deg: 2.0,
-        codec: Codec::Zstd,
+        // the asset never leaves this process (encode -> from_vec -> drop),
+        // so compressing it would only burn CPU
+        codec: Codec::Uncompressed,
         simplify: encode::SimplifyAlgo::default(),
         density_weight_floor: None,
         geom: encode::GeomEncoding::default(),
