@@ -537,6 +537,8 @@ pub mod data {
 /// Also useful directly for OTA/file-loaded assets:
 /// `assert!(utz::caps::CODEC_XZ)` at startup.
 pub mod caps {
+    use crate::GeomEncoding;
+
     /// delta+varint arc geometry decoder (`geom-varint-arcs`)
     pub const GEOM_VARINT_ARCS: bool = cfg!(feature = "geom-varint-arcs");
     /// fixed-width arc geometry decoder (`geom-fixed-width-arcs`)
@@ -553,6 +555,18 @@ pub mod caps {
     pub const CODEC_BROTLI: bool = cfg!(feature = "brotli");
     /// xz payload decoder (`xz`)
     pub const CODEC_XZ: bool = cfg!(feature = "xz");
+
+    /// Whether this build carries the decoder for `geom`: the
+    /// [`GeomEncoding`]-to-`GEOM_*` mapping in one place.
+    #[must_use]
+    pub const fn geom_compiled_in(geom: GeomEncoding) -> bool {
+        match geom {
+            GeomEncoding::VarintArcs => GEOM_VARINT_ARCS,
+            GeomEncoding::FixedWidthArcs => GEOM_FIXED_WIDTH_ARCS,
+            GeomEncoding::FullRings => GEOM_FULL_RINGS,
+            GeomEncoding::Coarse => GEOM_COARSE,
+        }
+    }
 }
 
 /// Errors surfaced by the reader.

@@ -209,13 +209,7 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
     }
     let sections_len = h.raw_len as usize;
     // a valid geom byte whose decoder isn't compiled in is refused loudly
-    let compiled = match h.geom {
-        GeomEncoding::VarintArcs => caps::GEOM_VARINT_ARCS,
-        GeomEncoding::FixedWidthArcs => caps::GEOM_FIXED_WIDTH_ARCS,
-        GeomEncoding::FullRings => caps::GEOM_FULL_RINGS,
-        GeomEncoding::Coarse => caps::GEOM_COARSE,
-    };
-    if !compiled {
+    if !caps::geom_compiled_in(h.geom) {
         return Err(Error::GeometryNotCompiledIn(h.geom));
     }
 
