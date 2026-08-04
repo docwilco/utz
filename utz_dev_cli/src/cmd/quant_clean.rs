@@ -1,7 +1,7 @@
-//! Quantization-artifact report: how badly does grid snapping mangle the
+//! Reports quantization artifacts: how badly grid snapping mangles the
 //! ring geometry (self-crossings, collinear self-overlaps, self-touches,
-//! zero-area rings), and how much of that does the [`utz_encode::clean`]
-//! pass remove. Rings are assembled from the shared arcs exactly like the
+//! zero-area rings), and how much of that the [`utz_encode::clean`]
+//! pass removes. Rings are assembled from the shared arcs exactly like the
 //! encoder does; the measuring itself lives in `utz_encode`'s validate
 //! module (shared with the viewer's problems panel). `--locate` lists each
 //! surviving crossing/overlap as a live-viewer URL.
@@ -19,25 +19,27 @@ use utz_encode::validate::{self, Bad, Kind};
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// dataset: [land-]now|1970|all
+    /// The dataset, one of [land-]now|1970|all.
     #[arg(default_value = "now")]
     ds: String,
-    /// simplification tolerance in meters
+    /// The simplification tolerance in meters.
     #[arg(default_value_t = 500.0)]
     eps_m: f64,
-    /// quantization widths to report (16/24/32)
+    /// The quantization widths to report (16/24/32).
     #[arg(default_values_t = [16u32, 24])]
     qbits: Vec<u32>,
-    /// list each post-cleanup crossing/overlap as zone + live-viewer URL
+    /// Lists each post-cleanup crossing/overlap as a zone plus live-viewer
+    /// URL.
     #[arg(long)]
     locate: bool,
-    /// live viewer base for --locate links
+    /// The live-viewer base URL for --locate links.
     #[arg(long, default_value = "https://docwilco.github.io/utz/live/index.html")]
     viewer: String,
 }
 
 /// # Errors
-/// Dataset load/parse failure, or a qbits value other than 16/24/32.
+/// The command fails on a dataset load/parse failure, or on a qbits value
+/// other than 16/24/32.
 #[expect(
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"

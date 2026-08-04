@@ -1,8 +1,8 @@
 //! Generates the uncompressed twins of the compact/balanced presets through
-//! the consumer builder API (`utz_build` as a build-dependency — the
+//! the consumer builder API (`utz_build` as a build-dependency: the
 //! custom-tier path, dogfooded). The preset shapes come from the `utz_data_*`
 //! crates via `utz` features; only the codec-none twins, which no data crate
-//! ships, are built here. One copy for both benches (exposed as
+//! ships, are built here. One copy serves both benches (exposed as
 //! `utz_bench_common::assets`), so host and target checksums stay comparable
 //! by construction.
 

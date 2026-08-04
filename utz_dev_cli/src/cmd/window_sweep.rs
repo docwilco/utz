@@ -1,9 +1,10 @@
-//! Ratio-vs-window sweep + *measured* peak decode RAM. Encodes the real
-//! payload per codec across window/dict sizes (capped at decoded size),
-//! then decodes each blob through the exact paths `utz` ships
-//! (`utz::decompress()` — ruzstd backend here, not zstd-sys) under a
-//! tracking allocator. Goal: pick preset windows at the ratio knee and
-//! verify the `peak ≈ decoded + window + state` model.
+//! Sweeps compression ratio against window size and *measures* peak
+//! decode RAM. The command encodes the real payload per codec across
+//! window/dict sizes (capped at decoded size), then decodes each blob
+//! through the exact paths `utz` ships (`utz::decompress()`, with the
+//! ruzstd backend here, not zstd-sys) under a tracking allocator. The
+//! goal is to pick preset windows at the ratio knee and verify the
+//! `peak ≈ decoded + window + state` model.
 //!
 //! ```text
 //! utz_dev_cli window-sweep [ds] [grid_deg] [--eps E [--quant B]]
@@ -18,10 +19,10 @@ use utz_build::{ensure, Error};
 use utz_encode::encode::{self, Codec, Params};
 
 /// Counts live/peak heap bytes for the whole binary (the other subcommands
-/// pay two relaxed atomics per alloc — noise). `realloc` stays at the trait
-/// default, which routes through alloc+copy+dealloc on these counters: grow-
-/// in-place is deliberately disabled, so peaks include the old+new overlap a
-/// naive/embedded allocator would pay.
+/// pay two relaxed atomics per alloc, which is noise). `realloc` stays at
+/// the trait default, which routes through alloc+copy+dealloc on these
+/// counters: grow-in-place is deliberately disabled, so peaks include the
+/// old+new overlap a naive/embedded allocator would pay.
 struct Tracking;
 
 static LIVE: AtomicUsize = AtomicUsize::new(0);
@@ -45,7 +46,7 @@ unsafe impl GlobalAlloc for Tracking {
 #[global_allocator]
 static ALLOC: Tracking = Tracking;
 
-/// Run `work`, returning (result, peak heap growth over entry live, wall ms).
+/// Runs `work`, returning (result, peak heap growth over entry live, wall ms).
 pub(crate) fn measure<T>(work: impl FnOnce() -> T) -> (T, usize, f64) {
     let base = LIVE.load(Relaxed);
     PEAK.store(base, Relaxed);
@@ -57,27 +58,28 @@ pub(crate) fn measure<T>(work: impl FnOnce() -> T) -> (T, usize, f64) {
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// dataset: [land-]now|1970|all
+    /// The dataset, one of [land-]now|1970|all.
     #[arg(default_value = "now")]
     ds: String,
-    /// grid cell size in integer degrees
+    /// The grid cell size in integer degrees.
     #[arg(default_value_t = 2.0)]
     grid_deg: f64,
-    /// sweep a single ε (meters) instead of the preset-candidate list
+    /// Sweeps a single ε (meters) instead of the preset-candidate list.
     #[arg(long)]
     eps: Option<f64>,
-    /// quant bits for --eps (default 24 if ε≤250 else 16)
+    /// The quant bits for --eps (the default is 24 if ε≤250, else 16).
     #[arg(long)]
     quant: Option<u32>,
 }
 
 /// # Errors
-/// Dataset load/parse or payload encode failure, a codec backend
-/// compress/decode failure, or a decode that does not round-trip the
-/// payload.
+/// The command fails on a dataset load/parse or payload encode failure,
+/// on a codec backend compress/decode failure, or on a decode that does
+/// not round-trip the payload.
 ///
 /// # Panics
-/// If an xz dictionary size (capped at the raw payload size) exceeds `u32`.
+/// The command panics if an xz dictionary size (capped at the raw payload
+/// size) exceeds `u32`.
 #[expect(
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"

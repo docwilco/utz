@@ -1,11 +1,11 @@
-//! Per-stage size reduction of the whittling-down pipeline, measured on
-//! the real preset recipes: source `GeoJSON` → parsed f64 coordinates →
-//! shared-arc topology → density-weighted simplification → quantized
+//! Measures the per-stage size reduction of the whittling-down pipeline
+//! on the real preset recipes: source `GeoJSON` → parsed f64 coordinates
+//! → shared-arc topology → density-weighted simplification → quantized
 //! coordinates → varint-coded arcs → serialized sections → compressed
 //! asset. The stages mirror the utz
 //! crate docs' "How it works" list; this is the command that keeps those
 //! numbers honest. `--extended` adds the geometry-encodings matrix (raw
-//! payload, recipe-codec asset, and xz asset per `GeomEncoding`),
+//! payload, recipe-codec asset, and xz asset per `GeomEncoding`):
 //! the size columns of the ladder table on `GeomEncoding`.
 //!
 //! ```text
@@ -21,11 +21,11 @@ use utz_viz::{arc_verts, coord_count};
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// preset recipe: tiny|compact|balanced|accurate|all
-    /// (tiny-static is tiny with codec none; reported with tiny)
+    /// The preset recipe, one of tiny|compact|balanced|accurate|all
+    /// (tiny-static is tiny with codec none and is reported with tiny).
     #[arg(default_value = "all")]
     preset: String,
-    /// also measure every geometry encoding per preset
+    /// Also measures every geometry encoding per preset.
     #[arg(long)]
     extended: bool,
 }
@@ -40,7 +40,7 @@ struct Recipe {
     grid_deg: f64,
     density_weight_floor: f64,
     codec: Codec,
-    /// also report the uncompressed asset (the `-static` twin)
+    /// Whether to also report the uncompressed asset (the `-static` twin).
     static_twin: bool,
 }
 
@@ -138,8 +138,9 @@ fn ratio(numerator: u64, denominator: u64) -> f64 {
     numerator as f64 / denominator as f64
 }
 
-/// Raw payload + compressed asset per geometry encoding, with ratios
-/// vs `VarintArcs`: the size columns of the `GeomEncoding` ladder table.
+/// Prints the raw payload and compressed asset per geometry encoding,
+/// with ratios vs `VarintArcs`: the size columns of the `GeomEncoding`
+/// ladder table.
 fn encodings_matrix(
     recipe: &Recipe,
     topology: &topo::Topology,
@@ -198,7 +199,8 @@ fn encodings_matrix(
 }
 
 /// # Errors
-/// Density-grid load, dataset download/parse, or encode failure.
+/// The command fails on a density-grid load, dataset download/parse, or
+/// encode failure.
 pub fn run(args: &Args) -> utz_build::Result<()> {
     let cache = utz_build::cache_dir();
     let density = DensityGrid::load(&cache)?;
@@ -213,7 +215,7 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
     Ok(())
 }
 
-/// Measure and print every whittling stage for one recipe.
+/// Measures and prints every whittling stage for one recipe.
 fn report_recipe(
     recipe: &Recipe,
     cache: &std::path::Path,
@@ -320,7 +322,7 @@ fn report_recipe(
     Ok(())
 }
 
-/// Serialize the varint payload and print the quantize / varint-code /
+/// Serializes the varint payload and prints the quantize / varint-code /
 /// serialize stages; returns the payload for the compression stages.
 fn report_payload(
     topology: &topo::Topology,

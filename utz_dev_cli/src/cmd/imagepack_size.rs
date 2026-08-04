@@ -1,8 +1,9 @@
 //! Does packing `FullRings` coords to quant width beat general compression
-//! of the zero-padded i32 pairs? (Decides whether packed images are
-//! worth it for *compressed* assets; uncompressed XIP always saves the raw
-//! 25–50%.) Takes uncompressed full-rings assets, rewrites the coords
-//! section at quant width, compresses both payloads at preset settings.
+//! of the zero-padded i32 pairs? (The answer decides whether packed
+//! images are worth it for *compressed* assets; uncompressed XIP always
+//! saves the raw 25–50%.) The command takes uncompressed full-rings
+//! assets, rewrites the coords section at quant width, and compresses
+//! both payloads at preset settings.
 //!
 //! ```text
 //! utz_dev_cli imagepack-size <eager.utz>...
@@ -14,17 +15,18 @@ use utz_encode::encode::{compress, Codec};
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// codec-none .utz asset path(s)
+    /// The codec-none .utz asset path(s).
     #[arg(required = true)]
     paths: Vec<String>,
 }
 
 /// # Errors
-/// I/O reading an input asset or a compression backend failure.
+/// The command fails on an I/O error reading an input asset or on a
+/// compression backend failure.
 ///
 /// # Panics
-/// If an input is not a codec-none `FullRings` .utz asset, or its path has
-/// no file stem.
+/// The command panics if an input is not a codec-none `FullRings` .utz
+/// asset, or if its path has no file stem.
 pub fn run(args: &Args) -> utz_build::Result<()> {
     println!(
         "{:<30} {:>9} {:>9} {:>9} {:>9}",

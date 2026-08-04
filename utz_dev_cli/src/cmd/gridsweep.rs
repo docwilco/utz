@@ -1,6 +1,7 @@
-//! Grid-size sweep (1..=20 deg). For each size: total cells, "border"
-//! cells (a tz boundary edge passes through → lookup needs PIP), interior
-//! cells (single zone → O(1)), the fraction of area-uniform lookups that
+//! Sweeps the grid cell size over 1..=20 degrees. For each size it
+//! reports the total cell count, the "border" cells (a tz boundary edge
+//! passes through, so lookup needs PIP), the interior cells (a single
+//! zone, so lookup is O(1)), the fraction of area-uniform lookups that
 //! hit a border cell, and a memory estimate.
 //!
 //! ```text
@@ -9,13 +10,13 @@
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// dataset: [land-]now|1970|all
+    /// The dataset, one of [land-]now|1970|all.
     #[arg(default_value = "now")]
     ds: String,
 }
 
 /// # Errors
-/// Dataset load/parse failure.
+/// The command fails on a dataset load/parse failure.
 pub fn run(args: Args) -> utz_build::Result<()> {
     let dataset = args.ds;
     let features = utz_build::load(&dataset)?;

@@ -1,5 +1,5 @@
-//! Full pipeline size table on the *real* asset: topology × RDP(ε) ×
-//! quant(i16/i24) × codec (incl gzip).
+//! Prints the full pipeline size table on the *real* asset, covering
+//! topology × RDP(ε) × quant(i16/i24) × codec (including gzip).
 //!
 //! ```text
 //! utz_dev_cli size-table [ds] [grid_deg]
@@ -9,16 +9,17 @@ use utz_encode::encode::{self, Codec, Params};
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// dataset: [land-]now|1970|all
+    /// The dataset, one of [land-]now|1970|all.
     #[arg(default_value = "now")]
     ds: String,
-    /// grid cell size in integer degrees
+    /// The grid cell size in integer degrees.
     #[arg(default_value_t = 2.0)]
     grid_deg: f64,
 }
 
 /// # Errors
-/// Dataset load/parse, payload encode, or compression backend failure.
+/// The command fails on a dataset load/parse, payload encode, or
+/// compression backend failure.
 pub fn run(args: Args) -> utz_build::Result<()> {
     let (dataset, grid_deg) = (args.ds, args.grid_deg);
     let features = utz_build::load(&dataset)?;

@@ -1,5 +1,5 @@
-//! Generate the webdist viewer: one static page + binary data
-//! files per TZBB dataset, servable from any static host (GitHub Pages,
+//! Generates the webdist viewer: one static page plus binary data files
+//! per TZBB dataset, servable from any static host (GitHub Pages,
 //! `python3 -m http.server -d webdist`).
 //!
 //! ```text
@@ -20,17 +20,18 @@ const DATASETS: [&str; 6] = ["now", "1970", "all", "land-now", "land-1970", "lan
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// output directory for the viewer site
+    /// The output directory for the viewer site.
     #[arg(default_value = "webdist")]
     out: PathBuf,
-    /// regenerate every blob even if its inputs are unchanged
+    /// Regenerates every blob even if its inputs are unchanged.
     #[arg(long)]
     force: bool,
 }
 
 /// # Errors
-/// Wasm viewer build failure, dataset or density-grid download/parse
-/// failure, or I/O writing the site files.
+/// The command fails on a wasm viewer build failure, a dataset or
+/// density-grid download/parse failure, or an I/O error writing the site
+/// files.
 pub fn run(args: Args) -> utz_build::Result<()> {
     let out_dir = args.out;
     std::fs::create_dir_all(&out_dir)?;
@@ -124,8 +125,8 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     Ok(())
 }
 
-/// Density grid loaded once, on first demand. Density is optional for the
-/// viewer, so a failed load warns once and yields `None` thereafter.
+/// The density grid, loaded once on first demand. Density is optional for
+/// the viewer, so a failed load warns once and yields `None` thereafter.
 enum LazyDensity {
     Unprobed,
     Probed(Option<utz_build::density::DensityGrid>),
@@ -160,8 +161,9 @@ fn fresh(stamp_path: &Path, want: &str, outputs: &[&Path]) -> bool {
         && std::fs::read_to_string(stamp_path).is_ok_and(|have| have == want)
 }
 
-/// Content hash (std `SipHash`): identifies the generating binary in stamps,
-/// so a rebuilt `utz_build` invalidates every blob its code could shape.
+/// Computes a content hash (std `SipHash`) that identifies the generating
+/// binary in stamps, so a rebuilt `utz_build` invalidates every blob its
+/// code could shape.
 fn hash_file(path: &Path) -> String {
     use std::hash::Hasher as _;
     std::fs::read(path).map_or_else(
@@ -174,9 +176,9 @@ fn hash_file(path: &Path) -> String {
     )
 }
 
-/// len+mtime fingerprint for cache files that are only rewritten when their
-/// content actually changed (the download cache and its sidecars); `none`
-/// when absent.
+/// Computes a len+mtime fingerprint for cache files that are only
+/// rewritten when their content actually changed (the download cache and
+/// its sidecars), and returns `none` when the file is absent.
 fn file_fp(path: &Path) -> String {
     std::fs::metadata(path).map_or_else(
         |_| "none".into(),
@@ -191,7 +193,7 @@ fn file_fp(path: &Path) -> String {
     )
 }
 
-/// Cached-zip fingerprint: the conditional-GET validators (`ETag` /
+/// Fingerprints a cached zip from the conditional-GET validators (`ETag` /
 /// `Last-Modified`) stored beside the file (a 304 revalidation leaves both
 /// untouched), falling back to len+mtime when no validators were stored.
 fn zip_fp(zip: &Path) -> String {
@@ -208,12 +210,13 @@ fn zip_fp(zip: &Path) -> String {
     }
 }
 
-/// Zone lattice for the coarse-prefilter dominance view: encode a fine-ε
-/// asset and let the *runtime* answer a 0.1° lattice, so the browser
-/// shows exactly what the shipped grid+PIP would answer. Format
-/// (little-endian): `"uTZz" | u32 w | u32 h | u32 n_zones
-/// | per zone: u16 len + utf8 tzid | pad to 2 | u16 ids[w·h]`
-/// (0xFFFF = no zone; row 0 = 90°N, col 0 = 180°W, cell centers sampled).
+/// Builds the zone lattice for the coarse-prefilter dominance view: it
+/// encodes a fine-ε asset and lets the *runtime* answer a 0.1° lattice,
+/// so the browser shows exactly what the shipped grid+PIP would answer.
+/// The format is little-endian: `"uTZz" | u32 w | u32 h | u32 n_zones
+/// | per zone: u16 len + utf8 tzid | pad to 2 | u16 ids[w·h]`, where
+/// 0xFFFF means no zone, row 0 is 90°N, col 0 is 180°W, and cell centers
+/// are sampled.
 fn zones_bin(features: &[utz_build::Feat], dataset: &str) -> utz_build::Result<Vec<u8>> {
     const STEP: f64 = 0.1;
     let params = Params {
@@ -297,15 +300,16 @@ fn zones_bin(features: &[utz_build::Feat], dataset: &str) -> utz_build::Result<V
     Ok(out)
 }
 
-/// zlib-deflate (the browser side inflates with `DecompressionStream('deflate')`).
+/// Zlib-deflates `data` to `path` (the browser side inflates with
+/// `DecompressionStream('deflate')`).
 fn write_z(path: &Path, data: &[u8]) -> utz_build::Result<usize> {
     let deflated = miniz_oxide::deflate::compress_to_vec_zlib(data, 6);
     std::fs::write(path, &deflated)?;
     Ok(deflated.len())
 }
 
-/// Build `utz_viz` (simplify + live asset encode + stats surface) for
-/// wasm32-unknown-unknown and return the cdylib bytes. The emit feature
+/// Builds `utz_viz` (simplify + live asset encode + stats surface) for
+/// wasm32-unknown-unknown and returns the cdylib bytes. The emit feature
 /// is off: it pulls in `utz_build`, whose std-only deps don't target wasm.
 fn build_wasm() -> utz_build::Result<Vec<u8>> {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/..");

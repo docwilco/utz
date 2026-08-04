@@ -1,6 +1,7 @@
-//! End-to-end roundtrip: encode the real asset, decode with the runtime
-//! Finder, and validate `lookup()` against a linear first-hit PIP scan over the
-//! same quantized geometry (the `grid_bench` reference).
+//! Runs the end-to-end roundtrip: it encodes the real asset, decodes it
+//! with the runtime Finder, and validates `lookup()` against a linear
+//! first-hit PIP scan over the same quantized geometry (the `grid_bench`
+//! reference).
 //!
 //! ```text
 //! utz_dev_cli roundtrip [ds] [eps_m] [npts]
@@ -13,23 +14,23 @@ use utz_encode::{topo, Feat};
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// dataset: [land-]now|1970|all
+    /// The dataset, one of [land-]now|1970|all.
     #[arg(default_value = "now")]
     ds: String,
-    /// simplification tolerance in meters
+    /// The simplification tolerance in meters.
     #[arg(default_value_t = 500.0)]
     eps_m: f64,
-    /// number of sample points
+    /// The number of sample points.
     #[arg(default_value_t = 100_000)]
     npts: usize,
 }
 
 /// # Errors
-/// Dataset load/parse or encode failure.
+/// The command fails on a dataset load/parse or encode failure.
 ///
 /// # Panics
-/// If the runtime `Finder` rejects the asset just encoded, or the decoded
-/// release string does not round-trip.
+/// The command panics if the runtime `Finder` rejects the asset just
+/// encoded, or if the decoded release string does not round-trip.
 #[expect(
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"

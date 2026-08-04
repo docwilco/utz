@@ -1,7 +1,7 @@
-//! Topology-aware RDP sweep: for each tolerance, simplify each shared arc once,
-//! encode the shared-arc payload (i24 topology + delta/varint), compress, and
-//! measure lookup accuracy vs the full-precision reference over a random
-//! sample.
+//! Sweeps topology-aware RDP tolerances: for each tolerance the command
+//! simplifies each shared arc once, encodes the shared-arc payload (i24
+//! topology + delta/varint), compresses it, and measures lookup accuracy
+//! against the full-precision reference over a random sample.
 //!
 //! ```text
 //! utz_dev_cli rdp-sweep [ds]
@@ -13,16 +13,16 @@ use utz_encode::{topo, Feat};
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// dataset: [land-]now|1970|all
+    /// The dataset, one of [land-]now|1970|all.
     #[arg(default_value = "now")]
     ds: String,
 }
 
 /// # Errors
-/// Dataset load/parse failure.
+/// The command fails on a dataset load/parse failure.
 ///
 /// # Panics
-/// If zstd compression of the encoded payload fails.
+/// The command panics if zstd compression of the encoded payload fails.
 pub fn run(args: Args) -> utz_build::Result<()> {
     let dataset = args.ds;
     let features = utz_build::load(&dataset)?;

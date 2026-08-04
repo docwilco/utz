@@ -1,5 +1,5 @@
-//! Arc-store encoding shootout (delta+varint vs abs-fixed) at a chosen
-//! eps + quant grid.
+//! Runs the arc-store encoding shootout (delta+varint vs abs-fixed) at a
+//! chosen eps and quant grid.
 //!
 //! ```text
 //! utz_dev_cli quant-size [eps_m] [qbits...]
@@ -9,19 +9,19 @@ use utz_encode::topo;
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// simplification tolerance in meters
+    /// The simplification tolerance in meters.
     #[arg(default_value_t = 500.0)]
     eps_m: f64,
-    /// quantization widths (16/24/32)
+    /// The quantization widths (16/24/32).
     #[arg(default_values_t = [16u32, 24])]
     qbits: Vec<u32>,
 }
 
 /// # Errors
-/// Dataset load/parse failure.
+/// The command fails on a dataset load/parse failure.
 ///
 /// # Panics
-/// If zstd compression of the encoded arc store fails.
+/// The command panics if zstd compression of the encoded arc store fails.
 pub fn run(args: Args) -> utz_build::Result<()> {
     let (eps_m, quant_widths) = (args.eps_m, args.qbits);
     let features = utz_build::load("now")?;

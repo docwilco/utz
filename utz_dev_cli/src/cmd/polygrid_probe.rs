@@ -1,7 +1,7 @@
 //! Would a poly-granular grid replace the per-poly bboxes?
 //!
 //! Rebuilds the grid from a codec-*none* asset's geometry twice with the
-//! real builder (`grid::build()` + `intern_csr`): once per feature (today's
+//! real builder (`grid::build()` + `intern_csr()`): once per feature (today's
 //! format) and once with each polygon exploded into its own pseudo-feature
 //! (the "purely grid" design: border-cell lists reference polys directly,
 //! so lazy PIP jumps straight to the polys that touch the cell and the
@@ -23,7 +23,7 @@ use utz_build::Feat;
 use utz_common::GeomEncoding;
 use utz_encode::grid::{self, Order};
 
-/// Decode one arc (forward orientation) into (i32, i32) coords.
+/// Decodes one arc (forward orientation) into (i32, i32) coords.
 fn arc_coords(payload: &[u8], header: &format::PayloadLayout, id: usize) -> Vec<(i32, i32)> {
     let coord_bytes = header.quant_bits.bytes();
     let mut position = header.arc_data + read_u32(payload, header.arc_offsets + id * 4) as usize;
@@ -60,8 +60,8 @@ fn arc_coords(payload: &[u8], header: &format::PayloadLayout, id: usize) -> Vec<
     coords
 }
 
-/// Container → per-feature dequantized geometry (same dequantization as the
-/// encoder).
+/// Loads a container into per-feature dequantized geometry (the same
+/// dequantization as the encoder).
 fn load_feats(bytes: &[u8]) -> (format::PayloadLayout, Vec<Feat>) {
     let start = format::outer(bytes).expect("not a utz container");
     let payload = &bytes[start + format::PAYLOAD_HEADER_LEN..];
@@ -160,17 +160,18 @@ fn measure(features: &[Feat], deg: f64) -> (grid::CellGrid, Stats) {
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// codec-none .utz asset path(s)
+    /// The codec-none .utz asset path(s).
     #[arg(required = true)]
     paths: Vec<String>,
 }
 
 /// # Errors
-/// I/O reading an input asset.
+/// The command fails on an I/O error reading an input asset.
 ///
 /// # Panics
-/// If an input is not a codec-none arc-store .utz asset (geom 0/1), its
-/// path has no file stem, or it holds more features than fit a `u16` id.
+/// The command panics if an input is not a codec-none arc-store .utz
+/// asset (geom 0/1), if its path has no file stem, or if it holds more
+/// features than fit a `u16` id.
 #[expect(
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"

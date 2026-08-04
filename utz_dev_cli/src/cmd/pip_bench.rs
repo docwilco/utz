@@ -1,6 +1,7 @@
-//! Hand-rolled i64 PIP vs the geo i64 oracle vs geometry-rs (tzf-rs's PIP
-//! crate, tidwall/geometry port) on real OSM geometry — correctness
-//! (target 0 disagreements vs geo) + speed.
+//! Benchmarks the hand-rolled i64 PIP against the geo i64 oracle and
+//! geometry-rs (tzf-rs's PIP crate, a tidwall/geometry port) on real OSM
+//! geometry, measuring correctness (the target is 0 disagreements vs geo)
+//! and speed.
 //!
 //! All contenders get the *same* quantized (i24) simplified geometry and run the
 //! same linear first-hit scan with the same hoisted bbox precheck, so the
@@ -18,20 +19,20 @@ use utz_encode::{q24_lat, q24_lon, topo, Feat};
 
 #[derive(clap::Args)]
 pub struct Args {
-    /// dataset: [land-]now|1970|all
+    /// The dataset, one of [land-]now|1970|all.
     #[arg(default_value = "now")]
     ds: String,
-    /// simplification tolerance in meters
+    /// The simplification tolerance in meters.
     #[arg(default_value_t = 500.0)]
     eps_m: f64,
-    /// number of sample points
+    /// The number of sample points.
     #[arg(default_value_t = 20_000)]
     npts: usize,
 }
 
-/// Per-polygon contender record: ring slices + bbox hoisted out of the loop
-/// (the runtime's grid plays this role; every contender gets the same
-/// hoisted bbox test).
+/// One per-polygon contender record, holding the ring slices and the bbox
+/// hoisted out of the loop (the runtime's grid plays this role; every
+/// contender gets the same hoisted bbox test).
 struct P<'a> {
     fi: usize,
     bbox: (i32, i32, i32, i32),
@@ -39,11 +40,11 @@ struct P<'a> {
 }
 
 /// # Errors
-/// Dataset load/parse failure.
+/// The command fails on a dataset load/parse failure.
 ///
 /// # Panics
-/// If the warmup scan lands no sample point inside any zone (sanity check
-/// on the quantized geometry).
+/// The command panics if the warmup scan lands no sample point inside any
+/// zone (a sanity check on the quantized geometry).
 #[expect(
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"
@@ -262,10 +263,11 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     Ok(())
 }
 
-/// Linear first-hit scan of every contender poly with the shared hoisted
-/// bbox precheck: the scan shell every contender pays identically; `hit`
-/// is the per-candidate containment kernel. Returns per-point first hit
-/// (as feature index) + wall time.
+/// Runs the linear first-hit scan of every contender poly with the shared
+/// hoisted bbox precheck; this is the scan shell every contender pays
+/// identically, and `hit` is the per-candidate containment kernel.
+/// Returns the per-point first hit (as a feature index) and the wall
+/// time.
 fn timed_scan(
     points: &[(i32, i32)],
     polys: &[P],
@@ -290,10 +292,12 @@ fn timed_scan(
     (got, timer.elapsed())
 }
 
-/// tzid + polygon → ring → quantized vertices
+/// A tzid paired with its polygons, each a list of rings of quantized
+/// vertices.
 type QFeat = (String, Vec<Vec<Vec<(i32, i32)>>>);
 
-/// tzid + per-polygon rings quantized to the i24 grid, degenerate rings dropped.
+/// Quantizes each feature's per-polygon rings to the i24 grid, dropping
+/// degenerate rings, and pairs them with the tzid.
 fn quantize(features: &[Feat]) -> Vec<QFeat> {
     features
         .iter()
