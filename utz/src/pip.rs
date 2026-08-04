@@ -1,86 +1,105 @@
-//! Per-polygon integer point-in-polygon: the kernels behind
-//! [`lookup()`](crate::Finder::lookup). Nothing here is needed to use
-//! μTZ; the module is public for the benches and for auditing the
-//! exactness claims documented on the items below.
+//! Integer point-in-polygon kernels, the geometric core behind
+//! [`lookup()`](crate::Finder::lookup). Nothing in this module is needed
+//! to use μTZ. It is public so that the benches can drive the kernels
+//! directly and so that the exactness claims documented on the items
+//! below can be audited.
 //!
 //! # Algorithm
 //!
-//! Even-odd ray cast (ray toward +x) over one polygon's rings, exterior
-//! first, holes after. Parity XORs across rings, so a point inside a hole
-//! comes out `false`. Exact integer arithmetic, no division: one cross
-//! product `(b-a)×(p-a)` in a wide type decides both crossing direction
-//! and boundary (collinear) for each edge whose y-span touches the
-//! scanline.
+//! Every kernel performs the classic even-odd ray cast: a ray from the
+//! query point toward +x is tested against every edge of one polygon's
+//! rings, exterior first and holes after, and an odd crossing count means
+//! the point is inside. Parity XORs across rings, so a point inside a
+//! hole comes out `false`. The arithmetic is exact, integer-only, and
+//! free of division: for each edge whose y-span touches the scanline, a
+//! single cross product `(b-a)×(p-a)` computed in a wide type decides
+//! both the crossing direction and whether the point lies exactly on the
+//! edge (the collinear case).
 //!
-//! Points exactly on any edge (exterior or hole) report `true`: border
+//! A point exactly on any edge, exterior or hole, reports `true`. Border
 //! points are ambiguous between adjacent zones, and claiming them keeps
-//! lookup deterministic (the first candidate polygon wins).
+//! lookup deterministic: the first candidate polygon wins.
 //!
 //! # Two kernel families
 //!
-//! The wide-product kernels ([`contains`], [`ring_hit`], [`edge`]) are one
-//! generic implementation with two type axes:
+//! The module implements the ray cast twice, shaped for different cores.
+//! The wide-product family computes each cross product in a double-width
+//! type and is the fast path wherever a wide multiply is cheap. The
+//! sign-split family avoids the wide type altogether and is the fast path
+//! on 32-bit cores. The finder dispatches lookups to the sign-split
+//! family when `target_pointer_width = "32"` and to the wide-product
+//! family everywhere else; the verdicts are identical either way.
 //!
-//! - `W`, the wide type the cross product is formed in: `i64`, `i128`, or
-//!   (test/bench only) `f64`. [`Wide`] documents which width is exact for
-//!   which coordinate grid.
-//! - `P`, the coordinate-pair storage vertices load from: decoded
-//!   `(i32, i32)`, narrow `(i16, i16)`, or packed `Pack24`. [`CoordPair`]
-//!   documents the layouts. The kernel widens each vertex as it loads it;
-//!   coordinate comparisons run at the narrow width.
+//! The wide-product kernels ([`contains`], [`ring_hit`], and [`edge`])
+//! share one generic implementation with two type parameters. `W` is the
+//! wide type the cross product is formed in: `i64`, `i128`, or, for tests
+//! and benches only, `f64`; the [`Wide`] trait documents which width is
+//! exact for which coordinate grid. `P` is the coordinate-pair storage
+//! that vertices are loaded from: decoded `(i32, i32)`, narrow
+//! `(i16, i16)`, or packed `Pack24`; the [`CoordPair`] trait documents
+//! the layouts. The kernel widens each vertex as it loads it, and
+//! coordinate comparisons run at the narrow width.
 //!
-//! The sign-split kernels ([`ring_hit_split`], [`edge_split`], generic
-//! over [`Narrow`]) eliminate the wide type: each cross-product half
-//! becomes a sign plus an exact unsigned magnitude product. They exist for
-//! 32-bit cores; [`edge_split`] documents the trade-off. The finder
-//! dispatches lookups to them on `target_pointer_width = "32"` and to the
-//! `W` kernels everywhere else; verdicts are identical either way.
+//! The sign-split kernels ([`ring_hit_split`] and [`edge_split`]) mirror
+//! [`ring_hit`] and [`edge`] with `W` removed: each cross-product half is
+//! split into a sign, decided by narrow comparisons, and an exact
+//! unsigned magnitude product that fits in twice the coordinate width.
+//! The [`Narrow`] trait supplies that product type for each coordinate
+//! type, and [`edge_split`] documents why this form wins on 32-bit cores
+//! and loses on 64-bit hosts.
 //!
 //! # Three granularities
 //!
-//! One entry point per memory mode, all folds of the same edge test:
+//! Each memory mode enters through its own granularity, and all three are
+//! folds of the same edge test:
 //!
-//! - [`contains`]: whole polygon from ring slices.
-//! - [`ring_hit`]: one ring (eager cache / full-rings sections).
-//! - [`edge`]: one edge, the streaming unit. The test is per-segment,
-//!   endpoint-symmetric, and parity accumulation is order-independent, so
-//!   lazy/static lookups fold arcs through it straight off the asset bytes
-//!   with O(1) state and no decode buffer.
+//! - [`contains`] tests a whole polygon given its ring slices.
+//! - [`ring_hit`] tests one ring, and serves the eager cache and the
+//!   full-rings sections.
+//! - [`edge`] tests one edge and is the streaming unit. The test is
+//!   per-segment and endpoint-symmetric, and parity accumulation is
+//!   order-independent, so lazy and static lookups can fold arcs through
+//!   it straight off the asset bytes with O(1) state and no decode
+//!   buffer.
 
 use core::ops::{Mul, Sub};
 
-/// The kernel's wide product type: every cross-product half is a
-/// difference times a difference, so `W` must hold `4·coord_max²`
-/// exactly. A trait alias (all pure core traits, blanket-implemented):
-/// any type qualifies wherever the narrow coordinate type `N` converts
-/// in losslessly.
+/// The wide type the kernels form cross products in. Every cross-product
+/// half is a difference multiplied by a difference, so `W` must represent
+/// `4·coord_max²` exactly. The trait is an alias built from pure core
+/// traits and blanket-implemented, so any type qualifies wherever the
+/// narrow coordinate type `N` converts in losslessly.
 ///
-/// Which `W` for which grid:
+/// Which width is exact for which grid:
 ///
-/// - `i64` is exact for i16/i24 grids (|coord| ≤ 2^23, so products
-///   ≤ 2^48). i16-narrow storage does NOT relax this to i32: |coord| ≤
-///   2^15 still means differences up to 2^16 and a cross up to 2^33; the
-///   narrow win is memory and load width, not product width.
-/// - `i128` is for i32-fine grids (deg×1e7 overflows i64).
-/// - `f64` is test/bench only, never dispatched by lookup. Bit-exact for
-///   i16/i24 (products ≤ 2^48 < 2^53: every product and difference
-///   representable), silently inexact near boundaries at i32 (products
-///   around 2^62, the same failure mode as geometry-rs's float tests).
+/// - `i64` is exact for the i16 and i24 grids: with |coord| ≤ 2^23, every
+///   product stays at or below 2^48. Note that i16-narrow storage does
+///   not relax the requirement to `i32`. With |coord| ≤ 2^15 the
+///   differences still reach 2^16 and a cross product reaches 2^33; what
+///   narrow storage buys is memory and load width, not a smaller product.
+/// - `i128` serves the i32-fine grid, where degrees ×1e7 overflow `i64`.
+/// - `f64` is for tests and benches only and is never dispatched by
+///   lookup. It is bit-exact for i16/i24, where every product and
+///   difference stays below 2^53 and is therefore representable, but it
+///   is silently inexact near boundaries at i32, where products approach
+///   2^62. That is the same failure mode as geometry-rs's float tests.
 ///
-/// The trade-off behind the integer default: exact sign decisions at
-/// every width and zero FPU dependency (soft-float parts, f32-only FPUs),
-/// at the cost of double-width products. `f64` is IEEE-deterministic and
-/// SIMD-friendly on hosts, but its exactness bound must be proven per
-/// quant width, and on FPU-less cores it is the slow path.
+/// The integer default trades double-width products for exact sign
+/// decisions at every width and zero FPU dependency, which matters on
+/// soft-float parts and f32-only FPUs. `f64` is IEEE-deterministic and
+/// SIMD-friendly on hosts, but its exactness bound has to be proven for
+/// each quant width, and on FPU-less cores it is the slow path.
 pub trait Wide<N>: Copy + PartialOrd + From<N> + Sub<Output = Self> + Mul<Output = Self> {}
 impl<N, W: Copy + PartialOrd + From<N> + Sub<Output = W> + Mul<Output = W>> Wide<N> for W {}
 
-/// Coordinate-pair storage the kernels load vertices from, always at
-/// quant width: `(i32, i32)` decoded pairs, `(i16, i16)` pairs (i16-quant
-/// eager cache and full-rings sections; half the RAM/flash traffic), or
-/// packed `Pack24` straight over full-rings section bytes.
+/// The coordinate-pair storage the kernels load vertices from. Pairs are
+/// always stored at quant width: as decoded `(i32, i32)` tuples, as
+/// `(i16, i16)` tuples for the i16-quant eager cache and full-rings
+/// sections (half the RAM and flash traffic), or as packed `Pack24` read
+/// directly over full-rings section bytes.
 pub trait CoordPair: Copy {
-    /// The narrow in-memory coordinate type; widened to `W` per edge.
+    /// The narrow in-memory coordinate type, which the kernel widens to
+    /// `W` as it loads each vertex.
     type Narrow: Copy + Ord;
     fn xy(&self) -> (Self::Narrow, Self::Narrow);
 }
@@ -108,28 +127,31 @@ impl CoordPair for (i16, i16) {
     }
 }
 
-/// Ring-level verdict: `Inside` toggles polygon parity, `Boundary` claims.
+/// The verdict for one ring. `Inside` toggles the polygon's parity, and
+/// `Boundary` claims the point immediately.
 pub enum RingHit {
-    /// The point is inside this ring: toggle the polygon's parity.
+    /// The +x ray crossed this ring an odd number of times, so the
+    /// polygon's parity toggles.
     Inside,
     /// The point is outside this ring.
     Outside,
-    /// The point lies exactly on the ring: claimed immediately.
+    /// The point lies exactly on the ring and is claimed immediately.
     Boundary,
 }
 
-/// Edge-level verdict for streaming accumulation.
+/// The verdict for one edge, the unit of streaming accumulation.
 pub enum EdgeHit {
-    /// The +x ray crosses this edge: toggle parity.
+    /// The +x ray crosses this edge, so parity toggles.
     Cross,
-    /// No crossing.
+    /// The ray does not cross this edge.
     Miss,
-    /// The point lies exactly on this edge: claimed immediately.
+    /// The point lies exactly on this edge and is claimed immediately.
     Boundary,
 }
 
-/// Even-odd verdict for a whole polygon: `rings[0]` is the exterior, the
-/// rest are holes. Rings are open (no duplicated closing vertex).
+/// Reports whether the point `(px, py)` is inside the polygon whose rings
+/// are given as slices. `rings[0]` is the exterior and the remaining
+/// rings are holes. Rings are open: the closing vertex is not duplicated.
 #[must_use]
 pub fn contains<W, P>(rings: &[&[P]], px: P::Narrow, py: P::Narrow) -> bool
 where
@@ -147,8 +169,9 @@ where
     inside
 }
 
-/// Even-odd scan of one OPEN ring (the closing edge `last→first` is
-/// implied). `Inside` = odd crossings of the +x ray from `(px, py)`.
+/// Scans one open ring with the even-odd rule; the closing edge from the
+/// last vertex back to the first is implied. The verdict is `Inside` when
+/// the +x ray from `(px, py)` crosses an odd number of edges.
 #[must_use]
 pub fn ring_hit<W, P>(ring: &[P], px: P::Narrow, py: P::Narrow) -> RingHit
 where
@@ -178,15 +201,17 @@ where
     }
 }
 
-/// One edge vs the +x ray through `(px, py)`.
+/// Tests one edge against the +x ray through `(px, py)`.
 ///
-/// Only edges whose y-span touches the scanline are tested. Collinear
-/// with `px` inside the edge's x-span is `Boundary` (this covers edge
-/// interiors, vertices, and horizontal edges: every vertex is an endpoint
-/// of some touching edge). Crossings count each crossing vertex exactly
-/// once: an upward edge excludes its final endpoint, a downward edge
-/// excludes its starting endpoint, horizontal edges never cross.
-/// Direction-symmetric in `a`/`b` by construction.
+/// Only an edge whose y-span touches the scanline is examined. If the
+/// point is collinear with the edge and `px` falls within the edge's
+/// x-span, the verdict is `Boundary`; this covers edge interiors,
+/// vertices, and horizontal edges, because every vertex is an endpoint of
+/// some edge that touches the scanline. Crossings are counted so that a
+/// ray through a vertex counts exactly once: an upward edge excludes its
+/// final endpoint, a downward edge excludes its starting endpoint, and a
+/// horizontal edge never crosses. The test is symmetric in `a` and `b` by
+/// construction.
 #[expect(
     clippy::inline_always,
     reason = "the per-edge kernel every PIP loop folds through; inlining must not depend on per-target heuristics"
@@ -231,18 +256,19 @@ where
     EdgeHit::Miss
 }
 
-/// Sign-split arithmetic of a narrow coordinate type: the unsigned
-/// product type one cross-product half fits EXACTLY
-/// (`(2^b−1)² ≤ 2^2b − 1`, so u32 for i16 coordinates, u64 for i24/i32).
-/// The compare form needs only 2b bits where [`edge`]'s subtract form
-/// needs 2b+2, and the magnitudes are true b-bit `abs_diff`s, so each
-/// product is one widening multiply even on cores whose word is b bits,
-/// unlike the `W` kernels, whose (b+1)-bit differences force full wide
-/// multiplies there.
+/// Sign-split arithmetic for a narrow coordinate type. [`Self::Product`]
+/// is the unsigned type in which one cross-product half fits exactly,
+/// because `(2^b−1)² ≤ 2^2b − 1`: `u32` for i16 coordinates and `u64` for
+/// i24 and i32. The compare form therefore needs only 2b bits where
+/// [`edge`]'s subtract form needs 2b+2, and because the magnitudes are
+/// true b-bit `abs_diff`s, each product is a single widening multiply
+/// even on a core whose word is b bits wide. The `W` kernels cannot match
+/// that there, since their (b+1)-bit differences force full wide
+/// multiplies.
 pub trait Narrow: Copy + Ord {
-    /// unsigned 2b-bit product type
+    /// The unsigned 2b-bit product type.
     type Product: Copy + Ord;
-    /// exact `|a−b| · |c−d|`
+    /// Computes `|a−b| · |c−d|` exactly.
     fn magnitude_product(a: Self, b: Self, c: Self, d: Self) -> Self::Product;
 }
 impl Narrow for i16 {
@@ -268,9 +294,9 @@ impl Narrow for i32 {
     }
 }
 
-/// [`ring_hit`] folded over [`edge_split`] instead of [`edge`]: the
-/// ring-level kernel lookups dispatch to on 32-bit targets (the finder
-/// keeps the per-target policy).
+/// Runs [`ring_hit`]'s scan with [`edge_split`] in place of [`edge`].
+/// This is the ring-level kernel that lookups dispatch to on 32-bit
+/// targets; the finder owns the per-target policy.
 #[must_use]
 pub fn ring_hit_split<P>(ring: &[P], px: P::Narrow, py: P::Narrow) -> RingHit
 where
@@ -299,17 +325,19 @@ where
     }
 }
 
-/// The sign-split edge kernel ([`edge`] without the wide type): each
-/// cross-product half becomes a sign (narrow comparisons) times an exact
-/// unsigned magnitude product ([`Narrow::magnitude_product()`]). Strictly
-/// a 32-bit-core kernel: the i16 instantiation measured 0.75× the i64
-/// kernel on a 32-bit core but 2.3× (slower) on a 64-bit host, where a
-/// wide multiply is one instruction and the extra branches only cost.
-/// That is why lookups use it on 32-bit targets alone.
+/// The sign-split edge kernel, which is [`edge`] with the wide type
+/// removed: each cross-product half is split into a sign, decided by
+/// narrow comparisons, and an exact unsigned magnitude product
+/// ([`Narrow::magnitude_product()`]). It is strictly a 32-bit-core
+/// kernel. The i16 instantiation measured 0.75× the i64 kernel's time on
+/// a 32-bit core but 2.3× on a 64-bit host, where a wide multiply is a
+/// single instruction and the extra branches only cost; that is why
+/// lookups use it on 32-bit targets alone.
 ///
-/// Per-edge `Cross` verdicts match [`edge`] exactly; `Boundary` may fire
-/// from a different edge of the same shared vertex, which ring-level
-/// verdicts can't observe (`Boundary` short-circuits the ring).
+/// Per-edge `Cross` verdicts match [`edge`] exactly. A `Boundary` verdict
+/// may fire from a different edge of the same shared vertex, but
+/// ring-level results cannot observe the difference, because `Boundary`
+/// short-circuits the ring.
 #[expect(
     clippy::inline_always,
     reason = "the per-edge kernel every PIP loop folds through; inlining must not depend on per-target heuristics"
@@ -358,12 +386,13 @@ pub fn edge_split<N: Narrow>(a: (N, N), b: (N, N), px: N, py: N) -> EdgeHit {
     EdgeHit::Miss
 }
 
-/// Packed little-endian i24 pair (6 bytes, align 1): `&[Pack24]` is a valid
-/// slice over the section bytes at ANY address: i24 sections have no alignment
-/// requirement. The unpack compiles to whatever the target does best
-/// (single unaligned-style loads where hardware allows, byte assembly on
-/// strict-alignment cores; measured a tie with hand-blocked aligned
-/// loads there).
+/// A packed little-endian i24 coordinate pair: 6 bytes with alignment 1.
+/// Because the alignment is 1, `&[Pack24]` is a valid slice over the
+/// section bytes at any address, so i24 sections carry no alignment
+/// requirement. The unpack compiles to whatever the target does best:
+/// single unaligned-style loads where the hardware allows them, and byte
+/// assembly on strict-alignment cores, where it measured a tie with
+/// hand-blocked aligned loads.
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 #[cfg(feature = "geom-full-rings")]
