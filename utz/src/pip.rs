@@ -142,14 +142,14 @@ where
     W: Wide<P::Narrow>,
 {
     // TODO: Are we actually allowing 2 vertex rings in the data? This seems like a useless extra check.
-    let n = ring.len();
-    if n < 3 {
+    let vertex_count = ring.len();
+    if vertex_count < 3 {
         return RingHit::Outside;
     }
     let mut inside = false;
-    let (mut x0, mut y0) = ring[n - 1].xy();
-    for p in ring {
-        let (x1, y1) = p.xy();
+    let (mut x0, mut y0) = ring[vertex_count - 1].xy();
+    for vertex in ring {
+        let (x1, y1) = vertex.xy();
         match edge::<W, _>((x0, y0), (x1, y1), px, py) {
             EdgeHit::Boundary => return RingHit::Boundary,
             EdgeHit::Cross => inside = !inside,
@@ -262,14 +262,14 @@ where
     P: CoordPair,
     P::Narrow: Narrow,
 {
-    let n = ring.len();
-    if n < 3 {
+    let vertex_count = ring.len();
+    if vertex_count < 3 {
         return RingHit::Outside;
     }
     let mut inside = false;
-    let (mut x0, mut y0) = ring[n - 1].xy();
-    for p in ring {
-        let (x1, y1) = p.xy();
+    let (mut x0, mut y0) = ring[vertex_count - 1].xy();
+    for vertex in ring {
+        let (x1, y1) = vertex.xy();
         match edge_split((x0, y0), (x1, y1), px, py) {
             EdgeHit::Boundary => return RingHit::Boundary,
             EdgeHit::Cross => inside = !inside,
@@ -368,15 +368,15 @@ impl CoordPair for Pack24 {
         // hardware allows, byte assembly on strict-alignment cores (measured
         // a tie with hand-blocked aligned loads there). Arithmetic
         // shifts sign-extend.
-        let p = self.0.as_ptr();
+        let ptr = self.0.as_ptr();
         // SAFETY: both 4-byte reads lie within this 6-byte struct
-        let (xw, yw) = unsafe {
+        let (x_word, y_word) = unsafe {
             (
-                u32::from_le(p.cast::<u32>().read_unaligned()),
-                u32::from_le(p.add(2).cast::<u32>().read_unaligned()),
+                u32::from_le(ptr.cast::<u32>().read_unaligned()),
+                u32::from_le(ptr.add(2).cast::<u32>().read_unaligned()),
             )
         };
-        ((xw << 8).cast_signed() >> 8, yw.cast_signed() >> 8)
+        ((x_word << 8).cast_signed() >> 8, y_word.cast_signed() >> 8)
     }
 }
 
@@ -454,7 +454,7 @@ mod tests {
                 .iter()
                 .map(|&(x, y)| (i32::from(x), i32::from(y)))
                 .collect();
-            let code = |h: RingHit| match h {
+            let code = |hit: RingHit| match hit {
                 RingHit::Outside => 0,
                 RingHit::Inside => 1,
                 RingHit::Boundary => 2,
@@ -495,7 +495,7 @@ mod tests {
         const M: i64 = 1 << 15; // draws in [−2^14, 2^14−1]
         let mut lcg = utz_common::Lcg::new(0x1515_1515);
         let mut next = || (((lcg.next_u64() >> 33).cast_signed() % M) - M / 2) as i16;
-        let code = |h: RingHit| match h {
+        let code = |hit: RingHit| match hit {
             RingHit::Outside => 0,
             RingHit::Inside => 1,
             RingHit::Boundary => 2,
@@ -521,7 +521,7 @@ mod tests {
     fn split_i32_matches_i128() {
         let mut lcg = utz_common::Lcg::new(0x3232_3232);
         let mut next = || ((lcg.next_u64() >> 32) as u32).cast_signed();
-        let code = |h: RingHit| match h {
+        let code = |hit: RingHit| match hit {
             RingHit::Outside => 0,
             RingHit::Inside => 1,
             RingHit::Boundary => 2,
@@ -556,24 +556,24 @@ mod tests {
         for _ in 0..200 {
             let (cx, cy) = (next(M), next(M));
             let n = 5 + (next(12).unsigned_abs() as usize);
-            let mut pts: Vec<(i32, i32)> = (0..n)
+            let mut points: Vec<(i32, i32)> = (0..n)
                 .map(#[expect(clippy::cast_precision_loss, reason = "test geometry: k < n ≤ 17 and radius r < 2^12+2^20, all exact in f64")] |k| {
-                    let ang = k as f64 / n as f64 * core::f64::consts::TAU;
+                    let angle = k as f64 / n as f64 * core::f64::consts::TAU;
                     let r = (1 << 12) + i64::from(next(1 << 20).unsigned_abs());
                     (
-                        (i64::from(cx) + (ang.cos() * r as f64) as i64).clamp(-M, M - 1) as i32,
-                        (i64::from(cy) + (ang.sin() * r as f64) as i64).clamp(-M, M - 1) as i32,
+                        (i64::from(cx) + (angle.cos() * r as f64) as i64).clamp(-M, M - 1) as i32,
+                        (i64::from(cy) + (angle.sin() * r as f64) as i64).clamp(-M, M - 1) as i32,
                     )
                 })
                 .collect();
-            pts.dedup();
-            if pts.first() == pts.last() {
-                pts.pop();
+            points.dedup();
+            if points.first() == points.last() {
+                points.pop();
             }
-            if pts.len() < 3 {
+            if points.len() < 3 {
                 continue;
             }
-            let rings: &[&[(i32, i32)]] = &[&pts];
+            let rings: &[&[(i32, i32)]] = &[&points];
             for _ in 0..200 {
                 let (px, py) = (
                     cx.saturating_add(next(1 << 21)),
@@ -605,45 +605,45 @@ mod tests {
             // random star-shaped polygon (guaranteed simple) around a center
             let (cx, cy) = (next(1000) - 500, next(1000) - 500);
             let n = 5 + (next(12) as usize);
-            let mut pts: Vec<(i32, i32)> = (0..n)
+            let mut points: Vec<(i32, i32)> = (0..n)
                 .map(
                     #[expect(
                         clippy::cast_precision_loss,
                         reason = "test geometry: k < n ≤ 17 and radius r ≤ 450, exact in f64"
                     )]
                     |k| {
-                        let ang = k as f64 / n as f64 * core::f64::consts::TAU;
+                        let angle = k as f64 / n as f64 * core::f64::consts::TAU;
                         let r = 50 + i64::from(next(400));
                         (
-                            cx + (ang.cos() * r as f64) as i32,
-                            cy + (ang.sin() * r as f64) as i32,
+                            cx + (angle.cos() * r as f64) as i32,
+                            cy + (angle.sin() * r as f64) as i32,
                         )
                     },
                 )
                 .collect();
-            pts.dedup();
-            if pts.first() == pts.last() {
-                pts.pop();
+            points.dedup();
+            if points.first() == points.last() {
+                points.pop();
             }
-            if pts.len() < 3 {
+            if points.len() < 3 {
                 continue;
             }
 
-            let ext: geo::LineString<i64> = pts
+            let exterior: geo::LineString<i64> = points
                 .iter()
                 .map(|&(x, y)| (i64::from(x), i64::from(y)))
                 .collect();
-            let gpoly = geo::Polygon::new(ext, vec![]);
-            let rings: &[&[(i32, i32)]] = &[&pts];
+            let geo_polygon = geo::Polygon::new(exterior, vec![]);
+            let rings: &[&[(i32, i32)]] = &[&points];
             for _ in 0..200 {
                 let (px, py) = (cx + next(1200) - 600, cy + next(1200) - 600);
                 let ours = contains::<i64, _>(rings, px, py);
-                let geo_says = gpoly.contains(&geo::Point::new(i64::from(px), i64::from(py)));
+                let geo_says = geo_polygon.contains(&geo::Point::new(i64::from(px), i64::from(py)));
                 if ours != geo_says {
                     // geo::Contains excludes the boundary; we claim it. Only
                     // that exact disagreement is allowed.
                     use geo::algorithm::Intersects;
-                    let on_boundary = gpoly
+                    let on_boundary = geo_polygon
                         .exterior()
                         .intersects(&geo::Point::new(i64::from(px), i64::from(py)));
                     assert!(ours && on_boundary, "disagree off-boundary at ({px},{py})");

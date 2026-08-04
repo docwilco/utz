@@ -69,8 +69,8 @@ pub enum Error {
 }
 
 impl From<ureq::Error> for Error {
-    fn from(e: ureq::Error) -> Self {
-        Error::Http(Box::new(e))
+    fn from(error: ureq::Error) -> Self {
+        Error::Http(Box::new(error))
     }
 }
 

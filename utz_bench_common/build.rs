@@ -15,15 +15,15 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=UTZ_CACHE_DIR");
     println!("cargo:rerun-if-env-changed=UTZ_TZBB_RELEASE");
-    let out = std::env::var("OUT_DIR").unwrap();
+    let out_dir = std::env::var("OUT_DIR").unwrap();
     Config::compact()
         .codec(Codec::Uncompressed)
-        .out_path(format!("{out}/compact-none.utz"))
+        .out_path(format!("{out_dir}/compact-none.utz"))
         .generate()
         .expect("generate compact-none.utz");
     Config::balanced()
         .codec(Codec::Uncompressed)
-        .out_path(format!("{out}/balanced-none.utz"))
+        .out_path(format!("{out_dir}/balanced-none.utz"))
         .generate()
         .expect("generate balanced-none.utz");
     // fixed-width-arc twins: the XIP speed tier (streaming
@@ -32,13 +32,13 @@ fn main() {
     Config::tiny()
         .codec(Codec::Uncompressed)
         .geom(GeomEncoding::FixedWidthArcs)
-        .out_path(format!("{out}/tiny-fixed-static.utz"))
+        .out_path(format!("{out_dir}/tiny-fixed-static.utz"))
         .generate()
         .expect("generate tiny-fixed-static.utz");
     Config::compact()
         .codec(Codec::Uncompressed)
         .geom(GeomEncoding::FixedWidthArcs)
-        .out_path(format!("{out}/compact-fixed-none.utz"))
+        .out_path(format!("{out_dir}/compact-fixed-none.utz"))
         .generate()
         .expect("generate compact-fixed-none.utz");
     // full-rings twins: the geometry section IS the preload cache —
@@ -46,13 +46,13 @@ fn main() {
     Config::tiny()
         .codec(Codec::Uncompressed)
         .geom(GeomEncoding::FullRings)
-        .out_path(format!("{out}/tiny-eager-static.utz"))
+        .out_path(format!("{out_dir}/tiny-eager-static.utz"))
         .generate()
         .expect("generate tiny-eager-static.utz");
     Config::compact()
         .codec(Codec::Uncompressed)
         .geom(GeomEncoding::FullRings)
-        .out_path(format!("{out}/compact-eager-static.utz"))
+        .out_path(format!("{out_dir}/compact-eager-static.utz"))
         .generate()
         .expect("generate compact-eager-static.utz");
     // grid-only coarse asset: cell-precision answers, ~1/4 the flash of even
@@ -60,7 +60,7 @@ fn main() {
     Config::tiny()
         .codec(Codec::Uncompressed)
         .geom(GeomEncoding::Coarse)
-        .out_path(format!("{out}/tiny-coarse.utz"))
+        .out_path(format!("{out_dir}/tiny-coarse.utz"))
         .generate()
         .expect("generate tiny-coarse.utz");
 }

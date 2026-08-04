@@ -75,16 +75,16 @@ impl StageLadder {
 pub fn coord_count(feats: &[Feat]) -> u64 {
     feats
         .iter()
-        .flat_map(|f| &f.polys)
-        .flat_map(|p| p.iter())
-        .map(|r| r.len() as u64)
+        .flat_map(|feat| &feat.polys)
+        .flat_map(|poly| poly.iter())
+        .map(|ring| ring.len() as u64)
         .sum()
 }
 
 /// Total arc vertices of a topology (shared borders already deduplicated).
 #[must_use]
-pub fn arc_verts(t: &Topology) -> u64 {
-    t.arc_coords.iter().map(|a| a.len() as u64).sum()
+pub fn arc_verts(topology: &Topology) -> u64 {
+    topology.arc_coords.iter().map(|arc| arc.len() as u64).sum()
 }
 
 /// Assemble the ladder from the pipeline's own artifacts: the parsed

@@ -79,49 +79,54 @@ fn fits(bytes: usize) -> bool {
     free_sram().max(free_psram()) > bytes + 32 * 1024
 }
 
-fn region_of(addr: usize, psram: &core::ops::Range<usize>) -> &'static str {
-    if psram.contains(&addr) {
+fn region_of(address: usize, psram: &core::ops::Range<usize>) -> &'static str {
+    if psram.contains(&address) {
         "PSRAM"
-    } else if (0x3FC8_0000..0x3FD0_0000).contains(&addr) {
+    } else if (0x3FC8_0000..0x3FD0_0000).contains(&address) {
         "SRAM"
     } else {
         "flash"
     }
 }
 
-fn bench(label: &str, finder: &Finder, pts: &[(f64, f64)]) {
-    let mut now = now_us;
-    let r = utz_bench_common::run_rounds(finder, pts, ROUNDS, &mut now);
+fn bench(label: &str, finder: &Finder, points: &[(f64, f64)]) {
+    let mut time_source = now_us;
+    let result = utz_bench_common::run_rounds(finder, points, ROUNDS, &mut time_source);
     println!(
         "RESULT {}: {} lookups · {} hits · {} us · {} us/lookup · checksum {}",
         label,
-        r.lookups,
-        r.hits,
-        r.elapsed_us,
-        r.elapsed_us / r.lookups as u64,
-        r.checksum
+        result.lookups,
+        result.hits,
+        result.elapsed_us,
+        result.elapsed_us / result.lookups as u64,
+        result.checksum
     );
 }
 
 /// xip-flash leg: payload borrowed from memory-mapped flash, zero-copy
-fn xip_leg(label: &str, blob: &'static [u8], pts: &[(f64, f64)]) {
-    let f = Finder::from_static(blob).expect("from_static");
-    bench(label, &f, pts);
+fn xip_leg(label: &str, blob: &'static [u8], points: &[(f64, f64)]) {
+    let finder = Finder::from_static(blob).expect("from_static");
+    bench(label, &finder, points);
 }
 
 /// ram leg: uncompressed container copied to heap, PIP streams from RAM
-fn ram_leg(label: &str, blob: &'static [u8], pts: &[(f64, f64)], psram: &core::ops::Range<usize>) {
+fn ram_leg(
+    label: &str,
+    blob: &'static [u8],
+    points: &[(f64, f64)],
+    psram: &core::ops::Range<usize>,
+) {
     if !fits(blob.len()) {
         println!("SKIP {}: {} KiB payload does not fit any heap region", label, blob.len() / 1024);
         return;
     }
-    let v = blob.to_vec();
+    let bytes = blob.to_vec();
     // from_vec reuses this allocation (copy_within + truncate), so the
     // pointer taken here is where the payload actually lives during lookups
-    let where_ = region_of(v.as_ptr() as usize, psram);
-    let f = Finder::from_vec(v).expect("from_vec");
-    println!("INFO {}: payload in {}", label, where_);
-    bench(label, &f, pts);
+    let payload_region = region_of(bytes.as_ptr() as usize, psram);
+    let finder = Finder::from_vec(bytes).expect("from_vec");
+    println!("INFO {}: payload in {}", label, payload_region);
+    bench(label, &finder, points);
 }
 
 /// decode leg: compressed asset read from flash, payload decoded into heap
@@ -129,51 +134,51 @@ fn decode_leg(
     label: &str,
     blob: &'static [u8],
     decoded_hint: usize,
-    pts: &[(f64, f64)],
+    points: &[(f64, f64)],
 ) {
     if !fits(decoded_hint) {
         println!("SKIP {}: ~{} KiB decoded payload does not fit any heap region", label, decoded_hint / 1024);
         return;
     }
-    let (s0, p0) = (free_sram() as isize, free_psram() as isize);
-    let t0 = now_us();
-    let f = Finder::from_slice(blob).expect("from_slice");
-    let decode_us = now_us() - t0;
-    let (s1, p1) = (free_sram() as isize, free_psram() as isize);
+    let (sram_before, psram_before) = (free_sram() as isize, free_psram() as isize);
+    let start_us = now_us();
+    let finder = Finder::from_slice(blob).expect("from_slice");
+    let decode_us = now_us() - start_us;
+    let (sram_after, psram_after) = (free_sram() as isize, free_psram() as isize);
     println!(
         "INFO {}: decode {} ms ({} KiB compressed), heap dSRAM {} KiB dPSRAM {} KiB",
         label,
         decode_us / 1000,
         blob.len() / 1024,
-        (s0 - s1) / 1024,
-        (p0 - p1) / 1024
+        (sram_before - sram_after) / 1024,
+        (psram_before - psram_after) / 1024
     );
-    bench(label, &f, pts);
+    bench(label, &finder, points);
 }
 
 /// eager leg: payload stays in flash, all geometry decoded to heap once
-fn eager_leg(label: &str, blob: &'static [u8], pts: &[(f64, f64)]) {
-    let mut f = Finder::from_static(blob).expect("from_static");
+fn eager_leg(label: &str, blob: &'static [u8], points: &[(f64, f64)]) {
+    let mut finder = Finder::from_static(blob).expect("from_static");
     // exact requirement from the v2 header counts; preload reserves exactly
     // (no growth doubling), so fit means fit
-    let need = f.preload_bytes();
-    if !fits(need) {
-        println!("SKIP {}: eager cache needs {} KiB — no heap region fits", label, need / 1024);
+    let needed_bytes = finder.preload_bytes();
+    if !fits(needed_bytes) {
+        println!("SKIP {}: eager cache needs {} KiB — no heap region fits", label, needed_bytes / 1024);
         return;
     }
-    let (s0, p0) = (free_sram() as isize, free_psram() as isize);
-    let t0 = now_us();
-    f.preload();
-    let preload_us = now_us() - t0;
-    let (s1, p1) = (free_sram() as isize, free_psram() as isize);
+    let (sram_before, psram_before) = (free_sram() as isize, free_psram() as isize);
+    let start_us = now_us();
+    finder.preload();
+    let preload_us = now_us() - start_us;
+    let (sram_after, psram_after) = (free_sram() as isize, free_psram() as isize);
     println!(
         "INFO {}: preload {} ms, heap dSRAM {} KiB dPSRAM {} KiB",
         label,
         preload_us / 1000,
-        (s0 - s1) / 1024,
-        (p0 - p1) / 1024
+        (sram_before - sram_after) / 1024,
+        (psram_before - psram_after) / 1024
     );
-    bench(label, &f, pts);
+    bench(label, &finder, points);
 }
 
 /// partition leg: the dataset is NOT in the app image. It sits in its own
@@ -187,38 +192,38 @@ fn partition_leg(
     label: &str,
     flash: esp_hal::peripherals::FLASH<'static>,
     twin: &'static [u8],
-    pts: &[(f64, f64)],
+    points: &[(f64, f64)],
     psram: &core::ops::Range<usize>,
 ) {
     use embedded_storage::ReadStorage;
     use esp_bootloader_esp_idf::partitions;
 
     let mut flash = esp_storage::FlashStorage::new(flash);
-    let mut pt_mem = [0u8; partitions::PARTITION_TABLE_MAX_LEN];
-    let table = match partitions::read_partition_table(&mut flash, &mut pt_mem) {
-        Ok(t) => t,
-        Err(e) => {
-            println!("SKIP {}: partition table unreadable ({:?})", label, e);
+    let mut table_buffer = [0u8; partitions::PARTITION_TABLE_MAX_LEN];
+    let table = match partitions::read_partition_table(&mut flash, &mut table_buffer) {
+        Ok(table) => table,
+        Err(error) => {
+            println!("SKIP {}: partition table unreadable ({:?})", label, error);
             return;
         }
     };
-    let Some(part) = table.iter().find(|p| p.label_as_str() == "utzdata") else {
+    let Some(partition) = table.iter().find(|entry| entry.label_as_str() == "utzdata") else {
         println!("SKIP {}: no utzdata partition — flash via flash-with-data.sh", label);
         return;
     };
     println!(
         "INFO {}: utzdata partition at {:#x}, {} KiB",
         label,
-        part.offset(),
-        part.len() / 1024
+        partition.offset(),
+        partition.len() / 1024
     );
-    let mut region = part.as_embedded_storage(&mut flash);
-    let mut head = [0u8; utz::format::OUTER_LEN];
-    if region.read(0, &mut head).is_err() {
+    let mut region = partition.as_embedded_storage(&mut flash);
+    let mut header = [0u8; utz::format::OUTER_LEN];
+    if region.read(0, &mut header).is_err() {
         println!("SKIP {}: header read failed", label);
         return;
     }
-    let total = match utz::format::outer(&head) {
+    let total = match utz::format::outer(&header) {
         // codec none: the container is exactly header + raw payload
         Ok((0, raw_len, start)) => start + raw_len,
         _ => {
@@ -230,60 +235,60 @@ fn partition_leg(
         println!("SKIP {}: {} KiB container too big for partition or heap", label, total / 1024);
         return;
     }
-    let mut v = alloc::vec![0u8; total];
-    let where_ = region_of(v.as_ptr() as usize, psram);
-    let t0 = now_us();
+    let mut bytes = alloc::vec![0u8; total];
+    let payload_region = region_of(bytes.as_ptr() as usize, psram);
+    let start_us = now_us();
     // bounce through a stack chunk: the ROM read runs with the cache
     // disabled, so its destination must be internal RAM — the heap buffer
     // may be PSRAM, which is only reachable through the cache
     let mut chunk = [0u8; 4096];
-    let mut off = 0usize;
-    while off < total {
-        let n = (total - off).min(chunk.len());
-        if region.read(off as u32, &mut chunk[..n]).is_err() {
-            println!("SKIP {}: flash read failed at offset {:#x}", label, off);
+    let mut offset = 0usize;
+    while offset < total {
+        let chunk_len = (total - offset).min(chunk.len());
+        if region.read(offset as u32, &mut chunk[..chunk_len]).is_err() {
+            println!("SKIP {}: flash read failed at offset {:#x}", label, offset);
             return;
         }
-        v[off..off + n].copy_from_slice(&chunk[..n]);
-        off += n;
+        bytes[offset..offset + chunk_len].copy_from_slice(&chunk[..chunk_len]);
+        offset += chunk_len;
     }
-    let read_us = now_us() - t0;
+    let read_us = now_us() - start_us;
     println!(
         "INFO {}: read {} KiB to {} in {} ms — {} the embedded twin",
         label,
         total / 1024,
-        where_,
+        payload_region,
         read_us / 1000,
-        if v == twin { "matches" } else { "DIFFERS FROM" }
+        if bytes == twin { "matches" } else { "DIFFERS FROM" }
     );
-    let f = Finder::from_vec(v).expect("from_vec");
-    bench(label, &f, pts);
+    let finder = Finder::from_vec(bytes).expect("from_vec");
+    bench(label, &finder, points);
 }
 
 /// eager_from_slice leg: compressed asset decoded straight to eager, the
 /// geometry sections dropped: steady-state heap is the eager cache plus
 /// header/tzid/grid only (compare against decode + preload's payload+cache)
-fn eager_slice_leg(label: &str, blob: &'static [u8], pts: &[(f64, f64)]) {
-    let (s0, p0) = (free_sram() as isize, free_psram() as isize);
-    let t0 = now_us();
-    let f = match Finder::eager_from_slice(blob) {
-        Ok(f) => f,
+fn eager_slice_leg(label: &str, blob: &'static [u8], points: &[(f64, f64)]) {
+    let (sram_before, psram_before) = (free_sram() as isize, free_psram() as isize);
+    let start_us = now_us();
+    let finder = match Finder::eager_from_slice(blob) {
+        Ok(finder) => finder,
         Err(_) => {
             println!("SKIP {}: eager_from_slice failed (no heap fit?)", label);
             return;
         }
     };
-    let load_us = now_us() - t0;
-    let (s1, p1) = (free_sram() as isize, free_psram() as isize);
+    let load_us = now_us() - start_us;
+    let (sram_after, psram_after) = (free_sram() as isize, free_psram() as isize);
     println!(
         "INFO {}: load {} ms ({} KiB compressed), steady heap dSRAM {} KiB dPSRAM {} KiB",
         label,
         load_us / 1000,
         blob.len() / 1024,
-        (s0 - s1) / 1024,
-        (p0 - p1) / 1024
+        (sram_before - sram_after) / 1024,
+        (psram_before - psram_after) / 1024
     );
-    bench(label, &f, pts);
+    bench(label, &finder, points);
 }
 
 #[main]
@@ -296,26 +301,26 @@ fn main() -> ! {
 
     // N16R8 module: 8 MB octal PSRAM. Auto mode probes octal then quad; on a
     // PSRAM-less module this prints 0 KiB and the big RAM legs SKIP.
-    let psram_dev = esp_hal::psram::Psram::new(
+    let psram_device = esp_hal::psram::Psram::new(
         peripherals.PSRAM,
         esp_hal::psram::PsramConfig::default(),
     );
-    let (ps_ptr, ps_len) = psram_dev.raw_parts();
-    if ps_len > 0 {
+    let (psram_ptr, psram_len) = psram_device.raw_parts();
+    if psram_len > 0 {
         unsafe {
             esp_alloc::HEAP.add_region(esp_alloc::HeapRegion::new(
-                ps_ptr,
-                ps_len,
+                psram_ptr,
+                psram_len,
                 MemoryCapability::External.into(),
             ));
         }
     }
-    let psram = ps_ptr as usize..ps_ptr as usize + ps_len;
+    let psram = psram_ptr as usize..psram_ptr as usize + psram_len;
 
     println!(
         "uTZ bench on ESP32-S3 @ 240 MHz — SRAM heap {} KiB, PSRAM {} KiB",
         SRAM_HEAP / 1024,
-        ps_len / 1024
+        psram_len / 1024
     );
     println!(
         "tzbb release: {:?} — {} pts, {} rounds, fastest round wins",
@@ -325,54 +330,54 @@ fn main() -> ! {
     );
 
     // allocated first so the points sit in SRAM for every leg
-    let pts = utz_bench_common::gen_pts(NPTS);
+    let points = utz_bench_common::gen_pts(NPTS);
 
     // --- streaming from flash (XIP, zero-copy) ---
-    xip_leg("tiny xip-flash", TINY_NONE, &pts);
+    xip_leg("tiny xip-flash", TINY_NONE, &points);
     // fixed-width arcs: same geometry, no per-vertex varint decode;
     // tiny = i16, compact = i24 (heavier read_fixed byte assembly)
-    xip_leg("tiny-fixed xip-flash", TINY_FIXED, &pts);
-    xip_leg("compact xip-flash", COMPACT_NONE, &pts);
-    xip_leg("compact-fixed xip-flash", COMPACT_FIXED, &pts);
+    xip_leg("tiny-fixed xip-flash", TINY_FIXED, &points);
+    xip_leg("compact xip-flash", COMPACT_NONE, &points);
+    xip_leg("compact-fixed xip-flash", COMPACT_FIXED, &points);
     // eager-image: slice kernels straight off flash — eager speed, zero RAM
-    xip_leg("tiny-eager xip-flash", TINY_EAGER, &pts);
-    xip_leg("compact-eager xip-flash", COMPACT_EAGER, &pts);
+    xip_leg("tiny-eager xip-flash", TINY_EAGER, &points);
+    xip_leg("compact-eager xip-flash", COMPACT_EAGER, &points);
     // grid-only: lookup() == lookup_coarse (cell precision; own checksum)
-    xip_leg("tiny-coarse xip-flash", TINY_COARSE, &pts);
-    xip_leg("balanced xip-flash", BALANCED_NONE, &pts);
+    xip_leg("tiny-coarse xip-flash", TINY_COARSE, &points);
+    xip_leg("balanced xip-flash", BALANCED_NONE, &points);
 
     // --- streaming from RAM (uncompressed copy) ---
-    ram_leg("tiny ram", TINY_NONE, &pts, &psram); // fits SRAM
-    if ps_len > 0 {
+    ram_leg("tiny ram", TINY_NONE, &points, &psram); // fits SRAM
+    if psram_len > 0 {
         // fill SRAM so the same payload is forced into PSRAM: the direct
         // SRAM-vs-PSRAM lookup comparison
         let mut filler: Vec<Vec<u8>> = Vec::new();
         while free_sram() > 24 * 1024 {
             filler.push(alloc::vec![0u8; 16 * 1024]);
         }
-        ram_leg("tiny ram-psram", TINY_NONE, &pts, &psram);
+        ram_leg("tiny ram-psram", TINY_NONE, &points, &psram);
         drop(filler);
     } else {
         println!("SKIP tiny ram-psram: no PSRAM");
     }
-    ram_leg("compact ram", COMPACT_NONE, &pts, &psram);
-    ram_leg("balanced ram", BALANCED_NONE, &pts, &psram);
+    ram_leg("compact ram", COMPACT_NONE, &points, &psram);
+    ram_leg("balanced ram", BALANCED_NONE, &points, &psram);
 
     // --- flash partition (dataset outside the app image, found at runtime) ---
-    partition_leg("tiny partition", peripherals.FLASH, TINY_NONE, &pts, &psram);
+    partition_leg("tiny partition", peripherals.FLASH, TINY_NONE, &points, &psram);
 
     // --- buffered decode (compressed asset in flash → payload in RAM) ---
-    decode_leg("tiny decode-gzip", TINY_GZ, TINY_NONE.len(), &pts);
-    decode_leg("compact decode-xz", COMPACT_XZ, COMPACT_NONE.len(), &pts);
-    decode_leg("balanced decode-brotli", BALANCED_BR, BALANCED_NONE.len(), &pts);
+    decode_leg("tiny decode-gzip", TINY_GZ, TINY_NONE.len(), &points);
+    decode_leg("compact decode-xz", COMPACT_XZ, COMPACT_NONE.len(), &points);
+    decode_leg("balanced decode-brotli", BALANCED_BR, BALANCED_NONE.len(), &points);
 
     // --- eager (payload in flash, geometry cache in RAM) ---
-    eager_leg("tiny eager", TINY_NONE, &pts);
-    eager_leg("compact eager", COMPACT_NONE, &pts);
-    eager_leg("balanced eager", BALANCED_NONE, &pts);
+    eager_leg("tiny eager", TINY_NONE, &points);
+    eager_leg("compact eager", COMPACT_NONE, &points);
+    eager_leg("balanced eager", BALANCED_NONE, &points);
 
     // --- eager_from_slice (compressed asset → eager, geometry dropped) ---
-    eager_slice_leg("tiny eager-slice", TINY_GZ, &pts);
+    eager_slice_leg("tiny eager-slice", TINY_GZ, &points);
 
     kernel_bench();
     kernel_bench_i16();
@@ -392,49 +397,56 @@ fn main() -> ! {
 /// ratio, not an absolute lookup cost.
 fn kernel_bench() {
     use utz::pip::{ring_hit, RingHit};
-    const N: usize = 8192;
+    const RING_LEN: usize = 8192;
     const PROBES: usize = 200;
-    const M: i64 = 1 << 23;
+    const COORD_RANGE: i64 = 1 << 23;
     let mut lcg = 0x0dd_ba11u64;
     let mut next = || {
         lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
-        (((lcg >> 33) as i64 % M) - M / 2) as i32
+        (((lcg >> 33) as i64 % COORD_RANGE) - COORD_RANGE / 2) as i32
     };
-    let ring: Vec<(i32, i32)> = (0..N).map(|_| (next(), next())).collect();
-    let pts: Vec<(i32, i32)> = (0..PROBES).map(|_| (next(), next())).collect();
+    let ring: Vec<(i32, i32)> = (0..RING_LEN).map(|_| (next(), next())).collect();
+    let probes: Vec<(i32, i32)> = (0..PROBES).map(|_| (next(), next())).collect();
 
-    let code = |h: RingHit| -> u64 {
-        match h {
+    let code = |hit: RingHit| -> u64 {
+        match hit {
             RingHit::Outside => 0,
             RingHit::Inside => 1,
             RingHit::Boundary => 2,
         }
     };
-    let run = |f: fn(&[(i32, i32)], i32, i32) -> RingHit| -> (u64, u64) {
-        let t0 = now_us();
-        let mut acc = 0u64; // verdict fingerprint; also defeats elision
-        for &(px, py) in &pts {
-            acc = acc.wrapping_mul(3).wrapping_add(code(f(&ring, px, py)));
+    let run = |kernel: fn(&[(i32, i32)], i32, i32) -> RingHit| -> (u64, u64) {
+        let start_us = now_us();
+        let mut fingerprint = 0u64; // verdict fingerprint; also defeats elision
+        for &(probe_x, probe_y) in &probes {
+            fingerprint = fingerprint
+                .wrapping_mul(3)
+                .wrapping_add(code(kernel(&ring, probe_x, probe_y)));
         }
-        (now_us() - t0, acc)
+        (now_us() - start_us, fingerprint)
     };
-    let (t64, a64) = run(ring_hit::<i64, (i32, i32)>);
-    let (t128, a128) = run(ring_hit::<i128, (i32, i32)>);
-    let (tf64, af64) = run(ring_hit::<f64, (i32, i32)>);
-    let (tsplit, asplit) = run(utz::pip::ring_hit_split::<(i32, i32)>);
-    assert!(a64 == a128 && a64 == af64 && a64 == asplit, "kernel verdicts disagree");
-    let edges = (N * PROBES) as u64;
+    let (i64_us, i64_fingerprint) = run(ring_hit::<i64, (i32, i32)>);
+    let (i128_us, i128_fingerprint) = run(ring_hit::<i128, (i32, i32)>);
+    let (f64_us, f64_fingerprint) = run(ring_hit::<f64, (i32, i32)>);
+    let (split_us, split_fingerprint) = run(utz::pip::ring_hit_split::<(i32, i32)>);
+    assert!(
+        i64_fingerprint == i128_fingerprint
+            && i64_fingerprint == f64_fingerprint
+            && i64_fingerprint == split_fingerprint,
+        "kernel verdicts disagree"
+    );
+    let edges = (RING_LEN * PROBES) as u64;
     println!(
         "KERNEL {} edges: i64 {} us ({} ns/edge) · i128 {} us ({:.2}x) · f64 {} us ({:.2}x) · split-u64 {} us ({:.2}x) · verdicts agree",
         edges,
-        t64,
-        t64 * 1000 / edges,
-        t128,
-        t128 as f64 / t64 as f64,
-        tf64,
-        tf64 as f64 / t64 as f64,
-        tsplit,
-        tsplit as f64 / t64 as f64
+        i64_us,
+        i64_us * 1000 / edges,
+        i128_us,
+        i128_us as f64 / i64_us as f64,
+        f64_us,
+        f64_us as f64 / i64_us as f64,
+        split_us,
+        split_us as f64 / i64_us as f64
     );
 }
 
@@ -444,42 +456,44 @@ fn kernel_bench() {
 /// the "retire i128 on 32-bit cores" answer.
 fn kernel_bench_i32() {
     use utz::pip::{ring_hit, ring_hit_split, RingHit};
-    const N: usize = 8192;
+    const RING_LEN: usize = 8192;
     const PROBES: usize = 200;
     let mut lcg = 0x0dd_ba11u64;
     let mut next = || {
         lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
         ((lcg >> 32) as u32) as i32 // full i32 range
     };
-    let ring: Vec<(i32, i32)> = (0..N).map(|_| (next(), next())).collect();
-    let pts: Vec<(i32, i32)> = (0..PROBES).map(|_| (next(), next())).collect();
+    let ring: Vec<(i32, i32)> = (0..RING_LEN).map(|_| (next(), next())).collect();
+    let probes: Vec<(i32, i32)> = (0..PROBES).map(|_| (next(), next())).collect();
 
-    let code = |h: RingHit| -> u64 {
-        match h {
+    let code = |hit: RingHit| -> u64 {
+        match hit {
             RingHit::Outside => 0,
             RingHit::Inside => 1,
             RingHit::Boundary => 2,
         }
     };
-    let run = |f: fn(&[(i32, i32)], i32, i32) -> RingHit| -> (u64, u64) {
-        let t0 = now_us();
-        let mut acc = 0u64;
-        for &(px, py) in &pts {
-            acc = acc.wrapping_mul(3).wrapping_add(code(f(&ring, px, py)));
+    let run = |kernel: fn(&[(i32, i32)], i32, i32) -> RingHit| -> (u64, u64) {
+        let start_us = now_us();
+        let mut fingerprint = 0u64;
+        for &(probe_x, probe_y) in &probes {
+            fingerprint = fingerprint
+                .wrapping_mul(3)
+                .wrapping_add(code(kernel(&ring, probe_x, probe_y)));
         }
-        (now_us() - t0, acc)
+        (now_us() - start_us, fingerprint)
     };
-    let (t128, a128) = run(ring_hit::<i128, (i32, i32)>);
-    let (tsplit, asplit) = run(ring_hit_split::<(i32, i32)>);
-    assert!(a128 == asplit, "i32 kernel verdicts disagree");
-    let edges = (N * PROBES) as u64;
+    let (i128_us, i128_fingerprint) = run(ring_hit::<i128, (i32, i32)>);
+    let (split_us, split_fingerprint) = run(ring_hit_split::<(i32, i32)>);
+    assert!(i128_fingerprint == split_fingerprint, "i32 kernel verdicts disagree");
+    let edges = (RING_LEN * PROBES) as u64;
     println!(
         "KERNEL32 {} edges: i128 {} us ({} ns/edge) · split-u64 {} us ({:.2}x) · verdicts agree",
         edges,
-        t128,
-        t128 * 1000 / edges,
-        tsplit,
-        tsplit as f64 / t128 as f64
+        i128_us,
+        i128_us * 1000 / edges,
+        split_us,
+        split_us as f64 / i128_us as f64
     );
 }
 
@@ -493,54 +507,64 @@ fn kernel_bench_i32() {
 /// the same vertex, but Boundary short-circuits the ring either way).
 fn kernel_bench_i16() {
     use utz::pip::{ring_hit, ring_hit_split, RingHit};
-    const N: usize = 8192;
+    const RING_LEN: usize = 8192;
     const PROBES: usize = 200;
     let mut lcg = 0x0dd_ba11u64;
     let mut next = || {
         lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
         ((lcg >> 48) as u16) as i16 // full i16 range
     };
-    let ring16: Vec<(i16, i16)> = (0..N).map(|_| (next(), next())).collect();
-    let pts16: Vec<(i16, i16)> = (0..PROBES).map(|_| (next(), next())).collect();
+    let ring16: Vec<(i16, i16)> = (0..RING_LEN).map(|_| (next(), next())).collect();
+    let probes16: Vec<(i16, i16)> = (0..PROBES).map(|_| (next(), next())).collect();
     let ring32: Vec<(i32, i32)> = ring16.iter().map(|&(x, y)| (i32::from(x), i32::from(y))).collect();
 
-    let code = |h: RingHit| -> u64 {
-        match h {
+    let code = |hit: RingHit| -> u64 {
+        match hit {
             RingHit::Outside => 0,
             RingHit::Inside => 1,
             RingHit::Boundary => 2,
         }
     };
-    let run16 = |f: fn(&[(i16, i16)], i16, i16) -> RingHit| -> (u64, u64) {
-        let t0 = now_us();
-        let mut acc = 0u64;
-        for &(px, py) in &pts16 {
-            acc = acc.wrapping_mul(3).wrapping_add(code(f(&ring16, px, py)));
+    let run16 = |kernel: fn(&[(i16, i16)], i16, i16) -> RingHit| -> (u64, u64) {
+        let start_us = now_us();
+        let mut fingerprint = 0u64;
+        for &(probe_x, probe_y) in &probes16 {
+            fingerprint = fingerprint
+                .wrapping_mul(3)
+                .wrapping_add(code(kernel(&ring16, probe_x, probe_y)));
         }
-        (now_us() - t0, acc)
+        (now_us() - start_us, fingerprint)
     };
-    let run32 = |f: fn(&[(i32, i32)], i32, i32) -> RingHit| -> (u64, u64) {
-        let t0 = now_us();
-        let mut acc = 0u64;
-        for &(px, py) in &pts16 {
-            acc = acc.wrapping_mul(3).wrapping_add(code(f(&ring32, i32::from(px), i32::from(py))));
+    let run32 = |kernel: fn(&[(i32, i32)], i32, i32) -> RingHit| -> (u64, u64) {
+        let start_us = now_us();
+        let mut fingerprint = 0u64;
+        for &(probe_x, probe_y) in &probes16 {
+            fingerprint = fingerprint.wrapping_mul(3).wrapping_add(code(kernel(
+                &ring32,
+                i32::from(probe_x),
+                i32::from(probe_y),
+            )));
         }
-        (now_us() - t0, acc)
+        (now_us() - start_us, fingerprint)
     };
-    let (t_w32, a_w32) = run32(ring_hit::<i64, (i32, i32)>);
-    let (t_n64, a_n64) = run16(ring_hit::<i64, (i16, i16)>);
-    let (t_u32, a_u32) = run16(ring_hit_split::<(i16, i16)>);
-    assert!(a_n64 == a_w32 && a_n64 == a_u32, "i16 kernel verdicts disagree");
-    let edges = (N * PROBES) as u64;
+    let (wide_i32_us, wide_i32_fingerprint) = run32(ring_hit::<i64, (i32, i32)>);
+    let (narrow_i64_us, narrow_i64_fingerprint) = run16(ring_hit::<i64, (i16, i16)>);
+    let (split_u32_us, split_u32_fingerprint) = run16(ring_hit_split::<(i16, i16)>);
+    assert!(
+        narrow_i64_fingerprint == wide_i32_fingerprint
+            && narrow_i64_fingerprint == split_u32_fingerprint,
+        "i16 kernel verdicts disagree"
+    );
+    let edges = (RING_LEN * PROBES) as u64;
     println!(
         "KERNEL16 {} edges: i64/i16-pairs {} us ({} ns/edge) · u32-signsplit/i16-pairs {} us ({:.2}x) · i64/i32-pairs {} us ({:.2}x) · verdicts agree",
         edges,
-        t_n64,
-        t_n64 * 1000 / edges,
-        t_u32,
-        t_u32 as f64 / t_n64 as f64,
-        t_w32,
-        t_w32 as f64 / t_n64 as f64
+        narrow_i64_us,
+        narrow_i64_us * 1000 / edges,
+        split_u32_us,
+        split_u32_us as f64 / narrow_i64_us as f64,
+        wide_i32_us,
+        wide_i32_us as f64 / narrow_i64_us as f64
     );
 }
 
@@ -552,45 +576,50 @@ fn kernel_bench_i16() {
 /// slice; all three are exact here, so verdicts must agree.
 fn kernel_bench_15_bit_quant() {
     use utz::pip::{ring_hit, ring_hit_split, RingHit};
-    const N: usize = 8192;
+    const RING_LEN: usize = 8192;
     const PROBES: usize = 200;
-    const M: i64 = 1 << 15; // draws in [−2^14, 2^14−1]
+    const COORD_RANGE: i64 = 1 << 15; // draws in [−2^14, 2^14−1]
     let mut lcg = 0x0dd_ba11u64;
     let mut next = || {
         lcg = lcg.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
-        (((lcg >> 33) as i64 % M) - M / 2) as i16
+        (((lcg >> 33) as i64 % COORD_RANGE) - COORD_RANGE / 2) as i16
     };
-    let ring: Vec<(i16, i16)> = (0..N).map(|_| (next(), next())).collect();
-    let pts: Vec<(i16, i16)> = (0..PROBES).map(|_| (next(), next())).collect();
+    let ring: Vec<(i16, i16)> = (0..RING_LEN).map(|_| (next(), next())).collect();
+    let probes: Vec<(i16, i16)> = (0..PROBES).map(|_| (next(), next())).collect();
 
-    let code = |h: RingHit| -> u64 {
-        match h {
+    let code = |hit: RingHit| -> u64 {
+        match hit {
             RingHit::Outside => 0,
             RingHit::Inside => 1,
             RingHit::Boundary => 2,
         }
     };
-    let run = |f: fn(&[(i16, i16)], i16, i16) -> RingHit| -> (u64, u64) {
-        let t0 = now_us();
-        let mut acc = 0u64;
-        for &(px, py) in &pts {
-            acc = acc.wrapping_mul(3).wrapping_add(code(f(&ring, px, py)));
+    let run = |kernel: fn(&[(i16, i16)], i16, i16) -> RingHit| -> (u64, u64) {
+        let start_us = now_us();
+        let mut fingerprint = 0u64;
+        for &(probe_x, probe_y) in &probes {
+            fingerprint = fingerprint
+                .wrapping_mul(3)
+                .wrapping_add(code(kernel(&ring, probe_x, probe_y)));
         }
-        (now_us() - t0, acc)
+        (now_us() - start_us, fingerprint)
     };
-    let (t64, a64) = run(ring_hit::<i64, (i16, i16)>);
-    let (t32, a32) = run(ring_hit::<i32, (i16, i16)>);
-    let (tsplit, asplit) = run(ring_hit_split::<(i16, i16)>);
-    assert!(a64 == a32 && a64 == asplit, "15-bit kernel verdicts disagree");
-    let edges = (N * PROBES) as u64;
+    let (i64_us, i64_fingerprint) = run(ring_hit::<i64, (i16, i16)>);
+    let (i32_us, i32_fingerprint) = run(ring_hit::<i32, (i16, i16)>);
+    let (split_us, split_fingerprint) = run(ring_hit_split::<(i16, i16)>);
+    assert!(
+        i64_fingerprint == i32_fingerprint && i64_fingerprint == split_fingerprint,
+        "15-bit kernel verdicts disagree"
+    );
+    let edges = (RING_LEN * PROBES) as u64;
     println!(
         "KERNEL15 {} edges: i64 {} us ({} ns/edge) · i32 {} us ({:.2}x) · split-u32 {} us ({:.2}x) · verdicts agree",
         edges,
-        t64,
-        t64 * 1000 / edges,
-        t32,
-        t32 as f64 / t64 as f64,
-        tsplit,
-        tsplit as f64 / t64 as f64
+        i64_us,
+        i64_us * 1000 / edges,
+        i32_us,
+        i32_us as f64 / i64_us as f64,
+        split_us,
+        split_us as f64 / i64_us as f64
     );
 }

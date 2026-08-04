@@ -38,15 +38,16 @@ pub fn resolve_release(cache_dir: &Path) -> crate::Result<String> {
             .max_redirects(0)
             .build()
             .into();
-        let resp = agent.get(format!("{REPO}/releases/latest")).call()?;
-        resp.headers()
+        let response = agent.get(format!("{REPO}/releases/latest")).call()?;
+        response
+            .headers()
             .get("location")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|l| l.split_once("/releases/tag/"))
-            .map(|(_, t)| t.trim_matches('/').to_string())
-            .filter(|t| !t.is_empty())
+            .and_then(|value| value.to_str().ok())
+            .and_then(|location| location.split_once("/releases/tag/"))
+            .map(|(_, tag)| tag.trim_matches('/').to_string())
+            .filter(|tag| !tag.is_empty())
             .ok_or_else(|| Error::NoReleaseRedirect {
-                status: resp.status().as_u16(),
+                status: response.status().as_u16(),
             })
     })();
     match probed {
@@ -55,18 +56,20 @@ pub fn resolve_release(cache_dir: &Path) -> crate::Result<String> {
             std::fs::write(&tag_file, &tag)?;
             Ok(tag)
         }
-        Err(e) => {
+        Err(error) => {
             if let Some(tag) = std::fs::read_to_string(&tag_file)
                 .ok()
-                .map(|t| t.trim().to_string())
-                .filter(|t| !t.is_empty())
+                .map(|contents| contents.trim().to_string())
+                .filter(|tag| !tag.is_empty())
             {
                 eprintln!(
-                    "warning: resolving latest TZBB release failed ({e}); using cached tag {tag}"
+                    "warning: resolving latest TZBB release failed ({error}); using cached tag {tag}"
                 );
                 return Ok(tag);
             }
-            eprintln!("warning: resolving latest TZBB release failed ({e}); tagging asset \"dev\"");
+            eprintln!(
+                "warning: resolving latest TZBB release failed ({error}); tagging asset \"dev\""
+            );
             Ok("dev".into())
         }
     }
@@ -77,11 +80,11 @@ pub fn resolve_release(cache_dir: &Path) -> crate::Result<String> {
 /// "Comprehensive" set (μTZ `all`); `-1970` = "Same since 1970"; `-now` =
 /// "Same since now"; `with-oceans` selects ocean cover.
 #[must_use]
-pub fn dataset_url(d: Dataset, release: &str) -> String {
-    let oceans = if d.oceans { "-with-oceans" } else { "" };
-    let zone_set = match d.zone_set {
+pub fn dataset_url(dataset: Dataset, release: &str) -> String {
+    let oceans = if dataset.oceans { "-with-oceans" } else { "" };
+    let zone_set = match dataset.zone_set {
         "all" => "",
-        v => &format!("-{v}"),
+        set_name => &format!("-{set_name}"),
     };
     format!("{REPO}/releases/download/{release}/timezones{oceans}{zone_set}.geojson.zip")
 }
@@ -91,13 +94,13 @@ pub fn dataset_url(d: Dataset, release: &str) -> String {
 ///
 /// # Errors
 /// Release-tag caching, download, or zip/`GeoJSON` parse failure.
-pub fn load_tzbb(d: Dataset, cache_dir: &Path) -> crate::Result<(Vec<Feat>, String)> {
+pub fn load_tzbb(dataset: Dataset, cache_dir: &Path) -> crate::Result<(Vec<Feat>, String)> {
     let release = resolve_release(cache_dir)?;
     // key the download by release: TZBB asset basenames are
     // release-independent, and a flat cache would serve one release's
     // bytes under another's tag when offline
     let release_dir = cache_dir.join("tzbb").join(&release);
-    let zip_path = download::fetch(&dataset_url(d, &release), &release_dir)?;
+    let zip_path = download::fetch(&dataset_url(dataset, &release), &release_dir)?;
     Ok((load_geojson_zip(&zip_path)?, release))
 }
 
@@ -111,15 +114,15 @@ pub fn load_geojson_zip(path: &Path) -> crate::Result<Vec<Feat>> {
     let mut zip = zip::ZipArchive::new(BufReader::new(file))?;
     let name = (0..zip.len())
         .map(|i| zip.name_for_index(i).unwrap_or("").to_string())
-        .find(|n| {
-            Path::new(n).extension().is_some_and(|e| {
-                e.eq_ignore_ascii_case("json") || e.eq_ignore_ascii_case("geojson")
+        .find(|entry_name| {
+            Path::new(entry_name).extension().is_some_and(|extension| {
+                extension.eq_ignore_ascii_case("json") || extension.eq_ignore_ascii_case("geojson")
             })
         })
         .ok_or_else(|| Error::NoGeojsonEntry { path: path.into() })?;
-    let mut buf = Vec::new();
-    zip.by_name(&name)?.read_to_end(&mut buf)?;
-    parse_geojson(&buf)
+    let mut bytes = Vec::new();
+    zip.by_name(&name)?.read_to_end(&mut bytes)?;
+    parse_geojson(&bytes)
 }
 
 // Typed mirror of the TZBB FeatureCollection: serde deserializes coordinates
@@ -153,12 +156,12 @@ enum Geom {
 /// # Errors
 /// JSON that doesn't deserialize as a Polygon/`MultiPolygon` `FeatureCollection`.
 pub fn parse_geojson(bytes: &[u8]) -> crate::Result<Vec<Feat>> {
-    let fc: Fc = serde_json::from_slice(bytes)?;
-    Ok(fc
+    let collection: Fc = serde_json::from_slice(bytes)?;
+    Ok(collection
         .features
         .into_iter()
-        .map(|f| {
-            let polys: Vec<Poly> = match f.geometry {
+        .map(|feature| {
+            let polys: Vec<Poly> = match feature.geometry {
                 Geom::Polygon { coordinates } => vec![rings_of(coordinates)],
                 Geom::MultiPolygon { coordinates } => {
                     coordinates.into_iter().map(rings_of).collect()
@@ -166,7 +169,7 @@ pub fn parse_geojson(bytes: &[u8]) -> crate::Result<Vec<Feat>> {
             };
             Feat {
                 offset: 0.0,
-                tzid: f.properties.tzid,
+                tzid: feature.properties.tzid,
                 polys,
             }
         })
@@ -176,13 +179,13 @@ pub fn parse_geojson(bytes: &[u8]) -> crate::Result<Vec<Feat>> {
 fn rings_of(rings: Vec<Vec<[f64; 2]>>) -> Poly {
     rings
         .into_iter()
-        .map(|r| strip_close(r.into_iter().map(|[x, y]| (x, y)).collect()))
+        .map(|ring| strip_close(ring.into_iter().map(|[x, y]| (x, y)).collect()))
         .collect()
 }
 
-fn strip_close(mut r: Ring) -> Ring {
-    if r.len() > 1 && r.first() == r.last() {
-        r.pop();
+fn strip_close(mut ring: Ring) -> Ring {
+    if ring.len() > 1 && ring.first() == ring.last() {
+        ring.pop();
     }
-    r
+    ring
 }

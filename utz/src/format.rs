@@ -96,66 +96,72 @@ pub struct PayloadLayout {
     pub release_len: usize,
 }
 
-/// Little-endian u16 at `pos`.
+/// Little-endian u16 at `position`.
 ///
 /// # Panics
-/// If `pos + 2` exceeds `b` (all `read_*` helpers assume offsets already
-/// validated by [`parse()`]).
+/// If `position + 2` exceeds `bytes` (all `read_*` helpers assume offsets
+/// already validated by [`parse()`]).
 #[must_use]
-pub fn read_u16(b: &[u8], pos: usize) -> u16 {
-    u16::from_le_bytes([b[pos], b[pos + 1]])
+pub fn read_u16(bytes: &[u8], position: usize) -> u16 {
+    u16::from_le_bytes([bytes[position], bytes[position + 1]])
 }
-/// Little-endian u32 at `pos`.
+/// Little-endian u32 at `position`.
 ///
 /// # Panics
-/// If `pos + 4` exceeds `b`.
+/// If `position + 4` exceeds `bytes`.
 #[must_use]
-pub fn read_u32(b: &[u8], pos: usize) -> u32 {
-    u32::from_le_bytes([b[pos], b[pos + 1], b[pos + 2], b[pos + 3]])
+pub fn read_u32(bytes: &[u8], position: usize) -> u32 {
+    u32::from_le_bytes([
+        bytes[position],
+        bytes[position + 1],
+        bytes[position + 2],
+        bytes[position + 3],
+    ])
 }
 
 /// Fixed-width signed coord: 2/3/4 bytes little-endian, sign-extended.
 ///
 /// # Panics
-/// If the coord's bytes run past `b`.
+/// If the coord's bytes run past `bytes`.
 #[must_use]
-pub fn read_fixed(b: &[u8], pos: usize, quant_bits: QuantBits) -> i32 {
+pub fn read_fixed(bytes: &[u8], position: usize, quant_bits: QuantBits) -> i32 {
     match quant_bits {
-        QuantBits::Bits16 => i32::from(read_u16(b, pos).cast_signed()),
+        QuantBits::Bits16 => i32::from(read_u16(bytes, position).cast_signed()),
         QuantBits::Bits24 => {
-            let v =
-                i32::from(b[pos]) | (i32::from(b[pos + 1]) << 8) | (i32::from(b[pos + 2]) << 16);
-            if v & 0x0080_0000 != 0 {
-                v | !0x00FF_FFFF
+            let value = i32::from(bytes[position])
+                | (i32::from(bytes[position + 1]) << 8)
+                | (i32::from(bytes[position + 2]) << 16);
+            if value & 0x0080_0000 != 0 {
+                value | !0x00FF_FFFF
             } else {
-                v
+                value
             }
         }
-        QuantBits::Bits32 => read_u32(b, pos).cast_signed(),
+        QuantBits::Bits32 => read_u32(bytes, position).cast_signed(),
     }
 }
 
-/// Varint; returns (value, `next_pos`).
+/// Varint; returns (value, `next_position`).
 ///
 /// # Panics
-/// If the varint runs past `b`.
+/// If the varint runs past `bytes`.
 #[must_use]
-pub fn read_varint(b: &[u8], mut pos: usize) -> (u64, usize) {
-    let (mut v, mut shift) = (0u64, 0u32);
+pub fn read_varint(bytes: &[u8], mut position: usize) -> (u64, usize) {
+    let (mut value, mut shift) = (0u64, 0u32);
     loop {
-        let byte = b[pos];
-        pos += 1;
-        v |= u64::from(byte & 0x7f) << shift;
+        let byte = bytes[position];
+        position += 1;
+        value |= u64::from(byte & 0x7f) << shift;
         if byte & 0x80 == 0 {
-            return (v, pos);
+            return (value, position);
         }
         shift += 7;
     }
 }
 /// Undo zigzag encoding: map `0, 1, 2, 3, …` back to `0, -1, 1, -2, …`.
 #[must_use]
-pub fn unzigzag(v: u64) -> i64 {
-    (v >> 1).cast_signed() ^ -((v & 1).cast_signed())
+pub fn unzigzag(value: u64) -> i64 {
+    (value >> 1).cast_signed() ^ -((value & 1).cast_signed())
 }
 
 /// Validate the prologue (format identity only: magic + version) and
@@ -182,78 +188,80 @@ pub fn outer(bytes: &[u8]) -> Result<usize> {
 /// checked before any decompression happens.
 ///
 /// # Errors
-/// [`Error::Truncated`] if `header` is short; [`Error::InvalidHeaderField`]
-/// for invalid header fields (including unknown codec / geometry /
-/// quantization / dataset bytes); [`Error::SectionOverrun`] for a section
-/// overrunning the blob; [`Error::GeometryNotCompiledIn`] if the geometry
-/// encoding has no compiled-in decoder.
-pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
+/// [`Error::Truncated`] if `header_bytes` is short;
+/// [`Error::InvalidHeaderField`] for invalid header fields (including
+/// unknown codec / geometry / quantization / dataset bytes);
+/// [`Error::SectionOverrun`] for a section overrunning the blob;
+/// [`Error::GeometryNotCompiledIn`] if the geometry encoding has no
+/// compiled-in decoder.
+pub fn parse(header_bytes: &[u8]) -> Result<PayloadLayout> {
     // an invalid enum byte (quant_bits/geom/simplify_algo/dataset) fails the
     // header read itself as BadInput; running out of bytes means the source
     // ends inside the header
-    let h: PayloadHeader = header
-        .pread_with(0, scroll::LE)
-        .map_err(|source| match source {
-            scroll::Error::BadInput { .. } => Error::InvalidHeaderField,
-            _ => Error::Truncated,
-        })?;
-    if h.flags != 0
-        || h.reserved != 0
-        || h.density_weight_floor_e4 > 10_000
-        || h.grid_deg.is_nan()
-        || h.grid_deg <= 0.0
-        || h.ncols == 0
-        || h.nrows == 0
+    let header: PayloadHeader =
+        header_bytes
+            .pread_with(0, scroll::LE)
+            .map_err(|source| match source {
+                scroll::Error::BadInput { .. } => Error::InvalidHeaderField,
+                _ => Error::Truncated,
+            })?;
+    if header.flags != 0
+        || header.reserved != 0
+        || header.density_weight_floor_e4 > 10_000
+        || header.grid_deg.is_nan()
+        || header.grid_deg <= 0.0
+        || header.ncols == 0
+        || header.nrows == 0
     {
         return Err(Error::InvalidHeaderField);
     }
-    let sections_len = h.raw_len as usize;
+    let sections_len = header.raw_len as usize;
     // a valid geom byte whose decoder isn't compiled in is refused loudly
-    if !caps::geom_compiled_in(h.geom) {
-        return Err(Error::GeometryNotCompiledIn(h.geom));
+    if !caps::geom_compiled_in(header.geom) {
+        return Err(Error::GeometryNotCompiledIn(header.geom));
     }
 
     // The tzid pool sits right after the zone string-offset table at blob
     // offset 0: n_features+1 fencepost entries (last one marks the end of
     // the final string), 2 bytes each.
-    let pool = (h.n_features as usize + 1) * 2;
+    let pool = (header.n_features as usize + 1) * 2;
 
-    let n_polys = h.eager_polys as usize;
-    let (arcs_off, parent) = (h.arcs_off as usize, h.rings_off as usize);
-    let sections = match h.geom {
+    let n_polys = header.eager_polys as usize;
+    let (arcs_off, parent) = (header.arcs_off as usize, header.rings_off as usize);
+    let sections = match header.geom {
         GeomEncoding::Coarse => coarse_sections(sections_len, parent, n_polys)?,
         GeomEncoding::FullRings => full_rings_sections(
             sections_len,
-            h.quant_bits,
+            header.quant_bits,
             arcs_off,
             n_polys,
-            h.eager_coords,
-            h.eager_rings,
+            header.eager_coords,
+            header.eager_rings,
         )?,
         GeomEncoding::VarintArcs | GeomEncoding::FixedWidthArcs => {
-            arc_sections(sections_len, arcs_off, parent, n_polys, h.n_arcs)?
+            arc_sections(sections_len, arcs_off, parent, n_polys, header.n_arcs)?
         }
     };
 
-    let primary = h.grid_off as usize;
-    let list_offsets = primary + h.ncols as usize * h.nrows as usize * 2;
-    let list_ids = list_offsets + (h.uniq as usize + 1) * 2;
+    let primary = header.grid_off as usize;
+    let list_offsets = primary + header.ncols as usize * header.nrows as usize * 2;
+    let list_ids = list_offsets + (header.uniq as usize + 1) * 2;
     need(sections_len, list_ids)?;
-    let (release_off, release_len) = (h.release_off as usize, h.release_len as usize);
+    let (release_off, release_len) = (header.release_off as usize, header.release_len as usize);
     need(sections_len, release_off + release_len)?;
 
     Ok(PayloadLayout {
-        codec: h.codec,
+        codec: header.codec,
         sections_len,
-        dataset: h.dataset,
-        quant_bits: h.quant_bits,
-        geom: h.geom,
-        flags: h.flags,
-        simplify_algo: h.simplify_algo,
-        grid_deg: h.grid_deg,
-        eps_m: h.eps_m,
-        density_weight_floor_e4: h.density_weight_floor_e4,
-        n_features: h.n_features,
+        dataset: header.dataset,
+        quant_bits: header.quant_bits,
+        geom: header.geom,
+        flags: header.flags,
+        simplify_algo: header.simplify_algo,
+        grid_deg: header.grid_deg,
+        eps_m: header.eps_m,
+        density_weight_floor_e4: header.density_weight_floor_e4,
+        n_features: header.n_features,
         pool,
         n_arcs: sections.n_arcs,
         arc_offsets: sections.arc_offsets,
@@ -264,13 +272,13 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
         full_coords: sections.full_coords,
         full_ring_ends: sections.full_ring_ends,
         full_polys: sections.full_polys,
-        eager_coords: h.eager_coords,
-        eager_rings: h.eager_rings,
-        eager_polys: h.eager_polys,
-        ncols: h.ncols,
-        nrows: h.nrows,
+        eager_coords: header.eager_coords,
+        eager_rings: header.eager_rings,
+        eager_polys: header.eager_polys,
+        ncols: header.ncols,
+        nrows: header.nrows,
         primary,
-        uniq: h.uniq,
+        uniq: header.uniq,
         list_offsets,
         list_ids,
         release_off,
@@ -288,56 +296,56 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
 ///
 /// # Errors
 /// [`Error::TableOutOfRange`] on the first out-of-range reference.
-pub fn check_tables(p: &[u8], h: &PayloadLayout) -> Result<()> {
-    let bad = Error::TableOutOfRange;
-    let nf = usize::from(h.n_features);
+pub fn check_tables(payload: &[u8], layout: &PayloadLayout) -> Result<()> {
+    let out_of_range = Error::TableOutOfRange;
+    let feature_count = usize::from(layout.n_features);
     // zone-string offset table: u16[n_features+1] at 0, monotone, within
     // the payload once rebased onto the pool
-    let mut prev = 0u16;
-    for i in 0..=nf {
-        let off = crate::format::read_u16(p, i * 2);
-        if off < prev || h.pool + usize::from(off) > h.sections_len {
-            return Err(bad);
+    let mut previous_offset = 0u16;
+    for i in 0..=feature_count {
+        let offset = crate::format::read_u16(payload, i * 2);
+        if offset < previous_offset || layout.pool + usize::from(offset) > layout.sections_len {
+            return Err(out_of_range);
         }
-        prev = off;
+        previous_offset = offset;
     }
     // parent table: poly id → feature id
-    let polys = h.eager_polys as usize;
-    for i in 0..polys {
-        if usize::from(read_u16(p, h.parent + i * 2)) >= nf {
-            return Err(bad);
+    let poly_count = layout.eager_polys as usize;
+    for i in 0..poly_count {
+        if usize::from(read_u16(payload, layout.parent + i * 2)) >= feature_count {
+            return Err(out_of_range);
         }
     }
     // candidate lists: u16[uniq+1] offsets monotone and in range, ids are
     // poly ids
-    let uniq = usize::from(h.uniq);
-    let list_len = (h.release_off.saturating_sub(h.list_ids)) / 2;
-    let mut prev = 0u16;
+    let uniq = usize::from(layout.uniq);
+    let list_len = (layout.release_off.saturating_sub(layout.list_ids)) / 2;
+    let mut previous_offset = 0u16;
     for i in 0..=uniq {
-        let off = read_u16(p, h.list_offsets + i * 2);
-        if off < prev || usize::from(off) > list_len {
-            return Err(bad);
+        let offset = read_u16(payload, layout.list_offsets + i * 2);
+        if offset < previous_offset || usize::from(offset) > list_len {
+            return Err(out_of_range);
         }
-        prev = off;
+        previous_offset = offset;
     }
-    let end = usize::from(prev);
+    let end = usize::from(previous_offset);
     for i in 0..end {
-        if usize::from(read_u16(p, h.list_ids + i * 2)) >= polys {
-            return Err(bad);
+        if usize::from(read_u16(payload, layout.list_ids + i * 2)) >= poly_count {
+            return Err(out_of_range);
         }
     }
     // grid: interior cells name a feature, border cells a candidate list
-    for i in 0..(h.ncols as usize * h.nrows as usize) {
-        let v = read_u16(p, h.primary + i * 2);
-        if v == utz_common::NO_ZONE {
+    for i in 0..(layout.ncols as usize * layout.nrows as usize) {
+        let cell = read_u16(payload, layout.primary + i * 2);
+        if cell == utz_common::NO_ZONE {
             continue;
         }
-        if v & 0x8000 == 0 {
-            if usize::from(v) >= nf {
-                return Err(bad);
+        if cell & 0x8000 == 0 {
+            if usize::from(cell) >= feature_count {
+                return Err(out_of_range);
             }
-        } else if usize::from(v & 0x7FFF) >= uniq {
-            return Err(bad);
+        } else if usize::from(cell & 0x7FFF) >= uniq {
+            return Err(out_of_range);
         }
     }
     Ok(())
@@ -439,8 +447,8 @@ fn arc_sections(
 
 /// TZBB release string recorded in the header.
 #[must_use]
-pub fn release<'p>(h: &PayloadLayout, p: &'p [u8]) -> &'p [u8] {
-    &p[h.release_off..h.release_off + h.release_len]
+pub fn release<'p>(layout: &PayloadLayout, payload: &'p [u8]) -> &'p [u8] {
+    &payload[layout.release_off..layout.release_off + layout.release_len]
 }
 
 #[cfg(all(test, feature = "geom-varint-arcs"))]
@@ -481,55 +489,55 @@ mod tests {
         }
     }
 
-    fn header_bytes(h: PayloadHeader) -> [u8; PAYLOAD_HEADER_LEN] {
-        let mut b = [0u8; PAYLOAD_HEADER_LEN];
-        b.pwrite_with(h, 0, scroll::LE).expect("fits");
-        b
+    fn header_bytes(header: PayloadHeader) -> [u8; PAYLOAD_HEADER_LEN] {
+        let mut bytes = [0u8; PAYLOAD_HEADER_LEN];
+        bytes.pwrite_with(header, 0, scroll::LE).expect("fits");
+        bytes
     }
 
     /// The matching 20-byte section blob (see [`tiny_header`]).
     fn tiny_payload() -> [u8; 20] {
-        let mut p = [0u8; 20];
+        let mut payload = [0u8; 20];
         // zone string-offset table u16[2] = {0, 0}: one empty tzid; the
         // pool at 4 is empty. Grid cell at 16 = NO_ZONE. List offsets
         // u16[1] at 18 = {0}.
-        p[16..18].copy_from_slice(&utz_common::NO_ZONE.to_le_bytes());
-        p
+        payload[16..18].copy_from_slice(&utz_common::NO_ZONE.to_le_bytes());
+        payload
     }
 
     #[test]
     fn valid_synthetic_header_parses() {
-        let h = parse(&header_bytes(tiny_header())).expect("valid header");
-        assert_eq!(h.density_weight_floor_e4, 10);
-        check_tables(&tiny_payload(), &h).expect("valid tables");
+        let layout = parse(&header_bytes(tiny_header())).expect("valid header");
+        assert_eq!(layout.density_weight_floor_e4, 10);
+        check_tables(&tiny_payload(), &layout).expect("valid tables");
     }
 
     #[test]
     fn header_field_rejections() {
-        for (name, h) in [
+        for (name, header) in [
             ("density weight floor over 1.0", {
-                let mut h = tiny_header();
-                h.density_weight_floor_e4 = 10_001;
-                h
+                let mut header = tiny_header();
+                header.density_weight_floor_e4 = 10_001;
+                header
             }),
             ("reserved nonzero", {
-                let mut h = tiny_header();
-                h.reserved = 1;
-                h
+                let mut header = tiny_header();
+                header.reserved = 1;
+                header
             }),
             ("zero grid columns", {
-                let mut h = tiny_header();
-                h.ncols = 0;
-                h
+                let mut header = tiny_header();
+                header.ncols = 0;
+                header
             }),
             ("non-positive grid_deg", {
-                let mut h = tiny_header();
-                h.grid_deg = 0.0;
-                h
+                let mut header = tiny_header();
+                header.grid_deg = 0.0;
+                header
             }),
         ] {
             assert!(
-                matches!(parse(&header_bytes(h)), Err(Error::InvalidHeaderField)),
+                matches!(parse(&header_bytes(header)), Err(Error::InvalidHeaderField)),
                 "{name}"
             );
         }
@@ -537,18 +545,18 @@ mod tests {
 
     #[test]
     fn table_cross_reference_rejections() {
-        let h = parse(&header_bytes(tiny_header())).expect("valid header");
+        let layout = parse(&header_bytes(tiny_header())).expect("valid header");
         // interior cell naming a feature that doesn't exist
-        let mut p = tiny_payload();
-        p[16..18].copy_from_slice(&5u16.to_le_bytes());
-        assert_eq!(check_tables(&p, &h), Err(Error::TableOutOfRange));
+        let mut payload = tiny_payload();
+        payload[16..18].copy_from_slice(&5u16.to_le_bytes());
+        assert_eq!(check_tables(&payload, &layout), Err(Error::TableOutOfRange));
         // border cell naming a candidate list that doesn't exist
-        let mut p = tiny_payload();
-        p[16..18].copy_from_slice(&0x8000u16.to_le_bytes());
-        assert_eq!(check_tables(&p, &h), Err(Error::TableOutOfRange));
+        let mut payload = tiny_payload();
+        payload[16..18].copy_from_slice(&0x8000u16.to_le_bytes());
+        assert_eq!(check_tables(&payload, &layout), Err(Error::TableOutOfRange));
         // zone-string offset running past the pool
-        let mut p = tiny_payload();
-        p[2..4].copy_from_slice(&u16::MAX.to_le_bytes());
-        assert_eq!(check_tables(&p, &h), Err(Error::TableOutOfRange));
+        let mut payload = tiny_payload();
+        payload[2..4].copy_from_slice(&u16::MAX.to_le_bytes());
+        assert_eq!(check_tables(&payload, &layout), Err(Error::TableOutOfRange));
     }
 }

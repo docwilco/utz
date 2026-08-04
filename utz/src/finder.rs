@@ -439,10 +439,10 @@ impl Finder {
         }
         let payload = match layout.codec {
             Codec::Uncompressed => {
-                let mut p = bytes;
-                p.copy_within(sections_start..sections_start + layout.sections_len, 0);
-                p.truncate(layout.sections_len); // reuse the allocation
-                p
+                let mut buffer = bytes;
+                buffer.copy_within(sections_start..sections_start + layout.sections_len, 0);
+                buffer.truncate(layout.sections_len); // reuse the allocation
+                buffer
             }
             codec => {
                 let sections = bytes.get(sections_start..).ok_or(Error::Truncated)?;
@@ -476,40 +476,41 @@ impl Finder {
     #[cfg(feature = "alloc")]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     pub fn eager_from_slice(bytes: &[u8]) -> Result<Finder> {
-        let mut f = Finder::from_slice(bytes)?;
+        let mut finder = Finder::from_slice(bytes)?;
         if matches!(
-            f.layout.geom,
+            finder.layout.geom,
             GeomEncoding::FullRings | GeomEncoding::Coarse
         ) {
-            return Ok(f); // FullRings/coarse: nothing further to decode
+            return Ok(finder); // FullRings/coarse: nothing further to decode
         }
-        f.preload();
+        finder.preload();
         // keep [header + zone strings], [parent table] and [grid] —
         // everything lookups still read after preload; the arc store and
         // per-poly ring records between them are shadowed by the eager cache
-        let (h, b) = (&f.layout, f.payload_bytes());
-        let arcs_off = h.arc_offsets; // the arc block starts at its offsets table
-        let parent_len = h.eager_polys as usize * 2;
-        let grid_off = h.primary; // the grid starts at its primary cell table
-        let mut p = Vec::with_capacity(arcs_off + parent_len + (b.len() - grid_off));
-        p.extend_from_slice(&b[..arcs_off]);
-        p.extend_from_slice(&b[h.parent..h.parent + parent_len]);
-        p.extend_from_slice(&b[grid_off..]); // grid tables + release tail
-        let parent = arcs_off;
-        let shift = grid_off - (arcs_off + parent_len);
-        f.layout.parent = parent;
-        f.layout.primary -= shift;
-        f.layout.list_offsets -= shift;
-        f.layout.list_ids -= shift;
-        f.layout.release_off -= shift;
+        let (layout, payload) = (&finder.layout, finder.payload_bytes());
+        let arc_block_start = layout.arc_offsets; // the arc block starts at its offsets table
+        let parent_len = layout.eager_polys as usize * 2;
+        let grid_start = layout.primary; // the grid starts at its primary cell table
+        let mut kept_payload =
+            Vec::with_capacity(arc_block_start + parent_len + (payload.len() - grid_start));
+        kept_payload.extend_from_slice(&payload[..arc_block_start]);
+        kept_payload.extend_from_slice(&payload[layout.parent..layout.parent + parent_len]);
+        kept_payload.extend_from_slice(&payload[grid_start..]); // grid tables + release tail
+        let parent = arc_block_start;
+        let shift = grid_start - (arc_block_start + parent_len);
+        finder.layout.parent = parent;
+        finder.layout.primary -= shift;
+        finder.layout.list_offsets -= shift;
+        finder.layout.list_ids -= shift;
+        finder.layout.release_off -= shift;
         // poison the dropped sections' offsets: any residual use panics
         // out-of-bounds instead of reading grid bytes as geometry
-        f.layout.arc_offsets = usize::MAX;
-        f.layout.arc_data = usize::MAX;
-        f.layout.poly_offsets = usize::MAX;
-        f.layout.ring_data = usize::MAX;
-        f.payload = p.into();
-        Ok(f)
+        finder.layout.arc_offsets = usize::MAX;
+        finder.layout.arc_data = usize::MAX;
+        finder.layout.poly_offsets = usize::MAX;
+        finder.layout.ring_data = usize::MAX;
+        finder.payload = kept_payload.into();
+        Ok(finder)
     }
 
     /// Read an asset from any `Read` source into an owned buffer.
@@ -518,9 +519,10 @@ impl Finder {
     /// [`Error::ReadFailed`] if reading fails; otherwise as
     /// [`Finder::from_vec()`].
     #[cfg(feature = "std")]
-    pub fn from_reader(mut r: impl std::io::Read) -> Result<Finder> {
+    pub fn from_reader(mut reader: impl std::io::Read) -> Result<Finder> {
         let mut bytes = Vec::new();
-        r.read_to_end(&mut bytes)
+        reader
+            .read_to_end(&mut bytes)
             .map_err(|source| Error::ReadFailed(source.to_string()))?;
         Finder::from_vec(bytes)
     }
@@ -534,7 +536,7 @@ impl Finder {
     pub fn density_weight_floor(&self) -> Option<f64> {
         match self.layout.density_weight_floor_e4 {
             0 => None,
-            w => Some(f64::from(w) / 1e4),
+            floor_e4 => Some(f64::from(floor_e4) / 1e4),
         }
     }
 
@@ -563,16 +565,16 @@ impl Finder {
         ) {
             return 0; // FullRings / coarse: nothing to decode
         }
-        let h = &self.layout;
+        let layout = &self.layout;
         // coords are cached at quant-nearest width
-        let pair = if h.quant_bits == QuantBits::Bits16 {
+        let pair_size = if layout.quant_bits == QuantBits::Bits16 {
             core::mem::size_of::<(i16, i16)>()
         } else {
             core::mem::size_of::<(i32, i32)>()
         };
-        h.eager_coords as usize * pair
-            + h.eager_rings as usize * core::mem::size_of::<u32>()
-            + h.eager_polys as usize * core::mem::size_of::<([i32; 4], u32)>()
+        layout.eager_coords as usize * pair_size
+            + layout.eager_rings as usize * core::mem::size_of::<u32>()
+            + layout.eager_polys as usize * core::mem::size_of::<([i32; 4], u32)>()
     }
 
     /// Decode all polygons into RAM once (eager mode): repeat lookups
@@ -621,38 +623,39 @@ impl Finder {
         reason = "counts bounded by the parse-validated u32 header reservations"
     )]
     fn decode_rings<C: EagerCoord>(&self) -> (Vec<C>, Vec<u32>, Polys) {
-        let (h, b) = (&self.layout, self.payload_bytes());
-        let mut coords = Vec::with_capacity(h.eager_coords as usize);
-        let mut ring_ends = Vec::with_capacity(h.eager_rings as usize);
-        let mut polys = Vec::with_capacity(h.eager_polys as usize);
-        let fb = h.quant_bits.bytes();
-        for pid in 0..h.eager_polys {
-            let mut pos = h.ring_data + read_u32(b, h.poly_offsets + pid as usize * 4) as usize;
-            let bb = [
-                read_fixed(b, pos, h.quant_bits),
-                read_fixed(b, pos + fb, h.quant_bits),
-                read_fixed(b, pos + 2 * fb, h.quant_bits),
-                read_fixed(b, pos + 3 * fb, h.quant_bits),
+        let (layout, payload) = (&self.layout, self.payload_bytes());
+        let mut coords = Vec::with_capacity(layout.eager_coords as usize);
+        let mut ring_ends = Vec::with_capacity(layout.eager_rings as usize);
+        let mut polys = Vec::with_capacity(layout.eager_polys as usize);
+        let coord_bytes = layout.quant_bits.bytes();
+        for poly_id in 0..layout.eager_polys {
+            let mut position = layout.ring_data
+                + read_u32(payload, layout.poly_offsets + poly_id as usize * 4) as usize;
+            let bbox = [
+                read_fixed(payload, position, layout.quant_bits),
+                read_fixed(payload, position + coord_bytes, layout.quant_bits),
+                read_fixed(payload, position + 2 * coord_bytes, layout.quant_bits),
+                read_fixed(payload, position + 3 * coord_bytes, layout.quant_bits),
             ];
-            pos += 4 * fb;
-            let nrings = read_u16(b, pos);
-            pos += 2;
-            for _ in 0..nrings {
-                let (nrefs, mut p2) = read_varint(b, pos);
+            position += 4 * coord_bytes;
+            let ring_count = read_u16(payload, position);
+            position += 2;
+            for _ in 0..ring_count {
+                let (arc_ref_count, mut ref_position) = read_varint(payload, position);
                 let start = coords.len();
-                for _ in 0..nrefs {
-                    let (r, p3) = read_varint(b, p2);
-                    p2 = p3;
-                    self.append_arc(r as u32, &mut coords);
+                for _ in 0..arc_ref_count {
+                    let (arc_ref, after_ref) = read_varint(payload, ref_position);
+                    ref_position = after_ref;
+                    self.append_arc(arc_ref as u32, &mut coords);
                 }
-                pos = p2;
+                position = ref_position;
                 // drop the duplicated ring-closure vertex (ring_hit wraps)
                 if coords.len() > start + 1 && coords.last() == coords.get(start) {
                     coords.pop();
                 }
                 ring_ends.push(coords.len() as u32);
             }
-            polys.push((bb, ring_ends.len() as u32));
+            polys.push((bbox, ring_ends.len() as u32));
         }
         (coords, ring_ends, polys)
     }
@@ -671,13 +674,13 @@ impl Finder {
     /// pre-decoded rings.
     ///
     /// # Errors
-    /// [`Error::InvalidPosition`] if `pos` fails
+    /// [`Error::InvalidPosition`] if `position` fails
     /// [`Position::is_valid()`]: lon beyond ±180, lat beyond ±90, or NaN.
     /// Pre-validated hot loops can skip the check with
     /// [`lookup_unchecked()`](Finder::lookup_unchecked).
-    pub fn lookup(&self, pos: Position) -> Result<Option<&str>> {
-        if pos.is_valid() {
-            Ok(self.lookup_unchecked(pos))
+    pub fn lookup(&self, position: Position) -> Result<Option<&str>> {
+        if position.is_valid() {
+            Ok(self.lookup_unchecked(position))
         } else {
             Err(Error::InvalidPosition)
         }
@@ -689,32 +692,32 @@ impl Finder {
     /// instead of an error: out-of-range coordinates clamp to the nearest
     /// edge of the world, NaN behaves as 0.
     #[must_use]
-    pub fn lookup_unchecked(&self, pos: Position) -> Option<&str> {
-        let (px, py) = self.quantize(pos);
+    pub fn lookup_unchecked(&self, position: Position) -> Option<&str> {
+        let (px, py) = self.quantize(position);
         match self.cell_value(px, py) {
-            v if v == NO_ZONE => None,
-            v if v & 0x8000 == 0 => self.tzid(v),
-            v => {
+            cell if cell == NO_ZONE => None,
+            cell if cell & 0x8000 == 0 => self.tzid(cell),
+            cell => {
                 // border cell: candidates are the POLYS whose rings touch it
                 // — resolve the winner's feature via the parent table
-                let (s, e) = self.list_bounds(v & 0x7FFF);
-                let b = self.payload_bytes();
+                let (start, end) = self.list_bounds(cell & 0x7FFF);
+                let payload = self.payload_bytes();
                 // coarse assets carry no geometry: cell precision IS the
                 // asset's precision — the dominant-first head is the answer
                 if caps::GEOM_COARSE && self.layout.geom == GeomEncoding::Coarse {
-                    return self.tzid(self.parent_of(read_u16(b, s)));
+                    return self.tzid(self.parent_of(read_u16(payload, start)));
                 }
                 let mut first = None;
-                for pos in (s..e).step_by(2) {
-                    let pid = read_u16(b, pos);
-                    first.get_or_insert(pid);
-                    if self.poly_contains(pid, px, py) {
-                        return self.tzid(self.parent_of(pid));
+                for offset in (start..end).step_by(2) {
+                    let poly_id = read_u16(payload, offset);
+                    first.get_or_insert(poly_id);
+                    if self.poly_contains(poly_id, px, py) {
+                        return self.tzid(self.parent_of(poly_id));
                     }
                 }
                 // quantization edge: no candidate claims the point — the
                 // dominant-first head is the best answer (measured ~0/100k)
-                first.and_then(|pid| self.tzid(self.parent_of(pid)))
+                first.and_then(|poly_id| self.tzid(self.parent_of(poly_id)))
             }
         }
     }
@@ -727,9 +730,9 @@ impl Finder {
     /// # Errors
     /// [`Error::InvalidPosition`], exactly as
     /// [`lookup()`](Finder::lookup).
-    pub fn lookup_coarse(&self, pos: Position) -> Result<Option<&str>> {
-        if pos.is_valid() {
-            Ok(self.lookup_coarse_unchecked(pos))
+    pub fn lookup_coarse(&self, position: Position) -> Result<Option<&str>> {
+        if position.is_valid() {
+            Ok(self.lookup_coarse_unchecked(position))
         } else {
             Err(Error::InvalidPosition)
         }
@@ -739,15 +742,15 @@ impl Finder {
     /// check; the same contract as
     /// [`lookup_unchecked()`](Finder::lookup_unchecked).
     #[must_use]
-    pub fn lookup_coarse_unchecked(&self, pos: Position) -> Option<&str> {
-        let (px, py) = self.quantize(pos);
+    pub fn lookup_coarse_unchecked(&self, position: Position) -> Option<&str> {
+        let (px, py) = self.quantize(position);
         match self.cell_value(px, py) {
-            v if v == NO_ZONE => None,
-            v if v & 0x8000 == 0 => self.tzid(v),
-            v => {
-                let (s, _) = self.list_bounds(v & 0x7FFF);
+            cell if cell == NO_ZONE => None,
+            cell if cell & 0x8000 == 0 => self.tzid(cell),
+            cell => {
+                let (start, _) = self.list_bounds(cell & 0x7FFF);
                 // dominant-first head (a poly id)
-                self.tzid(self.parent_of(read_u16(self.payload_bytes(), s)))
+                self.tzid(self.parent_of(read_u16(self.payload_bytes(), start)))
             }
         }
     }
@@ -763,11 +766,14 @@ impl Finder {
         clippy::cast_possible_truncation,
         reason = "|v*qmax| < i32::MAX for in-range lon/lat; float as saturates, and the unchecked lookups document that wild input clamps"
     )]
-    fn quantize(&self, pos: Position) -> (i32, i32) {
+    fn quantize(&self, position: Position) -> (i32, i32) {
         // round-half-away like the encoder (f64::round is std-only)
-        let r = |v: f64| (v + if v >= 0.0 { 0.5 } else { -0.5 }) as i32;
-        let q = self.qmax();
-        (r(pos.lon / 180.0 * q), r(pos.lat / 90.0 * q))
+        let round = |value: f64| (value + if value >= 0.0 { 0.5 } else { -0.5 }) as i32;
+        let qmax = self.qmax();
+        (
+            round(position.lon / 180.0 * qmax),
+            round(position.lat / 90.0 * qmax),
+        )
     }
 
     #[expect(
@@ -789,25 +795,28 @@ impl Finder {
         )
     }
 
-    fn list_bounds(&self, li: u16) -> (usize, usize) {
-        let (h, b) = (&self.layout, self.payload_bytes());
-        let s = read_u16(b, h.list_offsets + li as usize * 2) as usize;
-        let e = read_u16(b, h.list_offsets + li as usize * 2 + 2) as usize;
-        (h.list_ids + s * 2, h.list_ids + e * 2)
+    fn list_bounds(&self, list_index: u16) -> (usize, usize) {
+        let (layout, payload) = (&self.layout, self.payload_bytes());
+        let start = read_u16(payload, layout.list_offsets + list_index as usize * 2) as usize;
+        let end = read_u16(payload, layout.list_offsets + list_index as usize * 2 + 2) as usize;
+        (layout.list_ids + start * 2, layout.list_ids + end * 2)
     }
 
-    fn tzid(&self, fid: u16) -> Option<&str> {
-        let (h, b) = (&self.layout, self.payload_bytes());
-        let s = read_u16(b, fid as usize * 2) as usize;
-        let e = read_u16(b, fid as usize * 2 + 2) as usize;
-        core::str::from_utf8(&b[h.pool + s..h.pool + e])
+    fn tzid(&self, feature_id: u16) -> Option<&str> {
+        let (layout, payload) = (&self.layout, self.payload_bytes());
+        let start = read_u16(payload, feature_id as usize * 2) as usize;
+        let end = read_u16(payload, feature_id as usize * 2 + 2) as usize;
+        core::str::from_utf8(&payload[layout.pool + start..layout.pool + end])
             .ok()
-            .filter(|t| !t.is_empty())
+            .filter(|tzid| !tzid.is_empty())
     }
 
     /// poly id → feature id (parent table).
-    fn parent_of(&self, pid: u16) -> u16 {
-        read_u16(self.payload_bytes(), self.layout.parent + pid as usize * 2)
+    fn parent_of(&self, poly_id: u16) -> u16 {
+        read_u16(
+            self.payload_bytes(),
+            self.layout.parent + poly_id as usize * 2,
+        )
     }
 
     /// Per-polygon test: bbox gate, then even-odd PIP at the width the
@@ -820,44 +829,45 @@ impl Finder {
     /// union of each arc's internal segments. Every arc is walked FORWARD
     /// (orientation bit ignored) with O(1) state, and parity XORs across
     /// arcs order-independently.
-    fn poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
+    fn poly_contains(&self, poly_id: u16, px: i32, py: i32) -> bool {
         #[cfg(feature = "geom-full-rings")]
         if self.layout.geom == GeomEncoding::FullRings {
-            return self.full_rings_poly_contains(pid, px, py);
+            return self.full_rings_poly_contains(poly_id, px, py);
         }
         #[cfg(feature = "alloc")]
-        if let Some(e) = &self.eager {
-            return self.eager_poly_contains(e, pid, px, py);
+        if let Some(eager) = &self.eager {
+            return self.eager_poly_contains(eager, poly_id, px, py);
         }
-        let (h, b) = (&self.layout, self.payload_bytes());
-        let fb = h.quant_bits.bytes();
-        let mut pos = h.ring_data + read_u32(b, h.poly_offsets + pid as usize * 4) as usize;
-        let bb = [
-            read_fixed(b, pos, h.quant_bits),
-            read_fixed(b, pos + fb, h.quant_bits),
-            read_fixed(b, pos + 2 * fb, h.quant_bits),
-            read_fixed(b, pos + 3 * fb, h.quant_bits),
+        let (layout, payload) = (&self.layout, self.payload_bytes());
+        let coord_bytes = layout.quant_bits.bytes();
+        let mut position = layout.ring_data
+            + read_u32(payload, layout.poly_offsets + poly_id as usize * 4) as usize;
+        let bbox = [
+            read_fixed(payload, position, layout.quant_bits),
+            read_fixed(payload, position + coord_bytes, layout.quant_bits),
+            read_fixed(payload, position + 2 * coord_bytes, layout.quant_bits),
+            read_fixed(payload, position + 3 * coord_bytes, layout.quant_bits),
         ];
-        if !(px >= bb[0] && py >= bb[1] && px <= bb[2] && py <= bb[3]) {
+        if !(px >= bbox[0] && py >= bbox[1] && px <= bbox[2] && py <= bbox[3]) {
             return false;
         }
-        pos += 4 * fb;
-        let nrings = read_u16(b, pos);
-        pos += 2;
+        position += 4 * coord_bytes;
+        let ring_count = read_u16(payload, position);
+        position += 2;
         let mut poly_inside = false;
-        for _ in 0..nrings {
-            let (nrefs, mut p2) = read_varint(b, pos);
+        for _ in 0..ring_count {
+            let (arc_ref_count, mut ref_position) = read_varint(payload, position);
             let mut ring_inside = false;
-            for _ in 0..nrefs {
-                let (r, p3) = read_varint(b, p2);
-                p2 = p3;
-                match self.scan_arc((r >> 1) as usize, px, py) {
+            for _ in 0..arc_ref_count {
+                let (arc_ref, after_ref) = read_varint(payload, ref_position);
+                ref_position = after_ref;
+                match self.scan_arc((arc_ref >> 1) as usize, px, py) {
                     pip::RingHit::Boundary => return true, // border points claimed
                     pip::RingHit::Inside => ring_inside = !ring_inside,
                     pip::RingHit::Outside => {}
                 }
             }
-            pos = p2;
+            position = ref_position;
             if ring_inside {
                 poly_inside = !poly_inside;
             }
@@ -872,28 +882,34 @@ impl Finder {
         reason = "coords accumulate i16/i24/i32-width deltas; sums fit i32 by format"
     )]
     fn scan_arc(&self, id: usize, px: i32, py: i32) -> pip::RingHit {
-        let (h, b) = (&self.layout, self.payload_bytes());
-        let wide = h.quant_bits == QuantBits::Bits32;
-        let fixed = caps::GEOM_FIXED_WIDTH_ARCS && h.geom == GeomEncoding::FixedWidthArcs;
-        let mut pos = h.arc_data + read_u32(b, h.arc_offsets + id * 4) as usize;
-        let (vcount, p2) = read_varint(b, pos);
-        pos = p2;
-        let fb = h.quant_bits.bytes();
-        let mut x = i64::from(read_fixed(b, pos, h.quant_bits));
-        let mut y = i64::from(read_fixed(b, pos + fb, h.quant_bits));
-        pos += 2 * fb;
+        let (layout, payload) = (&self.layout, self.payload_bytes());
+        let wide = layout.quant_bits == QuantBits::Bits32;
+        let fixed_width =
+            caps::GEOM_FIXED_WIDTH_ARCS && layout.geom == GeomEncoding::FixedWidthArcs;
+        let mut position =
+            layout.arc_data + read_u32(payload, layout.arc_offsets + id * 4) as usize;
+        let (vertex_count, after_count) = read_varint(payload, position);
+        position = after_count;
+        let coord_bytes = layout.quant_bits.bytes();
+        let mut x = i64::from(read_fixed(payload, position, layout.quant_bits));
+        let mut y = i64::from(read_fixed(
+            payload,
+            position + coord_bytes,
+            layout.quant_bits,
+        ));
+        position += 2 * coord_bytes;
         let mut inside = false;
         let (mut x0, mut y0) = (x as i32, y as i32);
-        for _ in 1..vcount {
-            let (x1, y1) = if fixed {
-                let x1 = read_fixed(b, pos, h.quant_bits);
-                let y1 = read_fixed(b, pos + fb, h.quant_bits);
-                pos += 2 * fb;
+        for _ in 1..vertex_count {
+            let (x1, y1) = if fixed_width {
+                let x1 = read_fixed(payload, position, layout.quant_bits);
+                let y1 = read_fixed(payload, position + coord_bytes, layout.quant_bits);
+                position += 2 * coord_bytes;
                 (x1, y1)
             } else {
-                let (dx, p3) = read_varint(b, pos);
-                let (dy, p4) = read_varint(b, p3);
-                pos = p4;
+                let (dx, after_dx) = read_varint(payload, position);
+                let (dy, after_deltas) = read_varint(payload, after_dx);
+                position = after_deltas;
                 x += unzigzag(dx);
                 y += unzigzag(dy);
                 (x as i32, y as i32)
@@ -923,41 +939,41 @@ impl Finder {
     /// i32 as typed pairs, i24 as [`pip::Pack24`] (align 1, no alignment
     /// requirement). Works on the bare `core` rung.
     #[cfg(feature = "geom-full-rings")]
-    fn full_rings_poly_contains(&self, pid: u16, px: i32, py: i32) -> bool {
-        let (h, b) = (&self.layout, self.payload_bytes());
-        let pe = h.full_polys + pid as usize * 20;
-        let bb = [
-            read_u32(b, pe).cast_signed(),
-            read_u32(b, pe + 4).cast_signed(),
-            read_u32(b, pe + 8).cast_signed(),
-            read_u32(b, pe + 12).cast_signed(),
+    fn full_rings_poly_contains(&self, poly_id: u16, px: i32, py: i32) -> bool {
+        let (layout, payload) = (&self.layout, self.payload_bytes());
+        let poly_record = layout.full_polys + poly_id as usize * 20;
+        let bbox = [
+            read_u32(payload, poly_record).cast_signed(),
+            read_u32(payload, poly_record + 4).cast_signed(),
+            read_u32(payload, poly_record + 8).cast_signed(),
+            read_u32(payload, poly_record + 12).cast_signed(),
         ];
-        if !(px >= bb[0] && py >= bb[1] && px <= bb[2] && py <= bb[3]) {
+        if !(px >= bbox[0] && py >= bbox[1] && px <= bbox[2] && py <= bbox[3]) {
             return false;
         }
-        let rend = read_u32(b, pe + 16) as usize;
-        let rstart = if pid == 0 {
+        let ring_end = read_u32(payload, poly_record + 16) as usize;
+        let ring_start = if poly_id == 0 {
             0
         } else {
-            read_u32(b, pe - 4) as usize
+            read_u32(payload, poly_record - 4) as usize
         };
-        match h.quant_bits {
+        match layout.quant_bits {
             QuantBits::Bits16 => {
                 // an in-bbox point of a valid i16-quant asset always fits
                 // i16; the fallthrough covers adversarial bboxes
                 let (Ok(px), Ok(py)) = (i16::try_from(px), i16::try_from(py)) else {
                     return false;
                 };
-                self.full_rings_fold(rstart, rend, px, py, ring_hit_narrow::<(i16, i16)>)
+                self.full_rings_fold(ring_start, ring_end, px, py, ring_hit_narrow::<(i16, i16)>)
             }
             QuantBits::Bits24 => {
-                self.full_rings_fold(rstart, rend, px, py, ring_hit_narrow::<pip::Pack24>)
+                self.full_rings_fold(ring_start, ring_end, px, py, ring_hit_narrow::<pip::Pack24>)
             }
-            QuantBits::Bits32 => self.full_rings_fold(rstart, rend, px, py, ring_hit_wide),
+            QuantBits::Bits32 => self.full_rings_fold(ring_start, ring_end, px, py, ring_hit_wide),
         }
     }
 
-    /// Even-odd fold over one poly's rings `[rstart, rend)` at pair
+    /// Even-odd fold over one poly's rings `[ring_start, ring_end)` at pair
     /// type `P`: `size_of::<P>()` IS the stored coordinate stride; `scan`
     /// is the width-matched per-target ring kernel ([`ring_hit_narrow`] /
     /// [`ring_hit_wide`]).
@@ -967,22 +983,22 @@ impl Finder {
     #[cfg(feature = "geom-full-rings")]
     fn full_rings_fold<P: pip::CoordPair>(
         &self,
-        rstart: usize,
-        rend: usize,
+        ring_start: usize,
+        ring_end: usize,
         px: P::Narrow,
         py: P::Narrow,
         scan: impl Fn(&[P], P::Narrow, P::Narrow) -> pip::RingHit,
     ) -> bool {
-        let (h, b) = (&self.layout, self.payload_bytes());
+        let (layout, payload) = (&self.layout, self.payload_bytes());
         let mut inside = false;
-        let mut cstart = if rstart == 0 {
+        let mut coord_start = if ring_start == 0 {
             0
         } else {
-            read_u32(b, h.full_ring_ends + (rstart - 1) * 4) as usize
+            read_u32(payload, layout.full_ring_ends + (ring_start - 1) * 4) as usize
         };
-        for ri in rstart..rend {
-            let cend = read_u32(b, h.full_ring_ends + ri * 4) as usize;
-            let n = cend - cstart;
+        for ring_index in ring_start..ring_end {
+            let coord_end = read_u32(payload, layout.full_ring_ends + ring_index * 4) as usize;
+            let coord_count = coord_end - coord_start;
             // SAFETY (slice cast): pair layouts are asserted at the top of
             // this file (Pack24 is align 1; i16/i32 pairs land aligned
             // because full_coords is 4-aligned — checked at load — and their
@@ -990,13 +1006,13 @@ impl Finder {
             // the full-rings sections against the header counts.
             let ring = unsafe {
                 core::slice::from_raw_parts(
-                    b[h.full_coords + cstart * core::mem::size_of::<P>()..]
+                    payload[layout.full_coords + coord_start * core::mem::size_of::<P>()..]
                         .as_ptr()
                         .cast::<P>(),
-                    n,
+                    coord_count,
                 )
             };
-            cstart = cend;
+            coord_start = coord_end;
             match scan(ring, px, py) {
                 pip::RingHit::Boundary => return true,
                 pip::RingHit::Inside => inside = !inside,
@@ -1010,18 +1026,18 @@ impl Finder {
     /// directly by poly id). The preload-computed bbox still skips whole
     /// folds for candidates that touch the cell but not the point.
     #[cfg(feature = "alloc")]
-    fn eager_poly_contains(&self, e: &Eager, pid: u16, px: i32, py: i32) -> bool {
-        let pi = pid as usize;
-        let (bb, rend) = e.polys[pi];
-        if !(px >= bb[0] && py >= bb[1] && px <= bb[2] && py <= bb[3]) {
+    fn eager_poly_contains(&self, eager: &Eager, poly_id: u16, px: i32, py: i32) -> bool {
+        let poly_index = poly_id as usize;
+        let (bbox, ring_end) = eager.polys[poly_index];
+        if !(px >= bbox[0] && py >= bbox[1] && px <= bbox[2] && py <= bbox[3]) {
             return false;
         }
-        let rstart = if pi == 0 {
+        let ring_start = if poly_index == 0 {
             0
         } else {
-            e.polys[pi - 1].1 as usize
+            eager.polys[poly_index - 1].1 as usize
         };
-        match &e.coords {
+        match &eager.coords {
             EagerCoords::Narrow(coords) => {
                 // an in-bbox point of a valid i16-quant asset always fits
                 // i16; the fallthrough covers adversarial bboxes
@@ -1030,9 +1046,9 @@ impl Finder {
                 };
                 rings_hit(
                     coords,
-                    &e.ring_ends,
-                    rstart,
-                    rend as usize,
+                    &eager.ring_ends,
+                    ring_start,
+                    ring_end as usize,
                     px,
                     py,
                     ring_hit_narrow,
@@ -1040,18 +1056,18 @@ impl Finder {
             }
             EagerCoords::Wide(coords) if self.layout.quant_bits == QuantBits::Bits32 => rings_hit(
                 coords,
-                &e.ring_ends,
-                rstart,
-                rend as usize,
+                &eager.ring_ends,
+                ring_start,
+                ring_end as usize,
                 px,
                 py,
                 ring_hit_wide,
             ),
             EagerCoords::Wide(coords) => rings_hit(
                 coords,
-                &e.ring_ends,
-                rstart,
-                rend as usize,
+                &eager.ring_ends,
+                ring_start,
+                ring_end as usize,
                 px,
                 py,
                 ring_hit_narrow::<(i32, i32)>,
@@ -1068,33 +1084,38 @@ impl Finder {
     )]
     fn append_arc<C: EagerCoord>(&self, arc_ref: u32, coords: &mut Vec<C>) {
         let (header, payload) = (&self.layout, self.payload_bytes());
-        let (id, rev) = ((arc_ref >> 1) as usize, (arc_ref & 1) == 1);
-        let mut pos = header.arc_data + read_u32(payload, header.arc_offsets + id * 4) as usize;
-        let (vcount, after_vcount) = read_varint(payload, pos);
-        pos = after_vcount;
+        let (id, reversed) = ((arc_ref >> 1) as usize, (arc_ref & 1) == 1);
+        let mut position =
+            header.arc_data + read_u32(payload, header.arc_offsets + id * 4) as usize;
+        let (vertex_count, after_count) = read_varint(payload, position);
+        position = after_count;
         let coord_bytes = header.quant_bits.bytes();
-        let mut qlon = i64::from(read_fixed(payload, pos, header.quant_bits));
-        let mut qlat = i64::from(read_fixed(payload, pos + coord_bytes, header.quant_bits));
-        pos += 2 * coord_bytes;
+        let mut qlon = i64::from(read_fixed(payload, position, header.quant_bits));
+        let mut qlat = i64::from(read_fixed(
+            payload,
+            position + coord_bytes,
+            header.quant_bits,
+        ));
+        position += 2 * coord_bytes;
         let start = coords.len();
         coords.push(C::from_q(qlon as i32, qlat as i32));
-        for _ in 1..vcount {
+        for _ in 1..vertex_count {
             if caps::GEOM_FIXED_WIDTH_ARCS && header.geom == GeomEncoding::FixedWidthArcs {
                 coords.push(C::from_q(
-                    read_fixed(payload, pos, header.quant_bits),
-                    read_fixed(payload, pos + coord_bytes, header.quant_bits),
+                    read_fixed(payload, position, header.quant_bits),
+                    read_fixed(payload, position + coord_bytes, header.quant_bits),
                 ));
-                pos += 2 * coord_bytes;
+                position += 2 * coord_bytes;
             } else {
-                let (dlon, after_dlon) = read_varint(payload, pos);
+                let (dlon, after_dlon) = read_varint(payload, position);
                 let (dlat, after_dlat) = read_varint(payload, after_dlon);
-                pos = after_dlat;
+                position = after_dlat;
                 qlon += unzigzag(dlon);
                 qlat += unzigzag(dlat);
                 coords.push(C::from_q(qlon as i32, qlat as i32));
             }
         }
-        if rev {
+        if reversed {
             coords[start..].reverse();
         }
         // drop the duplicated junction vertex where this arc joins the previous
@@ -1152,34 +1173,34 @@ fn edge_wide(a: (i32, i32), b: (i32, i32), px: i32, py: i32) -> pip::EdgeHit {
     pip::edge::<i128, _>(a, b, px, py)
 }
 
-/// Even-odd fold over consecutive rings `[rstart, rend)` of a flat eager
-/// cache, shared by both cache widths ([`EagerCoords`]); `scan` is the
+/// Even-odd fold over consecutive rings `[ring_start, ring_end)` of a flat
+/// eager cache, shared by both cache widths ([`EagerCoords`]); `scan` is the
 /// width-matched per-target ring kernel ([`ring_hit_narrow`] /
 /// [`ring_hit_wide`]).
 #[cfg(feature = "alloc")]
 fn rings_hit<P: pip::CoordPair>(
     coords: &[P],
     ring_ends: &[u32],
-    rstart: usize,
-    rend: usize,
+    ring_start: usize,
+    ring_end: usize,
     px: P::Narrow,
     py: P::Narrow,
     scan: impl Fn(&[P], P::Narrow, P::Narrow) -> pip::RingHit,
 ) -> bool {
     let mut inside = false;
-    let mut cstart = if rstart == 0 {
+    let mut coord_start = if ring_start == 0 {
         0
     } else {
-        ring_ends[rstart - 1] as usize
+        ring_ends[ring_start - 1] as usize
     };
-    for cend in &ring_ends[rstart..rend] {
-        let cend = *cend as usize;
-        match scan(&coords[cstart..cend], px, py) {
+    for coord_end in &ring_ends[ring_start..ring_end] {
+        let coord_end = *coord_end as usize;
+        match scan(&coords[coord_start..coord_end], px, py) {
             pip::RingHit::Boundary => return true,
             pip::RingHit::Inside => inside = !inside,
             pip::RingHit::Outside => {}
         }
-        cstart = cend;
+        coord_start = coord_end;
     }
     inside
 }

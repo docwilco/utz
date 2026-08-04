@@ -16,53 +16,54 @@ pub fn fetch(url: &str, cache_dir: &Path) -> crate::Result<PathBuf> {
     let name = url
         .rsplit('/')
         .next()
-        .filter(|s| !s.is_empty())
+        .filter(|segment| !segment.is_empty())
         .ok_or_else(|| crate::Error::NoFilename { url: url.into() })?;
     let file = cache_dir.join(name);
-    let meta = cache_dir.join(format!("{name}.headers"));
+    let headers_path = cache_dir.join(format!("{name}.headers"));
 
-    let mut req = ureq::get(url);
+    let mut request = ureq::get(url);
     if file.exists() {
-        if let Ok(m) = std::fs::read_to_string(&meta) {
-            for line in m.lines() {
-                if let Some(v) = line.strip_prefix("etag: ") {
-                    req = req.header("If-None-Match", v);
-                } else if let Some(v) = line.strip_prefix("last-modified: ") {
-                    req = req.header("If-Modified-Since", v);
+        if let Ok(cached_headers) = std::fs::read_to_string(&headers_path) {
+            for line in cached_headers.lines() {
+                if let Some(value) = line.strip_prefix("etag: ") {
+                    request = request.header("If-None-Match", value);
+                } else if let Some(value) = line.strip_prefix("last-modified: ") {
+                    request = request.header("If-Modified-Since", value);
                 }
             }
         }
     }
 
-    match req.call() {
-        Ok(resp) if resp.status() == 304 => Ok(file),
-        Ok(resp) => {
+    match request.call() {
+        Ok(response) if response.status() == 304 => Ok(file),
+        Ok(response) => {
             use std::fmt::Write as _;
             let header = |name: &str| {
-                resp.headers()
+                response
+                    .headers()
                     .get(name)
-                    .and_then(|v| v.to_str().ok())
+                    .and_then(|value| value.to_str().ok())
                     .map(str::to_owned)
             };
-            let mut hdrs = String::new();
-            if let Some(v) = header("etag") {
-                let _ = writeln!(hdrs, "etag: {v}");
+            let mut headers = String::new();
+            if let Some(value) = header("etag") {
+                let _ = writeln!(headers, "etag: {value}");
             }
-            if let Some(v) = header("last-modified") {
-                let _ = writeln!(hdrs, "last-modified: {v}");
+            if let Some(value) = header("last-modified") {
+                let _ = writeln!(headers, "last-modified: {value}");
             }
             let mut bytes = Vec::new();
-            resp.into_body().into_reader().read_to_end(&mut bytes)?;
-            let tmp = file.with_extension("part");
-            std::fs::write(&tmp, &bytes)?;
-            std::fs::rename(&tmp, &file)?;
-            std::fs::write(&meta, hdrs)?;
+            response.into_body().into_reader().read_to_end(&mut bytes)?;
+            let partial_path = file.with_extension("part");
+            std::fs::write(&partial_path, &bytes)?;
+            std::fs::rename(&partial_path, &file)?;
+            std::fs::write(&headers_path, headers)?;
             Ok(file)
         }
-        Err(e) if file.exists() => {
-            eprintln!("warning: revalidation of {url} failed ({e}); using cached copy");
+        Err(error) if file.exists() => {
+            eprintln!("warning: revalidation of {url} failed ({error}); using cached copy");
             Ok(file)
         }
-        Err(e) => Err(e.into()),
+        Err(error) => Err(error.into()),
     }
 }

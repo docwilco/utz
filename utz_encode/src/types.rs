@@ -71,17 +71,17 @@ pub fn q24_lat(lat: f64) -> i32 {
     q_lat(lat, QMAX_I24)
 }
 
-/// Append `v`'s low three little-endian bytes: the stored form of an
+/// Append `value`'s low three little-endian bytes: the stored form of an
 /// i24-quantized coordinate.
-pub fn push_i24(out: &mut Vec<u8>, v: i32) {
-    let b = v.to_le_bytes();
-    out.extend_from_slice(&b[0..3]);
+pub fn push_i24(out: &mut Vec<u8>, value: i32) {
+    let bytes = value.to_le_bytes();
+    out.extend_from_slice(&bytes[0..3]);
 }
 #[must_use]
-pub fn read_i24(b: &[u8]) -> i32 {
-    let mut v = i32::from(b[0]) | (i32::from(b[1]) << 8) | (i32::from(b[2]) << 16);
-    if v & 0x0080_0000 != 0 {
-        v |= !0x00FF_FFFF;
+pub fn read_i24(bytes: &[u8]) -> i32 {
+    let mut value = i32::from(bytes[0]) | (i32::from(bytes[1]) << 8) | (i32::from(bytes[2]) << 16);
+    if value & 0x0080_0000 != 0 {
+        value |= !0x00FF_FFFF;
     }
-    v
+    value
 }

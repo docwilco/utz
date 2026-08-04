@@ -3,7 +3,7 @@
 //! Two passes over the geometry:
 //! 1. edge walk: every cell a ring passes through collects that feature id
 //!    (candidate sets; ≥2 candidates = border cell needing PIP);
-//! 2. scanline fill on a sub×sub-finer grid: even-odd span fill per polygon
+//! 2. scanline fill on a subdivision-finer grid: even-odd span fill per polygon
 //!    gives per-subcell ownership, aggregated to a dominant zone per cell
 //!    (interior fill for the primary array + the `lookup_coarse` answer).
 
@@ -39,13 +39,13 @@ impl CellGrid {
 }
 
 /// Rasterize `feats` onto a `deg`-cell grid; ownership sampled on a grid
-/// `sub`× finer (sub=8 at 2° → 0.25° subcells).
+/// `subdivision`× finer (subdivision=8 at 2° → 0.25° subcells).
 ///
 /// # Panics
 ///
 /// Panics if any coordinate is NaN (scanline crossings become unsortable).
 #[must_use]
-pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
+pub fn build(feats: &[Feat], deg: f64, subdivision: usize) -> CellGrid {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -54,38 +54,48 @@ pub fn build(feats: &[Feat], deg: f64, sub: usize) -> CellGrid {
     let (ncols, nrows) = ((360.0 / deg).ceil() as usize, (180.0 / deg).ceil() as usize);
 
     let mut sets = edge_walk(feats, deg, ncols, nrows);
-    let owner = subcell_owners(feats, deg, sub, ncols * sub, nrows * sub);
+    let owner = subcell_owners(
+        feats,
+        deg,
+        subdivision,
+        ncols * subdivision,
+        nrows * subdivision,
+    );
 
     // ---- aggregate subcell owners to per-cell tallies + dominant ----
     let mut counts: Array2<HashMap<u16, u32>> = Array2::from_elem((nrows, ncols), HashMap::new());
-    for ((fj, fi), &o) in owner.indexed_iter() {
-        if o != NO_ZONE {
-            *counts[[fj / sub, fi / sub]].entry(o).or_insert(0) += 1;
+    for ((fine_row, fine_col), &zone) in owner.indexed_iter() {
+        if zone != NO_ZONE {
+            *counts[[fine_row / subdivision, fine_col / subdivision]]
+                .entry(zone)
+                .or_insert(0) += 1;
         }
     }
     // tie-break by smallest id: HashMap iteration order is seeded per process,
     // and a tie decided by it made the whole container nondeterministic
-    let dominant: Array2<u16> = counts.map(|t| {
-        t.iter()
-            .max_by_key(|&(&z, &c)| (c, core::cmp::Reverse(z)))
-            .map_or(NO_ZONE, |(&z, _)| z)
+    let dominant: Array2<u16> = counts.map(|tally| {
+        tally
+            .iter()
+            .max_by_key(|&(&zone, &count)| (count, core::cmp::Reverse(zone)))
+            .map_or(NO_ZONE, |(&zone, _)| zone)
     });
-    let tallies: Array2<Vec<(u16, u32)>> = counts.map(|t| {
-        let mut v: Vec<(u16, u32)> = t.iter().map(|(&z, &n)| (z, n)).collect();
-        v.sort_unstable();
-        v
+    let tallies: Array2<Vec<(u16, u32)>> = counts.map(|tally| {
+        let mut entries: Vec<(u16, u32)> =
+            tally.iter().map(|(&zone, &count)| (zone, count)).collect();
+        entries.sort_unstable();
+        entries
     });
     // candidate set = edge walk ∪ subcell owners. The union matters where TZBB
     // zones deliberately OVERLAP (e.g. Asia/Shanghai + Asia/Urumqi over
     // Xinjiang): a zone covering a whole cell leaves no ring in it, so the edge
     // walk alone misses it and would mislabel the cell interior.
-    for (s, t) in sets.iter_mut().zip(tallies.iter()) {
-        s.extend(t.iter().map(|&(z, _)| z));
+    for (set, tally) in sets.iter_mut().zip(tallies.iter()) {
+        set.extend(tally.iter().map(|&(zone, _)| zone));
     }
-    let sets: Array2<Vec<u16>> = sets.map(|s| {
-        let mut v: Vec<u16> = s.iter().copied().collect();
-        v.sort_unstable();
-        v
+    let sets: Array2<Vec<u16>> = sets.map(|set| {
+        let mut sorted_ids: Vec<u16> = set.iter().copied().collect();
+        sorted_ids.sort_unstable();
+        sorted_ids
     });
 
     CellGrid {
@@ -108,17 +118,17 @@ fn edge_walk(feats: &[Feat], deg: f64, ncols: usize, nrows: usize) -> Array2<Has
         reason = "cast saturates then clamped to grid range"
     )]
     let cell = |lon: f64, lat: f64| -> [usize; 2] {
-        let c = (((lon + 180.0) / deg) as isize).clamp(0, ncols as isize - 1) as usize;
-        let r = (((lat + 90.0) / deg) as isize).clamp(0, nrows as isize - 1) as usize;
-        [r, c]
+        let col = (((lon + 180.0) / deg) as isize).clamp(0, ncols as isize - 1) as usize;
+        let row = (((lat + 90.0) / deg) as isize).clamp(0, nrows as isize - 1) as usize;
+        [row, col]
     };
-    for (fid, f) in feats.iter().enumerate() {
-        for p in &f.polys {
-            for ring in p {
-                let n = ring.len();
-                for i in 0..n {
+    for (feature_id, feature) in feats.iter().enumerate() {
+        for poly in &feature.polys {
+            for ring in poly {
+                let ring_len = ring.len();
+                for i in 0..ring_len {
                     let (x0, y0) = ring[i];
-                    let (x1, y1) = ring[(i + 1) % n];
+                    let (x1, y1) = ring[(i + 1) % ring_len];
                     #[expect(
                         clippy::cast_possible_truncation,
                         clippy::cast_sign_loss,
@@ -127,14 +137,14 @@ fn edge_walk(feats: &[Feat], deg: f64, ncols: usize, nrows: usize) -> Array2<Has
                     let steps = ((((x1 - x0).abs()).max((y1 - y0).abs()) / deg * 2.0).ceil()
                         as usize)
                         .max(1);
-                    for s in 0..=steps {
+                    for step in 0..=steps {
                         #[expect(
                             clippy::cast_precision_loss,
-                            reason = "s ≤ steps ≤ 2·360/deg ≪ 2^53; interpolation parameter"
+                            reason = "step ≤ steps ≤ 2·360/deg ≪ 2^53; interpolation parameter"
                         )]
-                        let t = s as f64 / steps as f64;
+                        let t = step as f64 / steps as f64;
                         sets[cell(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)]
-                            .insert(u16::try_from(fid).expect("feature id fits u16"));
+                            .insert(u16::try_from(feature_id).expect("feature id fits u16"));
                     }
                 }
             }
@@ -143,29 +153,36 @@ fn edge_walk(feats: &[Feat], deg: f64, ncols: usize, nrows: usize) -> Array2<Has
     sets
 }
 
-/// Pass 2: even-odd scanline fill per polygon on the `sub`×-finer grid,
-/// yielding per-subcell ownership (later aggregated to a dominant zone per
-/// cell).
+/// Pass 2: even-odd scanline fill per polygon on the `subdivision`×-finer
+/// grid, yielding per-subcell ownership (later aggregated to a dominant zone
+/// per cell).
 ///
 /// # Panics
 /// If any coordinate is NaN (crossing xs become unsortable).
-fn subcell_owners(feats: &[Feat], deg: f64, sub: usize, fcols: usize, frows: usize) -> Array2<u16> {
+fn subcell_owners(
+    feats: &[Feat],
+    deg: f64,
+    subdivision: usize,
+    fine_cols: usize,
+    fine_rows: usize,
+) -> Array2<u16> {
     #[expect(
         clippy::cast_precision_loss,
-        reason = "subdivision factor sub = 8 in practice, ≪ 2^53; exact in f64"
+        reason = "subdivision factor = 8 in practice, ≪ 2^53; exact in f64"
     )]
-    let r = deg / sub as f64;
-    let mut owner: Array2<u16> = Array2::from_elem((frows, fcols), NO_ZONE);
-    let mut row_x: Vec<Vec<f32>> = vec![Vec::new(); frows]; // crossing xs per row, reused per poly
-    for (fid, f) in feats.iter().enumerate() {
-        for p in &f.polys {
+    let subcell_deg = deg / subdivision as f64;
+    let mut owner: Array2<u16> = Array2::from_elem((fine_rows, fine_cols), NO_ZONE);
+    // crossing xs per row, reused per poly
+    let mut row_x: Vec<Vec<f32>> = vec![Vec::new(); fine_rows];
+    for (feature_id, feature) in feats.iter().enumerate() {
+        for poly in &feature.polys {
             // bucket edge crossings of every ring (exterior + holes) by row: even-odd
             let mut touched: Vec<u32> = Vec::new();
-            for ring in p {
-                let n = ring.len();
-                for i in 0..n {
+            for ring in poly {
+                let ring_len = ring.len();
+                for i in 0..ring_len {
                     let (x0, y0) = ring[i];
-                    let (x1, y1) = ring[(i + 1) % n];
+                    let (x1, y1) = ring[(i + 1) % ring_len];
                     #[expect(
                         clippy::float_cmp,
                         reason = "skip exactly-horizontal edges before dividing by y1-y0; near-horizontal must still cross"
@@ -178,25 +195,27 @@ fn subcell_owners(feats: &[Feat], deg: f64, sub: usize, fcols: usize, frows: usi
                     #[expect(
                         clippy::cast_possible_truncation,
                         clippy::cast_sign_loss,
-                        reason = "row index bounded to [0, frows); float as saturates"
+                        reason = "row index bounded to [0, fine_rows); float as saturates"
                     )]
-                    let j0 = (((ylo + 90.0) / r - 0.5).ceil().max(0.0)) as usize;
+                    let j0 = (((ylo + 90.0) / subcell_deg - 0.5).ceil().max(0.0)) as usize;
                     #[expect(
                         clippy::cast_possible_truncation,
-                        reason = "row index bounded to [0, frows); float as saturates"
+                        reason = "row index bounded to [0, fine_rows); float as saturates"
                     )]
                     #[expect(
                         clippy::cast_precision_loss,
-                        reason = "frows = nrows*sub ≤ 8*1800; exact in f64"
+                        reason = "fine_rows = nrows*subdivision ≤ 8*1800; exact in f64"
                     )]
-                    let j1 = (((yhi + 90.0) / r - 0.5).floor().min(frows as f64 - 1.0)) as isize;
+                    let j1 = (((yhi + 90.0) / subcell_deg - 0.5)
+                        .floor()
+                        .min(fine_rows as f64 - 1.0)) as isize;
                     let mut j = j0.cast_signed();
                     while j <= j1 {
                         #[expect(
                             clippy::cast_precision_loss,
-                            reason = "row index j < frows ≤ 8*1800; exact in f64"
+                            reason = "row index j < fine_rows ≤ 8*1800; exact in f64"
                         )]
-                        let lat = -90.0 + (j as f64 + 0.5) * r;
+                        let lat = -90.0 + (j as f64 + 0.5) * subcell_deg;
                         if lat >= ylo && lat < yhi {
                             let x = x0 + (lat - y0) / (y1 - y0) * (x1 - x0);
                             if row_x[j.cast_unsigned()].is_empty() {
@@ -221,22 +240,25 @@ fn subcell_owners(feats: &[Feat], deg: f64, sub: usize, fcols: usize, frows: usi
                     #[expect(
                         clippy::cast_possible_truncation,
                         clippy::cast_sign_loss,
-                        reason = "col index bounded to [0, fcols); float as saturates"
+                        reason = "col index bounded to [0, fine_cols); float as saturates"
                     )]
-                    let i0 = (((xa + 180.0) / r - 0.5).ceil().max(0.0)) as usize;
+                    let i0 = (((xa + 180.0) / subcell_deg - 0.5).ceil().max(0.0)) as usize;
                     #[expect(
                         clippy::cast_possible_truncation,
-                        reason = "col index bounded to [0, fcols); float as saturates"
+                        reason = "col index bounded to [0, fine_cols); float as saturates"
                     )]
                     #[expect(
                         clippy::cast_precision_loss,
-                        reason = "fcols = ncols*sub ≤ 8*3600; exact in f64"
+                        reason = "fine_cols = ncols*subdivision ≤ 8*3600; exact in f64"
                     )]
-                    let i1 = (((xb + 180.0) / r - 0.5).floor().min(fcols as f64 - 1.0)) as isize;
+                    let i1 = (((xb + 180.0) / subcell_deg - 0.5)
+                        .floor()
+                        .min(fine_cols as f64 - 1.0)) as isize;
                     let mut row = owner.row_mut(j as usize);
                     let mut i = i0.cast_signed();
                     while i <= i1 {
-                        row[i.cast_unsigned()] = u16::try_from(fid).expect("feature id fits u16");
+                        row[i.cast_unsigned()] =
+                            u16::try_from(feature_id).expect("feature id fits u16");
                         i += 1;
                     }
                 }
@@ -290,8 +312,8 @@ pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
     let mut primary = vec![0u16; grid.dominant.len()];
     let mut lists: Vec<Vec<u16>> = Vec::new();
     let mut index: HashMap<Vec<u16>, u16> = HashMap::new();
-    let by_area = |v: &mut Vec<u16>| {
-        v.sort_unstable_by(|&a, &b| {
+    let by_area = |list: &mut Vec<u16>| {
+        list.sort_unstable_by(|&a, &b| {
             areas[b as usize]
                 .partial_cmp(&areas[a as usize])
                 .unwrap()
@@ -299,7 +321,7 @@ pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
         });
     };
     // row-major zip: primary cell c ↔ the arrays' cell c
-    for ((set, &dominant), pc) in grid
+    for ((set, &dominant), primary_cell) in grid
         .sets
         .iter()
         .zip(grid.dominant.iter())
@@ -311,32 +333,32 @@ pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
                 Order::IdSorted => {}
                 Order::AreaDesc => by_area(&mut list),
                 Order::CellDominantFirst => {
-                    if let Some(pos) = list.iter().position(|&z| z == dominant) {
-                        list.remove(pos);
+                    if let Some(position) = list.iter().position(|&zone| zone == dominant) {
+                        list.remove(position);
                         list.insert(0, dominant);
                     }
                 }
             }
             let next = u16::try_from(lists.len())
                 .expect("interned list index fits u16 (encode re-checks 15-bit)");
-            let li = *index.entry(list.clone()).or_insert_with(|| {
+            let list_index = *index.entry(list.clone()).or_insert_with(|| {
                 lists.push(list);
                 next
             });
-            *pc = 0x8000 | li;
+            *primary_cell = 0x8000 | list_index;
         } else {
             // interior (single candidate) or no-ring cell: dominant zone
-            let z = if set.len() == 1 { set[0] } else { dominant };
+            let zone = if set.len() == 1 { set[0] } else { dominant };
             // an unclaimed cell already carries the wire marker (ids stay
             // below NO_ZONE by the 15-bit guard)
-            *pc = z;
+            *primary_cell = zone;
         }
     }
     let mut list_offsets = Vec::with_capacity(lists.len() + 1);
     let mut list_ids = Vec::new();
     list_offsets.push(0u16);
-    for l in &lists {
-        list_ids.extend_from_slice(l);
+    for list in &lists {
+        list_ids.extend_from_slice(list);
         list_offsets.push(
             u16::try_from(list_ids.len()).expect("list ids fit u16 offsets (encode re-checks)"),
         );
@@ -355,19 +377,19 @@ pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
 pub fn feat_areas(feats: &[Feat]) -> Vec<f64> {
     feats
         .iter()
-        .map(|f| {
-            let mut a = 0.0f64;
-            for p in &f.polys {
-                for (ri, ring) in p.iter().enumerate() {
-                    let ra = ring_area(ring);
-                    if ri == 0 {
-                        a += ra;
+        .map(|feature| {
+            let mut area = 0.0f64;
+            for poly in &feature.polys {
+                for (ring_index, ring) in poly.iter().enumerate() {
+                    let ring_contribution = ring_area(ring);
+                    if ring_index == 0 {
+                        area += ring_contribution;
                     } else {
-                        a -= ra;
+                        area -= ring_contribution;
                     }
                 }
             }
-            a.max(0.0)
+            area.max(0.0)
         })
         .collect()
 }
@@ -381,11 +403,11 @@ fn ring_area(ring: &[(f64, f64)]) -> f64 {
         reason = "ring.len() ≪ 2^53; mean latitude"
     )]
     let midlat = ring.iter().map(|&(_, y)| y).sum::<f64>() / ring.len() as f64;
-    let mut s = 0.0;
+    let mut sum = 0.0;
     for i in 0..ring.len() {
         let (x0, y0) = ring[i];
         let (x1, y1) = ring[(i + 1) % ring.len()];
-        s += x0 * y1 - x1 * y0;
+        sum += x0 * y1 - x1 * y0;
     }
-    (s.abs() / 2.0) * midlat.to_radians().cos().abs()
+    (sum.abs() / 2.0) * midlat.to_radians().cos().abs()
 }

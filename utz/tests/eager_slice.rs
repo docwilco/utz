@@ -7,8 +7,8 @@
 #[test]
 fn eager_from_slice_matches_lazy_and_preload() {
     let lazy = utz::Finder::from_slice(utz::data::TINY).unwrap();
-    let mut pre = utz::Finder::from_slice(utz::data::TINY).unwrap();
-    pre.preload();
+    let mut preloaded = utz::Finder::from_slice(utz::data::TINY).unwrap();
+    preloaded.preload();
     let eager = utz::Finder::eager_from_slice(utz::data::TINY).unwrap();
     assert_eq!(
         eager.tzbb_release(),
@@ -16,23 +16,27 @@ fn eager_from_slice_matches_lazy_and_preload() {
         "header/strings kept"
     );
     // deterministic grid over land and ocean, including cells that need PIP
-    let mut n = 0;
+    let mut hits = 0;
     for i in 0..60u32 {
         for j in 0..30u32 {
-            let pos = utz::Position {
+            let position = utz::Position {
                 lon: -180.0 + (f64::from(i) + 0.37) * 6.0,
                 lat: -90.0 + (f64::from(j) + 0.61) * 6.0,
             };
-            let want = lazy.lookup(pos).expect("grid position in range");
-            assert_eq!(eager.lookup(pos), Ok(want), "at {pos:?}");
-            assert_eq!(pre.lookup(pos), Ok(want), "preload at {pos:?}");
+            let want = lazy.lookup(position).expect("grid position in range");
+            assert_eq!(eager.lookup(position), Ok(want), "at {position:?}");
             assert_eq!(
-                eager.lookup_coarse(pos),
-                lazy.lookup_coarse(pos),
-                "coarse at {pos:?}"
+                preloaded.lookup(position),
+                Ok(want),
+                "preload at {position:?}"
             );
-            n += usize::from(want.is_some());
+            assert_eq!(
+                eager.lookup_coarse(position),
+                lazy.lookup_coarse(position),
+                "coarse at {position:?}"
+            );
+            hits += usize::from(want.is_some());
         }
     }
-    assert!(n > 1000, "grid should mostly resolve ({n} hits)");
+    assert!(hits > 1000, "grid should mostly resolve ({hits} hits)");
 }

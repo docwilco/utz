@@ -56,48 +56,48 @@ fn classify(p: (i32, i32), q: (i32, i32), r: (i32, i32)) -> Kind {
 /// cleaned cyclically so artifacts at the arbitrary start vertex are caught
 /// too; open arcs never lose their endpoints: those are junctions shared
 /// with other arcs.
-pub fn clean_arc(a: &mut Arc<i32>, closed: bool, st: &mut CleanStats) {
+pub fn clean_arc(arc: &mut Arc<i32>, closed: bool, stats: &mut CleanStats) {
     if closed {
-        if a.len() > 1 && a.first() == a.last() {
-            a.pop();
+        if arc.len() > 1 && arc.first() == arc.last() {
+            arc.pop();
         }
-        clean_cyclic(a, st);
-        if a.len() > 1 {
-            let f = a[0];
-            a.push(f);
+        clean_cyclic(arc, stats);
+        if arc.len() > 1 {
+            let first = arc[0];
+            arc.push(first);
         }
     } else {
-        clean_open(a, st);
+        clean_open(arc, stats);
     }
 }
 
-fn clean_open(a: &mut Arc<i32>, st: &mut CleanStats) {
+fn clean_open(arc: &mut Arc<i32>, stats: &mut CleanStats) {
     let mut i = 1;
-    while i < a.len() {
-        if a[i] == a[i - 1] {
-            a.remove(i);
-            st.dups += 1;
+    while i < arc.len() {
+        if arc[i] == arc[i - 1] {
+            arc.remove(i);
+            stats.dups += 1;
             i = i.saturating_sub(1).max(1);
             continue;
         }
-        if i + 1 == a.len() {
+        if i + 1 == arc.len() {
             break;
         }
-        if a[i] == a[i + 1] {
-            a.remove(i);
-            st.dups += 1;
+        if arc[i] == arc[i + 1] {
+            arc.remove(i);
+            stats.dups += 1;
             i = i.saturating_sub(1).max(1);
             continue;
         }
-        match classify(a[i - 1], a[i], a[i + 1]) {
+        match classify(arc[i - 1], arc[i], arc[i + 1]) {
             Kind::Spike => {
-                a.remove(i);
-                st.spikes += 1;
+                arc.remove(i);
+                stats.spikes += 1;
                 i = i.saturating_sub(1).max(1);
             }
             Kind::Collinear => {
-                a.remove(i);
-                st.collinear += 1;
+                arc.remove(i);
+                stats.collinear += 1;
                 i = i.saturating_sub(1).max(1);
             }
             Kind::Keep => i += 1,
@@ -108,28 +108,32 @@ fn clean_open(a: &mut Arc<i32>, st: &mut CleanStats) {
 fn clean_cyclic(arc: &mut Arc<i32>, stats: &mut CleanStats) {
     loop {
         let mut changed = false;
-        let mut idx = 0;
-        while arc.len() >= 3 && idx < arc.len() {
+        let mut index = 0;
+        while arc.len() >= 3 && index < arc.len() {
             let len = arc.len();
-            let (prev, cur, next) = (arc[(idx + len - 1) % len], arc[idx], arc[(idx + 1) % len]);
-            if cur == prev || cur == next {
-                arc.remove(idx);
+            let (previous, current, next) = (
+                arc[(index + len - 1) % len],
+                arc[index],
+                arc[(index + 1) % len],
+            );
+            if current == previous || current == next {
+                arc.remove(index);
                 stats.dups += 1;
                 changed = true;
                 continue;
             }
-            match classify(prev, cur, next) {
+            match classify(previous, current, next) {
                 Kind::Spike => {
-                    arc.remove(idx);
+                    arc.remove(index);
                     stats.spikes += 1;
                     changed = true;
                 }
                 Kind::Collinear => {
-                    arc.remove(idx);
+                    arc.remove(index);
                     stats.collinear += 1;
                     changed = true;
                 }
-                Kind::Keep => idx += 1,
+                Kind::Keep => index += 1,
             }
         }
         if !changed || arc.len() < 3 {
@@ -146,22 +150,22 @@ fn clean_cyclic(arc: &mut Arc<i32>, stats: &mut CleanStats) {
 /// integer twin of `Topology::reconstruct()`'s ring assembly.
 #[must_use]
 pub fn ring_coords_q(refs: &[u32], arcs: &[Arc<i32>]) -> Ring<i32> {
-    let mut c: Ring<i32> = Vec::new();
-    for &r in refs {
-        let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
-        let mut a = arcs[id].clone();
-        if rev {
-            a.reverse();
+    let mut coords: Ring<i32> = Vec::new();
+    for &arc_ref in refs {
+        let (id, reversed) = ((arc_ref >> 1) as usize, (arc_ref & 1) == 1);
+        let mut arc = arcs[id].clone();
+        if reversed {
+            arc.reverse();
         }
-        if c.last() == a.first() {
-            a.remove(0);
+        if coords.last() == arc.first() {
+            arc.remove(0);
         }
-        c.extend(a);
+        coords.extend(arc);
     }
-    if c.len() > 1 && c.last() == c.first() {
-        c.pop();
+    if coords.len() > 1 && coords.last() == coords.first() {
+        coords.pop();
     }
-    c
+    coords
 }
 
 /// Ring collapsed under quantization: fewer than 3 vertices, or shoelace
@@ -170,35 +174,35 @@ pub fn ring_coords_q(refs: &[u32], arcs: &[Arc<i32>]) -> Ring<i32> {
 /// covers both lobes under the runtime's even-odd rule. Dropping it would
 /// lose real coverage. Exact in i128 for all qbits.
 #[must_use]
-pub fn ring_degenerate(c: &[(i32, i32)]) -> bool {
-    if c.len() < 3 {
+pub fn ring_degenerate(coords: &[(i32, i32)]) -> bool {
+    if coords.len() < 3 {
         return true;
     }
-    let mut a2: i128 = 0;
-    for i in 0..c.len() {
-        let (p, q) = (c[i], c[(i + 1) % c.len()]);
-        a2 += i128::from(p.0) * i128::from(q.1) - i128::from(q.0) * i128::from(p.1);
+    let mut doubled_area: i128 = 0;
+    for i in 0..coords.len() {
+        let (p, q) = (coords[i], coords[(i + 1) % coords.len()]);
+        doubled_area += i128::from(p.0) * i128::from(q.1) - i128::from(q.0) * i128::from(p.1);
     }
-    a2 == 0 && !has_proper_cross(c)
+    doubled_area == 0 && !has_proper_cross(coords)
 }
 
 /// Any pair of non-adjacent ring segments that properly cross (interiors
 /// intersect). O(n²), but only reached for zero-area rings, which
 /// quantization keeps tiny.
-fn has_proper_cross(c: &[(i32, i32)]) -> bool {
-    let n = c.len();
+fn has_proper_cross(coords: &[(i32, i32)]) -> bool {
+    let len = coords.len();
     let orient = |a: (i32, i32), b: (i32, i32), p: (i32, i32)| -> i8 {
-        let v = (i128::from(b.0) - i128::from(a.0)) * (i128::from(p.1) - i128::from(a.1))
+        let value = (i128::from(b.0) - i128::from(a.0)) * (i128::from(p.1) - i128::from(a.1))
             - (i128::from(b.1) - i128::from(a.1)) * (i128::from(p.0) - i128::from(a.0));
-        i8::from(v > 0) - i8::from(v < 0)
+        i8::from(value > 0) - i8::from(value < 0)
     };
-    for i in 0..n {
-        let (p1, p2) = (c[i], c[(i + 1) % n]);
-        for j in i + 2..n {
-            if i == 0 && j == n - 1 {
+    for i in 0..len {
+        let (p1, p2) = (coords[i], coords[(i + 1) % len]);
+        for j in i + 2..len {
+            if i == 0 && j == len - 1 {
                 continue; // adjacent around the wrap
             }
-            let (q1, q2) = (c[j], c[(j + 1) % n]);
+            let (q1, q2) = (coords[j], coords[(j + 1) % len]);
             let (o1, o2) = (orient(p1, p2, q1), orient(p1, p2, q2));
             let (o3, o4) = (orient(q1, q2, p1), orient(q1, q2, p2));
             if o1 != o2 && o3 != o4 && o1 != 0 && o2 != 0 && o3 != 0 && o4 != 0 {
@@ -226,7 +230,7 @@ pub fn drop_degenerate_rings(
     ring_refs: &[Vec<u32>],
     structure: &[Vec<Vec<usize>>],
     arcs: Vec<Arc<i32>>,
-    st: &mut CleanStats,
+    stats: &mut CleanStats,
 ) -> CleanedTopo {
     let ring_ok: Vec<bool> = ring_refs
         .iter()
@@ -235,51 +239,51 @@ pub fn drop_degenerate_rings(
 
     let mut new_refs: Vec<Vec<u32>> = Vec::new();
     let mut new_structure: Vec<Vec<Vec<usize>>> = Vec::with_capacity(structure.len());
-    for f in structure {
-        let mut fp: Vec<Vec<usize>> = Vec::new();
-        for poly in f {
+    for feature in structure {
+        let mut feature_polys: Vec<Vec<usize>> = Vec::new();
+        for poly in feature {
             match poly.first() {
-                Some(&ext) if ring_ok[ext] => {}
+                Some(&exterior) if ring_ok[exterior] => {}
                 _ => {
-                    st.polys_dropped += 1;
-                    st.rings_dropped += u32::try_from(poly.len()).expect("ring count fits u32");
+                    stats.polys_dropped += 1;
+                    stats.rings_dropped += u32::try_from(poly.len()).expect("ring count fits u32");
                     continue;
                 }
             }
-            let mut pr = Vec::with_capacity(poly.len());
-            for (k, &ri) in poly.iter().enumerate() {
-                if k > 0 && !ring_ok[ri] {
-                    st.rings_dropped += 1;
+            let mut poly_rings = Vec::with_capacity(poly.len());
+            for (k, &ring_index) in poly.iter().enumerate() {
+                if k > 0 && !ring_ok[ring_index] {
+                    stats.rings_dropped += 1;
                     continue;
                 }
-                pr.push(new_refs.len());
-                new_refs.push(ring_refs[ri].clone());
+                poly_rings.push(new_refs.len());
+                new_refs.push(ring_refs[ring_index].clone());
             }
-            fp.push(pr);
+            feature_polys.push(poly_rings);
         }
-        new_structure.push(fp);
+        new_structure.push(feature_polys);
     }
 
     // compact arc ids to the surviving rings
     let mut used = vec![false; arcs.len()];
     for refs in &new_refs {
-        for &r in refs {
-            used[(r >> 1) as usize] = true;
+        for &arc_ref in refs {
+            used[(arc_ref >> 1) as usize] = true;
         }
     }
     let mut remap = vec![u32::MAX; arcs.len()];
     let mut new_arcs = Vec::with_capacity(arcs.len());
-    for (i, a) in arcs.into_iter().enumerate() {
+    for (i, arc) in arcs.into_iter().enumerate() {
         if used[i] {
             remap[i] = u32::try_from(new_arcs.len()).expect("arc count fits u32");
-            new_arcs.push(a);
+            new_arcs.push(arc);
         } else {
-            st.arcs_dropped += 1;
+            stats.arcs_dropped += 1;
         }
     }
     for refs in &mut new_refs {
-        for r in refs.iter_mut() {
-            *r = (remap[(*r >> 1) as usize] << 1) | (*r & 1);
+        for arc_ref in refs.iter_mut() {
+            *arc_ref = (remap[(*arc_ref >> 1) as usize] << 1) | (*arc_ref & 1);
         }
     }
     (new_refs, new_structure, new_arcs)
@@ -296,52 +300,52 @@ mod tests {
     #[test]
     fn open_arc_keeps_endpoints_and_kills_spike() {
         // A-B-A retrace in the middle of an arc
-        let mut a = vec![(0, 0), (5, 0), (9, 0), (5, 0), (5, 5)];
-        let mut st = stats();
-        clean_arc(&mut a, false, &mut st);
-        assert_eq!(a, vec![(0, 0), (5, 0), (5, 5)]);
-        assert!(st.spikes >= 1);
+        let mut arc = vec![(0, 0), (5, 0), (9, 0), (5, 0), (5, 5)];
+        let mut stats = stats();
+        clean_arc(&mut arc, false, &mut stats);
+        assert_eq!(arc, vec![(0, 0), (5, 0), (5, 5)]);
+        assert!(stats.spikes >= 1);
     }
 
     #[test]
     fn open_arc_multi_vertex_spur_unwinds() {
         // spur wanders out two vertices and retraces exactly
-        let mut a = vec![(0, 0), (4, 0), (4, 3), (4, 9), (4, 3), (4, 0), (8, 0)];
-        let mut st = stats();
-        clean_arc(&mut a, false, &mut st);
-        assert_eq!(a, vec![(0, 0), (8, 0)]);
+        let mut arc = vec![(0, 0), (4, 0), (4, 3), (4, 9), (4, 3), (4, 0), (8, 0)];
+        let mut stats = stats();
+        clean_arc(&mut arc, false, &mut stats);
+        assert_eq!(arc, vec![(0, 0), (8, 0)]);
     }
 
     #[test]
     fn open_arc_partial_retrace_spur() {
         // reverses along the same line but not onto an existing vertex
-        let mut a = vec![(0, 0), (10, 0), (3, 0), (3, 4)];
-        let mut st = stats();
-        clean_arc(&mut a, false, &mut st);
-        assert_eq!(a, vec![(0, 0), (3, 0), (3, 4)]);
-        assert_eq!(st.spikes, 1);
+        let mut arc = vec![(0, 0), (10, 0), (3, 0), (3, 4)];
+        let mut stats = stats();
+        clean_arc(&mut arc, false, &mut stats);
+        assert_eq!(arc, vec![(0, 0), (3, 0), (3, 4)]);
+        assert_eq!(stats.spikes, 1);
     }
 
     #[test]
     fn open_arc_collinear_and_dups() {
-        let mut a = vec![(0, 0), (0, 0), (2, 0), (5, 0), (5, 0), (9, 0)];
-        let mut st = stats();
-        clean_arc(&mut a, false, &mut st);
-        assert_eq!(a, vec![(0, 0), (9, 0)]);
-        assert_eq!(st.dups, 2);
-        assert_eq!(st.collinear, 2);
+        let mut arc = vec![(0, 0), (0, 0), (2, 0), (5, 0), (5, 0), (9, 0)];
+        let mut stats = stats();
+        clean_arc(&mut arc, false, &mut stats);
+        assert_eq!(arc, vec![(0, 0), (9, 0)]);
+        assert_eq!(stats.dups, 2);
+        assert_eq!(stats.collinear, 2);
     }
 
     #[test]
     fn closed_arc_spike_at_start_vertex() {
         // ring stored first == last, spur sits exactly on the start vertex —
         // the open-arc pass can't touch it, the cyclic pass must
-        let mut a = vec![(0, 0), (5, -5), (0, 0), (10, 0), (10, 10), (0, 10), (0, 0)];
-        let mut st = stats();
-        clean_arc(&mut a, true, &mut st);
-        let n = a.len();
-        assert_eq!(a[0], a[n - 1]);
-        let interior: Vec<_> = a[..n - 1].to_vec();
+        let mut arc = vec![(0, 0), (5, -5), (0, 0), (10, 0), (10, 10), (0, 10), (0, 0)];
+        let mut stats = stats();
+        clean_arc(&mut arc, true, &mut stats);
+        let len = arc.len();
+        assert_eq!(arc[0], arc[len - 1]);
+        let interior: Vec<_> = arc[..len - 1].to_vec();
         assert_eq!(interior.len(), 4);
         assert!(!interior.contains(&(5, -5)));
     }
@@ -350,12 +354,12 @@ mod tests {
     fn closed_arc_collapses_to_degenerate() {
         // entire ring snaps onto one line; whatever remnant survives must
         // read as a degenerate ring so the ring-level drop removes it
-        let mut a = vec![(0, 0), (5, 0), (9, 0), (5, 0), (0, 0)];
-        let mut st = stats();
-        clean_arc(&mut a, true, &mut st);
+        let mut arc = vec![(0, 0), (5, 0), (9, 0), (5, 0), (0, 0)];
+        let mut stats = stats();
+        clean_arc(&mut arc, true, &mut stats);
         assert!(
-            ring_degenerate(&ring_coords_q(&[0 << 1], &[a.clone()])),
-            "{a:?}"
+            ring_degenerate(&ring_coords_q(&[0 << 1], &[arc.clone()])),
+            "{arc:?}"
         );
     }
 
@@ -375,14 +379,14 @@ mod tests {
         ];
         let ring_refs = vec![vec![0u32 << 1], vec![1u32 << 1]];
         let structure = vec![vec![vec![0usize, 1]]];
-        let mut st = stats();
-        let (refs, s, arcs) = drop_degenerate_rings(&ring_refs, &structure, arcs, &mut st);
+        let mut stats = stats();
+        let (refs, s, arcs) = drop_degenerate_rings(&ring_refs, &structure, arcs, &mut stats);
         assert_eq!(s, vec![vec![vec![0usize]]]);
         assert_eq!(refs.len(), 1);
         assert_eq!(arcs.len(), 1);
-        assert_eq!(st.rings_dropped, 1);
-        assert_eq!(st.arcs_dropped, 1);
-        assert_eq!(st.polys_dropped, 0);
+        assert_eq!(stats.rings_dropped, 1);
+        assert_eq!(stats.arcs_dropped, 1);
+        assert_eq!(stats.polys_dropped, 0);
     }
 
     #[test]
@@ -393,13 +397,13 @@ mod tests {
         ];
         let ring_refs = vec![vec![0u32 << 1], vec![1u32 << 1]];
         let structure = vec![vec![vec![0usize, 1]]];
-        let mut st = stats();
-        let (refs, s, arcs) = drop_degenerate_rings(&ring_refs, &structure, arcs, &mut st);
+        let mut stats = stats();
+        let (refs, s, arcs) = drop_degenerate_rings(&ring_refs, &structure, arcs, &mut stats);
         assert_eq!(s, vec![Vec::<Vec<usize>>::new()]);
         assert!(refs.is_empty());
         assert!(arcs.is_empty());
-        assert_eq!(st.polys_dropped, 1);
-        assert_eq!(st.rings_dropped, 2);
-        assert_eq!(st.arcs_dropped, 2);
+        assert_eq!(stats.polys_dropped, 1);
+        assert_eq!(stats.rings_dropped, 2);
+        assert_eq!(stats.arcs_dropped, 2);
     }
 }

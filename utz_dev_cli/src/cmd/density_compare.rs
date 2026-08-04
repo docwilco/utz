@@ -32,7 +32,7 @@ pub struct Args {
 /// # Panics
 /// If a vertex's density sample matches no band: the bands cover all of
 /// `0.0..`, so only a NaN or negative sample.
-pub fn run(a: Args) -> utz_build::Result<()> {
+pub fn run(args: Args) -> utz_build::Result<()> {
     // stored vertices binned by the density at the vertex itself
     const BANDS: [(f64, f64, &str); 4] = [
         (0.0, 5.0, "<5 (empty)"),
@@ -40,62 +40,69 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         (100.0, 1000.0, "100-1k (town)"),
         (1000.0, f64::INFINITY, ">=1k (city)"),
     ];
-    let (ds, eps_m, w_min) = (a.ds, a.eps_m, a.density_weight_floor);
+    let (dataset, eps_m, w_min) = (args.ds, args.eps_m, args.density_weight_floor);
 
-    let feats = utz_build::load(&ds)?;
+    let features = utz_build::load(&dataset)?;
     let grid = DensityGrid::load(&utz_build::cache_dir())?;
     let model = DensityWeight::new(w_min);
 
     let eps_deg = eps_m / 111_320.0;
-    let t_u = topo::build_topology(&feats, eps_deg);
-    let t_w =
-        topo::build_topology_weighted(&feats, topo::Simplify::Rdp { eps: eps_deg }, &|a, b| {
-            model.weight(grid.max_along(a, b))
-        });
+    let topology_uniform = topo::build_topology(&features, eps_deg);
+    let topology_weighted = topo::build_topology_weighted(
+        &features,
+        topo::Simplify::Rdp { eps: eps_deg },
+        &|start, end| model.weight(grid.max_along(start, end)),
+    );
 
-    let hist = |t: &topo::Topology| -> [usize; 4] {
-        let mut h = [0usize; 4];
-        for a in &t.arc_coords {
-            for &(x, y) in a {
-                let d = grid.sample(x, y);
-                h[BANDS.iter().position(|b| d >= b.0 && d < b.1).unwrap()] += 1;
+    let hist = |topology: &topo::Topology| -> [usize; 4] {
+        let mut histogram = [0usize; 4];
+        for arc in &topology.arc_coords {
+            for &(x, y) in arc {
+                let density = grid.sample(x, y);
+                histogram[BANDS
+                    .iter()
+                    .position(|band| density >= band.0 && density < band.1)
+                    .unwrap()] += 1;
             }
         }
-        h
+        histogram
     };
-    let (hu, hw) = (hist(&t_u), hist(&t_w));
+    let (hist_uniform, hist_weighted) = (hist(&topology_uniform), hist(&topology_weighted));
 
     println!(
-        "{ds} · RDP ε {eps_m} m ceiling · weighted floor ×{w_min} (ε {} m)\n",
+        "{dataset} · RDP ε {eps_m} m ceiling · weighted floor ×{w_min} (ε {} m)\n",
         eps_m * w_min
     );
     println!(
         "{:>16} {:>10} {:>10} {:>9}",
         "density band", "uniform", "weighted", "delta"
     );
-    for (i, b) in BANDS.iter().enumerate() {
+    for (i, band) in BANDS.iter().enumerate() {
         println!(
             "{:>16} {:>10} {:>10} {:>+9}",
-            b.2,
-            hu[i],
-            hw[i],
-            hw[i].cast_signed() - hu[i].cast_signed()
+            band.2,
+            hist_uniform[i],
+            hist_weighted[i],
+            hist_weighted[i].cast_signed() - hist_uniform[i].cast_signed()
         );
     }
-    let (su, sw) = (hu.iter().sum::<usize>(), hw.iter().sum::<usize>());
+    let (sum_uniform, sum_weighted) = (
+        hist_uniform.iter().sum::<usize>(),
+        hist_weighted.iter().sum::<usize>(),
+    );
     #[expect(
         clippy::cast_precision_loss,
         reason = "vertex-count band sums ≪ 2^53; % delta display"
     )]
-    let pct = 100.0 * (sw as f64 / su as f64 - 1.0);
+    let pct = 100.0 * (sum_weighted as f64 / sum_uniform as f64 - 1.0);
     println!(
-        "{:>16} {su:>10} {sw:>10} {:>+9}  ({pct:+.1}%)\n",
+        "{:>16} {sum_uniform:>10} {sum_weighted:>10} {:>+9}  ({pct:+.1}%)\n",
         "total",
-        sw.cast_signed() - su.cast_signed()
+        sum_weighted.cast_signed() - sum_uniform.cast_signed()
     );
 
     // container size delta (same knobs, zstd; topologies already built above)
-    let p = Params {
+    let params = Params {
         dataset: 0,
         tzbb_release: "density-compare",
         eps_m,
@@ -106,27 +113,31 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         density_weight_floor: None,
         geom: encode::GeomEncoding::default(),
     };
-    let container = |t: &topo::Topology, w_min: Option<f64>| -> utz_build::Result<Vec<u8>> {
-        let p = Params {
-            density_weight_floor: w_min,
-            ..p
+    let container = |topology: &topo::Topology,
+                     weight_floor: Option<f64>|
+     -> utz_build::Result<Vec<u8>> {
+        let params = Params {
+            density_weight_floor: weight_floor,
+            ..params
         };
         Ok(encode::finish(
-            &encode::payload_from_topology(t, &t.arc_coords, &feats, &p)?.0,
-            p.codec,
+            &encode::payload_from_topology(topology, &topology.arc_coords, &features, &params)?.0,
+            params.codec,
         )?)
     };
-    let cu = container(&t_u, None)?;
-    let cw = container(&t_w, Some(w_min))?;
+    let container_uniform = container(&topology_uniform, None)?;
+    let container_weighted = container(&topology_weighted, Some(w_min))?;
     #[expect(
         clippy::cast_precision_loss,
         reason = "container sizes ≪ 2^53; KiB and % display"
     )]
-    let (ku, kw, kpct) = (
-        cu.len() as f64 / 1024.0,
-        cw.len() as f64 / 1024.0,
-        100.0 * (cw.len() as f64 / cu.len() as f64 - 1.0),
+    let (kib_uniform, kib_weighted, kib_pct) = (
+        container_uniform.len() as f64 / 1024.0,
+        container_weighted.len() as f64 / 1024.0,
+        100.0 * (container_weighted.len() as f64 / container_uniform.len() as f64 - 1.0),
     );
-    println!("container (i24, zstd): uniform {ku:.1} KiB -> weighted {kw:.1} KiB ({kpct:+.1}%)");
+    println!(
+        "container (i24, zstd): uniform {kib_uniform:.1} KiB -> weighted {kib_weighted:.1} KiB ({kib_pct:+.1}%)"
+    );
     Ok(())
 }

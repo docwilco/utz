@@ -50,7 +50,7 @@ use utz_simplify::{simplify_weighted, DensityWeight, Simplify};
 struct State {
     topo: Topology,
     /// per-vertex density (people/km², arc order); empty when not shipped
-    dens: Vec<f32>,
+    densities: Vec<f32>,
     /// tzid/offset metadata only (empty polys); geometry lives in `topo`
     feats: Vec<Feat>,
     dataset_code: u8,
@@ -69,21 +69,21 @@ static mut STATE: Option<State> = None;
 /// Allocate `n` bytes for the blob upload; `utz_enc_init` takes ownership.
 #[no_mangle]
 pub extern "C" fn utz_enc_alloc(n: usize) -> *mut u8 {
-    let mut v = Vec::<u8>::with_capacity(n);
-    let ptr = v.as_mut_ptr();
-    core::mem::forget(v);
+    let mut buffer = Vec::<u8>::with_capacity(n);
+    let ptr = buffer.as_mut_ptr();
+    core::mem::forget(buffer);
     ptr
 }
 
-struct Rd<'a> {
-    b: &'a [u8],
-    p: usize,
+struct Reader<'a> {
+    bytes: &'a [u8],
+    position: usize,
 }
-impl<'a> Rd<'a> {
+impl<'a> Reader<'a> {
     fn take(&mut self, n: usize) -> Option<&'a [u8]> {
-        let s = self.b.get(self.p..self.p + n)?;
-        self.p += n;
-        Some(s)
+        let slice = self.bytes.get(self.position..self.position + n)?;
+        self.position += n;
+        Some(slice)
     }
     fn u8(&mut self) -> Option<u8> {
         Some(self.take(1)?[0])
@@ -102,78 +102,78 @@ impl<'a> Rd<'a> {
     }
 }
 
-fn parse_blob(b: &[u8]) -> Option<State> {
-    let mut r = Rd { b, p: 0 };
-    if r.take(4)? != b"uTZv" {
+fn parse_blob(bytes: &[u8]) -> Option<State> {
+    let mut reader = Reader { bytes, position: 0 };
+    if reader.take(4)? != b"uTZv" {
         return None;
     }
-    let flags = r.u32()?;
+    let flags = reader.u32()?;
     if flags & 2 == 0 {
         return None; // no topology section (blob predates the live encode)
     }
-    let n_arcs = r.u32()? as usize;
-    let n_verts = r.u32()? as usize;
+    let n_arcs = reader.u32()? as usize;
+    let n_verts = reader.u32()? as usize;
     if flags & 4 != 0 {
-        r.u32()?; // raw ring-coordinate count: prefix-only, the JS reads it
+        reader.u32()?; // raw ring-coordinate count: prefix-only, the JS reads it
     }
-    let mut offs = Vec::with_capacity(n_arcs + 1);
+    let mut offsets = Vec::with_capacity(n_arcs + 1);
     for _ in 0..=n_arcs {
-        offs.push(r.u32()? as usize);
+        offsets.push(reader.u32()? as usize);
     }
-    if *offs.last()? != n_verts {
+    if *offsets.last()? != n_verts {
         return None;
     }
-    r.p = r.p.next_multiple_of(8);
+    reader.position = reader.position.next_multiple_of(8);
     let mut arc_coords: Vec<Arc> = Vec::with_capacity(n_arcs);
-    for a in 0..n_arcs {
-        let mut arc = Vec::with_capacity(offs[a + 1] - offs[a]);
-        for _ in offs[a]..offs[a + 1] {
-            arc.push((r.f64()?, r.f64()?));
+    for arc_index in 0..n_arcs {
+        let mut arc = Vec::with_capacity(offsets[arc_index + 1] - offsets[arc_index]);
+        for _ in offsets[arc_index]..offsets[arc_index + 1] {
+            arc.push((reader.f64()?, reader.f64()?));
         }
         arc_coords.push(arc);
     }
-    let mut dens = Vec::new();
+    let mut densities = Vec::new();
     if flags & 1 != 0 {
-        dens.reserve(n_verts);
+        densities.reserve(n_verts);
         for _ in 0..n_verts {
-            dens.push(r.f32()?);
+            densities.push(reader.f32()?);
         }
     }
     // ---- topology section (see viz::dataset_bin) ----
-    let dataset_code = r.u8()?;
-    let rel_len = r.u8()? as usize;
-    let release = String::from_utf8(r.take(rel_len)?.to_vec()).ok()?;
-    let n_features = r.u16()? as usize;
+    let dataset_code = reader.u8()?;
+    let release_len = reader.u8()? as usize;
+    let release = String::from_utf8(reader.take(release_len)?.to_vec()).ok()?;
+    let n_features = reader.u16()? as usize;
     let mut feats = Vec::with_capacity(n_features);
     for _ in 0..n_features {
-        let offset = f64::from(r.f32()?);
-        let len = r.u8()? as usize;
-        let tzid = String::from_utf8(r.take(len)?.to_vec()).ok()?;
+        let offset = f64::from(reader.f32()?);
+        let len = reader.u8()? as usize;
+        let tzid = String::from_utf8(reader.take(len)?.to_vec()).ok()?;
         feats.push(Feat {
             offset,
             tzid: (!tzid.is_empty()).then_some(tzid),
             polys: Vec::new(),
         });
     }
-    let n_rings = r.u32()? as usize;
+    let n_rings = reader.u32()? as usize;
     let mut ring_refs = Vec::with_capacity(n_rings);
     for _ in 0..n_rings {
-        let n = r.u32()? as usize;
-        let mut refs = Vec::with_capacity(n);
-        for _ in 0..n {
-            refs.push(r.u32()?);
+        let n_refs = reader.u32()? as usize;
+        let mut refs = Vec::with_capacity(n_refs);
+        for _ in 0..n_refs {
+            refs.push(reader.u32()?);
         }
         ring_refs.push(refs);
     }
     let mut structure = Vec::with_capacity(n_features);
     for _ in 0..n_features {
-        let n_polys = r.u16()? as usize;
+        let n_polys = reader.u16()? as usize;
         let mut polys = Vec::with_capacity(n_polys);
         for _ in 0..n_polys {
-            let n_poly_rings = r.u16()? as usize;
+            let n_poly_rings = reader.u16()? as usize;
             let mut rings = Vec::with_capacity(n_poly_rings);
             for _ in 0..n_poly_rings {
-                rings.push(r.u32()? as usize);
+                rings.push(reader.u32()? as usize);
             }
             polys.push(rings);
         }
@@ -185,7 +185,7 @@ fn parse_blob(b: &[u8]) -> Option<State> {
             ring_refs,
             structure,
         },
-        dens,
+        densities,
         feats,
         dataset_code,
         release,
@@ -209,9 +209,9 @@ pub unsafe extern "C" fn utz_enc_init(ptr: *mut u8, len: usize) -> u32 {
         reason = "the buffer comes from utz_enc_alloc's Vec::with_capacity(len), so len is the true capacity; the suggested slice copy would leak that allocation"
     )]
     let blob = Vec::from_raw_parts(ptr, len, len);
-    let st = parse_blob(&blob);
-    let ok = st.is_some();
-    STATE = st;
+    let state = parse_blob(&blob);
+    let ok = state.is_some();
+    STATE = state;
     u32::from(ok)
 }
 
@@ -226,7 +226,7 @@ pub unsafe extern "C" fn utz_enc_init(ptr: *mut u8, len: usize) -> u32 {
 /// that grid BEFORE simplifying (the viewer's Q→S order); the later
 /// quantize step then re-snaps the already-on-grid coords, a no-op.
 fn simplified_arcs(
-    st: &State,
+    state: &State,
     algo: u32,
     eps_m: f64,
     w_min: f64,
@@ -240,43 +240,44 @@ fn simplified_arcs(
         eps_m / 111_320.0,
     );
     let model = DensityWeight::new(w_min);
-    let weighted = w_min < 1.0 && !st.dens.is_empty();
+    let weighted = w_min < 1.0 && !state.densities.is_empty();
     #[expect(
         clippy::cast_precision_loss,
         reason = "qmax = 2^(quant_bits-1)-1 ≤ 2^31-1, exact in f64"
     )]
-    let qmax = pre_snap_bits.map(|b| ((1u64 << (b - 1)) - 1) as f64);
+    let qmax = pre_snap_bits.map(|bits| ((1u64 << (bits - 1)) - 1) as f64);
     let mut base = 0usize;
-    st.topo
+    state
+        .topo
         .arc_coords
         .iter()
-        .map(|a| {
+        .map(|arc| {
             let snapped: Vec<(f64, f64)>;
             let input = match qmax {
-                Some(q) => {
-                    snapped = a
+                Some(quant_max) => {
+                    snapped = arc
                         .iter()
                         .map(|&(x, y)| {
                             (
-                                (x / 180.0 * q).round() / q * 180.0,
-                                (y / 90.0 * q).round() / q * 90.0,
+                                (x / 180.0 * quant_max).round() / quant_max * 180.0,
+                                (y / 90.0 * quant_max).round() / quant_max * 90.0,
                             )
                         })
                         .collect();
                     &snapped
                 }
-                None => a,
+                None => arc,
             };
             let out = if weighted {
-                let w: Vec<f64> = st.dens[base..base + a.len()]
+                let weights: Vec<f64> = state.densities[base..base + arc.len()]
                     .iter()
-                    .map(|&d| model.weight(f64::from(d)))
+                    .map(|&density| model.weight(f64::from(density)))
                     .collect();
-                simplify_weighted(algo, input, &w)
+                simplify_weighted(algo, input, &weights)
             } else {
                 utz_simplify::simplify(algo, input)
             };
-            base += a.len();
+            base += arc.len();
             out
         })
         .collect()
@@ -302,13 +303,13 @@ pub extern "C" fn utz_enc_payload(
     grid_deg: f64,
     geom: u32,
 ) -> u32 {
-    let Some(st) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else {
+    let Some(state) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else {
         return 0;
     };
-    let arcs = simplified_arcs(st, algo, eps_m, w_min, None);
-    let p = Params {
-        dataset: st.dataset_code,
-        tzbb_release: &st.release,
+    let arcs = simplified_arcs(state, algo, eps_m, w_min, None);
+    let params = Params {
+        dataset: state.dataset_code,
+        tzbb_release: &state.release,
         eps_m,
         quant_bits,
         grid_deg,
@@ -326,11 +327,11 @@ pub extern "C" fn utz_enc_payload(
             .unwrap_or(utz_encode::encode::SimplifyAlgo::Rdp),
         density_weight_floor: (w_min < 1.0).then_some(w_min),
     };
-    match encode::payload_from_topology(&st.topo, &arcs, &st.feats, &p) {
-        Ok((payload, stats)) => {
-            st.stats = stats;
-            st.payload = payload;
-            len_u32(st.payload.len())
+    match encode::payload_from_topology(&state.topo, &arcs, &state.feats, &params) {
+        Ok((payload, payload_stats)) => {
+            state.stats = payload_stats;
+            state.payload = payload;
+            len_u32(state.payload.len())
         }
         Err(_) => 0,
     }
@@ -343,24 +344,24 @@ pub extern "C" fn utz_enc_payload(
 /// 12 arcs dropped (cleanup removals).
 #[no_mangle]
 pub extern "C" fn utz_enc_stat(i: u32) -> u32 {
-    let Some(st) = (unsafe { &*core::ptr::addr_of!(STATE) }) else {
+    let Some(state) = (unsafe { &*core::ptr::addr_of!(STATE) }) else {
         return 0;
     };
-    let s = &st.stats;
+    let payload_stats = &state.stats;
     match i {
-        0 => s.header,
-        1 => s.zones,
-        2 => s.arcs,
-        3 => s.rings,
-        4 => s.grid,
-        5 => s.n_arcs,
-        6 => s.n_verts,
-        7 => s.clean.dups,
-        8 => s.clean.spikes,
-        9 => s.clean.collinear,
-        10 => s.clean.rings_dropped,
-        11 => s.clean.polys_dropped,
-        12 => s.clean.arcs_dropped,
+        0 => payload_stats.header,
+        1 => payload_stats.zones,
+        2 => payload_stats.arcs,
+        3 => payload_stats.rings,
+        4 => payload_stats.grid,
+        5 => payload_stats.n_arcs,
+        6 => payload_stats.n_verts,
+        7 => payload_stats.clean.dups,
+        8 => payload_stats.clean.spikes,
+        9 => payload_stats.clean.collinear,
+        10 => payload_stats.clean.rings_dropped,
+        11 => payload_stats.clean.polys_dropped,
+        12 => payload_stats.clean.arcs_dropped,
         _ => 0,
     }
 }
@@ -371,7 +372,7 @@ pub extern "C" fn utz_enc_stat(i: u32) -> u32 {
 #[no_mangle]
 pub extern "C" fn utz_enc_payload_ptr() -> *const u8 {
     match unsafe { &*core::ptr::addr_of!(STATE) } {
-        Some(st) if !st.payload.is_empty() => st.payload.as_ptr(),
+        Some(state) if !state.payload.is_empty() => state.payload.as_ptr(),
         _ => core::ptr::null(),
     }
 }
@@ -392,30 +393,30 @@ pub extern "C" fn utz_enc_problems(
     quant_bits: u32,
     pre: u32,
 ) -> u32 {
-    let Some(st) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else {
+    let Some(state) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else {
         return 0;
     };
     if !matches!(quant_bits, 16 | 24 | 32) {
         return 0;
     }
-    let arcs = simplified_arcs(st, algo, eps_m, w_min, (pre != 0).then_some(quant_bits));
-    let problems = validate::find_problems(&st.topo, &arcs, quant_bits);
+    let arcs = simplified_arcs(state, algo, eps_m, w_min, (pre != 0).then_some(quant_bits));
+    let problems = validate::find_problems(&state.topo, &arcs, quant_bits);
     let mut out = Vec::with_capacity(problems.len() * 12);
     #[expect(
         clippy::cast_possible_truncation,
         reason = "record layout: lon/lat narrow to f32 for display, and feature indices fit u16 because the blob header stores n_features as a u16"
     )]
-    for p in &problems {
-        out.extend_from_slice(&(p.lon as f32).to_le_bytes());
-        out.extend_from_slice(&(p.lat as f32).to_le_bytes());
-        let kind: u16 = match p.kind {
+    for problem in &problems {
+        out.extend_from_slice(&(problem.lon as f32).to_le_bytes());
+        out.extend_from_slice(&(problem.lat as f32).to_le_bytes());
+        let kind: u16 = match problem.kind {
             validate::Kind::Cross => 0,
             validate::Kind::Overlap => 1,
         };
         out.extend_from_slice(&kind.to_le_bytes());
-        out.extend_from_slice(&(p.feat as u16).to_le_bytes());
+        out.extend_from_slice(&(problem.feat as u16).to_le_bytes());
     }
-    st.problems = out;
+    state.problems = out;
     len_u32(problems.len())
 }
 
@@ -423,7 +424,7 @@ pub extern "C" fn utz_enc_problems(
 #[no_mangle]
 pub extern "C" fn utz_enc_problems_ptr() -> *const u8 {
     match unsafe { &*core::ptr::addr_of!(STATE) } {
-        Some(st) if !st.problems.is_empty() => st.problems.as_ptr(),
+        Some(state) if !state.problems.is_empty() => state.problems.as_ptr(),
         _ => core::ptr::null(),
     }
 }
@@ -432,10 +433,10 @@ pub extern "C" fn utz_enc_problems_ptr() -> *const u8 {
 #[no_mangle]
 pub extern "C" fn utz_enc_tzid_ptr(i: u32) -> *const u8 {
     match unsafe { &*core::ptr::addr_of!(STATE) } {
-        Some(st) => st
+        Some(state) => state
             .feats
             .get(i as usize)
-            .and_then(|f| f.tzid.as_deref())
+            .and_then(|feat| feat.tzid.as_deref())
             .map_or(core::ptr::null(), str::as_ptr),
         None => core::ptr::null(),
     }
@@ -443,11 +444,11 @@ pub extern "C" fn utz_enc_tzid_ptr(i: u32) -> *const u8 {
 #[no_mangle]
 pub extern "C" fn utz_enc_tzid_len(i: u32) -> u32 {
     match unsafe { &*core::ptr::addr_of!(STATE) } {
-        Some(st) => st
+        Some(state) => state
             .feats
             .get(i as usize)
-            .and_then(|f| f.tzid.as_deref())
-            .map_or(0, |s| len_u32(s.len())),
+            .and_then(|feat| feat.tzid.as_deref())
+            .map_or(0, |tzid| len_u32(tzid.len())),
         None => 0,
     }
 }
@@ -458,10 +459,10 @@ pub extern "C" fn utz_enc_tzid_len(i: u32) -> u32 {
 /// header. Returns 0 on error / unsupported codec / no payload.
 #[no_mangle]
 pub extern "C" fn utz_enc_compress(codec: u32) -> u32 {
-    let Some(st) = (unsafe { &*core::ptr::addr_of!(STATE) }) else {
+    let Some(state) = (unsafe { &*core::ptr::addr_of!(STATE) }) else {
         return 0;
     };
-    if st.payload.is_empty() {
+    if state.payload.is_empty() {
         return 0;
     }
     let codec = match codec {
@@ -470,7 +471,7 @@ pub extern "C" fn utz_enc_compress(codec: u32) -> u32 {
         4 => Codec::Xz,
         _ => return 0,
     };
-    encode::compress(&st.payload, codec).map_or(0, |z| len_u32(z.len()))
+    encode::compress(&state.payload, codec).map_or(0, |compressed| len_u32(compressed.len()))
 }
 
 /// Simplify-worker misassignment state: the last arc's deviations plus the
@@ -478,17 +479,17 @@ pub extern "C" fn utz_enc_compress(codec: u32) -> u32 {
 /// mut` convention as `STATE`).
 struct WsState {
     deviations: Vec<f32>,
-    acc: Acc,
-    qacc: Acc,
+    simplify_acc: Acc,
+    quant_acc: Acc,
 }
 
 static mut WS: WsState = WsState {
     deviations: Vec::new(),
-    acc: Acc {
+    simplify_acc: Acc {
         area: 0.0,
         people: 0.0,
     },
-    qacc: Acc {
+    quant_acc: Acc {
         area: 0.0,
         people: 0.0,
     },
@@ -498,24 +499,24 @@ static mut WS: WsState = WsState {
 #[no_mangle]
 pub extern "C" fn utz_ws_reset() {
     let ws = unsafe { &mut *core::ptr::addr_of_mut!(WS) };
-    ws.acc = Acc::default();
-    ws.qacc = Acc::default();
+    ws.simplify_acc = Acc::default();
+    ws.quant_acc = Acc::default();
     ws.deviations.clear();
 }
 
 /// One arc through the whole simplify-worker pipeline
 /// ([`misassign::arc_misassign()`]): pre-snap when `pre` != 0 (Q→S), simplify
 /// (`algo` ids and `param` as in `utz_simplify`; density-weighted when
-/// `dens` is non-null and `w_min` < 1), pocket + display-snap pricing into
-/// the running accumulators. `quant` codes are the viewer's quant-knob
+/// `densities` is non-null and `w_min` < 1), pocket + display-snap pricing
+/// into the running accumulators. `quant` codes are the viewer's quant-knob
 /// indices (0 f64, 1 f32, 2 i32, 3 i24, 4 i16). Returns the kept count:
 /// the simplified coords overwrite the first `kept * 2` doubles of `xy`
 /// (already display-snapped in Q→S order, raw copies otherwise), and the
 /// per-kept-vertex deviations are readable via [`utz_ws_devs_ptr`].
 ///
 /// # Safety
-/// `xy` must point at `n_pts * 2` valid doubles and `dens` at `n_pts` valid
-/// doubles or be null (e.g. from `utz_alloc`).
+/// `xy` must point at `n_pts * 2` valid doubles and `densities` at `n_pts`
+/// valid doubles or be null (e.g. from `utz_alloc`).
 #[no_mangle]
 pub unsafe extern "C" fn utz_ws_arc(
     algo: u32,
@@ -525,12 +526,15 @@ pub unsafe extern "C" fn utz_ws_arc(
     pre: u32,
     xy: *mut f64,
     n_pts: usize,
-    dens: *const f64,
+    densities: *const f64,
 ) -> usize {
     let ws = &mut *core::ptr::addr_of_mut!(WS);
-    let buf = core::slice::from_raw_parts_mut(xy, n_pts * 2);
-    let arc: Vec<(f64, f64)> = buf.chunks_exact(2).map(|c| (c[0], c[1])).collect();
-    let dens = (!dens.is_null()).then(|| core::slice::from_raw_parts(dens, n_pts));
+    let buffer = core::slice::from_raw_parts_mut(xy, n_pts * 2);
+    let arc: Vec<(f64, f64)> = buffer
+        .chunks_exact(2)
+        .map(|chunk| (chunk[0], chunk[1]))
+        .collect();
+    let densities = (!densities.is_null()).then(|| core::slice::from_raw_parts(densities, n_pts));
     let params = ArcParams {
         // same ids as utz_simplify's wasm exports; unknown ids pass through
         algo: match algo {
@@ -543,13 +547,19 @@ pub unsafe extern "C" fn utz_ws_arc(
         quant: Quant::from_code(quant),
         pre: pre != 0,
     };
-    let r = misassign::arc_misassign(&arc, dens, &params, &mut ws.acc, &mut ws.qacc);
-    for (i, (x, y)) in r.kept.iter().enumerate() {
-        buf[i * 2] = *x;
-        buf[i * 2 + 1] = *y;
+    let result = misassign::arc_misassign(
+        &arc,
+        densities,
+        &params,
+        &mut ws.simplify_acc,
+        &mut ws.quant_acc,
+    );
+    for (i, (x, y)) in result.kept.iter().enumerate() {
+        buffer[i * 2] = *x;
+        buffer[i * 2 + 1] = *y;
     }
-    ws.deviations = r.deviations;
-    r.kept.len()
+    ws.deviations = result.deviations;
+    result.kept.len()
 }
 
 /// Pointer to the last [`utz_ws_arc`]'s deviations (one f32 per kept
@@ -572,10 +582,10 @@ pub extern "C" fn utz_ws_devs_ptr() -> *const f32 {
 pub extern "C" fn utz_ws_stat(i: u32) -> f64 {
     let ws = unsafe { &*core::ptr::addr_of!(WS) };
     match i {
-        0 => ws.acc.area,
-        1 => ws.acc.people,
-        2 => ws.qacc.area,
-        3 => ws.qacc.people,
+        0 => ws.simplify_acc.area,
+        1 => ws.simplify_acc.people,
+        2 => ws.quant_acc.area,
+        3 => ws.quant_acc.people,
         _ => 0.0,
     }
 }

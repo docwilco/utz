@@ -19,12 +19,12 @@ pub struct Args {
 
 /// # Errors
 /// Dataset load/parse, payload encode, or compression backend failure.
-pub fn run(a: Args) -> utz_build::Result<()> {
-    let (ds, grid_deg) = (a.ds, a.grid_deg);
-    let feats = utz_build::load(&ds)?;
+pub fn run(args: Args) -> utz_build::Result<()> {
+    let (dataset, grid_deg) = (args.ds, args.grid_deg);
+    let features = utz_build::load(&dataset)?;
     println!(
         "{} full container, grid {grid_deg}°, dominant-first CSR",
-        ds.to_uppercase()
+        dataset.to_uppercase()
     );
     println!(
         "{:>7}{:>6}{:>12}{:>12}{:>12}{:>12}{:>12}",
@@ -33,27 +33,27 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     println!("{}", "-".repeat(73));
 
     for eps_m in [100.0f64, 250.0, 500.0, 1000.0, 2000.0] {
-        for qbits in [16u32, 24] {
-            let p = Params {
-                dataset: utz_build::dataset(&ds)?.code(),
+        for quant_bits in [16u32, 24] {
+            let params = Params {
+                dataset: utz_build::dataset(&dataset)?.code(),
                 tzbb_release: "dev",
                 eps_m,
-                quant_bits: qbits,
+                quant_bits,
                 grid_deg,
                 codec: Codec::Uncompressed,
                 simplify: encode::SimplifyAlgo::default(),
                 geom: encode::GeomEncoding::default(),
                 density_weight_floor: None,
             };
-            let payload = encode::build_payload(&feats, &p)?;
+            let payload = encode::build_payload(&features, &params)?;
             #[expect(
                 clippy::cast_precision_loss,
                 reason = "compressed payload size ≪ 2^53; KiB display"
             )]
-            let kb = |c: Codec| -> utz_build::Result<String> {
+            let kb = |codec: Codec| -> utz_build::Result<String> {
                 Ok(format!(
                     "{:.1}",
-                    encode::compress(&payload, c)?.len() as f64 / 1024.0
+                    encode::compress(&payload, codec)?.len() as f64 / 1024.0
                 ))
             };
             #[expect(
@@ -64,7 +64,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             println!(
                 "{:>7}{:>6}{:>11} K{:>11} K{:>11} K{:>11} K{:>11} K",
                 eps_m,
-                format!("i{qbits}"),
+                format!("i{quant_bits}"),
                 format!("{raw_kb:.1}"),
                 kb(Codec::Gzip)?,
                 kb(Codec::Zstd)?,

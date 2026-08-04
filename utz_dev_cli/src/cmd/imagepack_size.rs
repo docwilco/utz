@@ -47,8 +47,8 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
         // packed variant: each i32 coord truncated to coord_bytes bytes (LE
         // keeps the low bytes; sign travels in the top retained byte)
         let mut packed = container_payload[..header.full_coords].to_vec();
-        for word_idx in 0..coord_count * 2 {
-            let word = format::read_u32(container_payload, header.full_coords + word_idx * 4);
+        for word_index in 0..coord_count * 2 {
+            let word = format::read_u32(container_payload, header.full_coords + word_index * 4);
             packed.extend_from_slice(&word.to_le_bytes()[..coord_bytes]);
         }
         packed.extend_from_slice(&container_payload[header.full_ring_ends..]);

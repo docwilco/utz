@@ -338,14 +338,14 @@ impl Lcg {
     }
 }
 
-/// `n` uniform world points `(lon, lat)` from `seed`: the shared sampler
+/// `count` uniform world points `(lon, lat)` from `seed`: the shared sampler
 /// behind the measurement commands and benches (same seed → same points, so
 /// numbers stay comparable across tools).
 #[cfg(feature = "alloc")]
 #[must_use]
-pub fn gen_pts(seed: u64, n: usize) -> Vec<(f64, f64)> {
+pub fn gen_pts(seed: u64, count: usize) -> Vec<(f64, f64)> {
     let mut lcg = Lcg::new(seed);
-    (0..n)
+    (0..count)
         .map(|_| {
             (
                 lcg.unit_f64() * 360.0 - 180.0,

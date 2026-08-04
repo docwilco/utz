@@ -44,42 +44,42 @@ pub struct Args {
 ///
 /// # Panics
 /// If `algo` is not one of rdp|vw|ii.
-pub fn run(a: Args) -> utz_build::Result<()> {
-    let (ds, eps_m, w_min, algo_key) = (a.ds, a.eps_m, a.w_min, a.algo);
+pub fn run(args: Args) -> utz_build::Result<()> {
+    let (dataset, eps_m, w_min, algo_key) = (args.ds, args.eps_m, args.w_min, args.algo);
     let algo = |eps_deg: f64| -> Simplify {
         let algo = match algo_key.as_str() {
             "rdp" => utz_encode::encode::SimplifyAlgo::Rdp,
             "vw" => utz_encode::encode::SimplifyAlgo::Visvalingam,
             "ii" => utz_encode::encode::SimplifyAlgo::ImaiIri,
-            k => panic!("unknown algo {k:?}: use rdp|vw|ii"),
+            key => panic!("unknown algo {key:?}: use rdp|vw|ii"),
         };
         utz_encode::encode::to_simplify(algo, eps_deg)
     };
 
-    let feats = utz_build::load(&ds)?;
+    let features = utz_build::load(&dataset)?;
     let grid = DensityGrid::load(&utz_build::cache_dir())?;
-    let t0 = topo::build_topology(&feats, 0.0);
+    let raw_topology = topo::build_topology(&features, 0.0);
     let model = DensityWeight::new(w_min);
 
-    let e = eps_m / 111_320.0;
+    let eps_deg = eps_m / 111_320.0;
     let configs: Vec<(String, Topology)> = vec![
         (
             format!("uniform ε{eps_m}"),
-            topo::build_topology_algo(&feats, algo(e)),
+            topo::build_topology_algo(&features, algo(eps_deg)),
         ),
         (
             format!("uniform ε{}", eps_m / 2.0),
-            topo::build_topology_algo(&feats, algo(e / 2.0)),
+            topo::build_topology_algo(&features, algo(eps_deg / 2.0)),
         ),
         (
             format!("weighted ε{eps_m}×{w_min}"),
-            topo::build_topology_weighted(&feats, algo(e), &|a, b| {
-                model.weight(grid.max_along(a, b))
+            topo::build_topology_weighted(&features, algo(eps_deg), &|start, end| {
+                model.weight(grid.max_along(start, end))
             }),
         ),
     ];
 
-    println!("{ds} · {algo_key} · misassignment vs raw ε=0 arcs\n");
+    println!("{dataset} · {algo_key} · misassignment vs raw ε=0 arcs\n");
     println!(
         "{:>22} {:>9} {:>10} {:>12} {:>14}",
         "config", "verts", "max dev", "misassigned", "misassigned"
@@ -88,14 +88,14 @@ pub fn run(a: Args) -> utz_build::Result<()> {
         "{:>22} {:>9} {:>10} {:>12} {:>14}",
         "", "", "(m)", "area (km²)", "pop (people)"
     );
-    for (name, t) in &configs {
-        let verts: usize = t.arc_coords.iter().map(std::vec::Vec::len).sum();
-        let m = measure(&t0, t, &grid);
+    for (name, topology) in &configs {
+        let verts: usize = topology.arc_coords.iter().map(std::vec::Vec::len).sum();
+        let measured = measure(&raw_topology, topology, &grid);
         println!(
             "{name:>22} {verts:>9} {:>10.1} {:>12.1} {:>14.0}",
-            m.max_dev_deg * 111_320.0,
-            m.area_km2,
-            m.people
+            measured.max_dev_deg * 111_320.0,
+            measured.area_km2,
+            measured.people
         );
     }
     Ok(())
@@ -108,31 +108,35 @@ struct Acc {
     people: f64,
 }
 
-fn measure(t0: &Topology, t: &Topology, grid: &DensityGrid) -> Acc {
+fn measure(raw_topology: &Topology, simplified_topology: &Topology, grid: &DensityGrid) -> Acc {
     let mut acc = Acc::default();
     // arcs are cut before simplification, so the two topologies' arc lists
     // correspond 1:1 by index
-    for (orig, simp) in t0.arc_coords.iter().zip(&t.arc_coords) {
+    for (original, simplified) in raw_topology
+        .arc_coords
+        .iter()
+        .zip(&simplified_topology.arc_coords)
+    {
         // simplified vertices are bit-exact copies of raw ones — walk-match
         // them back to raw indices
-        let mut idx = Vec::with_capacity(simp.len());
+        let mut raw_indices = Vec::with_capacity(simplified.len());
         let mut j = 0;
-        for &p in simp {
-            while orig[j] != p {
+        for &point in simplified {
+            while original[j] != point {
                 j += 1;
             }
-            idx.push(j);
+            raw_indices.push(j);
             j += 1;
         }
-        for w in idx.windows(2) {
-            let chain = &orig[w[0]..=w[1]];
+        for window in raw_indices.windows(2) {
+            let chain = &original[window[0]..=window[1]];
             acc.max_dev_deg = acc.max_dev_deg.max(max_dev_deg(chain));
             // shared pocket decomposition; people priced here with one
             // GHS-POP grid sample at the pocket's chain centroid (the
             // viewer instead averages its shipped per-vertex densities)
-            misassign::pocket_scan(chain, None, |p| {
-                let (lonc, latc) = (p.lon_sum / p.count, p.lat_sum / p.count);
-                let km2 = p.area.abs() * KM_PER_DEG * KM_PER_DEG * latc.to_radians().cos();
+            misassign::pocket_scan(chain, None, |pocket| {
+                let (lonc, latc) = (pocket.lon_sum / pocket.count, pocket.lat_sum / pocket.count);
+                let km2 = pocket.area.abs() * KM_PER_DEG * KM_PER_DEG * latc.to_radians().cos();
                 acc.area_km2 += km2;
                 acc.people += km2 * grid.sample(lonc, latc);
             });
@@ -149,12 +153,13 @@ fn max_dev_deg(chain: &[(f64, f64)]) -> f64 {
     let (dx, dy) = (end.0 - start.0, end.1 - start.1);
     let len2 = dx * dx + dy * dy;
     let mut max_dev = 0.0f64;
-    for &curr in &chain[1..chain.len() - 1] {
+    for &current in &chain[1..chain.len() - 1] {
         let dist2 = if len2 == 0.0 {
-            (curr.0 - start.0).powi(2) + (curr.1 - start.1).powi(2)
+            (current.0 - start.0).powi(2) + (current.1 - start.1).powi(2)
         } else {
-            let frac = (((curr.0 - start.0) * dx + (curr.1 - start.1) * dy) / len2).clamp(0.0, 1.0);
-            (curr.0 - start.0 - frac * dx).powi(2) + (curr.1 - start.1 - frac * dy).powi(2)
+            let frac =
+                (((current.0 - start.0) * dx + (current.1 - start.1) * dy) / len2).clamp(0.0, 1.0);
+            (current.0 - start.0 - frac * dx).powi(2) + (current.1 - start.1 - frac * dy).powi(2)
         };
         max_dev = max_dev.max(dist2.sqrt());
     }

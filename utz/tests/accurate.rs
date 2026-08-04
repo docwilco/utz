@@ -14,12 +14,12 @@
 
 #[test]
 fn new_loads_the_accurate_preset() {
-    let f = utz::Finder::new().expect("accurate asset decodes");
+    let finder = utz::Finder::new().expect("accurate asset decodes");
     assert!(
-        !f.tzbb_release().is_empty(),
+        !finder.tzbb_release().is_empty(),
         "header carries a TZBB release tag"
     );
-    let london = f
+    let london = finder
         .lookup(utz::Position {
             lon: -0.1276,
             lat: 51.5072,
@@ -27,7 +27,7 @@ fn new_loads_the_accurate_preset() {
         .expect("position in range");
     assert!(london.is_some(), "accurate lookup resolves");
     assert_eq!(
-        f.lookup_coarse(utz::Position {
+        finder.lookup_coarse(utz::Position {
             lon: -0.1276,
             lat: 51.5072
         }),
@@ -41,16 +41,20 @@ fn new_loads_the_accurate_preset() {
 /// `utz_bench_common`'s `encodings_agree.rs`).
 #[test]
 fn preload_agrees_with_lazy_at_i32_quant() {
-    let f = utz::Finder::new().expect("accurate asset decodes");
-    let mut pre = utz::Finder::new().expect("accurate asset decodes");
-    pre.preload();
+    let finder = utz::Finder::new().expect("accurate asset decodes");
+    let mut preloaded = utz::Finder::new().expect("accurate asset decodes");
+    preloaded.preload();
     for i in 0..30u32 {
         for j in 0..15u32 {
-            let pos = utz::Position {
+            let position = utz::Position {
                 lon: -180.0 + (f64::from(i) + 0.37) * 12.0,
                 lat: -90.0 + (f64::from(j) + 0.61) * 12.0,
             };
-            assert_eq!(pre.lookup(pos), f.lookup(pos), "at {pos:?}");
+            assert_eq!(
+                preloaded.lookup(position),
+                finder.lookup(position),
+                "at {position:?}"
+            );
         }
     }
 }

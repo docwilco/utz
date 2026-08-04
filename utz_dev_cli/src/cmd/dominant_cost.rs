@@ -31,17 +31,17 @@ pub struct Args {
 
 /// # Errors
 /// Dataset load/parse failure.
-pub fn run(a: Args) -> utz_build::Result<()> {
-    let (deg, dss) = (a.deg, a.ds);
-    for ds in &dss {
-        let feats = utz_build::load(ds)?;
-        let areas = grid::feat_areas(&feats);
-        let g = grid::build(&feats, deg, 8);
-        let border = g.sets.iter().filter(|s| s.len() > 1).count();
+pub fn run(args: Args) -> utz_build::Result<()> {
+    let (deg, datasets) = (args.deg, args.ds);
+    for dataset in &datasets {
+        let features = utz_build::load(dataset)?;
+        let areas = grid::feat_areas(&features);
+        let grid = grid::build(&features, deg, 8);
+        let border = grid.sets.iter().filter(|set| set.len() > 1).count();
         println!(
             "{} @ {deg}°  ({} zones, {} border cells)",
-            ds.to_uppercase(),
-            feats.len(),
+            dataset.to_uppercase(),
+            features.len(),
             border
         );
         println!(
@@ -56,8 +56,8 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             ("area-desc", Order::AreaDesc),
             ("cell-dominant-first", Order::CellDominantFirst),
         ] {
-            let csr = grid::intern_csr(&g, order, &areas);
-            let hit = early_exit(&g, &csr);
+            let csr = grid::intern_csr(&grid, order, &areas);
+            let hit = early_exit(&grid, &csr);
             if order == Order::IdSorted {
                 base_bytes = csr.bytes();
             }
@@ -78,30 +78,30 @@ pub fn run(a: Args) -> utz_build::Result<()> {
 }
 
 /// P(subcell owner == `list[0]`) over owned subcells in border cells.
-fn early_exit(g: &grid::CellGrid, csr: &grid::Csr) -> f64 {
-    let (mut hit, mut tot) = (0u64, 0u64);
+fn early_exit(grid: &grid::CellGrid, csr: &grid::Csr) -> f64 {
+    let (mut hit, mut total) = (0u64, 0u64);
     // row-major zip: primary cell c ↔ tallies cell c
-    for (&p, tallies) in csr.primary.iter().zip(g.tallies.iter()) {
-        if p & 0x8000 == 0 {
+    for (&tag, tallies) in csr.primary.iter().zip(grid.tallies.iter()) {
+        if tag & 0x8000 == 0 {
             continue;
         }
-        let li = (p & 0x7FFF) as usize;
-        let first = csr.list_ids[csr.list_offsets[li] as usize];
-        for &(z, n) in tallies {
-            tot += u64::from(n);
-            if z == first {
-                hit += u64::from(n);
+        let list_index = (tag & 0x7FFF) as usize;
+        let first = csr.list_ids[csr.list_offsets[list_index] as usize];
+        for &(zone, count) in tallies {
+            total += u64::from(count);
+            if zone == first {
+                hit += u64::from(count);
             }
         }
     }
     #[expect(
         clippy::cast_precision_loss,
-        reason = "hit ≤ tot = subcell tally sum ≪ 2^53; probability"
+        reason = "hit ≤ total = subcell tally sum ≪ 2^53; probability"
     )]
-    let p = if tot == 0 {
+    let probability = if total == 0 {
         0.0
     } else {
-        hit as f64 / tot as f64
+        hit as f64 / total as f64
     };
-    p
+    probability
 }

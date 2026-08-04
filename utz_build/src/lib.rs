@@ -138,12 +138,12 @@ impl Dataset {
     /// bit 2 set = land-only.
     #[must_use]
     pub fn code(&self) -> u8 {
-        let v = match self.zone_set {
+        let zone_set_code = match self.zone_set {
             "now" => 0,
             "1970" => 1,
             _ => 2,
         };
-        v | if self.oceans { 0 } else { 4 }
+        zone_set_code | if self.oceans { 0 } else { 4 }
     }
 }
 
@@ -151,20 +151,20 @@ impl Dataset {
 ///
 /// # Errors
 /// Unrecognized dataset name.
-pub fn dataset(ds: &str) -> crate::Result<Dataset> {
-    let (land, rest) = match ds.strip_prefix("land-") {
-        Some(r) => (true, r),
-        None => (false, ds),
+pub fn dataset(name: &str) -> crate::Result<Dataset> {
+    let (land_only, rest) = match name.strip_prefix("land-") {
+        Some(stripped) => (true, stripped),
+        None => (false, name),
     };
     let zone_set = match rest {
         "now" | "osm" => "now",
         "1970" | "osm1970" => "1970",
         "all" | "full" | "comprehensive" => "all",
-        _ => return Err(Error::UnknownDataset { ds: ds.into() }),
+        _ => return Err(Error::UnknownDataset { ds: name.into() }),
     };
     Ok(Dataset {
         zone_set,
-        oceans: !land,
+        oceans: !land_only,
     })
 }
 
@@ -173,8 +173,8 @@ pub fn dataset(ds: &str) -> crate::Result<Dataset> {
 ///
 /// # Errors
 /// See [`load_with_release`].
-pub fn load(ds: &str) -> crate::Result<Vec<Feat>> {
-    Ok(load_with_release(ds)?.0)
+pub fn load(dataset_name: &str) -> crate::Result<Vec<Feat>> {
+    Ok(load_with_release(dataset_name)?.0)
 }
 
 /// [`load`] plus the TZBB release tag the features came from, for stamping
@@ -183,8 +183,8 @@ pub fn load(ds: &str) -> crate::Result<Vec<Feat>> {
 ///
 /// # Errors
 /// Invalid dataset name, or TZBB download/parse failure.
-pub fn load_with_release(ds: &str) -> crate::Result<(Vec<Feat>, String)> {
-    load_with_release_in(ds, &cache_dir())
+pub fn load_with_release(dataset_name: &str) -> crate::Result<(Vec<Feat>, String)> {
+    load_with_release_in(dataset_name, &cache_dir())
 }
 
 /// [`load_with_release`] against an explicit cache directory instead of
@@ -193,10 +193,10 @@ pub fn load_with_release(ds: &str) -> crate::Result<(Vec<Feat>, String)> {
 /// # Errors
 /// As [`load_with_release`].
 pub fn load_with_release_in(
-    ds: &str,
+    dataset_name: &str,
     cache_dir: &std::path::Path,
 ) -> crate::Result<(Vec<Feat>, String)> {
-    loader::load_tzbb(dataset(ds)?, cache_dir)
+    loader::load_tzbb(dataset(dataset_name)?, cache_dir)
 }
 
 /// `encode::encode()` with population-density-weighted simplification: the
@@ -207,19 +207,25 @@ pub fn load_with_release_in(
 /// # Errors
 /// Payload encoding failure.
 pub fn encode_weighted(
-    feats: &[Feat],
-    p: &utz_encode::encode::Params,
+    features: &[Feat],
+    params: &utz_encode::encode::Params,
     grid: &density::DensityGrid,
     model: utz_simplify::DensityWeight,
 ) -> crate::Result<Vec<u8>> {
-    let eps_deg = p.eps_m / 111_320.0;
-    let algo = utz_encode::encode::to_simplify(p.simplify, eps_deg);
-    let t = utz_encode::topo::build_topology_weighted(feats, algo, &|a, b| {
+    let eps_deg = params.eps_m / 111_320.0;
+    let algo = utz_encode::encode::to_simplify(params.simplify, eps_deg);
+    let topology = utz_encode::topo::build_topology_weighted(features, algo, &|a, b| {
         model.weight(grid.max_along(a, b))
     });
     Ok(utz_encode::encode::finish(
-        &utz_encode::encode::payload_from_topology(&t, &t.arc_coords, feats, p)?.0,
-        p.codec,
+        &utz_encode::encode::payload_from_topology(
+            &topology,
+            &topology.arc_coords,
+            features,
+            params,
+        )?
+        .0,
+        params.codec,
     )?)
 }
 
@@ -240,22 +246,24 @@ pub fn encode_weighted(
 #[must_use]
 pub fn cache_dir() -> PathBuf {
     use std::path::Path;
-    if let Some(p) = std::env::var_os("UTZ_CACHE_DIR").filter(|p| !p.is_empty()) {
-        return p.into();
+    if let Some(path) = std::env::var_os("UTZ_CACHE_DIR").filter(|path| !path.is_empty()) {
+        return path.into();
     }
     // the XDG spec says to ignore a relative XDG_CACHE_HOME
-    if let Some(p) = std::env::var_os("XDG_CACHE_HOME").filter(|p| Path::new(p).is_absolute()) {
-        return Path::new(&p).join("utz_build");
+    if let Some(path) =
+        std::env::var_os("XDG_CACHE_HOME").filter(|path| Path::new(path).is_absolute())
+    {
+        return Path::new(&path).join("utz_build");
     }
     #[cfg(windows)]
-    if let Some(p) = std::env::var_os("LOCALAPPDATA").filter(|p| !p.is_empty()) {
-        return Path::new(&p).join("utz_build");
+    if let Some(path) = std::env::var_os("LOCALAPPDATA").filter(|path| !path.is_empty()) {
+        return Path::new(&path).join("utz_build");
     }
-    if let Some(p) = std::env::var_os("HOME").filter(|p| !p.is_empty()) {
-        return Path::new(&p).join(".cache").join("utz_build");
+    if let Some(path) = std::env::var_os("HOME").filter(|path| !path.is_empty()) {
+        return Path::new(&path).join(".cache").join("utz_build");
     }
-    if let Some(p) = std::env::var_os("OUT_DIR").filter(|p| !p.is_empty()) {
-        return Path::new(&p).join("utz_build-cache");
+    if let Some(path) = std::env::var_os("OUT_DIR").filter(|path| !path.is_empty()) {
+        return Path::new(&path).join("utz_build-cache");
     }
     PathBuf::from("utz_build-cache")
 }

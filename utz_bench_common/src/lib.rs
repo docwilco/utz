@@ -12,8 +12,8 @@ use alloc::vec::Vec;
 /// Deterministic pseudo-random lon/lat points (same seed as the `utz_build`
 /// measurement commands, so numbers are comparable).
 #[must_use]
-pub fn gen_pts(n: usize) -> Vec<(f64, f64)> {
-    utz_common::gen_pts(0x1234_5678, n)
+pub fn gen_pts(count: usize) -> Vec<(f64, f64)> {
+    utz_common::gen_pts(0x1234_5678, count)
 }
 
 pub struct BenchResult {
@@ -37,29 +37,29 @@ impl BenchResult {
     }
 }
 
-/// Run one timed pass of `finder.lookup` over `pts`. `now_us` is any
+/// Run one timed pass of `finder.lookup` over `points`. `now_us` is any
 /// monotonic microsecond source.
 ///
 /// # Panics
-/// If `pts` holds more than `u32::MAX` points.
+/// If `points` holds more than `u32::MAX` points.
 pub fn run(
     finder: &utz::Finder,
-    pts: &[(f64, f64)],
+    points: &[(f64, f64)],
     now_us: &mut dyn FnMut() -> u64,
 ) -> BenchResult {
     let (mut hits, mut checksum) = (0u32, 0u64);
-    let t0 = now_us();
-    for &(lon, lat) in pts {
+    let start_us = now_us();
+    for &(lon, lat) in points {
         // gen_pts produces in-range coordinates by construction; the
         // unchecked variant keeps the timed loop on the lookup kernel
-        if let Some(tz) = finder.lookup_unchecked(utz::Position { lon, lat }) {
+        if let Some(tzid) = finder.lookup_unchecked(utz::Position { lon, lat }) {
             hits += 1;
-            checksum = checksum.wrapping_add(tz.len() as u64);
+            checksum = checksum.wrapping_add(tzid.len() as u64);
         }
     }
-    let elapsed_us = now_us().saturating_sub(t0);
+    let elapsed_us = now_us().saturating_sub(start_us);
     BenchResult {
-        lookups: u32::try_from(pts.len()).expect("point count fits u32"),
+        lookups: u32::try_from(points.len()).expect("point count fits u32"),
         hits,
         elapsed_us,
         checksum,
@@ -74,16 +74,19 @@ pub fn run(
 /// Never: `rounds` is clamped to ≥ 1, so a best round always exists.
 pub fn run_rounds(
     finder: &utz::Finder,
-    pts: &[(f64, f64)],
+    points: &[(f64, f64)],
     rounds: usize,
     now_us: &mut dyn FnMut() -> u64,
 ) -> BenchResult {
     let mut best: Option<BenchResult> = None;
-    let _ = run(finder, pts, now_us); // warmup
+    let _ = run(finder, points, now_us); // warmup
     for _ in 0..rounds.max(1) {
-        let r = run(finder, pts, now_us);
-        if best.as_ref().is_none_or(|b| r.elapsed_us < b.elapsed_us) {
-            best = Some(r);
+        let round_result = run(finder, points, now_us);
+        if best
+            .as_ref()
+            .is_none_or(|best_so_far| round_result.elapsed_us < best_so_far.elapsed_us)
+        {
+            best = Some(round_result);
         }
     }
     best.unwrap()

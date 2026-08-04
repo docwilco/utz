@@ -28,9 +28,9 @@ pub const ALGO_IMAI_IRI: u32 = 3;
 /// Allocate space for `n_f64` doubles; pair every call with [`utz_free`].
 #[no_mangle]
 pub extern "C" fn utz_alloc(n_f64: usize) -> *mut f64 {
-    let mut v = Vec::<f64>::with_capacity(n_f64);
-    let ptr = v.as_mut_ptr();
-    core::mem::forget(v);
+    let mut buffer = Vec::<f64>::with_capacity(n_f64);
+    let ptr = buffer.as_mut_ptr();
+    core::mem::forget(buffer);
     ptr
 }
 
@@ -51,8 +51,11 @@ pub unsafe extern "C" fn utz_free(ptr: *mut f64, n_f64: usize) {
 /// `xy` must point at `n_pts * 2` valid doubles (e.g. from [`utz_alloc`]).
 #[no_mangle]
 pub unsafe extern "C" fn utz_simplify(algo: u32, xy: *mut f64, n_pts: usize, param: f64) -> usize {
-    let buf = core::slice::from_raw_parts_mut(xy, n_pts * 2);
-    let pts: Vec<(f64, f64)> = buf.chunks_exact(2).map(|c| (c[0], c[1])).collect();
+    let buffer = core::slice::from_raw_parts_mut(xy, n_pts * 2);
+    let pts: Vec<(f64, f64)> = buffer
+        .chunks_exact(2)
+        .map(|chunk| (chunk[0], chunk[1]))
+        .collect();
     #[expect(
         clippy::match_same_arms,
         reason = "ALGO_NONE is the ABI id for None; the wildcard separately keeps unknown ids safe"
@@ -66,36 +69,39 @@ pub unsafe extern "C" fn utz_simplify(algo: u32, xy: *mut f64, n_pts: usize, par
     };
     let out = simplify(algo, &pts);
     for (i, (x, y)) in out.iter().enumerate() {
-        buf[i * 2] = *x;
-        buf[i * 2 + 1] = *y;
+        buffer[i * 2] = *x;
+        buffer[i * 2 + 1] = *y;
     }
     out.len()
 }
 
-/// [`utz_simplify`] with population-density weighting: `dens` points at
+/// [`utz_simplify`] with population-density weighting: `densities` points at
 /// `n_pts` per-vertex densities (people/km²), mapped through
 /// [`DensityWeight::new()`]`(w_min)`, so the browser's weighting slider runs
 /// the exact map the builder uses, not a JS reimplementation. `w_min ≥ 1`
 /// turns weighting off (identical to [`utz_simplify`]).
 ///
 /// # Safety
-/// `xy` must point at `n_pts * 2` valid doubles and `dens` at `n_pts` valid
-/// doubles (e.g. from [`utz_alloc`]).
+/// `xy` must point at `n_pts * 2` valid doubles and `densities` at `n_pts`
+/// valid doubles (e.g. from [`utz_alloc`]).
 #[no_mangle]
 pub unsafe extern "C" fn utz_simplify_w(
     algo: u32,
     xy: *mut f64,
     n_pts: usize,
     param: f64,
-    dens: *const f64,
+    densities: *const f64,
     w_min: f64,
 ) -> usize {
-    let buf = core::slice::from_raw_parts_mut(xy, n_pts * 2);
-    let pts: Vec<(f64, f64)> = buf.chunks_exact(2).map(|c| (c[0], c[1])).collect();
+    let buffer = core::slice::from_raw_parts_mut(xy, n_pts * 2);
+    let pts: Vec<(f64, f64)> = buffer
+        .chunks_exact(2)
+        .map(|chunk| (chunk[0], chunk[1]))
+        .collect();
     let model = DensityWeight::new(w_min);
-    let w: Vec<f64> = core::slice::from_raw_parts(dens, n_pts)
+    let weights: Vec<f64> = core::slice::from_raw_parts(densities, n_pts)
         .iter()
-        .map(|&d| model.weight(d))
+        .map(|&density| model.weight(density))
         .collect();
     #[expect(
         clippy::match_same_arms,
@@ -108,10 +114,10 @@ pub unsafe extern "C" fn utz_simplify_w(
         ALGO_IMAI_IRI => Simplify::ImaiIri { eps: param },
         _ => Simplify::None,
     };
-    let out = simplify_weighted(algo, &pts, &w);
+    let out = simplify_weighted(algo, &pts, &weights);
     for (i, (x, y)) in out.iter().enumerate() {
-        buf[i * 2] = *x;
-        buf[i * 2 + 1] = *y;
+        buffer[i * 2] = *x;
+        buffer[i * 2 + 1] = *y;
     }
     out.len()
 }

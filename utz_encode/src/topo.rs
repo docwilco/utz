@@ -13,23 +13,23 @@ pub use utz_simplify::{simplify, Simplify};
 
 // quantization parameterized by bit-width (i16 abs, i24 abs, i32 abs, ...)
 use crate::{q_lat, q_lon, qmax_for};
-fn pushb(out: &mut Vec<u8>, v: i32, bits: u32) {
-    let n = bits.div_ceil(8) as usize; // bytes per axis (i16->2, i24->3, i32->4)
-    out.extend_from_slice(&v.to_le_bytes()[0..n]);
+fn pushb(out: &mut Vec<u8>, value: i32, bits: u32) {
+    let byte_len = bits.div_ceil(8) as usize; // bytes per axis (i16->2, i24->3, i32->4)
+    out.extend_from_slice(&value.to_le_bytes()[0..byte_len]);
 }
 
-fn zigzag(v: i64) -> u64 {
-    ((v << 1) ^ (v >> 63)).cast_unsigned()
+fn zigzag(value: i64) -> u64 {
+    ((value << 1) ^ (value >> 63)).cast_unsigned()
 }
-fn put_varint(out: &mut Vec<u8>, mut v: u64) {
+fn put_varint(out: &mut Vec<u8>, mut value: u64) {
     loop {
-        let b = (v & 0x7f) as u8;
-        v >>= 7;
-        if v == 0 {
-            out.push(b);
+        let byte = (value & 0x7f) as u8;
+        value >>= 7;
+        if value == 0 {
+            out.push(byte);
             break;
         }
-        out.push(b | 0x80);
+        out.push(byte | 0x80);
     }
 }
 
@@ -64,35 +64,39 @@ impl Topology {
     /// Reconstruct feature geometry from (possibly re-quantized) arc coords.
     #[must_use]
     pub fn reconstruct(&self, feats: &[Feat], arc_coords: &[Vec<(f64, f64)>]) -> Vec<Feat> {
-        let ring_coords = |ring_idx: usize| -> Vec<(f64, f64)> {
-            let mut c: Vec<(f64, f64)> = Vec::new();
-            for &r in &self.ring_refs[ring_idx] {
-                let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
-                let mut a = arc_coords[id].clone();
-                if rev {
-                    a.reverse();
+        let ring_coords = |ring_index: usize| -> Vec<(f64, f64)> {
+            let mut coords: Vec<(f64, f64)> = Vec::new();
+            for &arc_ref in &self.ring_refs[ring_index] {
+                let (id, reversed) = ((arc_ref >> 1) as usize, (arc_ref & 1) == 1);
+                let mut arc = arc_coords[id].clone();
+                if reversed {
+                    arc.reverse();
                 }
-                if c.last() == a.first() {
-                    a.remove(0);
+                if coords.last() == arc.first() {
+                    arc.remove(0);
                 }
-                c.extend(a);
+                coords.extend(arc);
             }
-            if c.last() == c.first() && c.len() > 1 {
-                c.pop();
+            if coords.last() == coords.first() && coords.len() > 1 {
+                coords.pop();
             }
-            c
+            coords
         };
         feats
             .iter()
             .enumerate()
-            .map(|(fi, f)| {
-                let polys = self.structure[fi]
+            .map(|(feature_index, feature)| {
+                let polys = self.structure[feature_index]
                     .iter()
-                    .map(|poly| poly.iter().map(|&ri| ring_coords(ri)).collect())
+                    .map(|poly| {
+                        poly.iter()
+                            .map(|&ring_index| ring_coords(ring_index))
+                            .collect()
+                    })
                     .collect();
                 Feat {
-                    offset: f.offset,
-                    tzid: f.tzid.clone(),
+                    offset: feature.offset,
+                    tzid: feature.tzid.clone(),
                     polys,
                 }
             })
@@ -155,83 +159,98 @@ fn build_topology_impl(
     edge_weight: Option<&EdgeWeightFn<'_>>,
 ) -> Topology {
     // 1. dedup vertices (bit-exact) -> ids + coords
-    let mut vid: HashMap<(u64, u64), VId> = HashMap::new();
-    let mut vcoord: Vec<(f64, f64)> = Vec::new();
-    let get =
-        |x: f64, y: f64, vid: &mut HashMap<(u64, u64), VId>, vc: &mut Vec<(f64, f64)>| -> VId {
-            *vid.entry((x.to_bits(), y.to_bits())).or_insert_with(|| {
-                vc.push((x, y));
-                VId::try_from(vc.len() - 1).expect("vertex id fits u32")
+    let mut vertex_ids: HashMap<(u64, u64), VId> = HashMap::new();
+    let mut vertex_coords: Vec<(f64, f64)> = Vec::new();
+    let intern_vertex = |x: f64,
+                         y: f64,
+                         vertex_ids: &mut HashMap<(u64, u64), VId>,
+                         vertex_coords: &mut Vec<(f64, f64)>|
+     -> VId {
+        *vertex_ids
+            .entry((x.to_bits(), y.to_bits()))
+            .or_insert_with(|| {
+                vertex_coords.push((x, y));
+                VId::try_from(vertex_coords.len() - 1).expect("vertex id fits u32")
             })
-        };
+    };
     let mut rings: Vec<Vec<VId>> = Vec::new();
     let mut structure: Vec<Vec<Vec<usize>>> = Vec::new();
-    for f in feats {
-        let mut fpolys = Vec::new();
-        for p in &f.polys {
-            let mut pr = Vec::new();
-            for r in p {
-                let seq: Vec<VId> = r
+    for feature in feats {
+        let mut feature_polys = Vec::new();
+        for poly in &feature.polys {
+            let mut poly_rings = Vec::new();
+            for ring in poly {
+                let vertex_seq: Vec<VId> = ring
                     .iter()
-                    .map(|&(x, y)| get(x, y, &mut vid, &mut vcoord))
+                    .map(|&(x, y)| intern_vertex(x, y, &mut vertex_ids, &mut vertex_coords))
                     .collect();
-                pr.push(rings.len());
-                rings.push(seq);
+                poly_rings.push(rings.len());
+                rings.push(vertex_seq);
             }
-            fpolys.push(pr);
+            feature_polys.push(poly_rings);
         }
-        structure.push(fpolys);
+        structure.push(feature_polys);
     }
 
     // 2. owner signature per undirected edge
     let mut owners: HashMap<(VId, VId), Vec<u32>> = HashMap::new();
-    for (ri, seq) in rings.iter().enumerate() {
-        let n = seq.len();
-        for i in 0..n {
-            let (a, b) = (seq[i], seq[(i + 1) % n]);
+    for (ring_index, vertex_seq) in rings.iter().enumerate() {
+        let len = vertex_seq.len();
+        for i in 0..len {
+            let (a, b) = (vertex_seq[i], vertex_seq[(i + 1) % len]);
             let key = if a < b { (a, b) } else { (b, a) };
-            let e = owners.entry(key).or_default();
-            let ri32 = u32::try_from(ri).expect("ring id fits u32");
-            if e.last() != Some(&ri32) {
-                e.push(ri32);
+            let entry = owners.entry(key).or_default();
+            let ring_index_u32 = u32::try_from(ring_index).expect("ring id fits u32");
+            if entry.last() != Some(&ring_index_u32) {
+                entry.push(ring_index_u32);
             }
         }
     }
-    let mut sig_ids: HashMap<Vec<u32>, u32> = HashMap::new();
-    let mut edge_sig: HashMap<(VId, VId), u32> = HashMap::new();
-    for (k, v) in &owners {
-        let mut s = v.clone();
-        s.sort_unstable();
-        s.dedup();
-        let next = u32::try_from(sig_ids.len()).expect("arc id fits u32");
-        let id = *sig_ids.entry(s).or_insert(next);
-        edge_sig.insert(*k, id);
+    let mut signature_ids: HashMap<Vec<u32>, u32> = HashMap::new();
+    let mut edge_signature: HashMap<(VId, VId), u32> = HashMap::new();
+    for (edge, owner_rings) in &owners {
+        let mut sorted_owners = owner_rings.clone();
+        sorted_owners.sort_unstable();
+        sorted_owners.dedup();
+        let next = u32::try_from(signature_ids.len()).expect("arc id fits u32");
+        let id = *signature_ids.entry(sorted_owners).or_insert(next);
+        edge_signature.insert(*edge, id);
     }
-    let sig = |a: VId, b: VId| -> u32 { edge_sig[&if a < b { (a, b) } else { (b, a) }] };
+    let signature =
+        |a: VId, b: VId| -> u32 { edge_signature[&if a < b { (a, b) } else { (b, a) }] };
 
-    // 3. cut rings into arcs at junctions; dedup arcs (seq or reverse)
+    // 3. cut rings into arcs at junctions; dedup arcs (sequence or reverse)
     let mut arc_ids: HashMap<Vec<VId>, u32> = HashMap::new();
     let mut arcs: Vec<Vec<VId>> = Vec::new();
     let mut ring_refs: Vec<Vec<u32>> = vec![Vec::new(); rings.len()];
-    let intern = |seq: Vec<VId>, ai: &mut HashMap<Vec<VId>, u32>, av: &mut Vec<Vec<VId>>| -> u32 {
-        let mut rev = seq.clone();
-        rev.reverse();
-        let (canon, dir) = if seq <= rev { (seq, 0u32) } else { (rev, 1u32) };
-        let next = u32::try_from(av.len()).expect("arc id fits u32");
-        let id = *ai.entry(canon.clone()).or_insert_with(|| {
-            av.push(canon);
+    let intern = |vertex_seq: Vec<VId>,
+                  arc_ids: &mut HashMap<Vec<VId>, u32>,
+                  arcs: &mut Vec<Vec<VId>>|
+     -> u32 {
+        let mut reversed = vertex_seq.clone();
+        reversed.reverse();
+        let (canonical, direction) = if vertex_seq <= reversed {
+            (vertex_seq, 0u32)
+        } else {
+            (reversed, 1u32)
+        };
+        let next = u32::try_from(arcs.len()).expect("arc id fits u32");
+        let id = *arc_ids.entry(canonical.clone()).or_insert_with(|| {
+            arcs.push(canonical);
             next
         });
-        (id << 1) | dir
+        (id << 1) | direction
     };
-    for (ri, seq) in rings.iter().enumerate() {
-        let n = seq.len();
-        if n == 0 {
+    for (ring_index, vertex_seq) in rings.iter().enumerate() {
+        let len = vertex_seq.len();
+        if len == 0 {
             continue;
         }
         let mut cuts: Vec<usize> = Vec::new();
-        for i in 0..n {
-            if sig(seq[(i + n - 1) % n], seq[i]) != sig(seq[i], seq[(i + 1) % n]) {
+        for i in 0..len {
+            if signature(vertex_seq[(i + len - 1) % len], vertex_seq[i])
+                != signature(vertex_seq[i], vertex_seq[(i + 1) % len])
+            {
                 cuts.push(i);
             }
         }
@@ -246,39 +265,43 @@ fn build_topology_impl(
             // can differ — picking only the forward one would make the two
             // windings disagree). intern() gets the ring's own-winding walk
             // so its direction bit still preserves ring orientation.
-            let m = *seq.iter().min().unwrap();
+            let min_vertex = *vertex_seq.iter().min().unwrap();
             let mut best: Option<(Vec<VId>, bool)> = None; // (closed walk, forward here?)
-            for i in (0..n).filter(|&i| seq[i] == m) {
-                let fwd: Vec<VId> = (0..=n).map(|k| seq[(i + k) % n]).collect();
-                let bwd: Vec<VId> = (0..=n).map(|k| seq[(i + n - k) % n]).collect();
-                for (cand, f) in [(fwd, true), (bwd, false)] {
-                    if best.as_ref().is_none_or(|(b, _)| cand < *b) {
-                        best = Some((cand, f));
+            for i in (0..len).filter(|&i| vertex_seq[i] == min_vertex) {
+                let forward_walk: Vec<VId> = (0..=len).map(|k| vertex_seq[(i + k) % len]).collect();
+                let backward_walk: Vec<VId> =
+                    (0..=len).map(|k| vertex_seq[(i + len - k) % len]).collect();
+                for (candidate, is_forward) in [(forward_walk, true), (backward_walk, false)] {
+                    if best
+                        .as_ref()
+                        .is_none_or(|(best_walk, _)| candidate < *best_walk)
+                    {
+                        best = Some((candidate, is_forward));
                     }
                 }
             }
-            let (canon, forward) = best.unwrap();
-            let a = if forward {
-                canon
+            let (canonical, forward) = best.unwrap();
+            let walk = if forward {
+                canonical
             } else {
-                let mut r = canon;
-                r.reverse();
-                r
+                let mut reversed = canonical;
+                reversed.reverse();
+                reversed
             };
-            ring_refs[ri].push(intern(a, &mut arc_ids, &mut arcs));
+            ring_refs[ring_index].push(intern(walk, &mut arc_ids, &mut arcs));
         } else {
             for j in 0..cuts.len() {
                 let (start, end) = (cuts[j], cuts[(j + 1) % cuts.len()]);
-                let mut a = Vec::new();
+                let mut arc_seq = Vec::new();
                 let mut k = start;
                 loop {
-                    a.push(seq[k]);
+                    arc_seq.push(vertex_seq[k]);
                     if k == end {
                         break;
                     }
-                    k = (k + 1) % n;
+                    k = (k + 1) % len;
                 }
-                ring_refs[ri].push(intern(a, &mut arc_ids, &mut arcs));
+                ring_refs[ring_index].push(intern(arc_seq, &mut arc_ids, &mut arcs));
             }
         }
     }
@@ -286,20 +309,30 @@ fn build_topology_impl(
     // 4. arc coords (+ topology-aware simplification, each arc once)
     let arc_coords: Vec<Arc> = arcs
         .iter()
-        .map(|a| {
-            let c: Vec<(f64, f64)> = a.iter().map(|&v| vcoord[v as usize]).collect();
+        .map(|arc| {
+            let coords: Vec<(f64, f64)> = arc
+                .iter()
+                .map(|&vertex_id| vertex_coords[vertex_id as usize])
+                .collect();
             match edge_weight {
-                None => simplify(algo, &c),
-                Some(f) => {
-                    let ew: Vec<f64> = c.windows(2).map(|p| f(p[0], p[1])).collect();
-                    let w: Vec<f64> = (0..c.len())
+                None => simplify(algo, &coords),
+                Some(weight_fn) => {
+                    let edge_weights: Vec<f64> = coords
+                        .windows(2)
+                        .map(|pair| weight_fn(pair[0], pair[1]))
+                        .collect();
+                    let vertex_weights: Vec<f64> = (0..coords.len())
                         .map(|i| {
-                            let left = if i > 0 { ew[i - 1] } else { f64::INFINITY };
-                            let right = ew.get(i).copied().unwrap_or(f64::INFINITY);
+                            let left = if i > 0 {
+                                edge_weights[i - 1]
+                            } else {
+                                f64::INFINITY
+                            };
+                            let right = edge_weights.get(i).copied().unwrap_or(f64::INFINITY);
                             left.min(right).min(1.0) // refine-only, endpoints kept anyway
                         })
                         .collect();
-                    utz_simplify::simplify_weighted(algo, &c, &w)
+                    utz_simplify::simplify_weighted(algo, &coords, &vertex_weights)
                 }
             }
         })
@@ -337,109 +370,112 @@ pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: b
     // 5. serialize
     let total_refs: usize = ring_refs.iter().map(std::vec::Vec::len).sum();
     let mut pool: Vec<String> = Vec::new();
-    let mut sidx: HashMap<String, u16> = HashMap::new();
-    for f in feats {
-        if let Some(t) = &f.tzid {
-            if !sidx.contains_key(t) {
-                sidx.insert(
-                    t.clone(),
+    let mut tzid_indices: HashMap<String, u16> = HashMap::new();
+    for feature in feats {
+        if let Some(tzid) = &feature.tzid {
+            if !tzid_indices.contains_key(tzid) {
+                tzid_indices.insert(
+                    tzid.clone(),
                     u16::try_from(pool.len()).expect("tzid pool index fits u16"),
                 );
-                pool.push(t.clone());
+                pool.push(tzid.clone());
             }
         }
     }
-    let mut o = Vec::new();
-    o.extend_from_slice(&0x4E45_4442u32.to_le_bytes());
-    o.extend_from_slice(
+    let mut out = Vec::new();
+    out.extend_from_slice(&0x4E45_4442u32.to_le_bytes());
+    out.extend_from_slice(
         &u32::try_from(feats.len())
             .expect("feature count fits u32")
             .to_le_bytes(),
     );
-    o.extend_from_slice(
+    out.extend_from_slice(
         &u16::try_from(pool.len())
             .expect("tzid pool count fits u16")
             .to_le_bytes(),
     );
-    for s in &pool {
-        o.extend_from_slice(
-            &u16::try_from(s.len())
+    for tzid in &pool {
+        out.extend_from_slice(
+            &u16::try_from(tzid.len())
                 .expect("tzid length fits u16")
                 .to_le_bytes(),
         );
-        o.extend_from_slice(s.as_bytes());
+        out.extend_from_slice(tzid.as_bytes());
     }
-    o.extend_from_slice(
+    out.extend_from_slice(
         &u32::try_from(arc_coords.len())
             .expect("arc count fits u32")
             .to_le_bytes(),
     );
-    for a in arc_coords {
-        put_varint(&mut o, a.len() as u64);
-        let (mut px, mut py) = (0i64, 0i64);
-        for (i, &(lon, lat)) in a.iter().enumerate() {
-            let (cx, cy) = (i64::from(q_lon(lon, qmax)), i64::from(q_lat(lat, qmax)));
+    for arc in arc_coords {
+        put_varint(&mut out, arc.len() as u64);
+        let (mut previous_x, mut previous_y) = (0i64, 0i64);
+        for (i, &(lon, lat)) in arc.iter().enumerate() {
+            let (current_x, current_y) = (i64::from(q_lon(lon, qmax)), i64::from(q_lat(lat, qmax)));
             if abs_fixed || i == 0 {
                 pushb(
-                    &mut o,
-                    i32::try_from(cx).expect("quantized coord fits i32"),
+                    &mut out,
+                    i32::try_from(current_x).expect("quantized coord fits i32"),
                     qbits,
                 );
                 pushb(
-                    &mut o,
-                    i32::try_from(cy).expect("quantized coord fits i32"),
+                    &mut out,
+                    i32::try_from(current_y).expect("quantized coord fits i32"),
                     qbits,
                 );
             } else {
-                put_varint(&mut o, zigzag(cx - px));
-                put_varint(&mut o, zigzag(cy - py));
+                put_varint(&mut out, zigzag(current_x - previous_x));
+                put_varint(&mut out, zigzag(current_y - previous_y));
             }
-            px = cx;
-            py = cy;
+            previous_x = current_x;
+            previous_y = current_y;
         }
     }
-    for (fi, f) in feats.iter().enumerate() {
+    for (feature_index, feature) in feats.iter().enumerate() {
         #[expect(clippy::cast_possible_truncation, reason = "f32 header field")]
-        let offset32 = f.offset as f32;
-        o.extend_from_slice(&offset32.to_le_bytes());
-        let ti = f.tzid.as_ref().map_or(0xFFFF, |t| sidx[t]);
-        o.extend_from_slice(&ti.to_le_bytes());
-        let (mut nx, mut ny, mut xx, mut xy) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
-        for p in &f.polys {
-            for r in p {
-                for &(lon, lat) in r {
-                    let (a, b) = (q_lon(lon, qmax), q_lat(lat, qmax));
-                    nx = nx.min(a);
-                    ny = ny.min(b);
-                    xx = xx.max(a);
-                    xy = xy.max(b);
+        let offset32 = feature.offset as f32;
+        out.extend_from_slice(&offset32.to_le_bytes());
+        let tzid_index = feature
+            .tzid
+            .as_ref()
+            .map_or(0xFFFF, |tzid| tzid_indices[tzid]);
+        out.extend_from_slice(&tzid_index.to_le_bytes());
+        let (mut min_x, mut min_y, mut max_x, mut max_y) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+        for poly in &feature.polys {
+            for ring in poly {
+                for &(lon, lat) in ring {
+                    let (x, y) = (q_lon(lon, qmax), q_lat(lat, qmax));
+                    min_x = min_x.min(x);
+                    min_y = min_y.min(y);
+                    max_x = max_x.max(x);
+                    max_y = max_y.max(y);
                 }
             }
         }
-        for v in [nx, ny, xx, xy] {
-            pushb(&mut o, v, qbits);
+        for value in [min_x, min_y, max_x, max_y] {
+            pushb(&mut out, value, qbits);
         }
-        o.extend_from_slice(
-            &u16::try_from(structure[fi].len())
+        out.extend_from_slice(
+            &u16::try_from(structure[feature_index].len())
                 .expect("poly count fits u16")
                 .to_le_bytes(),
         );
-        for poly in &structure[fi] {
-            o.extend_from_slice(
+        for poly in &structure[feature_index] {
+            out.extend_from_slice(
                 &u16::try_from(poly.len())
                     .expect("ring count fits u16")
                     .to_le_bytes(),
             );
-            for &ring_idx in poly {
-                put_varint(&mut o, ring_refs[ring_idx].len() as u64);
-                for &r in &ring_refs[ring_idx] {
-                    put_varint(&mut o, u64::from(r));
+            for &ring_index in poly {
+                put_varint(&mut out, ring_refs[ring_index].len() as u64);
+                for &arc_ref in &ring_refs[ring_index] {
+                    put_varint(&mut out, u64::from(arc_ref));
                 }
             }
         }
     }
     TopoOut {
-        bytes: o,
+        bytes: out,
         arcs: arc_coords.len(),
         ring_refs: total_refs,
         verts,
@@ -468,12 +504,12 @@ mod tests {
         left.push((0.0, 1.0));
         let mut right: Ring = vec![(2.0, 0.0), (2.0, 1.0)];
         right.extend(shared.iter().rev()); // down the shared border
-        let f = |r: Ring| Feat {
+        let make_feature = |ring: Ring| Feat {
             offset: 0.0,
             tzid: None,
-            polys: vec![vec![r] as Poly],
+            polys: vec![vec![ring] as Poly],
         };
-        vec![f(left), f(right)]
+        vec![make_feature(left), make_feature(right)]
     }
 
     /// An island whose outline is also the hole of the zone around it: the
@@ -498,30 +534,30 @@ mod tests {
                 polys: vec![vec![sea, hole] as Poly],
             },
         ];
-        let t = build_topology_algo(&feats, Simplify::Rdp { eps: 0.0 });
+        let topology = build_topology_algo(&feats, Simplify::Rdp { eps: 0.0 });
         // sea outline + island ring shared once = 2 arcs, not 3
         assert_eq!(
-            t.arc_coords.len(),
+            topology.arc_coords.len(),
             2,
             "island ring duplicated: {:?}",
-            t.arc_coords
+            topology.arc_coords
         );
         // reconstruction must still round-trip both features' ring vertex sets
-        let rec = t.reconstruct(&feats, &t.arc_coords);
-        for (f, r) in rec.iter().zip(&feats) {
-            for (p, q) in f.polys.iter().zip(&r.polys) {
-                for (ring, orig) in p.iter().zip(q) {
-                    let mut a: Vec<_> = ring
+        let reconstructed = topology.reconstruct(&feats, &topology.arc_coords);
+        for (feature, original) in reconstructed.iter().zip(&feats) {
+            for (polys, original_polys) in feature.polys.iter().zip(&original.polys) {
+                for (ring, original_ring) in polys.iter().zip(original_polys) {
+                    let mut actual: Vec<_> = ring
                         .iter()
                         .map(|&(x, y)| (x.to_bits(), y.to_bits()))
                         .collect();
-                    let mut b: Vec<_> = orig
+                    let mut expected: Vec<_> = original_ring
                         .iter()
                         .map(|&(x, y)| (x.to_bits(), y.to_bits()))
                         .collect();
-                    a.sort_unstable();
-                    b.sort_unstable();
-                    assert_eq!(a, b);
+                    actual.sort_unstable();
+                    expected.sort_unstable();
+                    assert_eq!(actual, expected);
                 }
             }
         }
@@ -562,37 +598,37 @@ mod tests {
                 polys: vec![vec![eight_rev] as Poly],
             },
         ];
-        let t = build_topology_algo(&feats, Simplify::Rdp { eps: 0.0 });
+        let topology = build_topology_algo(&feats, Simplify::Rdp { eps: 0.0 });
         assert_eq!(
-            t.arc_coords.len(),
+            topology.arc_coords.len(),
             1,
             "pinched ring duplicated: {:?}",
-            t.arc_coords
+            topology.arc_coords
         );
         // both rings still round-trip their vertex multiset
-        let rec = t.reconstruct(&feats, &t.arc_coords);
-        for (f, r) in rec.iter().zip(&feats) {
-            let mut a: Vec<_> = f.polys[0][0]
+        let reconstructed = topology.reconstruct(&feats, &topology.arc_coords);
+        for (feature, original) in reconstructed.iter().zip(&feats) {
+            let mut actual: Vec<_> = feature.polys[0][0]
                 .iter()
                 .map(|&(x, y)| (x.to_bits(), y.to_bits()))
                 .collect();
-            let mut b: Vec<_> = r.polys[0][0]
+            let mut expected: Vec<_> = original.polys[0][0]
                 .iter()
                 .map(|&(x, y)| (x.to_bits(), y.to_bits()))
                 .collect();
-            a.sort_unstable();
-            b.sort_unstable();
-            assert_eq!(a, b);
+            actual.sort_unstable();
+            expected.sort_unstable();
+            assert_eq!(actual, expected);
         }
     }
 
     #[test]
     fn weighted_all_ones_matches_unweighted() {
         let feats = two_squares();
-        let t0 = build_topology_algo(&feats, Simplify::Rdp { eps: 0.01 });
-        let t1 = build_topology_weighted(&feats, Simplify::Rdp { eps: 0.01 }, &|_, _| 1.0);
-        assert_eq!(t0.arc_coords, t1.arc_coords);
-        assert_eq!(t0.ring_refs, t1.ring_refs);
+        let unweighted = build_topology_algo(&feats, Simplify::Rdp { eps: 0.01 });
+        let weighted = build_topology_weighted(&feats, Simplify::Rdp { eps: 0.01 }, &|_, _| 1.0);
+        assert_eq!(unweighted.arc_coords, weighted.arc_coords);
+        assert_eq!(unweighted.ring_refs, weighted.ring_refs);
     }
 
     #[test]
@@ -608,20 +644,20 @@ mod tests {
                 1.0
             }
         };
-        let t = build_topology_weighted(&feats, Simplify::Rdp { eps: 0.01 }, &weight);
-        let rec = t.reconstruct(&feats, &t.arc_coords);
-        for f in &rec {
-            let ring = &f.polys[0][0];
+        let topology = build_topology_weighted(&feats, Simplify::Rdp { eps: 0.01 }, &weight);
+        let reconstructed = topology.reconstruct(&feats, &topology.arc_coords);
+        for feature in &reconstructed {
+            let ring = &feature.polys[0][0];
             // the weighted stretch survives in BOTH zones (arc shared once)…
             assert!(ring.contains(&kept_bump), "{ring:?}");
             // …and the uniform-weight stretches still simplify away
             assert!(!ring.contains(&dropped_bump), "{ring:?}");
         }
         // unweighted at the same eps drops every bump
-        let rec0 = {
-            let t0 = build_topology_algo(&feats, Simplify::Rdp { eps: 0.01 });
-            t0.reconstruct(&feats, &t0.arc_coords)
+        let reconstructed_unweighted = {
+            let unweighted = build_topology_algo(&feats, Simplify::Rdp { eps: 0.01 });
+            unweighted.reconstruct(&feats, &unweighted.arc_coords)
         };
-        assert!(!rec0[0].polys[0][0].contains(&kept_bump));
+        assert!(!reconstructed_unweighted[0].polys[0][0].contains(&kept_bump));
     }
 }

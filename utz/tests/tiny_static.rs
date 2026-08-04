@@ -29,12 +29,12 @@ fn garbage_bytes_report_precise_errors() {
 
 #[test]
 fn new_borrows_the_tiny_static_preset() {
-    let f = utz::Finder::new().expect("tiny-static asset parses");
+    let finder = utz::Finder::new().expect("tiny-static asset parses");
     assert!(
-        !f.tzbb_release().is_empty(),
+        !finder.tzbb_release().is_empty(),
         "header carries a TZBB release tag"
     );
-    let london = f
+    let london = finder
         .lookup(utz::Position {
             lon: -0.1276,
             lat: 51.5072,
@@ -42,7 +42,7 @@ fn new_borrows_the_tiny_static_preset() {
         .expect("position in range");
     assert!(london.is_some(), "accurate lookup resolves");
     assert_eq!(
-        f.lookup_coarse(utz::Position {
+        finder.lookup_coarse(utz::Position {
             lon: -0.1276,
             lat: 51.5072
         }),

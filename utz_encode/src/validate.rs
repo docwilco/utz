@@ -42,16 +42,16 @@ pub struct Bad {
 /// overlaps, self-touches, and degenerate rings.
 #[must_use]
 pub fn measure(rings: impl Iterator<Item = Ring<i32>>) -> Bad {
-    let mut b = Bad::default();
-    for (ri, c) in rings.enumerate() {
-        b.verts += c.len();
-        if clean::ring_degenerate(&c) {
-            b.degenerate += 1;
+    let mut bad = Bad::default();
+    for (ring_index, coords) in rings.enumerate() {
+        bad.verts += coords.len();
+        if clean::ring_degenerate(&coords) {
+            bad.degenerate += 1;
             continue;
         }
-        ring_bad(ri, &c, &mut b);
+        ring_bad(ring_index, &coords, &mut bad);
     }
-    b
+    bad
 }
 
 /// A surviving defect of one feature's geometry, in degrees: what the
@@ -70,38 +70,50 @@ pub struct Problem {
 /// shared border is reported once per owning ring (dedupe by coordinates for
 /// display).
 #[must_use]
-pub fn find_problems(t: &Topology, arc_coords: &[Vec<(f64, f64)>], qbits: u32) -> Vec<Problem> {
+pub fn find_problems(
+    topology: &Topology,
+    arc_coords: &[Vec<(f64, f64)>],
+    qbits: u32,
+) -> Vec<Problem> {
     let qmax = crate::qmax_for(qbits);
-    let mut cst = CleanStats::default();
+    let mut clean_stats = CleanStats::default();
     let quantize = |&(lon, lat): &(f64, f64)| (crate::q_lon(lon, qmax), crate::q_lat(lat, qmax));
     let arcs_q: Vec<Arc<i32>> = arc_coords
         .iter()
-        .map(|a| {
-            let mut q: Vec<(i32, i32)> = a.iter().map(quantize).collect();
-            let closed = a.len() > 1 && a.first() == a.last();
-            clean::clean_arc(&mut q, closed, &mut cst);
-            q
+        .map(|arc| {
+            let mut quantized: Vec<(i32, i32)> = arc.iter().map(quantize).collect();
+            let closed = arc.len() > 1 && arc.first() == arc.last();
+            clean::clean_arc(&mut quantized, closed, &mut clean_stats);
+            quantized
         })
         .collect();
-    let (ring_refs, structure, arcs_q) =
-        clean::drop_degenerate_rings(&t.ring_refs, &t.structure, arcs_q, &mut cst);
+    let (ring_refs, structure, arcs_q) = clean::drop_degenerate_rings(
+        &topology.ring_refs,
+        &topology.structure,
+        arcs_q,
+        &mut clean_stats,
+    );
 
     let mut owner = vec![usize::MAX; ring_refs.len()];
-    for (fi, f) in structure.iter().enumerate() {
-        for poly in f {
-            for &ri in poly {
-                owner[ri] = fi;
+    for (feature_index, feature) in structure.iter().enumerate() {
+        for poly in feature {
+            for &ring_index in poly {
+                owner[ring_index] = feature_index;
             }
         }
     }
-    let bad = measure(ring_refs.iter().map(|r| clean::ring_coords_q(r, &arcs_q)));
+    let bad = measure(
+        ring_refs
+            .iter()
+            .map(|refs| clean::ring_coords_q(refs, &arcs_q)),
+    );
     bad.locs
         .iter()
-        .map(|l| Problem {
-            lon: l.x / qmax * 180.0,
-            lat: l.y / qmax * 90.0,
-            kind: l.kind,
-            feat: owner[l.ring],
+        .map(|location| Problem {
+            lon: location.x / qmax * 180.0,
+            lat: location.y / qmax * 90.0,
+            kind: location.kind,
+            feat: owner[location.ring],
         })
         .collect()
 }
@@ -112,29 +124,29 @@ pub fn find_problems(t: &Topology, arc_coords: &[Vec<(f64, f64)>], qbits: u32) -
 ///
 /// # Panics
 /// If a ring has more than `u32::MAX` segments.
-pub fn ring_bad(ring_idx: usize, ring: &[(i32, i32)], bad: &mut Bad) {
+pub fn ring_bad(ring_index: usize, ring: &[(i32, i32)], bad: &mut Bad) {
     let len = ring.len();
     if len < 4 {
         return;
     }
-    let seg = |idx: usize| (ring[idx], ring[(idx + 1) % len]);
-    let min_x = |idx: usize| {
-        let (a, b) = seg(idx);
+    let segment = |index: usize| (ring[index], ring[(index + 1) % len]);
+    let min_x = |index: usize| {
+        let (a, b) = segment(index);
         a.0.min(b.0)
     };
     let mut order: Vec<u32> = (0..u32::try_from(len).expect("segment count fits u32")).collect();
-    order.sort_unstable_by_key(|&idx| min_x(idx as usize));
-    for sweep_pos in 0..len {
-        let seg_a = order[sweep_pos] as usize;
-        let (p1, p2) = seg(seg_a);
+    order.sort_unstable_by_key(|&index| min_x(index as usize));
+    for sweep_position in 0..len {
+        let segment_a = order[sweep_position] as usize;
+        let (p1, p2) = segment(segment_a);
         let (max_x, min_y, max_y) = (p1.0.max(p2.0), p1.1.min(p2.1), p1.1.max(p2.1));
-        for &other in &order[sweep_pos + 1..] {
-            let seg_b = other as usize;
-            let (q1, q2) = seg(seg_b);
+        for &other in &order[sweep_position + 1..] {
+            let segment_b = other as usize;
+            let (q1, q2) = segment(segment_b);
             if q1.0.min(q2.0) > max_x {
                 break;
             }
-            if seg_a.abs_diff(seg_b) == 1 || seg_a.abs_diff(seg_b) == len - 1 {
+            if segment_a.abs_diff(segment_b) == 1 || segment_a.abs_diff(segment_b) == len - 1 {
                 continue; // adjacent segments share a vertex by construction
             }
             if q1.1.max(q2.1) < min_y || q1.1.min(q2.1) > max_y {
@@ -145,7 +157,7 @@ pub fn ring_bad(ring_idx: usize, ring: &[(i32, i32)], bad: &mut Bad) {
                     bad.crossings += 1;
                     let (x, y) = cross_point((p1, p2), (q1, q2));
                     bad.locs.push(Loc {
-                        ring: ring_idx,
+                        ring: ring_index,
                         kind: Kind::Cross,
                         x,
                         y,
@@ -155,14 +167,14 @@ pub fn ring_bad(ring_idx: usize, ring: &[(i32, i32)], bad: &mut Bad) {
                     bad.overlaps += 1;
                     // midpoint of the shared stretch: average the two middle
                     // endpoints along the sort order
-                    let mut pts = [p1, p2, q1, q2];
-                    pts.sort_unstable();
+                    let mut points = [p1, p2, q1, q2];
+                    points.sort_unstable();
                     let (x, y) = (
-                        f64::midpoint(f64::from(pts[1].0), f64::from(pts[2].0)),
-                        f64::midpoint(f64::from(pts[1].1), f64::from(pts[2].1)),
+                        f64::midpoint(f64::from(points[1].0), f64::from(points[2].0)),
+                        f64::midpoint(f64::from(points[1].1), f64::from(points[2].1)),
                     );
                     bad.locs.push(Loc {
-                        ring: ring_idx,
+                        ring: ring_index,
                         kind: Kind::Overlap,
                         x,
                         y,
@@ -183,8 +195,8 @@ fn cross_point(
 ) -> (f64, f64) {
     let (dx, dy) = (f64::from(p2.0 - p1.0), f64::from(p2.1 - p1.1));
     let (ex, ey) = (f64::from(q2.0 - q1.0), f64::from(q2.1 - q1.1));
-    let denom = dx * ey - dy * ex;
-    let t = (f64::from(q1.0 - p1.0) * ey - f64::from(q1.1 - p1.1) * ex) / denom;
+    let denominator = dx * ey - dy * ex;
+    let t = (f64::from(q1.0 - p1.0) * ey - f64::from(q1.1 - p1.1) * ex) / denominator;
     (f64::from(p1.0) + t * dx, f64::from(p1.1) + t * dy)
 }
 
@@ -200,8 +212,8 @@ fn orient(a: (i32, i32), b: (i32, i32), c: (i32, i32)) -> i128 {
         - (i128::from(b.1) - i128::from(a.1)) * (i128::from(c.0) - i128::from(a.0))
 }
 
-fn sgn(v: i128) -> i8 {
-    i8::from(v > 0) - i8::from(v < 0)
+fn sgn(value: i128) -> i8 {
+    i8::from(value > 0) - i8::from(value < 0)
 }
 
 fn in_bbox(p: (i32, i32), a: (i32, i32), b: (i32, i32)) -> bool {
@@ -214,9 +226,15 @@ fn seg_class((p1, p2): ((i32, i32), (i32, i32)), (q1, q2): ((i32, i32), (i32, i3
     if o1 == 0 && o2 == 0 && o3 == 0 && o4 == 0 {
         // collinear: project on the dominant axis and compare 1D ranges
         let flat = p1.0 == p2.0 && q1.0 == q2.0;
-        let val = |p: (i32, i32)| if flat { p.1 } else { p.0 };
-        let (a0, a1) = (val(p1).min(val(p2)), val(p1).max(val(p2)));
-        let (b0, b1) = (val(q1).min(val(q2)), val(q1).max(val(q2)));
+        let axis_value = |p: (i32, i32)| if flat { p.1 } else { p.0 };
+        let (a0, a1) = (
+            axis_value(p1).min(axis_value(p2)),
+            axis_value(p1).max(axis_value(p2)),
+        );
+        let (b0, b1) = (
+            axis_value(q1).min(axis_value(q2)),
+            axis_value(q1).max(axis_value(q2)),
+        );
         let (lo, hi) = (a0.max(b0), a1.min(b1));
         return match lo.cmp(&hi) {
             core::cmp::Ordering::Less => Class::Overlap,
@@ -246,19 +264,19 @@ mod tests {
     fn bowtie_ring_crosses_once() {
         // figure-8: segments (0,0)-(10,10) and (10,0)-(0,10) properly cross
         let ring = vec![(0, 0), (10, 10), (10, 0), (0, 10)];
-        let b = measure(vec![ring].into_iter());
-        assert_eq!(b.crossings, 1);
-        assert_eq!(b.locs.len(), 1);
-        let l = b.locs[0];
-        assert_eq!((l.x, l.y), (5.0, 5.0));
+        let bad = measure(vec![ring].into_iter());
+        assert_eq!(bad.crossings, 1);
+        assert_eq!(bad.locs.len(), 1);
+        let location = bad.locs[0];
+        assert_eq!((location.x, location.y), (5.0, 5.0));
     }
 
     #[test]
     fn square_ring_is_clean() {
         let ring = vec![(0, 0), (10, 0), (10, 10), (0, 10)];
-        let b = measure(vec![ring].into_iter());
+        let bad = measure(vec![ring].into_iter());
         assert_eq!(
-            (b.crossings, b.overlaps, b.touches, b.degenerate),
+            (bad.crossings, bad.overlaps, bad.touches, bad.degenerate),
             (0, 0, 0, 0)
         );
     }
@@ -268,19 +286,19 @@ mod tests {
         // one feature, one ring stored as a single closed arc, bowtie shape
         // big enough to survive i16 snapping (~0.005° cells)
         let arc: Vec<(f64, f64)> = vec![(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0)];
-        let t = Topology {
+        let topology = Topology {
             arc_coords: vec![arc.clone()],
             ring_refs: vec![vec![0 << 1]],
             structure: vec![vec![vec![0]]],
         };
-        let p = find_problems(&t, &t.arc_coords, 16);
-        assert_eq!(p.len(), 1);
-        assert_eq!(p[0].feat, 0);
-        assert!(matches!(p[0].kind, Kind::Cross));
+        let problems = find_problems(&topology, &topology.arc_coords, 16);
+        assert_eq!(problems.len(), 1);
+        assert_eq!(problems[0].feat, 0);
+        assert!(matches!(problems[0].kind, Kind::Cross));
         assert!(
-            (p[0].lon - 0.5).abs() < 0.01 && (p[0].lat - 0.5).abs() < 0.01,
+            (problems[0].lon - 0.5).abs() < 0.01 && (problems[0].lat - 0.5).abs() < 0.01,
             "{:?}",
-            p[0]
+            problems[0]
         );
     }
 }

@@ -26,29 +26,33 @@ use utz_encode::grid::{self, Order};
 /// Decode one arc (forward orientation) into (i32, i32) coords.
 fn arc_coords(payload: &[u8], header: &format::PayloadLayout, id: usize) -> Vec<(i32, i32)> {
     let coord_bytes = header.quant_bits.bytes();
-    let mut pos = header.arc_data + read_u32(payload, header.arc_offsets + id * 4) as usize;
-    let (vcount, after_vcount) = read_varint(payload, pos);
-    pos = after_vcount;
+    let mut position = header.arc_data + read_u32(payload, header.arc_offsets + id * 4) as usize;
+    let (vcount, after_vcount) = read_varint(payload, position);
+    position = after_vcount;
     let mut coords = Vec::with_capacity(usize::try_from(vcount).expect("vcount fits usize"));
     if header.geom == GeomEncoding::FixedWidthArcs {
         for _ in 0..vcount {
             coords.push((
-                read_fixed(payload, pos, header.quant_bits),
-                read_fixed(payload, pos + coord_bytes, header.quant_bits),
+                read_fixed(payload, position, header.quant_bits),
+                read_fixed(payload, position + coord_bytes, header.quant_bits),
             ));
-            pos += 2 * coord_bytes;
+            position += 2 * coord_bytes;
         }
         return coords;
     }
-    let mut qlon = i64::from(read_fixed(payload, pos, header.quant_bits));
-    let mut qlat = i64::from(read_fixed(payload, pos + coord_bytes, header.quant_bits));
-    pos += 2 * coord_bytes;
+    let mut qlon = i64::from(read_fixed(payload, position, header.quant_bits));
+    let mut qlat = i64::from(read_fixed(
+        payload,
+        position + coord_bytes,
+        header.quant_bits,
+    ));
+    position += 2 * coord_bytes;
     let to_i32 = |coord: i64| i32::try_from(coord).expect("quantized coord fits i32");
     coords.push((to_i32(qlon), to_i32(qlat)));
     for _ in 1..vcount {
-        let (dlon, after_dlon) = read_varint(payload, pos);
+        let (dlon, after_dlon) = read_varint(payload, position);
         let (dlat, after_dlat) = read_varint(payload, after_dlon);
-        pos = after_dlat;
+        position = after_dlat;
         qlon += unzigzag(dlon);
         qlat += unzigzag(dlat);
         coords.push((to_i32(qlon), to_i32(qlat)));
@@ -56,19 +60,20 @@ fn arc_coords(payload: &[u8], header: &format::PayloadLayout, id: usize) -> Vec<
     coords
 }
 
-/// Container → per-feature dequantized geometry (same dq as the encoder).
+/// Container → per-feature dequantized geometry (same dequantization as the
+/// encoder).
 fn load_feats(bytes: &[u8]) -> (format::PayloadLayout, Vec<Feat>) {
     let start = format::outer(bytes).expect("not a utz container");
-    let p = &bytes[start + format::PAYLOAD_HEADER_LEN..];
-    let h = format::parse(&bytes[start..]).unwrap();
+    let payload = &bytes[start + format::PAYLOAD_HEADER_LEN..];
+    let header = format::parse(&bytes[start..]).unwrap();
     assert_eq!(
-        h.codec,
+        header.codec,
         utz::Codec::Uncompressed,
         "need a codec-none container"
     );
     assert!(
         matches!(
-            h.geom,
+            header.geom,
             GeomEncoding::VarintArcs | GeomEncoding::FixedWidthArcs
         ),
         "arc-store containers only (geom 0/1)"
@@ -77,45 +82,49 @@ fn load_feats(bytes: &[u8]) -> (format::PayloadLayout, Vec<Feat>) {
         clippy::cast_precision_loss,
         reason = "qmax = 2^(bits-1)-1 < 2^31, exact in f64"
     )]
-    let qmax = ((1u64 << (h.quant_bits.bits() - 1)) - 1) as f64;
-    let dq = |v: i32, half: f64| f64::from(v) / qmax * half;
-    let mut feats: Vec<Feat> = (0..h.n_features)
+    let qmax = ((1u64 << (header.quant_bits.bits() - 1)) - 1) as f64;
+    let dequantize = |value: i32, half: f64| f64::from(value) / qmax * half;
+    let mut features: Vec<Feat> = (0..header.n_features)
         .map(|_| Feat {
             offset: 0.0,
             tzid: None,
             polys: Vec::new(),
         })
         .collect();
-    let fb = h.quant_bits.bytes();
-    for pid in 0..h.eager_polys as usize {
-        let fi = read_u16(p, h.parent + pid * 2) as usize;
-        let mut pos = h.ring_data + read_u32(p, h.poly_offsets + pid * 4) as usize;
-        pos += 4 * fb; // per-poly bbox (v5)
-        let nrings = read_u16(p, pos);
-        pos += 2;
+    let coord_bytes = header.quant_bits.bytes();
+    for pid in 0..header.eager_polys as usize {
+        let feature_index = read_u16(payload, header.parent + pid * 2) as usize;
+        let mut position =
+            header.ring_data + read_u32(payload, header.poly_offsets + pid * 4) as usize;
+        position += 4 * coord_bytes; // per-poly bbox (v5)
+        let nrings = read_u16(payload, position);
+        position += 2;
         let mut rings = Vec::with_capacity(nrings as usize);
         for _ in 0..nrings {
-            let (nrefs, mut p2) = read_varint(p, pos);
+            let (nrefs, mut ref_position) = read_varint(payload, position);
             let mut ring: Vec<(f64, f64)> = Vec::new();
             for _ in 0..nrefs {
-                let (r, p3) = read_varint(p, p2);
-                p2 = p3;
-                let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
-                let mut c = arc_coords(p, &h, id);
-                if rev {
-                    c.reverse();
+                let (arc_ref, next_position) = read_varint(payload, ref_position);
+                ref_position = next_position;
+                let (id, reversed) = ((arc_ref >> 1) as usize, (arc_ref & 1) == 1);
+                let mut arc = arc_coords(payload, &header, id);
+                if reversed {
+                    arc.reverse();
                 }
-                ring.extend(c.iter().map(|&(x, y)| (dq(x, 180.0), dq(y, 90.0))));
+                ring.extend(
+                    arc.iter()
+                        .map(|&(x, y)| (dequantize(x, 180.0), dequantize(y, 90.0))),
+                );
             }
-            pos = p2;
+            position = ref_position;
             if ring.len() > 1 && ring.first() == ring.last() {
                 ring.pop();
             }
             rings.push(ring);
         }
-        feats[fi].polys.push(rings);
+        features[feature_index].polys.push(rings);
     }
-    (h, feats)
+    (header, features)
 }
 
 struct Stats {
@@ -127,26 +136,26 @@ struct Stats {
     max_list: usize,
 }
 
-fn measure(feats: &[Feat], deg: f64) -> (grid::CellGrid, Stats) {
-    let g = grid::build(feats, deg, 8);
-    let areas = grid::feat_areas(feats);
-    let csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
-    let border: Vec<&Vec<u16>> = g.sets.iter().filter(|s| s.len() > 1).collect();
+fn measure(features: &[Feat], deg: f64) -> (grid::CellGrid, Stats) {
+    let grid = grid::build(features, deg, 8);
+    let areas = grid::feat_areas(features);
+    let csr = grid::intern_csr(&grid, Order::CellDominantFirst, &areas);
+    let border: Vec<&Vec<u16>> = grid.sets.iter().filter(|set| set.len() > 1).collect();
     #[expect(
         clippy::cast_precision_loss,
         reason = "candidate-id sum and border-cell count ≪ 2^53; avg display"
     )]
     let avg_list =
-        border.iter().map(|s| s.len()).sum::<usize>() as f64 / border.len().max(1) as f64;
-    let s = Stats {
+        border.iter().map(|set| set.len()).sum::<usize>() as f64 / border.len().max(1) as f64;
+    let stats = Stats {
         border_cells: border.len(),
         uniq_lists: csr.uniq_lists,
         list_ids: csr.list_ids.len(),
         csr_bytes: csr.bytes(),
         avg_list,
-        max_list: border.iter().map(|s| s.len()).max().unwrap_or(0),
+        max_list: border.iter().map(|set| set.len()).max().unwrap_or(0),
     };
-    (g, s)
+    (grid, stats)
 }
 
 #[derive(clap::Args)]
@@ -166,47 +175,48 @@ pub struct Args {
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"
 )]
-pub fn run(a: &Args) -> utz_build::Result<()> {
-    for path in &a.paths {
+pub fn run(args: &Args) -> utz_build::Result<()> {
+    for path in &args.paths {
         let bytes = std::fs::read(path)?;
-        let (h, feats) = load_feats(&bytes);
-        let deg = f64::from(h.grid_deg);
-        let fb = h.quant_bits.bytes();
-        let npolys: usize = feats.iter().map(|f| f.polys.len()).sum();
-        let polys_per_feat: Vec<usize> = feats.iter().map(|f| f.polys.len()).collect();
+        let (header, features) = load_feats(&bytes);
+        let deg = f64::from(header.grid_deg);
+        let coord_bytes = header.quant_bits.bytes();
+        let n_polys: usize = features.iter().map(|feature| feature.polys.len()).sum();
+        let polys_per_feat: Vec<usize> =
+            features.iter().map(|feature| feature.polys.len()).collect();
 
         // explode: one pseudo-feature per polygon, remember the parent
-        let mut poly_feats = Vec::with_capacity(npolys);
-        let mut parent = Vec::with_capacity(npolys);
-        for (fi, f) in feats.iter().enumerate() {
-            for poly in &f.polys {
-                poly_feats.push(Feat {
+        let mut poly_features = Vec::with_capacity(n_polys);
+        let mut parent = Vec::with_capacity(n_polys);
+        for (feature_index, feature) in features.iter().enumerate() {
+            for poly in &feature.polys {
+                poly_features.push(Feat {
                     offset: 0.0,
                     tzid: None,
                     polys: vec![poly.clone()],
                 });
-                parent.push(u16::try_from(fi).expect("feature id fits u16"));
+                parent.push(u16::try_from(feature_index).expect("feature id fits u16"));
             }
         }
 
-        let (gf, sf) = measure(&feats, deg);
-        let (gp, sp) = measure(&poly_feats, deg);
+        let (feature_grid, feature_stats) = measure(&features, deg);
+        let (poly_grid, poly_stats) = measure(&poly_features, deg);
 
         // pruning waste today: in each border cell, candidate features drag
         // in ALL their polys (bbox-checked + ref-lists parsed); the poly
         // grid would visit only the polys whose rings touch the cell
-        let (mut polys_today, mut polys_grid) = (0usize, 0usize);
-        for (cf, cp) in gf.sets.iter().zip(gp.sets.iter()) {
-            if cf.len() > 1 {
-                polys_today += cf
+        let (mut today_poly_visits, mut grid_poly_visits) = (0usize, 0usize);
+        for (feature_cell, poly_cell) in feature_grid.sets.iter().zip(poly_grid.sets.iter()) {
+            if feature_cell.len() > 1 {
+                today_poly_visits += feature_cell
                     .iter()
-                    .map(|&f| polys_per_feat[f as usize])
+                    .map(|&fid| polys_per_feat[fid as usize])
                     .sum::<usize>();
-                polys_grid += cp
+                grid_poly_visits += poly_cell
                     .iter()
-                    .filter(|&&pi| {
+                    .filter(|&&poly_index| {
                         // count only polys of candidate features (same PIP set)
-                        cf.contains(&parent[pi as usize])
+                        feature_cell.contains(&parent[poly_index as usize])
                     })
                     .count();
             }
@@ -215,11 +225,12 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         // net size: grid growth − dropped bboxes + poly→feature id table
         // (ring records become directly addressable via the existing
         // feat_offsets-style table reshaped per poly; u16 parent id per poly)
-        let bbox_bytes = npolys * 4 * fb;
-        let parent_bytes = npolys * 2;
-        let delta =
-            sp.csr_bytes.cast_signed() - sf.csr_bytes.cast_signed() - bbox_bytes.cast_signed()
-                + parent_bytes.cast_signed();
+        let bbox_bytes = n_polys * 4 * coord_bytes;
+        let parent_bytes = n_polys * 2;
+        let delta = poly_stats.csr_bytes.cast_signed()
+            - feature_stats.csr_bytes.cast_signed()
+            - bbox_bytes.cast_signed()
+            + parent_bytes.cast_signed();
 
         let name = std::path::Path::new(&path)
             .file_stem()
@@ -227,44 +238,47 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
             .to_string_lossy()
             .into_owned();
         println!(
-            "== {name}: {} feats, {npolys} polys, {deg:.3}° grid ==",
-            feats.len()
+            "== {name}: {} feats, {n_polys} polys, {deg:.3}° grid ==",
+            features.len()
         );
         println!(
             "  border cells        feature-grid {:6}   poly-grid {:6}",
-            sf.border_cells, sp.border_cells
+            feature_stats.border_cells, poly_stats.border_cells
         );
         println!(
             "  uniq lists (cap 32767) {:9}          {:9}",
-            sf.uniq_lists, sp.uniq_lists
+            feature_stats.uniq_lists, poly_stats.uniq_lists
         );
         println!(
             "  list_ids (cap 65535)   {:9}          {:9}",
-            sf.list_ids, sp.list_ids
+            feature_stats.list_ids, poly_stats.list_ids
         );
         println!(
             "  csr bytes              {:9}          {:9}",
-            sf.csr_bytes, sp.csr_bytes
+            feature_stats.csr_bytes, poly_stats.csr_bytes
         );
         println!(
             "  avg/max list           {:5.2}/{:3}          {:5.2}/{:3}",
-            sf.avg_list, sf.max_list, sp.avg_list, sp.max_list
+            feature_stats.avg_list,
+            feature_stats.max_list,
+            poly_stats.avg_list,
+            poly_stats.max_list
         );
         #[expect(
             clippy::cast_precision_loss,
             reason = "poly and border-cell counts ≪ 2^53; ratio display"
         )]
         let (per_today, per_grid, fewer) = (
-            polys_today as f64 / sf.border_cells.max(1) as f64,
-            polys_grid as f64 / sf.border_cells.max(1) as f64,
-            polys_today as f64 / polys_grid.max(1) as f64,
+            today_poly_visits as f64 / feature_stats.border_cells.max(1) as f64,
+            grid_poly_visits as f64 / feature_stats.border_cells.max(1) as f64,
+            today_poly_visits as f64 / grid_poly_visits.max(1) as f64,
         );
         println!(
             "  polys per border lookup: {per_today:.1} today (bbox-pruned) vs {per_grid:.1} poly-grid ({fewer:.1}x fewer)"
         );
         println!(
             "  net size: csr {:+} − bboxes {} + parents {} = {:+} bytes",
-            sp.csr_bytes.cast_signed() - sf.csr_bytes.cast_signed(),
+            poly_stats.csr_bytes.cast_signed() - feature_stats.csr_bytes.cast_signed(),
             bbox_bytes,
             parent_bytes,
             delta
@@ -272,12 +286,12 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
 
         // grid-only-exact scaling: how fast do border cells shrink?
         print!("  grid-only scaling (feature grid): ");
-        for d in [deg, deg / 2.0, deg / 4.0] {
-            let (_, s) = measure(&feats, d);
+        for scaled_deg in [deg, deg / 2.0, deg / 4.0] {
+            let (_, stats) = measure(&features, scaled_deg);
             print!(
-                "{d:.3}°: {} border cells / {} KiB csr;  ",
-                s.border_cells,
-                s.csr_bytes / 1024
+                "{scaled_deg:.3}°: {} border cells / {} KiB csr;  ",
+                stats.border_cells,
+                stats.csr_bytes / 1024
             );
         }
         println!();

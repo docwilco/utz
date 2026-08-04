@@ -25,8 +25,8 @@ pub struct Args {
 /// # Errors
 /// Unknown preset name, dataset load or encode failure, or I/O writing
 /// the asset and its guard file.
-pub fn run(a: Args) -> utz_build::Result<()> {
-    let config = match a.preset.as_str() {
+pub fn run(args: Args) -> utz_build::Result<()> {
+    let config = match args.preset.as_str() {
         "tiny" => Config::tiny(),
         "tiny-static" => Config::tiny().codec(Codec::Uncompressed),
         "compact" => Config::compact(),
@@ -38,10 +38,10 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             )))
         }
     };
-    let out = if let Some(out) = a.out {
+    let out = if let Some(out) = args.out {
         out
     } else {
-        let dir = PathBuf::from(format!("utz_data_{}", a.preset.replace('-', "_")));
+        let dir = PathBuf::from(format!("utz_data_{}", args.preset.replace('-', "_")));
         if !dir.is_dir() {
             return Err(utz_build::Error::Msg(format!(
                 "default output {}/data/ expects the μTZ checkout root as the \
@@ -49,7 +49,7 @@ pub fn run(a: Args) -> utz_build::Result<()> {
                 dir.display()
             )));
         }
-        dir.join("data").join(format!("{}.utz", a.preset))
+        dir.join("data").join(format!("{}.utz", args.preset))
     };
     let path = config.out_path(out).generate()?;
     println!("wrote {}", path.display());

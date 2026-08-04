@@ -50,9 +50,9 @@ impl Quant {
 
 /// JS `Math.round`: the nearest integer, exact halves toward positive
 /// infinity (Rust's `round` breaks ties away from zero instead).
-fn js_round(v: f64) -> f64 {
-    let floor = v.floor();
-    if v - floor >= 0.5 {
+fn js_round(value: f64) -> f64 {
+    let floor = value.floor();
+    if value - floor >= 0.5 {
         floor + 1.0
     } else {
         floor
@@ -62,17 +62,17 @@ fn js_round(v: f64) -> f64 {
 /// One coordinate after the display snap: `span` is the axis half-range
 /// (180 for longitude, 90 for latitude). Port of the viewer's `qc`.
 #[must_use]
-pub fn qc(v: f64, mode: Quant, span: f64) -> f64 {
+pub fn qc(value: f64, mode: Quant, span: f64) -> f64 {
     match mode {
-        Quant::F64 => v,
+        Quant::F64 => value,
         #[expect(
             clippy::cast_possible_truncation,
             reason = "JS Math.fround semantics: round the f64 to the nearest f32 and widen back"
         )]
-        Quant::F32 => f64::from(v as f32),
-        Quant::I32 => js_round(v * 1e7) / 1e7,
-        Quant::I24 => js_round(v / span * 8_388_607.0) / 8_388_607.0 * span,
-        Quant::I16 => js_round(v / span * 32_767.0) / 32_767.0 * span,
+        Quant::F32 => f64::from(value as f32),
+        Quant::I32 => js_round(value * 1e7) / 1e7,
+        Quant::I24 => js_round(value / span * 8_388_607.0) / 8_388_607.0 * span,
+        Quant::I16 => js_round(value / span * 32_767.0) / 32_767.0 * span,
     }
 }
 
@@ -106,18 +106,22 @@ pub struct Pocket {
 /// Decompose the region between `chain` and its shortcut
 /// (`chain[0]` → `chain[last]`) into pockets, splitting the anchored
 /// shoelace accumulation wherever the chain crosses the shortcut line, and
-/// hand each pocket to `flush`. `dens` is one density per chain vertex.
+/// hand each pocket to `flush`. `densities` is one density per chain vertex.
 ///
 /// # Panics
 ///
-/// Panics if `chain` is empty or `dens` is shorter than `chain`.
-pub fn pocket_scan(chain: &[(f64, f64)], dens: Option<&[f64]>, mut flush: impl FnMut(&Pocket)) {
-    let density = |i: usize| dens.map_or(0.0, |d| d[i]);
+/// Panics if `chain` is empty or `densities` is shorter than `chain`.
+pub fn pocket_scan(
+    chain: &[(f64, f64)],
+    densities: Option<&[f64]>,
+    mut flush: impl FnMut(&Pocket),
+) {
+    let density = |i: usize| densities.map_or(0.0, |values| values[i]);
     let (ax, ay) = chain[0];
     let (bx, by) = *chain.last().unwrap();
     let (dx, dy) = (bx - ax, by - ay);
     let len2 = dx * dx + dy * dy;
-    let mut p = Pocket {
+    let mut pocket = Pocket {
         area: 0.0,
         lon_sum: ax,
         lat_sum: ay,
@@ -126,34 +130,34 @@ pub fn pocket_scan(chain: &[(f64, f64)], dens: Option<&[f64]>, mut flush: impl F
     };
     // previous vertex and its side of the shortcut line (0 for the start:
     // it sits on the line by construction)
-    let (mut px, mut py, mut sp) = (ax, ay, 0.0);
+    let (mut px, mut py, mut previous_side) = (ax, ay, 0.0);
     for k in 0..chain.len() - 1 {
         let (qx, qy) = chain[k + 1];
-        let sq = dx * (qy - ay) - dy * (qx - ax);
-        if len2 > 0.0 && sp * sq < 0.0 {
+        let current_side = dx * (qy - ay) - dy * (qx - ax);
+        if len2 > 0.0 && previous_side * current_side < 0.0 {
             // chain crosses the shortcut line: split the step at the crossing
-            let t = sp / (sp - sq);
-            let xx = px + t * (qx - px);
-            let xy = py + t * (qy - py);
-            p.area += ((px - ax) * (xy - ay) - (py - ay) * (xx - ax)) / 2.0;
-            flush(&p);
-            p = Pocket {
-                area: ((xx - ax) * (qy - ay) - (xy - ay) * (qx - ax)) / 2.0,
-                lon_sum: xx + qx,
-                lat_sum: xy + qy,
+            let t = previous_side / (previous_side - current_side);
+            let crossing_x = px + t * (qx - px);
+            let crossing_y = py + t * (qy - py);
+            pocket.area += ((px - ax) * (crossing_y - ay) - (py - ay) * (crossing_x - ax)) / 2.0;
+            flush(&pocket);
+            pocket = Pocket {
+                area: ((crossing_x - ax) * (qy - ay) - (crossing_y - ay) * (qx - ax)) / 2.0,
+                lon_sum: crossing_x + qx,
+                lat_sum: crossing_y + qy,
                 dens_sum: density(k) + density(k + 1),
                 count: 2.0,
             };
         } else {
-            p.area += ((px - ax) * (qy - ay) - (py - ay) * (qx - ax)) / 2.0;
-            p.lon_sum += qx;
-            p.lat_sum += qy;
-            p.dens_sum += density(k + 1);
-            p.count += 1.0;
+            pocket.area += ((px - ax) * (qy - ay) - (py - ay) * (qx - ax)) / 2.0;
+            pocket.lon_sum += qx;
+            pocket.lat_sum += qy;
+            pocket.dens_sum += density(k + 1);
+            pocket.count += 1.0;
         }
-        (px, py, sp) = (qx, qy, sq);
+        (px, py, previous_side) = (qx, qy, current_side);
     }
-    flush(&p);
+    flush(&pocket);
 }
 
 /// Misassignment between the raw sub-chain `arc[i0..=i1]` and its shortcut,
@@ -165,50 +169,55 @@ pub fn pocket_scan(chain: &[(f64, f64)], dens: Option<&[f64]>, mut flush: impl F
 ///
 /// # Panics
 ///
-/// Panics if `i0..=i1` is out of bounds for `arc` (or `dens`).
-pub fn pockets(arc: &[(f64, f64)], dens: Option<&[f64]>, i0: usize, i1: usize, acc: &mut Acc) {
-    pocket_scan(&arc[i0..=i1], dens.map(|d| &d[i0..=i1]), |p| {
-        let km2 = p.area.abs()
-            * 111.32
-            * 111.32
-            * (p.lat_sum / p.count * core::f64::consts::PI / 180.0).cos();
-        acc.area += km2;
-        acc.people += km2 * p.dens_sum / p.count;
-    });
+/// Panics if `i0..=i1` is out of bounds for `arc` (or `densities`).
+pub fn pockets(arc: &[(f64, f64)], densities: Option<&[f64]>, i0: usize, i1: usize, acc: &mut Acc) {
+    pocket_scan(
+        &arc[i0..=i1],
+        densities.map(|values| &values[i0..=i1]),
+        |pocket| {
+            let km2 = pocket.area.abs()
+                * 111.32
+                * 111.32
+                * (pocket.lat_sum / pocket.count * core::f64::consts::PI / 180.0).cos();
+            acc.area += km2;
+            acc.people += km2 * pocket.dens_sum / pocket.count;
+        },
+    );
 }
 
 /// Area (km²) and people between a pre-snap segment `a`→`b` and its drawn
 /// (quantized) counterpart `qa`→`qb`, added to `acc`: the misassignment the
 /// display snap adds on top of the simplification pockets. Splits at the
 /// crossing when the two segments intersect (the snap usually moves the
-/// ends to opposite sides). `dens` is the segment's density (people/km²).
+/// ends to opposite sides). `density` is the segment's density (people/km²).
 /// Port of the worker's `quantQuad`.
 pub fn quant_quad(
     a: (f64, f64),
     b: (f64, f64),
     qa: (f64, f64),
     qb: (f64, f64),
-    dens: f64,
+    density: f64,
     acc: &mut Acc,
 ) {
-    let tri = |x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64| {
+    let triangle_area = |x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64| {
         ((x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1)).abs() / 2.0
     };
     let (rx, ry) = (b.0 - a.0, b.1 - a.1);
     let (sx, sy) = (qb.0 - qa.0, qb.1 - qa.1);
-    let den = rx * sy - ry * sx;
-    let (t, u) = if den == 0.0 {
+    let denominator = rx * sy - ry * sx;
+    let (t, u) = if denominator == 0.0 {
         (-1.0, -1.0)
     } else {
         (
-            ((qa.0 - a.0) * sy - (qa.1 - a.1) * sx) / den,
-            ((qa.0 - a.0) * ry - (qa.1 - a.1) * rx) / den,
+            ((qa.0 - a.0) * sy - (qa.1 - a.1) * sx) / denominator,
+            ((qa.0 - a.0) * ry - (qa.1 - a.1) * rx) / denominator,
         )
     };
     let area = if t > 0.0 && t < 1.0 && u > 0.0 && u < 1.0 {
-        let xx = a.0 + t * rx;
-        let xy = a.1 + t * ry;
-        tri(a.0, a.1, xx, xy, qa.0, qa.1) + tri(b.0, b.1, xx, xy, qb.0, qb.1)
+        let crossing_x = a.0 + t * rx;
+        let crossing_y = a.1 + t * ry;
+        triangle_area(a.0, a.1, crossing_x, crossing_y, qa.0, qa.1)
+            + triangle_area(b.0, b.1, crossing_x, crossing_y, qb.0, qb.1)
     } else {
         (a.0 * (b.1 - qa.1) + b.0 * (qb.1 - a.1) + qb.0 * (qa.1 - b.1) + qa.0 * (a.1 - qb.1)).abs()
             / 2.0
@@ -216,7 +225,7 @@ pub fn quant_quad(
     let km2 =
         area * 111.32 * 111.32 * (f64::midpoint(a.1, b.1) * core::f64::consts::PI / 180.0).cos();
     acc.area += km2;
-    acc.people += km2 * dens;
+    acc.people += km2 * density;
 }
 
 /// Max perpendicular deviation (meters) of the raw vertices strictly
@@ -231,28 +240,29 @@ pub fn quant_quad(
 /// Panics if `i0..=i1` is out of bounds for `arc`.
 #[must_use]
 pub fn dev_max(arc: &[(f64, f64)], i0: usize, i1: usize) -> f64 {
-    let kx = (f64::midpoint(arc[i0].1, arc[i1].1) * core::f64::consts::PI / 180.0).cos();
-    let (ax, ay) = (arc[i0].0 * kx, arc[i0].1);
-    let (bx, by) = (arc[i1].0 * kx, arc[i1].1);
+    let cos_correction =
+        (f64::midpoint(arc[i0].1, arc[i1].1) * core::f64::consts::PI / 180.0).cos();
+    let (ax, ay) = (arc[i0].0 * cos_correction, arc[i0].1);
+    let (bx, by) = (arc[i1].0 * cos_correction, arc[i1].1);
     let (dx, dy) = (bx - ax, by - ay);
-    let l2 = dx * dx + dy * dy;
-    let mut mx = 0.0f64;
+    let len2 = dx * dx + dy * dy;
+    let mut max_d2 = 0.0f64;
     for &(x, y) in &arc[i0 + 1..i1] {
-        let (px, py) = (x * kx, y);
-        let t = if l2 == 0.0 {
+        let (px, py) = (x * cos_correction, y);
+        let t = if len2 == 0.0 {
             0.0
         } else {
-            ((px - ax) * dx + (py - ay) * dy) / l2
+            ((px - ax) * dx + (py - ay) * dy) / len2
         }
         .clamp(0.0, 1.0);
         let ex = px - (ax + t * dx);
         let ey = py - (ay + t * dy);
         let d2 = ex * ex + ey * ey;
-        if d2 > mx {
-            mx = d2;
+        if d2 > max_d2 {
+            max_d2 = d2;
         }
     }
-    mx.sqrt() * 111_320.0
+    max_d2.sqrt() * 111_320.0
 }
 
 /// The knobs of one worker run, applied to every arc.
@@ -280,21 +290,21 @@ pub struct ArcResult {
 }
 
 /// One arc through the whole worker pipeline: pre-snap (Q→S) or post-snap
-/// display pricing (S→Q), simplify (density-weighted when `dens` is given
-/// and `w_min < 1`), exact walk-match of kept vertices back to input
+/// display pricing (S→Q), simplify (density-weighted when `densities` is
+/// given and `w_min < 1`), exact walk-match of kept vertices back to input
 /// indices, then pocket pricing into `simplify_acc` ([`pockets`],
 /// [`dev_max`]) and display-snap pricing into `quant_acc`
-/// ([`quant_quad`]). `dens` is one density (people/km²) per arc vertex.
+/// ([`quant_quad`]). `densities` is one density (people/km²) per arc vertex.
 ///
 /// # Panics
 ///
-/// Panics if `dens` is shorter than `arc`, or if the simplifier returns a
-/// vertex that is not a bit-exact copy of an input vertex (every algorithm
+/// Panics if `densities` is shorter than `arc`, or if the simplifier returns
+/// a vertex that is not a bit-exact copy of an input vertex (every algorithm
 /// in the menu keeps a subset, so the walk-match is exact by invariant).
 #[must_use]
 pub fn arc_misassign(
     arc: &[(f64, f64)],
-    dens: Option<&[f64]>,
+    densities: Option<&[f64]>,
     params: &ArcParams,
     simplify_acc: &mut Acc,
     quant_acc: &mut Acc,
@@ -304,7 +314,7 @@ pub fn arc_misassign(
     let snapped: Vec<(f64, f64)>;
     // what the simplifier eats: the walk-match below compares against this,
     // not the raw arc
-    let src: &[(f64, f64)] = if pre {
+    let source: &[(f64, f64)] = if pre {
         snapped = arc
             .iter()
             .map(|&(x, y)| (qc(x, params.quant, 180.0), qc(y, params.quant, 90.0)))
@@ -313,59 +323,64 @@ pub fn arc_misassign(
     } else {
         arc
     };
-    let kept = match dens {
-        Some(d) if params.density_weight_floor < 1.0 => {
+    let kept = match densities {
+        Some(values) if params.density_weight_floor < 1.0 => {
             let model = DensityWeight::new(params.density_weight_floor);
-            let weights: Vec<f64> = d.iter().map(|&x| model.weight(x)).collect();
-            simplify_weighted(params.algo, src, &weights)
+            let weights: Vec<f64> = values
+                .iter()
+                .map(|&density| model.weight(density))
+                .collect();
+            simplify_weighted(params.algo, source, &weights)
         }
-        _ => simplify(params.algo, src),
+        _ => simplify(params.algo, source),
     };
-    let k = kept.len();
-    let mut deviations = vec![0.0f32; k];
-    let mut raw_idx: Option<Vec<usize>> = None;
-    if k < n {
+    let kept_len = kept.len();
+    let mut deviations = vec![0.0f32; kept_len];
+    let mut raw_indices: Option<Vec<usize>> = None;
+    if kept_len < n {
         // walk-match kept verts to input indices (exact equality against
-        // `src`); snapping is 1:1 per vertex, so those indices ARE raw
+        // `source`); snapping is 1:1 per vertex, so those indices ARE raw
         // indices and pockets price the raw chain
-        let mut idx = Vec::with_capacity(k);
+        let mut indices = Vec::with_capacity(kept_len);
         let mut j = 0usize;
-        let mut prev: Option<usize> = None;
-        for (v, &p) in kept.iter().enumerate() {
-            while src[j] != p {
+        let mut previous: Option<usize> = None;
+        for (vertex, &point) in kept.iter().enumerate() {
+            while source[j] != point {
                 j += 1;
             }
-            idx.push(j);
-            if let Some(prev) = prev {
-                if j > prev + 1 {
-                    pockets(arc, dens, prev, j, simplify_acc);
+            indices.push(j);
+            if let Some(previous) = previous {
+                if j > previous + 1 {
+                    pockets(arc, densities, previous, j, simplify_acc);
                     #[expect(
                         clippy::cast_possible_truncation,
                         reason = "the worker stores deviations in a Float32Array; narrowing to f32 is the ABI"
                     )]
                     {
-                        deviations[v] = dev_max(arc, prev, j) as f32;
+                        deviations[vertex] = dev_max(arc, previous, j) as f32;
                     }
                 }
             }
-            prev = Some(j);
+            previous = Some(j);
             j += 1;
         }
-        raw_idx = Some(idx);
+        raw_indices = Some(indices);
     }
     if params.quant != Quant::F64 {
         // price the display snap per drawn segment, on top of the pockets
         // (which deliberately exclude quantization)
-        for v in 1..k {
-            let (ia, ib) = raw_idx
+        for vertex in 1..kept_len {
+            let (index_a, index_b) = raw_indices
                 .as_ref()
-                .map_or((v - 1, v), |idx| (idx[v - 1], idx[v]));
+                .map_or((vertex - 1, vertex), |indices| {
+                    (indices[vertex - 1], indices[vertex])
+                });
             let (a, b, qa, qb) = if pre {
                 // Q→S: drawn = output (already snapped); pre-snap = raw
-                (arc[ia], arc[ib], kept[v - 1], kept[v])
+                (arc[index_a], arc[index_b], kept[vertex - 1], kept[vertex])
             } else {
                 // S→Q: output is raw copies; drawn = display snap of it
-                let (a, b) = (kept[v - 1], kept[v]);
+                let (a, b) = (kept[vertex - 1], kept[vertex]);
                 (
                     a,
                     b,
@@ -373,8 +388,10 @@ pub fn arc_misassign(
                     (qc(b.0, params.quant, 180.0), qc(b.1, params.quant, 90.0)),
                 )
             };
-            let seg_dens = dens.map_or(0.0, |d| f64::midpoint(d[ia], d[ib]));
-            quant_quad(a, b, qa, qb, seg_dens, quant_acc);
+            let segment_density = densities.map_or(0.0, |values| {
+                f64::midpoint(values[index_a], values[index_b])
+            });
+            quant_quad(a, b, qa, qb, segment_density, quant_acc);
         }
     }
     ArcResult { kept, deviations }
@@ -425,7 +442,7 @@ mod tests {
 
     #[test]
     fn qc_matches_js() {
-        let vals = [
+        let values = [
             123.456_789_123,
             -89.999_987_65,
             0.300_000_000_000_000_04,
@@ -479,10 +496,10 @@ mod tests {
                 [33.333_536_790_063_18, 33.333_536_790_063_18],
             ],
         ];
-        for (v, rows) in vals.iter().zip(&want) {
-            for (m, pair) in modes.iter().zip(rows) {
-                close(qc(*v, *m, 180.0), pair[0]);
-                close(qc(*v, *m, 90.0), pair[1]);
+        for (value, rows) in values.iter().zip(&want) {
+            for (mode, pair) in modes.iter().zip(rows) {
+                close(qc(*value, *mode, 180.0), pair[0]);
+                close(qc(*value, *mode, 90.0), pair[1]);
             }
         }
     }
@@ -540,14 +557,14 @@ mod tests {
         close(acc.people, 7.286_579_731_2);
     }
 
-    fn check_result(r: &ArcResult, coords: &[f64], devs: &[f64]) {
-        assert_eq!(r.kept.len() * 2, coords.len());
-        for (got, want) in r.kept.iter().zip(coords.chunks_exact(2)) {
+    fn check_result(result: &ArcResult, coords: &[f64], deviations: &[f64]) {
+        assert_eq!(result.kept.len() * 2, coords.len());
+        for (got, want) in result.kept.iter().zip(coords.chunks_exact(2)) {
             close(got.0, want[0]);
             close(got.1, want[1]);
         }
-        assert_eq!(r.deviations.len(), devs.len());
-        for (got, want) in r.deviations.iter().zip(devs) {
+        assert_eq!(result.deviations.len(), deviations.len());
+        for (got, want) in result.deviations.iter().zip(deviations) {
             close(f64::from(*got), *want);
         }
     }
@@ -560,17 +577,23 @@ mod tests {
             quant: Quant::I16,
             pre: false,
         };
-        let (mut acc, mut qacc) = (Acc::default(), Acc::default());
-        let r = arc_misassign(&ARC_A, Some(&DENS_A), &params, &mut acc, &mut qacc);
+        let (mut simplify_acc, mut quant_acc) = (Acc::default(), Acc::default());
+        let result = arc_misassign(
+            &ARC_A,
+            Some(&DENS_A),
+            &params,
+            &mut simplify_acc,
+            &mut quant_acc,
+        );
         check_result(
-            &r,
+            &result,
             &[0.0, 50.0, 0.3, 50.3, 0.5, 50.1],
             &[0.0, 9_008.896_484_375, 13_217.300_781_25],
         );
-        close(acc.area, 309.771_666_644_827_86);
-        close(acc.people, 82_036.021_587_182_68);
-        close(qacc.area, 3.832_818_936_460_496_3);
-        close(qacc.people, 1_260.744_989_596_838_9);
+        close(simplify_acc.area, 309.771_666_644_827_86);
+        close(simplify_acc.people, 82_036.021_587_182_68);
+        close(quant_acc.area, 3.832_818_936_460_496_3);
+        close(quant_acc.people, 1_260.744_989_596_838_9);
     }
 
     #[test]
@@ -581,10 +604,10 @@ mod tests {
             quant: Quant::I24,
             pre: true,
         };
-        let (mut acc, mut qacc) = (Acc::default(), Acc::default());
-        let r = arc_misassign(&ARC_B, None, &params, &mut acc, &mut qacc);
+        let (mut simplify_acc, mut quant_acc) = (Acc::default(), Acc::default());
+        let result = arc_misassign(&ARC_B, None, &params, &mut simplify_acc, &mut quant_acc);
         check_result(
-            &r,
+            &result,
             &[
                 0.0,
                 9.999_995_231_627_85,
@@ -601,25 +624,25 @@ mod tests {
             ],
             &[0.0; 6],
         );
-        close(acc.area, 0.0);
-        close(acc.people, 0.0);
-        close(qacc.area, 0.020_852_539_660_342_312);
-        close(qacc.people, 0.0);
+        close(simplify_acc.area, 0.0);
+        close(simplify_acc.people, 0.0);
+        close(quant_acc.area, 0.020_852_539_660_342_312);
+        close(quant_acc.people, 0.0);
     }
 
     #[test]
     fn driver_qs_i16_drop_matches_js() {
-        // Q→S with drops: the walk-match runs against the snapped src
+        // Q→S with drops: the walk-match runs against the snapped source
         let params = ArcParams {
             algo: Simplify::Rdp { eps: 0.15 },
             density_weight_floor: 1.0,
             quant: Quant::I16,
             pre: true,
         };
-        let (mut acc, mut qacc) = (Acc::default(), Acc::default());
-        let r = arc_misassign(&ARC_B, None, &params, &mut acc, &mut qacc);
+        let (mut simplify_acc, mut quant_acc) = (Acc::default(), Acc::default());
+        let result = arc_misassign(&ARC_B, None, &params, &mut simplify_acc, &mut quant_acc);
         check_result(
-            &r,
+            &result,
             &[
                 0.0,
                 10.000_610_370_189_52,
@@ -628,10 +651,10 @@ mod tests {
             ],
             &[0.0, 6_679.200_195_312_5],
         );
-        close(acc.area, 168.079_232_425_042_62);
-        close(acc.people, 0.0);
-        close(qacc.area, 3.724_043_811_572_012_3);
-        close(qacc.people, 0.0);
+        close(simplify_acc.area, 168.079_232_425_042_62);
+        close(simplify_acc.people, 0.0);
+        close(quant_acc.area, 3.724_043_811_572_012_3);
+        close(quant_acc.people, 0.0);
     }
 
     #[test]
@@ -643,14 +666,20 @@ mod tests {
             quant: Quant::F32,
             pre: false,
         };
-        let (mut acc, mut qacc) = (Acc::default(), Acc::default());
-        let r = arc_misassign(&ARC_A, Some(&DENS_A), &params, &mut acc, &mut qacc);
-        assert_eq!(r.kept.len(), 6);
-        assert_eq!(r.kept, ARC_A.to_vec());
-        close(acc.area, 0.0);
-        close(acc.people, 0.0);
-        close(qacc.area, 0.002_116_376_655_329_338);
-        close(qacc.people, 0.471_441_312_503_589_45);
+        let (mut simplify_acc, mut quant_acc) = (Acc::default(), Acc::default());
+        let result = arc_misassign(
+            &ARC_A,
+            Some(&DENS_A),
+            &params,
+            &mut simplify_acc,
+            &mut quant_acc,
+        );
+        assert_eq!(result.kept.len(), 6);
+        assert_eq!(result.kept, ARC_A.to_vec());
+        close(simplify_acc.area, 0.0);
+        close(simplify_acc.people, 0.0);
+        close(quant_acc.area, 0.002_116_376_655_329_338);
+        close(quant_acc.people, 0.471_441_312_503_589_45);
     }
 
     #[test]
@@ -661,12 +690,18 @@ mod tests {
             quant: Quant::I16,
             pre: false,
         };
-        let (mut acc, mut qacc) = (Acc::default(), Acc::default());
-        let _ = arc_misassign(&ARC_A, Some(&DENS_A), &params, &mut acc, &mut qacc);
-        let _ = arc_misassign(&ARC_B, None, &params, &mut acc, &mut qacc);
-        close(acc.area, 477.850_899_069_870_5);
-        close(acc.people, 82_036.021_587_182_68);
-        close(qacc.area, 7.556_862_748_032_509);
-        close(qacc.people, 1_260.744_989_596_838_9);
+        let (mut simplify_acc, mut quant_acc) = (Acc::default(), Acc::default());
+        let _ = arc_misassign(
+            &ARC_A,
+            Some(&DENS_A),
+            &params,
+            &mut simplify_acc,
+            &mut quant_acc,
+        );
+        let _ = arc_misassign(&ARC_B, None, &params, &mut simplify_acc, &mut quant_acc);
+        close(simplify_acc.area, 477.850_899_069_870_5);
+        close(simplify_acc.people, 82_036.021_587_182_68);
+        close(quant_acc.area, 7.556_862_748_032_509);
+        close(quant_acc.people, 1_260.744_989_596_838_9);
     }
 }

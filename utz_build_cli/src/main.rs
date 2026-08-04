@@ -23,8 +23,8 @@ enum Cmd {
 fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("error: {e}");
+        Err(error) => {
+            eprintln!("error: {error}");
             std::process::ExitCode::FAILURE
         }
     }
@@ -32,7 +32,7 @@ fn main() -> std::process::ExitCode {
 
 fn run() -> utz_build::Result<()> {
     match Cmd::parse() {
-        Cmd::Gen(a) => cmd::encode::run(a),
-        Cmd::GenPreset(a) => cmd::gen_preset::run(a),
+        Cmd::Gen(args) => cmd::encode::run(args),
+        Cmd::GenPreset(args) => cmd::gen_preset::run(args),
     }
 }

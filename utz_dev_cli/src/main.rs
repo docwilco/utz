@@ -62,8 +62,8 @@ enum Cmd {
 fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("error: {e}");
+        Err(error) => {
+            eprintln!("error: {error}");
             std::process::ExitCode::FAILURE
         }
     }
@@ -71,27 +71,27 @@ fn main() -> std::process::ExitCode {
 
 fn run() -> utz_build::Result<()> {
     match Cmd::parse() {
-        Cmd::Visualize(a) => cmd::visualize::run(a),
-        Cmd::Accuracy(a) => cmd::accuracy::run(a),
-        Cmd::DensityCompare(a) => cmd::density_compare::run(a),
-        Cmd::DensityProbe(a) => cmd::density_probe::run(a),
-        Cmd::Roundtrip(a) => cmd::roundtrip::run(a),
-        Cmd::SizeTable(a) => cmd::size_table::run(a),
-        Cmd::Whittle(a) => cmd::whittle::run(&a),
-        Cmd::WindowSweep(a) => cmd::window_sweep::run(&a),
-        Cmd::QuantSize(a) => cmd::quant_size::run(a),
-        Cmd::QuantClean(a) => cmd::quant_clean::run(&a),
-        Cmd::RdpSweep(a) => cmd::rdp_sweep::run(a),
-        Cmd::CsrSweep(a) => cmd::csr_sweep::run(&a),
-        Cmd::Gridsweep(a) => cmd::gridsweep::run(a),
-        Cmd::Grid2mem(a) => cmd::grid2mem::run(a),
-        Cmd::GridBench(a) => cmd::grid_bench::run(a),
-        Cmd::DominantCost(a) => cmd::dominant_cost::run(a),
-        Cmd::PipBench(a) => cmd::pip_bench::run(a),
-        Cmd::Geoquant(a) => cmd::geoquant::run(a),
-        Cmd::Amscan(a) => cmd::amscan::run(a),
-        Cmd::FixedwidthSize(a) => cmd::fixedwidth_size::run(&a),
-        Cmd::PolygridProbe(a) => cmd::polygrid_probe::run(&a),
-        Cmd::ImagepackSize(a) => cmd::imagepack_size::run(&a),
+        Cmd::Visualize(args) => cmd::visualize::run(args),
+        Cmd::Accuracy(args) => cmd::accuracy::run(args),
+        Cmd::DensityCompare(args) => cmd::density_compare::run(args),
+        Cmd::DensityProbe(args) => cmd::density_probe::run(args),
+        Cmd::Roundtrip(args) => cmd::roundtrip::run(args),
+        Cmd::SizeTable(args) => cmd::size_table::run(args),
+        Cmd::Whittle(args) => cmd::whittle::run(&args),
+        Cmd::WindowSweep(args) => cmd::window_sweep::run(&args),
+        Cmd::QuantSize(args) => cmd::quant_size::run(args),
+        Cmd::QuantClean(args) => cmd::quant_clean::run(&args),
+        Cmd::RdpSweep(args) => cmd::rdp_sweep::run(args),
+        Cmd::CsrSweep(args) => cmd::csr_sweep::run(&args),
+        Cmd::Gridsweep(args) => cmd::gridsweep::run(args),
+        Cmd::Grid2mem(args) => cmd::grid2mem::run(args),
+        Cmd::GridBench(args) => cmd::grid_bench::run(args),
+        Cmd::DominantCost(args) => cmd::dominant_cost::run(args),
+        Cmd::PipBench(args) => cmd::pip_bench::run(args),
+        Cmd::Geoquant(args) => cmd::geoquant::run(args),
+        Cmd::Amscan(args) => cmd::amscan::run(args),
+        Cmd::FixedwidthSize(args) => cmd::fixedwidth_size::run(&args),
+        Cmd::PolygridProbe(args) => cmd::polygrid_probe::run(&args),
+        Cmd::ImagepackSize(args) => cmd::imagepack_size::run(&args),
     }
 }

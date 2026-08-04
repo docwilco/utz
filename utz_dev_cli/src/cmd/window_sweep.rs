@@ -28,31 +28,31 @@ static LIVE: AtomicUsize = AtomicUsize::new(0);
 static PEAK: AtomicUsize = AtomicUsize::new(0);
 
 unsafe impl GlobalAlloc for Tracking {
-    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        let p = System.alloc(l);
-        if !p.is_null() {
-            let live = LIVE.fetch_add(l.size(), Relaxed) + l.size();
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let pointer = System.alloc(layout);
+        if !pointer.is_null() {
+            let live = LIVE.fetch_add(layout.size(), Relaxed) + layout.size();
             PEAK.fetch_max(live, Relaxed);
         }
-        p
+        pointer
     }
-    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
-        System.dealloc(p, l);
-        LIVE.fetch_sub(l.size(), Relaxed);
+    unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+        System.dealloc(pointer, layout);
+        LIVE.fetch_sub(layout.size(), Relaxed);
     }
 }
 
 #[global_allocator]
 static ALLOC: Tracking = Tracking;
 
-/// Run `f`, returning (result, peak heap growth over entry live, wall ms).
-pub(crate) fn measure<T>(f: impl FnOnce() -> T) -> (T, usize, f64) {
+/// Run `work`, returning (result, peak heap growth over entry live, wall ms).
+pub(crate) fn measure<T>(work: impl FnOnce() -> T) -> (T, usize, f64) {
     let base = LIVE.load(Relaxed);
     PEAK.store(base, Relaxed);
-    let t = Instant::now();
-    let r = f();
-    let ms = t.elapsed().as_secs_f64() * 1e3;
-    (r, PEAK.load(Relaxed).saturating_sub(base), ms)
+    let timer = Instant::now();
+    let result = work();
+    let ms = timer.elapsed().as_secs_f64() * 1e3;
+    (result, PEAK.load(Relaxed).saturating_sub(base), ms)
 }
 
 #[derive(clap::Args)]
@@ -82,10 +82,13 @@ pub struct Args {
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"
 )]
-pub fn run(a: &Args) -> utz_build::Result<()> {
+pub fn run(args: &Args) -> utz_build::Result<()> {
     // preset candidates: i16 pairs with ε≥500, i24 with ε≤250
-    let shapes: Vec<(f64, u32)> = match a.eps {
-        Some(e) => vec![(e, a.quant.unwrap_or(if e <= 250.0 { 24 } else { 16 }))],
+    let shapes: Vec<(f64, u32)> = match args.eps {
+        Some(eps) => vec![(
+            eps,
+            args.quant.unwrap_or(if eps <= 250.0 { 24 } else { 16 }),
+        )],
         None => vec![
             (2000.0, 16),
             (1000.0, 16),
@@ -94,21 +97,21 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
             (100.0, 24),
         ],
     };
-    let feats = utz_build::load(&a.ds)?;
+    let features = utz_build::load(&args.ds)?;
 
-    for (eps_m, qbits) in shapes {
-        let p = Params {
-            dataset: utz_build::dataset(&a.ds)?.code(),
+    for (eps_m, quant_bits) in shapes {
+        let params = Params {
+            dataset: utz_build::dataset(&args.ds)?.code(),
             tzbb_release: "dev",
             eps_m,
-            quant_bits: qbits,
-            grid_deg: a.grid_deg,
+            quant_bits,
+            grid_deg: args.grid_deg,
             codec: Codec::Uncompressed,
             simplify: encode::SimplifyAlgo::default(),
             geom: encode::GeomEncoding::default(),
             density_weight_floor: None,
         };
-        let payload = encode::build_payload(&feats, &p)?;
+        let payload = encode::build_payload(&features, &params)?;
         let raw = payload.len();
         #[expect(
             clippy::cast_precision_loss,
@@ -116,10 +119,10 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         )]
         let raw_kb = raw as f64 / 1024.0;
         println!(
-            "\n{} ε={}m i{qbits}, grid {}° — raw {raw_kb:.1} K",
-            a.ds.to_uppercase(),
+            "\n{} ε={}m i{quant_bits}, grid {}° — raw {raw_kb:.1} K",
+            args.ds.to_uppercase(),
             eps_m,
-            a.grid_deg
+            args.grid_deg
         );
         println!(
             "{:>8}{:>9}{:>10}{:>8}{:>9}{:>10}{:>9}",
@@ -131,12 +134,12 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         let row =
             |name: &str, window: usize, codec: Codec, blob: Vec<u8>| -> utz_build::Result<()> {
                 let (out, peak, ms) = measure(|| utz::decompress::decompress(codec, raw, &blob));
-                let out = out.map_err(|e| Error::Msg(format!("{name} decode: {e:?}")))?;
+                let out = out.map_err(|error| Error::Msg(format!("{name} decode: {error:?}")))?;
                 ensure!(
                     out == payload,
                     Error::Msg(format!("{name} roundtrip mismatch"))
                 );
-                let win_eff = window.min(raw); // beyond raw, back-refs can't reach
+                let effective_window = window.min(raw); // beyond raw, back-refs can't reach
                 #[expect(
                     clippy::cast_precision_loss,
                     reason = "blob/raw/peak byte sizes ≪ 2^53; KiB and ratio display"
@@ -145,7 +148,8 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
                     blob.len() as f64 / 1024.0,
                     blob.len() as f64 / raw as f64 * 100.0,
                     peak as f64 / 1024.0,
-                    (peak.cast_signed() - raw.cast_signed() - win_eff.cast_signed()) as f64
+                    (peak.cast_signed() - raw.cast_signed() - effective_window.cast_signed())
+                        as f64
                         / 1024.0,
                 );
                 println!(
@@ -164,9 +168,14 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         // so libzstd itself caps the frame window at the content size);
         // decode = ruzstd (the no_std device path)
         for wlog in 10..=cap_log.min(27) {
-            let mut c = zstd::bulk::Compressor::new(22)?;
-            c.set_parameter(zstd::stream::raw::CParameter::WindowLog(wlog))?;
-            row("zstd22", 1 << wlog, Codec::Zstd, c.compress(&payload)?)?;
+            let mut compressor = zstd::bulk::Compressor::new(22)?;
+            compressor.set_parameter(zstd::stream::raw::CParameter::WindowLog(wlog))?;
+            row(
+                "zstd22",
+                1 << wlog,
+                Codec::Zstd,
+                compressor.compress(&payload)?,
+            )?;
         }
         // gzip: DEFLATE window is fixed 32 K — one point, no knob
         let gz = miniz_oxide::deflate::compress_to_vec_zlib(&payload, 10);
@@ -184,21 +193,24 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
         }
         // xz q9(e-ish): dict is a free u32 — pow2 points, plus exact-raw cap
         let xz_dicts = (12..cap_log)
-            .map(|l| 1usize << l)
+            .map(|log| 1usize << log)
             .chain([raw])
             .collect::<Vec<_>>();
         for dict in xz_dicts {
             use lzma_rust2::Write as _; // no_std lzma-rust2 XzWriter
-            let mut opts = lzma_rust2::XzOptions::with_preset(9);
-            opts.lzma_options.dict_size = u32::try_from(dict).expect("dict fits u32").max(4096);
-            opts.lzma_options.nice_len = 273;
-            opts.lzma_options.depth_limit = 512;
+            let mut options = lzma_rust2::XzOptions::with_preset(9);
+            options.lzma_options.dict_size = u32::try_from(dict).expect("dict fits u32").max(4096);
+            options.lzma_options.nice_len = 273;
+            options.lzma_options.depth_limit = 512;
             // no_std lzma_rust2::Error isn't std::error::Error → stringify
-            let mut w = lzma_rust2::XzWriter::new(Vec::new(), opts)
-                .map_err(|e| Error::Msg(format!("xz: {e:?}")))?;
-            w.write_all(&payload)
-                .map_err(|e| Error::Msg(format!("xz: {e:?}")))?;
-            let blob = w.finish().map_err(|e| Error::Msg(format!("xz: {e:?}")))?;
+            let mut writer = lzma_rust2::XzWriter::new(Vec::new(), options)
+                .map_err(|error| Error::Msg(format!("xz: {error:?}")))?;
+            writer
+                .write_all(&payload)
+                .map_err(|error| Error::Msg(format!("xz: {error:?}")))?;
+            let blob = writer
+                .finish()
+                .map_err(|error| Error::Msg(format!("xz: {error:?}")))?;
             row("xz9", dict, Codec::Xz, blob)?;
         }
     }
@@ -208,17 +220,17 @@ pub fn run(a: &Args) -> utz_build::Result<()> {
     Ok(())
 }
 
-fn fmt_win(w: usize) -> String {
-    if w >= 1 << 20 && w.is_multiple_of(1 << 20) {
-        format!("{}M", w >> 20)
-    } else if w >= 1024 && w.is_multiple_of(1024) {
-        format!("{}K", w >> 10)
+fn fmt_win(window: usize) -> String {
+    if window >= 1 << 20 && window.is_multiple_of(1 << 20) {
+        format!("{}M", window >> 20)
+    } else if window >= 1024 && window.is_multiple_of(1024) {
+        format!("{}K", window >> 10)
     } else {
         #[expect(
             clippy::cast_precision_loss,
             reason = "window size ≪ 2^53; KiB display"
         )]
-        let kib = w as f64 / 1024.0;
+        let kib = window as f64 / 1024.0;
         format!("{kib:.1}K")
     }
 }

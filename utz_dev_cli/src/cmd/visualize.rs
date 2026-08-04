@@ -31,13 +31,13 @@ pub struct Args {
 /// # Errors
 /// Wasm viewer build failure, dataset or density-grid download/parse
 /// failure, or I/O writing the site files.
-pub fn run(a: Args) -> utz_build::Result<()> {
-    let out = a.out;
-    std::fs::create_dir_all(&out)?;
+pub fn run(args: Args) -> utz_build::Result<()> {
+    let out_dir = args.out;
+    std::fs::create_dir_all(&out_dir)?;
 
     let wasm = build_wasm()?;
-    std::fs::write(out.join("utz_viz.wasm"), &wasm)?;
-    std::fs::write(out.join("index.html"), viz::webdist_index()?)?;
+    std::fs::write(out_dir.join("utz_viz.wasm"), &wasm)?;
+    std::fs::write(out_dir.join("index.html"), viz::webdist_index()?)?;
     #[expect(
         clippy::cast_precision_loss,
         reason = "wasm blob size ≪ 2^53; KiB display"
@@ -51,50 +51,60 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     // + present outputs → skip the GeoJSON parse / lattice sampling /
     // deflate entirely.
     let cache = utz_build::cache_dir();
-    let exe_fp = std::env::current_exe().map_or_else(|_| "unknown".into(), |p| hash_file(&p));
+    let exe_fingerprint =
+        std::env::current_exe().map_or_else(|_| "unknown".into(), |path| hash_file(&path));
     let release = utz_build::loader::resolve_release(&cache)?;
-    let dens_fp = file_fp(&utz_build::density::sidecar_path(&cache));
+    let density_fingerprint = file_fp(&utz_build::density::sidecar_path(&cache));
 
     // density loads lazily: an all-fresh run touches neither the ~58 MB
     // sidecar nor the ~460 MB GHS-POP download behind its first build
-    let mut dens = LazyDensity::Unprobed;
+    let mut density = LazyDensity::Unprobed;
 
-    let heat_path = out.join("heat.bin.z");
-    let heat_stamp = format!("v1\nexe:{exe_fp}\ndens:{dens_fp}\n");
-    let heat_stamp_path = out.join(".stamp-heat");
-    if !a.force && fresh(&heat_stamp_path, &heat_stamp, &[&heat_path]) {
+    let heat_path = out_dir.join("heat.bin.z");
+    let heat_stamp = format!("v1\nexe:{exe_fingerprint}\ndens:{density_fingerprint}\n");
+    let heat_stamp_path = out_dir.join(".stamp-heat");
+    if !args.force && fresh(&heat_stamp_path, &heat_stamp, &[&heat_path]) {
         println!("heat.bin.z: cached (inputs unchanged)");
-    } else if let Some(g) = dens.get() {
-        let n = write_z(&heat_path, &viz::heat_bin(g))?;
+    } else if let Some(grid) = density.get() {
+        let deflated_len = write_z(&heat_path, &viz::heat_bin(grid))?;
         #[expect(
             clippy::cast_precision_loss,
             reason = "deflated heatmap size ≪ 2^53; KiB display"
         )]
-        let heat_kib = n as f64 / 1024.0;
+        let heat_kib = deflated_len as f64 / 1024.0;
         println!("heat.bin.z: {heat_kib:.1} KiB");
         std::fs::write(&heat_stamp_path, &heat_stamp)?;
     }
 
-    for ds in DATASETS {
-        let d = utz_build::dataset(ds)?;
-        let zip = utz_build::download::fetch(&utz_build::loader::dataset_url(d, &release), &cache)?;
+    for dataset in DATASETS {
+        let dataset_kind = utz_build::dataset(dataset)?;
+        let zip = utz_build::download::fetch(
+            &utz_build::loader::dataset_url(dataset_kind, &release),
+            &cache,
+        )?;
         let stamp = format!(
-            "v1\nexe:{exe_fp}\nrelease:{release}\nzip:{}\ndens:{dens_fp}\n",
+            "v1\nexe:{exe_fingerprint}\nrelease:{release}\nzip:{}\ndens:{density_fingerprint}\n",
             zip_fp(&zip)
         );
-        let stamp_path = out.join(format!(".stamp-{ds}"));
-        let bin_path = out.join(format!("{ds}.bin.z"));
-        let zones_path = out.join(format!("zones-{ds}.bin.z"));
-        if !a.force && fresh(&stamp_path, &stamp, &[&bin_path, &zones_path]) {
-            println!("{ds}: cached (inputs unchanged)");
+        let stamp_path = out_dir.join(format!(".stamp-{dataset}"));
+        let bin_path = out_dir.join(format!("{dataset}.bin.z"));
+        let zones_path = out_dir.join(format!("zones-{dataset}.bin.z"));
+        if !args.force && fresh(&stamp_path, &stamp, &[&bin_path, &zones_path]) {
+            println!("{dataset}: cached (inputs unchanged)");
             continue;
         }
-        let feats = utz_build::loader::load_geojson_zip(&zip)?;
-        let topo0 = topo::build_topology(&feats, 0.0);
+        let features = utz_build::loader::load_geojson_zip(&zip)?;
+        let topo0 = topo::build_topology(&features, 0.0);
         let verts: usize = topo0.arc_coords.iter().map(std::vec::Vec::len).sum();
-        let bin = viz::dataset_bin(&topo0, &feats, d.code(), "webdist", dens.get());
+        let bin = viz::dataset_bin(
+            &topo0,
+            &features,
+            dataset_kind.code(),
+            "webdist",
+            density.get(),
+        );
         let bin_z = write_z(&bin_path, &bin)?;
-        let zones_z = write_z(&zones_path, &zones_bin(&feats, ds)?)?;
+        let zones_z = write_z(&zones_path, &zones_bin(&features, dataset)?)?;
         #[expect(
             clippy::cast_precision_loss,
             reason = "raw/deflated bin sizes ≪ 2^53; MiB display"
@@ -105,12 +115,12 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             zones_z as f64 / f64::from(1 << 20),
         );
         println!(
-            "{ds}: {} arcs, {verts} verts, {raw_mib:.1} MiB -> {bin_z_mib:.1} MiB (+ zones {zones_z_mib:.1} MiB)",
+            "{dataset}: {} arcs, {verts} verts, {raw_mib:.1} MiB -> {bin_z_mib:.1} MiB (+ zones {zones_z_mib:.1} MiB)",
             topo0.arc_coords.len()
         );
         std::fs::write(&stamp_path, &stamp)?;
     }
-    println!("wrote {}", out.display());
+    println!("wrote {}", out_dir.display());
     Ok(())
 }
 
@@ -126,10 +136,10 @@ impl LazyDensity {
         if matches!(self, Self::Unprobed) {
             *self = Self::Probed(
                 match utz_build::density::DensityGrid::load(&utz_build::cache_dir()) {
-                    Ok(g) => Some(g),
-                    Err(e) => {
+                    Ok(grid) => Some(grid),
+                    Err(error) => {
                         eprintln!(
-                            "warning: density grid unavailable ({e}); density features disabled"
+                            "warning: density grid unavailable ({error}); density features disabled"
                         );
                         None
                     }
@@ -137,7 +147,7 @@ impl LazyDensity {
             );
         }
         match self {
-            Self::Probed(g) => g.as_ref(),
+            Self::Probed(grid) => grid.as_ref(),
             Self::Unprobed => unreachable!("probed just above"),
         }
     }
@@ -146,7 +156,7 @@ impl LazyDensity {
 /// A stamped output is fresh when every output file exists and the recorded
 /// stamp matches the wanted one exactly.
 fn fresh(stamp_path: &Path, want: &str, outputs: &[&Path]) -> bool {
-    outputs.iter().all(|p| p.exists())
+    outputs.iter().all(|path| path.exists())
         && std::fs::read_to_string(stamp_path).is_ok_and(|have| have == want)
 }
 
@@ -156,10 +166,10 @@ fn hash_file(path: &Path) -> String {
     use std::hash::Hasher as _;
     std::fs::read(path).map_or_else(
         |_| "unreadable".into(),
-        |b| {
-            let mut h = std::collections::hash_map::DefaultHasher::new();
-            h.write(&b);
-            format!("{:016x}", h.finish())
+        |bytes| {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            hasher.write(&bytes);
+            format!("{:016x}", hasher.finish())
         },
     )
 }
@@ -170,13 +180,13 @@ fn hash_file(path: &Path) -> String {
 fn file_fp(path: &Path) -> String {
     std::fs::metadata(path).map_or_else(
         |_| "none".into(),
-        |m| {
-            let mtime = m
+        |metadata| {
+            let mtime = metadata
                 .modified()
                 .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map_or(0, |d| d.as_secs());
-            format!("{}-{mtime}", m.len())
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |duration| duration.as_secs());
+            format!("{}-{mtime}", metadata.len())
         },
     )
 }
@@ -185,10 +195,15 @@ fn file_fp(path: &Path) -> String {
 /// `Last-Modified`) stored beside the file (a 304 revalidation leaves both
 /// untouched), falling back to len+mtime when no validators were stored.
 fn zip_fp(zip: &Path) -> String {
-    let name = zip.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    let name = zip
+        .file_name()
+        .and_then(|file_name| file_name.to_str())
+        .unwrap_or_default();
     let meta = zip.with_file_name(format!("{name}.headers"));
     match std::fs::read_to_string(&meta) {
-        Ok(h) if !h.trim().is_empty() => h.split_whitespace().collect::<Vec<_>>().join(" "),
+        Ok(headers) if !headers.trim().is_empty() => {
+            headers.split_whitespace().collect::<Vec<_>>().join(" ")
+        }
         _ => file_fp(zip),
     }
 }
@@ -199,10 +214,10 @@ fn zip_fp(zip: &Path) -> String {
 /// (little-endian): `"uTZz" | u32 w | u32 h | u32 n_zones
 /// | per zone: u16 len + utf8 tzid | pad to 2 | u16 ids[w·h]`
 /// (0xFFFF = no zone; row 0 = 90°N, col 0 = 180°W, cell centers sampled).
-fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> utz_build::Result<Vec<u8>> {
+fn zones_bin(features: &[utz_build::Feat], dataset: &str) -> utz_build::Result<Vec<u8>> {
     const STEP: f64 = 0.1;
-    let p = Params {
-        dataset: utz_build::dataset(ds)?.code(),
+    let params = Params {
+        dataset: utz_build::dataset(dataset)?.code(),
         tzbb_release: "webdist",
         eps_m: 100.0,
         quant_bits: 24,
@@ -214,14 +229,17 @@ fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> utz_build::Result<Vec<u8>> 
         density_weight_floor: None,
         geom: encode::GeomEncoding::default(),
     };
-    let finder = utz::Finder::from_vec(encode::encode(feats, &p)?)?;
-    let mut names: Vec<&str> = feats.iter().filter_map(|f| f.tzid.as_deref()).collect();
+    let finder = utz::Finder::from_vec(encode::encode(features, &params)?)?;
+    let mut names: Vec<&str> = features
+        .iter()
+        .filter_map(|feature| feature.tzid.as_deref())
+        .collect();
     names.sort_unstable();
     names.dedup();
-    let idx: std::collections::HashMap<&str, u16> = names
+    let zone_index: std::collections::HashMap<&str, u16> = names
         .iter()
         .enumerate()
-        .map(|(i, &n)| (n, u16::try_from(i).expect("zone count fits u16")))
+        .map(|(i, &name)| (name, u16::try_from(i).expect("zone count fits u16")))
         .collect();
 
     #[expect(
@@ -229,61 +247,61 @@ fn zones_bin(feats: &[utz_build::Feat], ds: &str) -> utz_build::Result<Vec<u8>> 
         clippy::cast_sign_loss,
         reason = "360/0.1 and 180/0.1 are small exact integers"
     )]
-    let (w, h) = ((360.0 / STEP) as usize, (180.0 / STEP) as usize);
-    let mut o = Vec::with_capacity(16 + w * h * 2);
-    o.extend_from_slice(b"uTZz");
-    o.extend_from_slice(
-        &u32::try_from(w)
+    let (width, height) = ((360.0 / STEP) as usize, (180.0 / STEP) as usize);
+    let mut out = Vec::with_capacity(16 + width * height * 2);
+    out.extend_from_slice(b"uTZz");
+    out.extend_from_slice(
+        &u32::try_from(width)
             .expect("lattice width fits u32")
             .to_le_bytes(),
     );
-    o.extend_from_slice(
-        &u32::try_from(h)
+    out.extend_from_slice(
+        &u32::try_from(height)
             .expect("lattice height fits u32")
             .to_le_bytes(),
     );
-    o.extend_from_slice(
+    out.extend_from_slice(
         &u32::try_from(names.len())
             .expect("zone count fits u32")
             .to_le_bytes(),
     );
-    for n in &names {
-        o.extend_from_slice(
-            &u16::try_from(n.len())
+    for name in &names {
+        out.extend_from_slice(
+            &u16::try_from(name.len())
                 .expect("tzid len fits u16")
                 .to_le_bytes(),
         );
-        o.extend_from_slice(n.as_bytes());
+        out.extend_from_slice(name.as_bytes());
     }
-    o.resize(o.len().next_multiple_of(2), 0);
-    for r in 0..h {
+    out.resize(out.len().next_multiple_of(2), 0);
+    for row in 0..height {
         #[expect(
             clippy::cast_precision_loss,
-            reason = "r < h = 180/STEP lattice rows; exact"
+            reason = "row < height = 180/STEP lattice rows; exact"
         )]
-        let lat = 90.0 - (r as f64 + 0.5) * STEP;
-        for c in 0..w {
+        let lat = 90.0 - (row as f64 + 0.5) * STEP;
+        for col in 0..width {
             #[expect(
                 clippy::cast_precision_loss,
-                reason = "c < w = 360/STEP lattice cols; exact"
+                reason = "col < width = 360/STEP lattice cols; exact"
             )]
-            let lon = -180.0 + (c as f64 + 0.5) * STEP;
+            let lon = -180.0 + (col as f64 + 0.5) * STEP;
             let id = finder
                 .lookup(utz::Position { lon, lat })
                 .expect("lattice point in range")
-                .and_then(|t| idx.get(t).copied())
+                .and_then(|tzid| zone_index.get(tzid).copied())
                 .unwrap_or(0xFFFF);
-            o.extend_from_slice(&id.to_le_bytes());
+            out.extend_from_slice(&id.to_le_bytes());
         }
     }
-    Ok(o)
+    Ok(out)
 }
 
 /// zlib-deflate (the browser side inflates with `DecompressionStream('deflate')`).
 fn write_z(path: &Path, data: &[u8]) -> utz_build::Result<usize> {
-    let z = miniz_oxide::deflate::compress_to_vec_zlib(data, 6);
-    std::fs::write(path, &z)?;
-    Ok(z.len())
+    let deflated = miniz_oxide::deflate::compress_to_vec_zlib(data, 6);
+    std::fs::write(path, &deflated)?;
+    Ok(deflated.len())
 }
 
 /// Build `utz_viz` (simplify + live asset encode + stats surface) for

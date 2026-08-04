@@ -44,110 +44,111 @@ pub fn webdist_index() -> utz_build::Result<String> {
 /// one-byte lengths).
 #[must_use]
 pub fn dataset_bin(
-    t: &utz_encode::topo::Topology,
+    topology: &utz_encode::topo::Topology,
     feats: &[utz_encode::Feat],
     dataset_code: u8,
     release: &str,
-    g: Option<&utz_build::density::DensityGrid>,
+    grid: Option<&utz_build::density::DensityGrid>,
 ) -> Vec<u8> {
-    let arcs = &t.arc_coords;
+    let arcs = &topology.arc_coords;
     let n_arcs = arcs.len();
     let n_verts: usize = arcs.iter().map(std::vec::Vec::len).sum();
-    let push_u32 = |o: &mut Vec<u8>, v: usize, what: &str| {
-        let v = u32::try_from(v).unwrap_or_else(|_| panic!("{what} fits u32"));
-        o.extend_from_slice(&v.to_le_bytes());
+    let push_u32 = |out: &mut Vec<u8>, value: usize, what: &str| {
+        let value = u32::try_from(value).unwrap_or_else(|_| panic!("{what} fits u32"));
+        out.extend_from_slice(&value.to_le_bytes());
     };
-    let mut o = Vec::with_capacity(24 + 4 * n_arcs + 20 * n_verts);
-    o.extend_from_slice(b"uTZv");
-    o.extend_from_slice(&(u32::from(g.is_some()) | 2 | 4).to_le_bytes());
-    push_u32(&mut o, n_arcs, "arc count");
-    push_u32(&mut o, n_verts, "vert count");
+    let mut out = Vec::with_capacity(24 + 4 * n_arcs + 20 * n_verts);
+    out.extend_from_slice(b"uTZv");
+    out.extend_from_slice(&(u32::from(grid.is_some()) | 2 | 4).to_le_bytes());
+    push_u32(&mut out, n_arcs, "arc count");
+    push_u32(&mut out, n_verts, "vert count");
     let raw_coords =
         usize::try_from(crate::coord_count(feats)).expect("raw coordinate count fits usize");
-    push_u32(&mut o, raw_coords, "raw coordinate count");
-    let mut off = 0usize;
-    push_u32(&mut o, off, "arc offset");
-    for a in arcs {
-        off += a.len();
-        push_u32(&mut o, off, "arc offset");
+    push_u32(&mut out, raw_coords, "raw coordinate count");
+    let mut offset = 0usize;
+    push_u32(&mut out, offset, "arc offset");
+    for arc in arcs {
+        offset += arc.len();
+        push_u32(&mut out, offset, "arc offset");
     }
-    o.resize(o.len().next_multiple_of(8), 0); // f64 view needs 8-byte alignment
-    for a in arcs {
-        for &(x, y) in a {
-            o.extend_from_slice(&x.to_le_bytes());
-            o.extend_from_slice(&y.to_le_bytes());
+    out.resize(out.len().next_multiple_of(8), 0); // f64 view needs 8-byte alignment
+    for arc in arcs {
+        for &(x, y) in arc {
+            out.extend_from_slice(&x.to_le_bytes());
+            out.extend_from_slice(&y.to_le_bytes());
         }
     }
-    if let Some(g) = g {
-        for a in arcs {
-            let ew: Vec<f64> = a.windows(2).map(|p| g.max_along(p[0], p[1])).collect();
-            for i in 0..a.len() {
-                let left = if i > 0 { ew[i - 1] } else { 0.0 };
-                let right = ew.get(i).copied().unwrap_or(0.0);
+    if let Some(grid) = grid {
+        for arc in arcs {
+            let edge_densities: Vec<f64> = arc
+                .windows(2)
+                .map(|pair| grid.max_along(pair[0], pair[1]))
+                .collect();
+            for i in 0..arc.len() {
+                let left = if i > 0 { edge_densities[i - 1] } else { 0.0 };
+                let right = edge_densities.get(i).copied().unwrap_or(0.0);
                 #[expect(
                     clippy::cast_possible_truncation,
                     reason = "density → f32 blob field, rounding is fine"
                 )]
-                let d = left.max(right) as f32;
-                o.extend_from_slice(&d.to_le_bytes());
+                let density = left.max(right) as f32;
+                out.extend_from_slice(&density.to_le_bytes());
             }
         }
     }
     // ---- topology section ----
-    o.push(dataset_code);
+    out.push(dataset_code);
     assert!(release.len() < 256, "release tag too long");
-    o.push(u8::try_from(release.len()).expect("release len fits u8"));
-    o.extend_from_slice(release.as_bytes());
-    o.extend_from_slice(
-        &u16::try_from(feats.len())
-            .expect("feature count fits u16")
-            .to_le_bytes(),
-    );
-    for f in feats {
+    out.push(u8::try_from(release.len()).expect("release len fits u8"));
+    out.extend_from_slice(release.as_bytes());
+    let n_features = u16::try_from(feats.len()).expect("feature count fits u16");
+    out.extend_from_slice(&n_features.to_le_bytes());
+    for feat in feats {
         #[expect(
             clippy::cast_possible_truncation,
             reason = "offset → f32 blob field, rounding is fine"
         )]
-        let off32 = f.offset as f32;
-        o.extend_from_slice(&off32.to_le_bytes());
-        let tzid = f.tzid.as_deref().unwrap_or("");
+        let offset_f32 = feat.offset as f32;
+        out.extend_from_slice(&offset_f32.to_le_bytes());
+        let tzid = feat.tzid.as_deref().unwrap_or("");
         assert!(tzid.len() < 256, "tzid too long: {tzid}");
-        o.push(u8::try_from(tzid.len()).expect("tzid len fits u8"));
-        o.extend_from_slice(tzid.as_bytes());
+        out.push(u8::try_from(tzid.len()).expect("tzid len fits u8"));
+        out.extend_from_slice(tzid.as_bytes());
     }
-    o.extend_from_slice(
-        &u32::try_from(t.ring_refs.len())
+    out.extend_from_slice(
+        &u32::try_from(topology.ring_refs.len())
             .expect("ring count fits u32")
             .to_le_bytes(),
     );
-    for refs in &t.ring_refs {
-        o.extend_from_slice(
+    for refs in &topology.ring_refs {
+        out.extend_from_slice(
             &u32::try_from(refs.len())
                 .expect("ref count fits u32")
                 .to_le_bytes(),
         );
-        for &r in refs {
-            o.extend_from_slice(&r.to_le_bytes());
+        for &arc_ref in refs {
+            out.extend_from_slice(&arc_ref.to_le_bytes());
         }
     }
-    for fi in 0..feats.len() {
-        o.extend_from_slice(
-            &u16::try_from(t.structure[fi].len())
+    for feature_index in 0..feats.len() {
+        out.extend_from_slice(
+            &u16::try_from(topology.structure[feature_index].len())
                 .expect("poly count fits u16")
                 .to_le_bytes(),
         );
-        for poly in &t.structure[fi] {
-            o.extend_from_slice(
+        for poly in &topology.structure[feature_index] {
+            out.extend_from_slice(
                 &u16::try_from(poly.len())
                     .expect("ring count fits u16")
                     .to_le_bytes(),
             );
-            for &ri in poly {
-                o.extend_from_slice(&u32::try_from(ri).expect("ring idx fits u32").to_le_bytes());
+            for &ring_index in poly {
+                let ring_index = u32::try_from(ring_index).expect("ring idx fits u32");
+                out.extend_from_slice(&ring_index.to_le_bytes());
             }
         }
     }
-    o
+    out
 }
 
 /// Heat raster for the viewer's density layer (little-endian):
@@ -160,9 +161,12 @@ pub fn dataset_bin(
 /// If the binned grid dimensions exceed u32 (not reachable at 4' input).
 #[must_use]
 pub fn heat_bin(grid: &utz_build::density::DensityGrid) -> Vec<u8> {
-    const DS: usize = 4;
-    let (width, height) = (grid.width.div_ceil(DS), grid.height.div_ceil(DS));
-    let dmax_ln = 50_000f64.ln();
+    const DOWNSAMPLE: usize = 4;
+    let (width, height) = (
+        grid.width.div_ceil(DOWNSAMPLE),
+        grid.height.div_ceil(DOWNSAMPLE),
+    );
+    let max_density_ln = 50_000f64.ln();
     let mut cells = vec![0u8; width * height];
     for row in 0..grid.height {
         for col in 0..grid.width {
@@ -173,34 +177,34 @@ pub fn heat_bin(grid: &utz_build::density::DensityGrid) -> Vec<u8> {
                     clippy::cast_sign_loss,
                     reason = "clamped to 1..=255"
                 )]
-                let heat = (255.0 * density.ln() / dmax_ln).clamp(1.0, 255.0) as u8;
-                let out = &mut cells[row / DS * width + col / DS];
-                *out = (*out).max(heat);
+                let heat = (255.0 * density.ln() / max_density_ln).clamp(1.0, 255.0) as u8;
+                let cell = &mut cells[row / DOWNSAMPLE * width + col / DOWNSAMPLE];
+                *cell = (*cell).max(heat);
             }
         }
     }
-    let mut o = Vec::with_capacity(48 + cells.len());
-    o.extend_from_slice(b"uTZh");
-    o.extend_from_slice(
+    let mut out = Vec::with_capacity(48 + cells.len());
+    out.extend_from_slice(b"uTZh");
+    out.extend_from_slice(
         &u32::try_from(width)
             .expect("raster width fits u32")
             .to_le_bytes(),
     );
-    o.extend_from_slice(
+    out.extend_from_slice(
         &u32::try_from(height)
             .expect("raster height fits u32")
             .to_le_bytes(),
     );
-    o.extend_from_slice(&[0u8; 4]); // pad so the f64 extents sit 8-aligned
-    #[expect(clippy::cast_precision_loss, reason = "DS = 4, exact in f64")]
-    for v in [
+    out.extend_from_slice(&[0u8; 4]); // pad so the f64 extents sit 8-aligned
+    #[expect(clippy::cast_precision_loss, reason = "DOWNSAMPLE = 4, exact in f64")]
+    for value in [
         grid.lon0,
         grid.lat0,
-        grid.dlon * DS as f64,
-        grid.dlat * DS as f64,
+        grid.dlon * DOWNSAMPLE as f64,
+        grid.dlat * DOWNSAMPLE as f64,
     ] {
-        o.extend_from_slice(&v.to_le_bytes());
+        out.extend_from_slice(&value.to_le_bytes());
     }
-    o.extend_from_slice(&cells);
-    o
+    out.extend_from_slice(&cells);
+    out
 }

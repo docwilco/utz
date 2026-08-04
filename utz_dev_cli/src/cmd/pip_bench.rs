@@ -48,104 +48,108 @@ struct P<'a> {
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"
 )]
-pub fn run(a: Args) -> utz_build::Result<()> {
-    let (ds, eps_m, npts) = (a.ds, a.eps_m, a.npts);
+pub fn run(args: Args) -> utz_build::Result<()> {
+    let (dataset, eps_m, n_points) = (args.ds, args.eps_m, args.npts);
 
-    let feats = utz_build::load(&ds)?;
-    let out = topo::encode_topology(&feats, eps_m / 111_320.0);
-    let quant = quantize(&out.simplified);
-    let verts: usize = quant
+    let features = utz_build::load(&dataset)?;
+    let out = topo::encode_topology(&features, eps_m / 111_320.0);
+    let quantized = quantize(&out.simplified);
+    let verts: usize = quantized
         .iter()
-        .flat_map(|(_, ps)| ps)
+        .flat_map(|(_, polys)| polys)
         .flatten()
         .map(std::vec::Vec::len)
         .sum();
     println!(
-        "{} eps={eps_m}m: {} features, {verts} quantized verts, {npts} points\n",
-        ds.to_uppercase(),
-        quant.len()
+        "{} eps={eps_m}m: {} features, {verts} quantized verts, {n_points} points\n",
+        dataset.to_uppercase(),
+        quantized.len()
     );
 
     // geo oracle polygons over the identical i64 coords
-    let gpolys: Vec<(usize, geo::Polygon<i64>)> = quant
+    let gpolys: Vec<(usize, geo::Polygon<i64>)> = quantized
         .iter()
         .enumerate()
-        .flat_map(|(fi, (_, polys))| {
-            polys.iter().map(move |p| {
-                let ring = |r: &Vec<(i32, i32)>| -> geo::LineString<i64> {
-                    let mut v: Vec<(i64, i64)> = r
+        .flat_map(|(feature_index, (_, polys))| {
+            polys.iter().map(move |poly| {
+                let ring = |coords: &Vec<(i32, i32)>| -> geo::LineString<i64> {
+                    let mut vertices: Vec<(i64, i64)> = coords
                         .iter()
                         .map(|&(x, y)| (i64::from(x), i64::from(y)))
                         .collect();
-                    if v.first() != v.last() {
-                        if let Some(&f) = v.first() {
-                            v.push(f);
+                    if vertices.first() != vertices.last() {
+                        if let Some(&first) = vertices.first() {
+                            vertices.push(first);
                         }
                     }
-                    v.into()
+                    vertices.into()
                 };
                 (
-                    fi,
-                    geo::Polygon::new(ring(&p[0]), p[1..].iter().map(ring).collect()),
+                    feature_index,
+                    geo::Polygon::new(ring(&poly[0]), poly[1..].iter().map(ring).collect()),
                 )
             })
         })
         .collect();
 
-    let pts: Vec<(i32, i32)> = gen_pts(npts)
+    let points: Vec<(i32, i32)> = gen_pts(n_points)
         .iter()
-        .map(|&(lo, la)| (q24_lon(lo), q24_lat(la)))
+        .map(|&(lon, lat)| (q24_lon(lon), q24_lat(lat)))
         .collect();
 
     // ---- ours: per-polygon integer PIP, linear first-hit scan ----
-    let polys: Vec<P> = quant
+    let polys: Vec<P> = quantized
         .iter()
         .enumerate()
-        .flat_map(|(fi, (_, ps))| {
-            ps.iter().map(move |p| {
-                let rings: Vec<&[(i32, i32)]> = p.iter().map(std::vec::Vec::as_slice).collect();
-                let mut bb = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
-                for &(x, y) in &p[0] {
-                    bb = (bb.0.min(x), bb.1.min(y), bb.2.max(x), bb.3.max(y));
+        .flat_map(|(feature_index, (_, zone_polys))| {
+            zone_polys.iter().map(move |poly| {
+                let rings: Vec<&[(i32, i32)]> = poly.iter().map(std::vec::Vec::as_slice).collect();
+                let mut bbox = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+                for &(x, y) in &poly[0] {
+                    bbox = (bbox.0.min(x), bbox.1.min(y), bbox.2.max(x), bbox.3.max(y));
                 }
                 P {
-                    fi,
-                    bbox: bb,
+                    fi: feature_index,
+                    bbox,
                     rings,
                 }
             })
         })
         .collect();
     // geometry-rs polygons (expects closed GeoJSON-style rings)
-    let gm_polys: Vec<(usize, geometry_rs::Polygon)> = quant
+    let geometry_rs_polys: Vec<(usize, geometry_rs::Polygon)> = quantized
         .iter()
         .enumerate()
-        .flat_map(|(fi, (_, polys))| {
-            polys.iter().map(move |p| {
-                let ring = |r: &Vec<(i32, i32)>| -> Vec<geometry_rs::Point> {
-                    let mut v: Vec<geometry_rs::Point> = r
+        .flat_map(|(feature_index, (_, polys))| {
+            polys.iter().map(move |poly| {
+                let ring = |coords: &Vec<(i32, i32)>| -> Vec<geometry_rs::Point> {
+                    let mut vertices: Vec<geometry_rs::Point> = coords
                         .iter()
                         .map(|&(x, y)| geometry_rs::Point {
                             x: f64::from(x),
                             y: f64::from(y),
                         })
                         .collect();
-                    let first = v[0];
-                    v.push(first);
-                    v
+                    let first = vertices[0];
+                    vertices.push(first);
+                    vertices
                 };
                 (
-                    fi,
-                    geometry_rs::Polygon::new(ring(&p[0]), p[1..].iter().map(ring).collect(), None),
+                    feature_index,
+                    geometry_rs::Polygon::new(
+                        ring(&poly[0]),
+                        poly[1..].iter().map(ring).collect(),
+                        None,
+                    ),
                 )
             })
         })
         .collect();
 
-    // untimed warmup: first touch of `polys`/`pts` — without it the first
+    // untimed warmup: first touch of `polys`/`points` — without it the first
     // timed contender eats every cold miss and the shared-structure rows
     // (f64/i128) look spuriously fast
-    let (warm, _) = timed_scan(&pts, &polys, |i, px, py| {
+    let (warm, _) = timed_scan(&points, &polys, |i, px, py| {
         utz::pip::contains::<i64, _>(&polys[i].rings, px, py)
     });
     assert!(warm.iter().flatten().count() > 0);
@@ -160,54 +164,72 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     // hoisted bbox test keeps the comparison pure per-edge PIP.
     // geometry-rs contains_point runs its own internal rect precheck on top —
     // inherent to its API, tzf-rs pays it too, noise next to the ring walk.
-    let (ours, t_ours) = timed_scan(&pts, &polys, |i, px, py| {
+    let (ours, t_ours) = timed_scan(&points, &polys, |i, px, py| {
         utz::pip::contains::<i64, _>(&polys[i].rings, px, py)
     });
-    let (ours_f64, t_f64) = timed_scan(&pts, &polys, |i, px, py| {
+    let (ours_f64, t_f64) = timed_scan(&points, &polys, |i, px, py| {
         utz::pip::contains::<f64, _>(&polys[i].rings, px, py)
     });
-    let (ours_i128, t_i128) = timed_scan(&pts, &polys, |i, px, py| {
+    let (ours_i128, t_i128) = timed_scan(&points, &polys, |i, px, py| {
         utz::pip::contains::<i128, _>(&polys[i].rings, px, py)
     });
-    let (oracle, t_geo) = timed_scan(&pts, &polys, |i, px, py| {
+    let (oracle, t_geo) = timed_scan(&points, &polys, |i, px, py| {
         gpolys[i]
             .1
             .contains(&geo::Point::new(i64::from(px), i64::from(py)))
     });
-    let (gm, t_gm) = timed_scan(&pts, &polys, |i, px, py| {
-        gm_polys[i].1.contains_point(geometry_rs::Point {
+    let (geometry_rs_answers, t_geometry_rs) = timed_scan(&points, &polys, |i, px, py| {
+        geometry_rs_polys[i].1.contains_point(geometry_rs::Point {
             x: f64::from(px),
             y: f64::from(py),
         })
     });
 
     let mut diff = 0usize;
-    for (i, (a, b)) in ours.iter().zip(&oracle).enumerate() {
-        if a != b {
+    for (i, (our_answer, oracle_answer)) in ours.iter().zip(&oracle).enumerate() {
+        if our_answer != oracle_answer {
             diff += 1;
-            let tz = |o: &Option<usize>| o.map(|f| quant[f].0.clone()).unwrap_or_default();
+            let tzid_of = |answer: &Option<usize>| {
+                answer
+                    .map(|index| quantized[index].0.clone())
+                    .unwrap_or_default()
+            };
             println!(
                 "  disagree at pt#{i} {:?}: ours={:?} geo={:?}",
-                pts[i],
-                tz(a),
-                tz(b)
+                points[i],
+                tzid_of(our_answer),
+                tzid_of(oracle_answer)
             );
         }
     }
-    println!("disagreements vs geo: {diff}/{npts}");
+    println!("disagreements vs geo: {diff}/{n_points}");
     // geometry-rs boundary semantics differ (exterior edge = outside, hole
     // edge = inside), so only count — off-boundary answers must still agree
-    let gm_diff = ours.iter().zip(&gm).filter(|(a, b)| a != b).count();
-    println!("disagreements vs geometry-rs: {gm_diff}/{npts} (boundary semantics differ)");
-    let f64_diff = ours.iter().zip(&ours_f64).filter(|(a, b)| a != b).count();
-    println!("disagreements vs ours-f64: {f64_diff}/{npts} (must be 0: f64 exact at i24)");
-    let i128_diff = ours.iter().zip(&ours_i128).filter(|(a, b)| a != b).count();
-    println!("disagreements vs ours-i128: {i128_diff}/{npts} (must be 0: wider is exact)");
+    let geometry_rs_diff = ours
+        .iter()
+        .zip(&geometry_rs_answers)
+        .filter(|(ours_hit, other_hit)| ours_hit != other_hit)
+        .count();
+    println!(
+        "disagreements vs geometry-rs: {geometry_rs_diff}/{n_points} (boundary semantics differ)"
+    );
+    let f64_diff = ours
+        .iter()
+        .zip(&ours_f64)
+        .filter(|(ours_hit, other_hit)| ours_hit != other_hit)
+        .count();
+    println!("disagreements vs ours-f64: {f64_diff}/{n_points} (must be 0: f64 exact at i24)");
+    let i128_diff = ours
+        .iter()
+        .zip(&ours_i128)
+        .filter(|(ours_hit, other_hit)| ours_hit != other_hit)
+        .count();
+    println!("disagreements vs ours-i128: {i128_diff}/{n_points} (must be 0: wider is exact)");
     #[expect(
         clippy::cast_precision_loss,
         reason = "elapsed µs ≪ 2^53 (would be 285 years); µs/lookup display"
     )]
-    let us = |t: std::time::Duration| t.as_micros() as f64 / npts as f64;
+    let us = |elapsed: std::time::Duration| elapsed.as_micros() as f64 / n_points as f64;
     println!(
         "ours:        {:>8.2?}  ({:.1} µs/lookup)",
         t_ours,
@@ -233,9 +255,9 @@ pub fn run(a: Args) -> utz_build::Result<()> {
     );
     println!(
         "geometry-rs: {:>8.2?}  ({:.1} µs/lookup)   ours {:.2}x",
-        t_gm,
-        us(t_gm),
-        t_gm.as_secs_f64() / t_ours.as_secs_f64()
+        t_geometry_rs,
+        us(t_geometry_rs),
+        t_geometry_rs.as_secs_f64() / t_ours.as_secs_f64()
     );
     Ok(())
 }
@@ -245,57 +267,59 @@ pub fn run(a: Args) -> utz_build::Result<()> {
 /// is the per-candidate containment kernel. Returns per-point first hit
 /// (as feature index) + wall time.
 fn timed_scan(
-    pts: &[(i32, i32)],
+    points: &[(i32, i32)],
     polys: &[P],
     hit: impl Fn(usize, i32, i32) -> bool,
 ) -> (Vec<Option<usize>>, std::time::Duration) {
-    let t = Instant::now();
-    let got = pts
+    let timer = Instant::now();
+    let got = points
         .iter()
         .map(|&(px, py)| {
             (0..polys.len())
                 .find(|&i| {
-                    let b = &polys[i];
-                    px >= b.bbox.0
-                        && py >= b.bbox.1
-                        && px <= b.bbox.2
-                        && py <= b.bbox.3
+                    let poly = &polys[i];
+                    px >= poly.bbox.0
+                        && py >= poly.bbox.1
+                        && px <= poly.bbox.2
+                        && py <= poly.bbox.3
                         && hit(i, px, py)
                 })
                 .map(|i| polys[i].fi)
         })
         .collect();
-    (got, t.elapsed())
+    (got, timer.elapsed())
 }
 
 /// tzid + polygon → ring → quantized vertices
 type QFeat = (String, Vec<Vec<Vec<(i32, i32)>>>);
 
 /// tzid + per-polygon rings quantized to the i24 grid, degenerate rings dropped.
-fn quantize(feats: &[Feat]) -> Vec<QFeat> {
-    feats
+fn quantize(features: &[Feat]) -> Vec<QFeat> {
+    features
         .iter()
-        .map(|f| {
-            let polys = f
+        .map(|feature| {
+            let polys = feature
                 .polys
                 .iter()
-                .map(|p| {
-                    p.iter()
-                        .map(|r| {
-                            let mut q: Vec<(i32, i32)> =
-                                r.iter().map(|&(x, y)| (q24_lon(x), q24_lat(y))).collect();
-                            q.dedup();
-                            if q.first() == q.last() && q.len() > 1 {
-                                q.pop();
+                .map(|poly| {
+                    poly.iter()
+                        .map(|ring| {
+                            let mut quantized: Vec<(i32, i32)> = ring
+                                .iter()
+                                .map(|&(x, y)| (q24_lon(x), q24_lat(y)))
+                                .collect();
+                            quantized.dedup();
+                            if quantized.first() == quantized.last() && quantized.len() > 1 {
+                                quantized.pop();
                             }
-                            q
+                            quantized
                         })
-                        .filter(|r| r.len() >= 3)
+                        .filter(|ring| ring.len() >= 3)
                         .collect::<Vec<_>>()
                 })
-                .filter(|p: &Vec<Vec<(i32, i32)>>| !p.is_empty())
+                .filter(|poly: &Vec<Vec<(i32, i32)>>| !poly.is_empty())
                 .collect();
-            (f.tzid.clone().unwrap_or_default(), polys)
+            (feature.tzid.clone().unwrap_or_default(), polys)
         })
         .collect()
 }

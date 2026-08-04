@@ -14,12 +14,12 @@
 
 #[test]
 fn new_loads_the_tiny_preset() {
-    let f = utz::Finder::new().expect("tiny asset decodes");
+    let finder = utz::Finder::new().expect("tiny asset decodes");
     assert!(
-        !f.tzbb_release().is_empty(),
+        !finder.tzbb_release().is_empty(),
         "header carries a TZBB release tag"
     );
-    let london = f
+    let london = finder
         .lookup(utz::Position {
             lon: -0.1276,
             lat: 51.5072,
@@ -28,9 +28,9 @@ fn new_loads_the_tiny_preset() {
     // pins the quick-start doctest's claimed value (lib.rs)
     assert_eq!(london, Some("Europe/London"));
     // provenance: the tiny recipe's density-weight floor round-trips
-    assert_eq!(f.density_weight_floor(), Some(0.001));
+    assert_eq!(finder.density_weight_floor(), Some(0.001));
     assert_eq!(
-        f.lookup_coarse(utz::Position {
+        finder.lookup_coarse(utz::Position {
             lon: -0.1276,
             lat: 51.5072
         }),
@@ -41,8 +41,8 @@ fn new_loads_the_tiny_preset() {
 
 #[test]
 fn invalid_positions_error() {
-    let f = utz::Finder::new().expect("tiny asset parses");
-    for pos in [
+    let finder = utz::Finder::new().expect("tiny asset parses");
+    for position in [
         utz::Position {
             lon: 200.0,
             lat: 0.0,
@@ -60,9 +60,12 @@ fn invalid_positions_error() {
             lat: f64::NAN,
         },
     ] {
-        assert!(!pos.is_valid());
-        assert_eq!(f.lookup(pos), Err(utz::Error::InvalidPosition));
-        assert_eq!(f.lookup_coarse(pos), Err(utz::Error::InvalidPosition));
+        assert!(!position.is_valid());
+        assert_eq!(finder.lookup(position), Err(utz::Error::InvalidPosition));
+        assert_eq!(
+            finder.lookup_coarse(position),
+            Err(utz::Error::InvalidPosition)
+        );
     }
     // the unchecked variants stay memory-safe on wild input (documented
     // to answer with an arbitrary nearby zone)
@@ -70,8 +73,8 @@ fn invalid_positions_error() {
         lon: 999.0,
         lat: 999.0,
     };
-    let _ = f.lookup_unchecked(wild);
-    let _ = f.lookup_coarse_unchecked(wild);
+    let _ = finder.lookup_unchecked(wild);
+    let _ = finder.lookup_coarse_unchecked(wild);
     // the domain corners are valid
     assert!(utz::Position {
         lon: 180.0,

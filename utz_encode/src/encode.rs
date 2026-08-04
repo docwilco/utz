@@ -37,11 +37,11 @@ use crate::{clean, q_lat, q_lon, qmax_for, topo, Arc, Error, Feat};
 /// at fixed width and a wrap would silently corrupt the container, so panic.
 /// Data-dependent limits (feature count, tzid pool, CSR tables) are
 /// `ensure!`-guarded with [`Error::FormatLimit`] before these run.
-fn c32(n: usize) -> u32 {
-    u32::try_from(n).expect("exceeds u32 format width")
+fn c32(value: usize) -> u32 {
+    u32::try_from(value).expect("exceeds u32 format width")
 }
-fn c16(n: usize) -> u16 {
-    u16::try_from(n).expect("exceeds u16 format width")
+fn c16(value: usize) -> u16 {
+    u16::try_from(value).expect("exceeds u16 format width")
 }
 
 pub use utz_common::{Codec, GeomEncoding, SimplifyAlgo};
@@ -114,8 +114,8 @@ pub struct PayloadStats {
 /// # Errors
 ///
 /// Same as [`build_payload`].
-pub fn encode(feats: &[Feat], p: &Params) -> crate::Result<Vec<u8>> {
-    finish(&build_payload(feats, p)?, p.codec)
+pub fn encode(feats: &[Feat], params: &Params) -> crate::Result<Vec<u8>> {
+    finish(&build_payload(feats, params)?, params.codec)
 }
 
 /// Everything but the outer header + compression (so size sweeps can compress
@@ -124,14 +124,14 @@ pub fn encode(feats: &[Feat], p: &Params) -> crate::Result<Vec<u8>> {
 /// # Errors
 ///
 /// As [`payload_from_topology`].
-pub fn build_payload(feats: &[Feat], p: &Params) -> crate::Result<Vec<u8>> {
-    let algo = to_simplify(p.simplify, p.eps_m / 111_320.0);
-    let t = topo::build_topology_algo(feats, algo);
-    Ok(payload_from_topology(&t, &t.arc_coords, feats, p)?.0)
+pub fn build_payload(feats: &[Feat], params: &Params) -> crate::Result<Vec<u8>> {
+    let algo = to_simplify(params.simplify, params.eps_m / 111_320.0);
+    let topology = topo::build_topology_algo(feats, algo);
+    Ok(payload_from_topology(&topology, &topology.arc_coords, feats, params)?.0)
 }
 
 /// The header's fixed-point (1e-4) density-weight floor. A real floor
-/// never stamps 0 (which means "unweighted"), and `w >= 1.0` means
+/// never stamps 0 (which means "unweighted"), and `floor >= 1.0` means
 /// weighting off, which callers express as `None`.
 ///
 /// # Errors
@@ -140,26 +140,26 @@ pub fn build_payload(feats: &[Feat], p: &Params) -> crate::Result<Vec<u8>> {
 fn density_weight_floor_e4(floor: Option<f64>) -> crate::Result<u16> {
     match floor {
         None => Ok(0),
-        Some(w) => {
+        Some(floor) => {
             ensure!(
-                w.is_finite() && w > 0.0 && w < 1.0,
-                Error::DensityWeightFloor { floor: w }
+                floor.is_finite() && floor > 0.0 && floor < 1.0,
+                Error::DensityWeightFloor { floor }
             );
             #[expect(
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,
                 reason = "validated into (0, 1) above, so the product is in (0, 10_000)"
             )]
-            Ok(((w * 1e4).round() as u16).max(1))
+            Ok(((floor * 1e4).round() as u16).max(1))
         }
     }
 }
 
 /// Serialize an already-simplified topology: quantize → grid → sections.
-/// `arc_coords` may differ from `t.arc_coords` (the wasm viewer simplifies
-/// per-arc itself); `feats` supplies only per-feature metadata (tzid,
-/// offset). Geometry comes from the arcs. `p.eps_m` is recorded in the
-/// header, not applied.
+/// `arc_coords` may differ from `topology.arc_coords` (the wasm viewer
+/// simplifies per-arc itself); `feats` supplies only per-feature metadata
+/// (tzid, offset). Geometry comes from the arcs. `params.eps_m` is recorded
+/// in the header, not applied.
 ///
 /// # Errors
 ///
@@ -173,20 +173,24 @@ fn density_weight_floor_e4(floor: Option<f64>) -> crate::Result<u16> {
 /// [`Error::FormatLimit`] guard applies (payload over 4 GiB, unreachable
 /// for real datasets).
 pub fn payload_from_topology(
-    t: &topo::Topology,
+    topology: &topo::Topology,
     arc_coords: &[Arc],
     feats: &[Feat],
-    p: &Params,
+    params: &Params,
 ) -> crate::Result<(Vec<u8>, PayloadStats)> {
     ensure!(
-        matches!(p.quant_bits, 16 | 24 | 32),
-        Error::QuantBits { bits: p.quant_bits }
+        matches!(params.quant_bits, 16 | 24 | 32),
+        Error::QuantBits {
+            bits: params.quant_bits
+        }
     );
     ensure!(
-        (0.1..=45.0).contains(&p.grid_deg),
-        Error::GridDeg { deg: p.grid_deg }
+        (0.1..=45.0).contains(&params.grid_deg),
+        Error::GridDeg {
+            deg: params.grid_deg
+        }
     );
-    let density_weight_floor_e4 = density_weight_floor_e4(p.density_weight_floor)?;
+    let density_weight_floor_e4 = density_weight_floor_e4(params.density_weight_floor)?;
     ensure!(
         feats.len() < 0x7FFF,
         Error::FormatLimit {
@@ -195,52 +199,52 @@ pub fn payload_from_topology(
             max: 0x7FFE
         }
     );
-    let qmax = qmax_for(p.quant_bits);
-    let geom = quantize_clean(t, arc_coords, qmax);
-    let (g, csr, parent) = poly_grid(&geom, feats, p, qmax)?;
-    let full_rings =
-        (p.geom == GeomEncoding::FullRings).then(|| flatten_full_rings(&geom, feats.len()));
+    let qmax = qmax_for(params.quant_bits);
+    let clean_geom = quantize_clean(topology, arc_coords, qmax);
+    let (cell_grid, csr, parent) = poly_grid(&clean_geom, feats, params, qmax)?;
+    let full_rings = (params.geom == GeomEncoding::FullRings)
+        .then(|| flatten_full_rings(&clean_geom, feats.len()));
 
     let mut stats = PayloadStats {
-        n_arcs: c32(geom.arcs_q.len()),
-        n_verts: geom.arcs_q.iter().map(|a| c32(a.len())).sum(),
-        clean: geom.stats,
+        n_arcs: c32(clean_geom.arcs_q.len()),
+        n_verts: clean_geom.arcs_q.iter().map(|arc| c32(arc.len())).sum(),
+        clean: clean_geom.stats,
         ..Default::default()
     };
     let counts = eager_counts(
         full_rings.as_ref(),
-        &geom,
+        &clean_geom,
         feats.len(),
         parent.len(),
-        p.geom,
+        params.geom,
     );
-    ensure_header_limits(p, counts, parent.len())?;
+    ensure_header_limits(params, counts, parent.len())?;
     let (eager_coords, eager_rings, eager_polys) = counts;
     // header space reserved up front (plaintext; finish() compresses only
     // the sections after it); stored offsets are relative to the sections
-    let mut o = vec![0u8; PAYLOAD_HEADER_LEN];
-    stats.header = c32(o.len());
-    write_zone_table(&mut o, feats)?;
+    let mut out = vec![0u8; PAYLOAD_HEADER_LEN];
+    stats.header = c32(out.len());
+    write_zone_table(&mut out, feats)?;
     let (arcs_off, rings_off) = write_geometry_sections(
-        &mut o,
-        p,
-        &geom,
+        &mut out,
+        params,
+        &clean_geom,
         full_rings.as_ref(),
         &parent,
         feats.len(),
         &mut stats,
     );
 
-    let grid_off = c32(o.len());
+    let grid_off = c32(out.len());
     stats.rings = grid_off - rings_off;
-    write_grid(&mut o, &csr);
-    stats.grid = c32(o.len()) - grid_off;
+    write_grid(&mut out, &csr);
+    stats.grid = c32(out.len()) - grid_off;
 
-    let release_off = c32(o.len());
-    o.extend_from_slice(p.tzbb_release.as_bytes());
+    let release_off = c32(out.len());
+    out.extend_from_slice(params.tzbb_release.as_bytes());
 
     #[expect(clippy::cast_possible_truncation, reason = "f32 header fields")]
-    let (grid_deg, eps_m) = (p.grid_deg as f32, p.eps_m as f32);
+    let (grid_deg, eps_m) = (params.grid_deg as f32, params.eps_m as f32);
     let header_len = c32(PAYLOAD_HEADER_LEN);
     let header = PayloadHeader {
         arcs_off: arcs_off - header_len,
@@ -251,40 +255,40 @@ pub fn payload_from_topology(
         eager_rings,
         eager_polys,
         // no arc store outside the arc-encoded geometries
-        n_arcs: match p.geom {
+        n_arcs: match params.geom {
             GeomEncoding::VarintArcs | GeomEncoding::FixedWidthArcs => stats.n_arcs,
             GeomEncoding::FullRings | GeomEncoding::Coarse => 0,
         },
-        raw_len: c32(o.len() - PAYLOAD_HEADER_LEN),
+        raw_len: c32(out.len() - PAYLOAD_HEADER_LEN),
         grid_deg,
         eps_m,
         n_features: c16(feats.len()),
-        ncols: c16(g.ncols()),
-        nrows: c16(g.nrows()),
+        ncols: c16(cell_grid.ncols()),
+        nrows: c16(cell_grid.nrows()),
         uniq: c16(csr.uniq_lists),
-        release_len: c16(p.tzbb_release.len()),
+        release_len: c16(params.tzbb_release.len()),
         flags: 0, // reserved
-        dataset: Dataset::from_byte(p.dataset).expect("guarded by ensure_header_limits"),
+        dataset: Dataset::from_byte(params.dataset).expect("guarded by ensure_header_limits"),
         quant_bits: QuantBits::from_byte(
-            u8::try_from(p.quant_bits).expect("quant_bits guarded to 16/24/32"),
+            u8::try_from(params.quant_bits).expect("quant_bits guarded to 16/24/32"),
         )
         .expect("quant_bits guarded to 16/24/32"),
-        simplify_algo: p.simplify,
-        geom: p.geom,
+        simplify_algo: params.simplify,
+        geom: params.geom,
         codec: Codec::Uncompressed, // finish() records the actual codec
         density_weight_floor_e4,
         reserved: 0,
     };
-    o.pwrite_with(header, 0, LE)
+    out.pwrite_with(header, 0, LE)
         .expect("header buffer reserved at PAYLOAD_HEADER_LEN");
-    Ok((o, stats))
+    Ok((out, stats))
 }
 
 /// Cleaned, quantized geometry: the topology whose rings/structure survived
 /// the degenerate-drop, plus the quantized shared arcs they reference.
 struct CleanGeom {
     /// `arc_coords` empty: geometry lives in `arcs_q`
-    t: topo::Topology,
+    topology: topo::Topology,
     arcs_q: Vec<Arc<i32>>,
     stats: clean::CleanStats,
 }
@@ -293,24 +297,24 @@ struct CleanGeom {
 /// (dups, zero-area spikes, collinear pass-throughs) and drop rings that
 /// collapsed to zero area (see clean.rs). Junction endpoints stay put, so
 /// neighbouring zones remain stitched.
-fn quantize_clean(t: &topo::Topology, arc_coords: &[Arc], qmax: f64) -> CleanGeom {
+fn quantize_clean(topology: &topo::Topology, arc_coords: &[Arc], qmax: f64) -> CleanGeom {
     let mut stats = clean::CleanStats::default();
     let arcs_q: Vec<Arc<i32>> = arc_coords
         .iter()
-        .map(|a| {
-            let mut q: Arc<i32> = a
+        .map(|arc| {
+            let mut quantized: Arc<i32> = arc
                 .iter()
                 .map(|&(lon, lat)| (q_lon(lon, qmax), q_lat(lat, qmax)))
                 .collect();
-            let closed = a.len() > 1 && a.first() == a.last();
-            clean::clean_arc(&mut q, closed, &mut stats);
-            q
+            let closed = arc.len() > 1 && arc.first() == arc.last();
+            clean::clean_arc(&mut quantized, closed, &mut stats);
+            quantized
         })
         .collect();
     let (ring_refs, structure, arcs_q) =
-        clean::drop_degenerate_rings(&t.ring_refs, &t.structure, arcs_q, &mut stats);
+        clean::drop_degenerate_rings(&topology.ring_refs, &topology.structure, arcs_q, &mut stats);
     CleanGeom {
-        t: topo::Topology {
+        topology: topo::Topology {
             arc_coords: Vec::new(),
             ring_refs,
             structure,
@@ -330,32 +334,32 @@ fn quantize_clean(t: &topo::Topology, arc_coords: &[Arc], qmax: f64) -> CleanGeo
 /// need no parent hop; border lists keep poly ids), and the poly→feature
 /// parent table.
 fn poly_grid(
-    geom: &CleanGeom,
+    clean_geom: &CleanGeom,
     feats: &[Feat],
-    p: &Params,
+    params: &Params,
     qmax: f64,
 ) -> crate::Result<(grid::CellGrid, grid::Csr, Vec<u16>)> {
-    let dq = |v: i32, half: f64| f64::from(v) / qmax * half;
-    let arcs_snapped: Vec<Arc> = geom
+    let dequantize = |value: i32, half: f64| f64::from(value) / qmax * half;
+    let arcs_snapped: Vec<Arc> = clean_geom
         .arcs_q
         .iter()
-        .map(|a| {
-            a.iter()
-                .map(|&(x, y)| (dq(x, 180.0), dq(y, 90.0)))
+        .map(|arc| {
+            arc.iter()
+                .map(|&(x, y)| (dequantize(x, 180.0), dequantize(y, 90.0)))
                 .collect()
         })
         .collect();
-    let snapped = geom.t.reconstruct(feats, &arcs_snapped);
+    let snapped = clean_geom.topology.reconstruct(feats, &arcs_snapped);
     let mut poly_feats: Vec<Feat> = Vec::new();
     let mut parent: Vec<u16> = Vec::new(); // poly id -> feature id
-    for (fi, qf) in snapped.iter().enumerate() {
-        for poly in &qf.polys {
+    for (feature_index, snapped_feature) in snapped.iter().enumerate() {
+        for poly in &snapped_feature.polys {
             poly_feats.push(Feat {
                 offset: 0.0,
                 tzid: None,
                 polys: vec![poly.clone()],
             });
-            parent.push(c16(fi));
+            parent.push(c16(feature_index));
         }
     }
     ensure!(
@@ -366,12 +370,12 @@ fn poly_grid(
             max: 0x7FFE
         }
     );
-    let g = grid::build(&poly_feats, p.grid_deg, 8);
+    let cell_grid = grid::build(&poly_feats, params.grid_deg, 8);
     let areas = grid::feat_areas(&poly_feats);
-    let mut csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
-    for v in &mut csr.primary {
-        if *v & 0x8000 == 0 && *v != 0x7FFF {
-            *v = parent[*v as usize];
+    let mut csr = grid::intern_csr(&cell_grid, Order::CellDominantFirst, &areas);
+    for cell in &mut csr.primary {
+        if *cell & 0x8000 == 0 && *cell != 0x7FFF {
+            *cell = parent[*cell as usize];
         }
     }
     // the format's CSR tables are u16: border-cell tags carry a 15-bit
@@ -381,18 +385,18 @@ fn poly_grid(
     ensure!(
         csr.uniq_lists < 0x7FFF,
         Error::GridLists {
-            deg: p.grid_deg,
+            deg: params.grid_deg,
             n: csr.uniq_lists
         }
     );
     ensure!(
         u16::try_from(csr.list_ids.len()).is_ok(),
         Error::GridListIds {
-            deg: p.grid_deg,
+            deg: params.grid_deg,
             n: csr.list_ids.len()
         }
     );
-    Ok((g, csr, parent))
+    Ok((cell_grid, csr, parent))
 }
 
 /// The flattened preload-cache shape (geom=2): per-ring coord runs +
@@ -406,37 +410,43 @@ struct FullRingsSections {
 }
 
 /// Assemble the [`FullRingsSections`]. Junction dedup stays within a ring.
-fn flatten_full_rings(geom: &CleanGeom, nfeats: usize) -> FullRingsSections {
+fn flatten_full_rings(clean_geom: &CleanGeom, n_features: usize) -> FullRingsSections {
     let (mut coords, mut ring_ends, mut polys) = (Vec::new(), Vec::new(), Vec::new());
-    for fi in 0..nfeats {
-        for poly in &geom.t.structure[fi] {
-            let mut bb = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
-            for &ri in poly {
-                let rstart = coords.len();
-                for &r in &geom.t.ring_refs[ri] {
-                    let (id, rev) = ((r >> 1) as usize, (r & 1) == 1);
-                    let seg = coords.len();
-                    let a = &geom.arcs_q[id];
-                    if rev {
-                        coords.extend(a.iter().rev());
+    for feature_index in 0..n_features {
+        for poly in &clean_geom.topology.structure[feature_index] {
+            let mut bbox = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
+            for &ring_index in poly {
+                let ring_start = coords.len();
+                for &arc_ref in &clean_geom.topology.ring_refs[ring_index] {
+                    let (id, reversed) = ((arc_ref >> 1) as usize, (arc_ref & 1) == 1);
+                    let arc_start = coords.len();
+                    let arc = &clean_geom.arcs_q[id];
+                    if reversed {
+                        coords.extend(arc.iter().rev());
                     } else {
-                        coords.extend(a.iter());
+                        coords.extend(arc.iter());
                     }
                     // drop the duplicated junction vertex between arcs
-                    if seg > rstart && coords.get(seg - 1) == coords.get(seg) {
-                        coords.remove(seg);
+                    if arc_start > ring_start && coords.get(arc_start - 1) == coords.get(arc_start)
+                    {
+                        coords.remove(arc_start);
                     }
                 }
                 // drop the duplicated ring-closure vertex (ring_hit wraps)
-                if coords.len() > rstart + 1 && coords.last() == coords.get(rstart) {
+                if coords.len() > ring_start + 1 && coords.last() == coords.get(ring_start) {
                     coords.pop();
                 }
-                for &(x, y) in &coords[rstart..] {
-                    bb = [bb[0].min(x), bb[1].min(y), bb[2].max(x), bb[3].max(y)];
+                for &(x, y) in &coords[ring_start..] {
+                    bbox = [
+                        bbox[0].min(x),
+                        bbox[1].min(y),
+                        bbox[2].max(x),
+                        bbox[3].max(y),
+                    ];
                 }
                 ring_ends.push(c32(coords.len()));
             }
-            polys.push((bb, c32(ring_ends.len())));
+            polys.push((bbox, c32(ring_ends.len())));
         }
     }
     FullRingsSections {
@@ -453,10 +463,10 @@ fn flatten_full_rings(geom: &CleanGeom, nfeats: usize) -> FullRingsSections {
 /// over-estimate).
 fn eager_counts(
     full_rings: Option<&FullRingsSections>,
-    geom: &CleanGeom,
-    nfeats: usize,
+    clean_geom: &CleanGeom,
+    n_features: usize,
     n_parent: usize,
-    g: GeomEncoding,
+    geom: GeomEncoding,
 ) -> (u64, u32, u32) {
     match full_rings {
         Some(rings) => (
@@ -465,18 +475,18 @@ fn eager_counts(
             c32(rings.polys.len()),
         ),
         // coarse: no geometry — polys counts the parent table entries
-        None if g == GeomEncoding::Coarse => (0, 0, c32(n_parent)),
+        None if geom == GeomEncoding::Coarse => (0, 0, c32(n_parent)),
         None => {
             let mut coords: u64 = 0;
             let (mut rings, mut polys) = (0u32, 0u32);
-            for fi in 0..nfeats {
-                for poly in &geom.t.structure[fi] {
+            for feature_index in 0..n_features {
+                for poly in &clean_geom.topology.structure[feature_index] {
                     polys += 1;
-                    for &ri in poly {
+                    for &ring_index in poly {
                         rings += 1;
-                        coords += geom.t.ring_refs[ri]
+                        coords += clean_geom.topology.ring_refs[ring_index]
                             .iter()
-                            .map(|&r| geom.arcs_q[(r >> 1) as usize].len() as u64)
+                            .map(|&arc_ref| clean_geom.arcs_q[(arc_ref >> 1) as usize].len() as u64)
                             .sum::<u64>();
                     }
                 }
@@ -489,56 +499,60 @@ fn eager_counts(
 /// The geometry-dependent sections between the zone table and the grid;
 /// returns `(arcs_off, rings_off)`.
 fn write_geometry_sections(
-    o: &mut Vec<u8>,
-    p: &Params,
-    geom: &CleanGeom,
+    out: &mut Vec<u8>,
+    params: &Params,
+    clean_geom: &CleanGeom,
     full_rings: Option<&FullRingsSections>,
     parent: &[u16],
     n_features: usize,
     stats: &mut PayloadStats,
 ) -> (u32, u32) {
     let (arcs_off, rings_off);
-    if p.geom == GeomEncoding::Coarse {
+    if params.geom == GeomEncoding::Coarse {
         // ---- coarse (geom=3): no geometry sections, just the parent table
         // (border-cell candidate poly ids still resolve to features) ----
-        arcs_off = c32(o.len());
+        arcs_off = c32(out.len());
         stats.zones = arcs_off - stats.header;
-        rings_off = c32(o.len());
-        for &pf in parent {
-            o.extend_from_slice(&pf.to_le_bytes());
+        rings_off = c32(out.len());
+        for &parent_feature in parent {
+            out.extend_from_slice(&parent_feature.to_le_bytes());
         }
     } else if let Some(rings) = full_rings {
         // ---- full-rings geometry (geom=2): coords 4-aligned within the
         // payload (the 12-byte outer header keeps it 4-aligned in flash) ----
-        while !o.len().is_multiple_of(4) {
-            o.push(0);
+        while !out.len().is_multiple_of(4) {
+            out.push(0);
         }
-        arcs_off = c32(o.len());
+        arcs_off = c32(out.len());
         stats.zones = arcs_off - stats.header;
-        write_full_rings(o, rings, p.quant_bits);
+        write_full_rings(out, rings, params.quant_bits);
         // ---- ring index reduces to the parent table ----
-        rings_off = c32(o.len());
+        rings_off = c32(out.len());
         stats.arcs = rings_off - arcs_off;
-        for &pf in parent {
-            o.extend_from_slice(&pf.to_le_bytes());
+        for &parent_feature in parent {
+            out.extend_from_slice(&parent_feature.to_le_bytes());
         }
     } else {
-        arcs_off = c32(o.len());
+        arcs_off = c32(out.len());
         stats.zones = arcs_off - stats.header;
-        write_arc_store(o, &geom.arcs_q, p.geom, p.quant_bits);
-        rings_off = c32(o.len());
+        write_arc_store(out, &clean_geom.arcs_q, params.geom, params.quant_bits);
+        rings_off = c32(out.len());
         stats.arcs = rings_off - arcs_off;
-        for &pf in parent {
-            o.extend_from_slice(&pf.to_le_bytes());
+        for &parent_feature in parent {
+            out.extend_from_slice(&parent_feature.to_le_bytes());
         }
-        write_ring_index(o, geom, n_features, parent.len(), p.quant_bits);
+        write_ring_index(out, clean_geom, n_features, parent.len(), params.quant_bits);
     }
     (arcs_off, rings_off)
 }
 
 /// Format-limit guards for the header fields (the header itself is written
 /// by `Pwrite` at the end of `payload_from_topology`, once offsets exist).
-fn ensure_header_limits(p: &Params, counts: (u64, u32, u32), n_parent: usize) -> crate::Result<()> {
+fn ensure_header_limits(
+    params: &Params,
+    counts: (u64, u32, u32),
+    n_parent: usize,
+) -> crate::Result<()> {
     let (eager_coords, _, eager_polys) = counts;
     ensure!(
         u32::try_from(eager_coords).is_ok(),
@@ -557,18 +571,18 @@ fn ensure_header_limits(p: &Params, counts: (u64, u32, u32), n_parent: usize) ->
         }
     );
     ensure!(
-        u16::try_from(p.tzbb_release.len()).is_ok(),
+        u16::try_from(params.tzbb_release.len()).is_ok(),
         Error::FormatLimit {
             what: "tzbb_release bytes",
-            n: p.tzbb_release.len(),
+            n: params.tzbb_release.len(),
             max: u16::MAX as usize
         }
     );
     ensure!(
-        Dataset::from_byte(p.dataset).is_some(),
+        Dataset::from_byte(params.dataset).is_some(),
         Error::FormatLimit {
             what: "dataset byte (zone set 0-2, land-only bit)",
-            n: p.dataset as usize,
+            n: params.dataset as usize,
             max: 0b110
         }
     );
@@ -576,12 +590,12 @@ fn ensure_header_limits(p: &Params, counts: (u64, u32, u32), n_parent: usize) ->
 }
 
 /// Zone table: `str_offsets u16[n+1]` + tzid pool (zone i = feature i).
-fn write_zone_table(o: &mut Vec<u8>, feats: &[Feat]) -> crate::Result<()> {
+fn write_zone_table(out: &mut Vec<u8>, feats: &[Feat]) -> crate::Result<()> {
     // the offsets are u16 on disk — fail loudly instead of the `as u16`
     // wrap silently corrupting the table (same policy as the CSR guards)
     let total_pool: usize = feats
         .iter()
-        .map(|f| f.tzid.as_deref().unwrap_or("").len())
+        .map(|feature| feature.tzid.as_deref().unwrap_or("").len())
         .sum();
     ensure!(
         u16::try_from(total_pool).is_ok(),
@@ -591,70 +605,70 @@ fn write_zone_table(o: &mut Vec<u8>, feats: &[Feat]) -> crate::Result<()> {
             max: u16::MAX as usize
         }
     );
-    let mut str_off: Vec<u16> = Vec::with_capacity(feats.len() + 1);
+    let mut str_offsets: Vec<u16> = Vec::with_capacity(feats.len() + 1);
     let mut pool: Vec<u8> = Vec::new();
-    for f in feats {
-        str_off.push(c16(pool.len()));
-        pool.extend_from_slice(f.tzid.as_deref().unwrap_or("").as_bytes());
+    for feature in feats {
+        str_offsets.push(c16(pool.len()));
+        pool.extend_from_slice(feature.tzid.as_deref().unwrap_or("").as_bytes());
     }
-    str_off.push(c16(pool.len()));
-    for v in &str_off {
-        o.extend_from_slice(&v.to_le_bytes());
+    str_offsets.push(c16(pool.len()));
+    for offset in &str_offsets {
+        out.extend_from_slice(&offset.to_le_bytes());
     }
-    o.extend_from_slice(&pool);
+    out.extend_from_slice(&pool);
     Ok(())
 }
 
 /// Fixed-width coord at the quant width (i16→2 B, i24→3 B, i32→4 B).
-fn push_fixed(o: &mut Vec<u8>, v: i32, quant_bits: u32) {
-    let n = (quant_bits as usize).div_ceil(8);
-    o.extend_from_slice(&v.to_le_bytes()[0..n]);
+fn push_fixed(out: &mut Vec<u8>, value: i32, quant_bits: u32) {
+    let byte_len = (quant_bits as usize).div_ceil(8);
+    out.extend_from_slice(&value.to_le_bytes()[0..byte_len]);
 }
 
 /// Full-rings sections: `[coords][ring_ends u32][polys bbox 4×i32 + rend
 /// u32]`, with coords at quant width (i16 4 B/vertex, i24 packed 6 B,
 /// i32 8 B).
-fn write_full_rings(o: &mut Vec<u8>, rings: &FullRingsSections, quant_bits: u32) {
+fn write_full_rings(out: &mut Vec<u8>, rings: &FullRingsSections, quant_bits: u32) {
     for &(x, y) in &rings.coords {
-        push_fixed(o, x, quant_bits);
-        push_fixed(o, y, quant_bits);
+        push_fixed(out, x, quant_bits);
+        push_fixed(out, y, quant_bits);
     }
-    for v in &rings.ring_ends {
-        o.extend_from_slice(&v.to_le_bytes());
+    for ring_end in &rings.ring_ends {
+        out.extend_from_slice(&ring_end.to_le_bytes());
     }
-    for &(bb, rend) in &rings.polys {
-        for v in bb {
-            o.extend_from_slice(&v.to_le_bytes());
+    for &(bbox, rings_end) in &rings.polys {
+        for value in bbox {
+            out.extend_from_slice(&value.to_le_bytes());
         }
-        o.extend_from_slice(&rend.to_le_bytes());
+        out.extend_from_slice(&rings_end.to_le_bytes());
     }
 }
 
 /// Arc store: `arc_offsets u32[n_arcs+1] | per arc: varint vcount |
 /// first vertex fixed | zigzag-varint deltas` (or all-fixed for
 /// `GeomEncoding::FixedWidthArcs`); `n_arcs` lives in the payload header.
-fn write_arc_store(o: &mut Vec<u8>, arcs_q: &[Arc<i32>], geom: GeomEncoding, quant_bits: u32) {
+fn write_arc_store(out: &mut Vec<u8>, arcs_q: &[Arc<i32>], geom: GeomEncoding, quant_bits: u32) {
     let mut arc_data = Vec::new();
     let mut arc_offsets: Vec<u32> = Vec::with_capacity(arcs_q.len() + 1);
-    for a in arcs_q {
+    for arc in arcs_q {
         arc_offsets.push(c32(arc_data.len()));
-        put_varint(&mut arc_data, a.len() as u64);
+        put_varint(&mut arc_data, arc.len() as u64);
         match geom {
             GeomEncoding::VarintArcs => {
-                let (mut px, mut py) = (0i64, 0i64);
-                for (i, &(x, y)) in a.iter().enumerate() {
+                let (mut previous_x, mut previous_y) = (0i64, 0i64);
+                for (i, &(x, y)) in arc.iter().enumerate() {
                     if i == 0 {
                         push_fixed(&mut arc_data, x, quant_bits);
                         push_fixed(&mut arc_data, y, quant_bits);
                     } else {
-                        put_varint(&mut arc_data, zigzag(i64::from(x) - px));
-                        put_varint(&mut arc_data, zigzag(i64::from(y) - py));
+                        put_varint(&mut arc_data, zigzag(i64::from(x) - previous_x));
+                        put_varint(&mut arc_data, zigzag(i64::from(y) - previous_y));
                     }
-                    (px, py) = (i64::from(x), i64::from(y));
+                    (previous_x, previous_y) = (i64::from(x), i64::from(y));
                 }
             }
             GeomEncoding::FixedWidthArcs => {
-                for &(x, y) in a {
+                for &(x, y) in arc {
                     push_fixed(&mut arc_data, x, quant_bits);
                     push_fixed(&mut arc_data, y, quant_bits);
                 }
@@ -665,69 +679,72 @@ fn write_arc_store(o: &mut Vec<u8>, arcs_q: &[Arc<i32>], geom: GeomEncoding, qua
         }
     }
     arc_offsets.push(c32(arc_data.len()));
-    for v in &arc_offsets {
-        o.extend_from_slice(&v.to_le_bytes());
+    for offset in &arc_offsets {
+        out.extend_from_slice(&offset.to_le_bytes());
     }
-    o.extend_from_slice(&arc_data);
+    out.extend_from_slice(&arc_data);
 }
 
 /// Ring index (per-poly records: grid candidates are polys; the parent
 /// table maps them to features): `poly_offsets u32[n+1] | per poly: bbox
 /// fixed×4 | nrings u16 | per ring: varint nrefs + signed arc refs`.
 fn write_ring_index(
-    o: &mut Vec<u8>,
-    geom: &CleanGeom,
-    nfeats: usize,
+    out: &mut Vec<u8>,
+    clean_geom: &CleanGeom,
+    n_features: usize,
     n_polys: usize,
     quant_bits: u32,
 ) {
     let mut ring_data = Vec::new();
     let mut poly_offsets: Vec<u32> = Vec::with_capacity(n_polys + 1);
-    for fi in 0..nfeats {
-        for poly in &geom.t.structure[fi] {
+    for feature_index in 0..n_features {
+        for poly in &clean_geom.topology.structure[feature_index] {
             poly_offsets.push(c32(ring_data.len()));
             // per-poly bbox: the point-granular gate — a streaming
             // miss returns before touching any arc, preload reads instead
             // of recomputing. Rejects ~5% of poly-grid candidates for 4
             // compares — ~20x above the check's break-even.
-            let mut bb = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
-            for &ri in poly {
-                for &r in &geom.t.ring_refs[ri] {
-                    for &(x, y) in &geom.arcs_q[(r >> 1) as usize] {
-                        bb = (bb.0.min(x), bb.1.min(y), bb.2.max(x), bb.3.max(y));
+            let mut bbox = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+            for &ring_index in poly {
+                for &arc_ref in &clean_geom.topology.ring_refs[ring_index] {
+                    for &(x, y) in &clean_geom.arcs_q[(arc_ref >> 1) as usize] {
+                        bbox = (bbox.0.min(x), bbox.1.min(y), bbox.2.max(x), bbox.3.max(y));
                     }
                 }
             }
-            for v in [bb.0, bb.1, bb.2, bb.3] {
-                push_fixed(&mut ring_data, v, quant_bits);
+            for value in [bbox.0, bbox.1, bbox.2, bbox.3] {
+                push_fixed(&mut ring_data, value, quant_bits);
             }
             ring_data.extend_from_slice(&c16(poly.len()).to_le_bytes());
-            for &ri in poly {
-                put_varint(&mut ring_data, geom.t.ring_refs[ri].len() as u64);
-                for &r in &geom.t.ring_refs[ri] {
-                    put_varint(&mut ring_data, u64::from(r));
+            for &ring_index in poly {
+                put_varint(
+                    &mut ring_data,
+                    clean_geom.topology.ring_refs[ring_index].len() as u64,
+                );
+                for &arc_ref in &clean_geom.topology.ring_refs[ring_index] {
+                    put_varint(&mut ring_data, u64::from(arc_ref));
                 }
             }
         }
     }
     poly_offsets.push(c32(ring_data.len()));
-    for v in &poly_offsets {
-        o.extend_from_slice(&v.to_le_bytes());
+    for offset in &poly_offsets {
+        out.extend_from_slice(&offset.to_le_bytes());
     }
-    o.extend_from_slice(&ring_data);
+    out.extend_from_slice(&ring_data);
 }
 
 /// Grid tables: `primary u16[ncols*nrows] | list_offsets u16[uniq+1] |
 /// list_ids u16[Σ]`; the dimensions and `uniq` live in the payload header.
-fn write_grid(o: &mut Vec<u8>, csr: &grid::Csr) {
-    for v in &csr.primary {
-        o.extend_from_slice(&v.to_le_bytes());
+fn write_grid(out: &mut Vec<u8>, csr: &grid::Csr) {
+    for cell in &csr.primary {
+        out.extend_from_slice(&cell.to_le_bytes());
     }
-    for v in &csr.list_offsets {
-        o.extend_from_slice(&v.to_le_bytes());
+    for offset in &csr.list_offsets {
+        out.extend_from_slice(&offset.to_le_bytes());
     }
-    for v in &csr.list_ids {
-        o.extend_from_slice(&v.to_le_bytes());
+    for id in &csr.list_ids {
+        out.extend_from_slice(&id.to_le_bytes());
     }
 }
 
@@ -749,15 +766,15 @@ pub fn finish(payload: &[u8], codec: Codec) -> crate::Result<Vec<u8>> {
         .expect("build_payload wrote a valid header");
     header.codec = codec;
     let body = compress(sections, codec)?;
-    let mut o = Vec::with_capacity(PROLOGUE_LEN + PAYLOAD_HEADER_LEN + body.len());
-    o.extend_from_slice(&MAGIC);
-    o.push(VERSION);
-    o.extend_from_slice(&[0u8; 3]); // reserved; pads the header start to +8
-    o.resize(PROLOGUE_LEN + PAYLOAD_HEADER_LEN, 0);
-    o.pwrite_with(header, PROLOGUE_LEN, LE)
+    let mut out = Vec::with_capacity(PROLOGUE_LEN + PAYLOAD_HEADER_LEN + body.len());
+    out.extend_from_slice(&MAGIC);
+    out.push(VERSION);
+    out.extend_from_slice(&[0u8; 3]); // reserved; pads the header start to +8
+    out.resize(PROLOGUE_LEN + PAYLOAD_HEADER_LEN, 0);
+    out.pwrite_with(header, PROLOGUE_LEN, LE)
         .expect("header space reserved");
-    o.extend_from_slice(&body);
-    Ok(o)
+    out.extend_from_slice(&body);
+    Ok(out)
 }
 
 /// Compress `raw` with `codec` (body only, no outer header).
@@ -768,7 +785,7 @@ pub fn finish(payload: &[u8], codec: Codec) -> crate::Result<Vec<u8>> {
 /// without the `zstd` feature; [`Error::Compress`]/[`Error::Xz`] if the
 /// underlying compressor fails (not expected when writing to memory).
 pub fn compress(raw: &[u8], codec: Codec) -> crate::Result<Vec<u8>> {
-    let xz_err = |e| Error::Xz(format!("{e:?}"));
+    let xz_err = |error| Error::Xz(format!("{error:?}"));
     Ok(match codec {
         Codec::Uncompressed => raw.to_vec(),
         Codec::Gzip => miniz_oxide::deflate::compress_to_vec_zlib(raw, 10),
@@ -779,12 +796,12 @@ pub fn compress(raw: &[u8], codec: Codec) -> crate::Result<Vec<u8>> {
             // allocate the declared window), and cap at 2^26: ruzstd
             // (utz's pure-Rust backend) refuses frames declaring over
             // 100 MB. encode_all would let level 22 default to 2^27.
-            let log = raw.len().next_power_of_two().trailing_zeros().clamp(10, 26);
-            let mut enc = zstd::stream::write::Encoder::new(Vec::new(), 22)?;
-            enc.set_pledged_src_size(Some(raw.len() as u64))?;
-            enc.window_log(log)?;
-            enc.write_all(raw)?;
-            enc.finish()?
+            let window_log = raw.len().next_power_of_two().trailing_zeros().clamp(10, 26);
+            let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 22)?;
+            encoder.set_pledged_src_size(Some(raw.len() as u64))?;
+            encoder.window_log(window_log)?;
+            encoder.write_all(raw)?;
+            encoder.finish()?
         }
         #[cfg(not(feature = "zstd"))]
         Codec::Zstd => return Err(Error::ZstdNotCompiled),
@@ -801,29 +818,29 @@ pub fn compress(raw: &[u8], codec: Codec) -> crate::Result<Vec<u8>> {
         Codec::Xz => {
             use lzma_rust2::Write as _; // no_std lzma-rust2 (see utz/Cargo.toml)
             let bits = (usize::BITS - (raw.len().max(1) - 1).leading_zeros()).clamp(12, 26);
-            let mut opts = lzma_rust2::XzOptions::with_preset(9);
-            opts.lzma_options.dict_size = 1u32 << bits;
+            let mut options = lzma_rust2::XzOptions::with_preset(9);
+            options.lzma_options.dict_size = 1u32 << bits;
             // lzma-rust2 has no -9e helper; this is liblzma's extreme delta
-            opts.lzma_options.nice_len = 273;
-            opts.lzma_options.depth_limit = 512;
-            let mut w = lzma_rust2::XzWriter::new(Vec::new(), opts).map_err(xz_err)?;
-            w.write_all(raw).map_err(xz_err)?;
-            w.finish().map_err(xz_err)?
+            options.lzma_options.nice_len = 273;
+            options.lzma_options.depth_limit = 512;
+            let mut writer = lzma_rust2::XzWriter::new(Vec::new(), options).map_err(xz_err)?;
+            writer.write_all(raw).map_err(xz_err)?;
+            writer.finish().map_err(xz_err)?
         }
     })
 }
 
-fn zigzag(v: i64) -> u64 {
-    ((v << 1) ^ (v >> 63)).cast_unsigned()
+fn zigzag(value: i64) -> u64 {
+    ((value << 1) ^ (value >> 63)).cast_unsigned()
 }
-fn put_varint(out: &mut Vec<u8>, mut v: u64) {
+fn put_varint(out: &mut Vec<u8>, mut value: u64) {
     loop {
-        let b = (v & 0x7f) as u8;
-        v >>= 7;
-        if v == 0 {
-            out.push(b);
+        let byte = (value & 0x7f) as u8;
+        value >>= 7;
+        if value == 0 {
+            out.push(byte);
             break;
         }
-        out.push(b | 0x80);
+        out.push(byte | 0x80);
     }
 }

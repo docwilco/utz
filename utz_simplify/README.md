@@ -24,11 +24,12 @@ were considered and rejected: they trade quality-per-vertex for single-pass
 speed, which is worthless at build time.
 
 Each algorithm also has a weighted variant ([`simplify_weighted`], `*_w`):
-a per-vertex tolerance multiplier `w[i]` makes the effective parameter
-`eps * w[i]` (Visvalingam: `min_area * w[i]²`, areas scale as distance²).
-The builder uses this for population-density-aware refinement: denser
-areas get smaller multipliers, so boundaries stay precise where people
-live. `w = 1.0` everywhere reproduces the scalar functions exactly.
+a per-vertex tolerance multiplier `weights[i]` makes the effective
+parameter `eps * weights[i]` (Visvalingam: `min_area * weights[i]²`, areas
+scale as distance²). The builder uses this for population-density-aware
+refinement: denser areas get smaller multipliers, so boundaries stay
+precise where people live. `weights[i] = 1.0` everywhere reproduces the
+scalar functions exactly.
 
 [`rdp`]: https://docwilco.github.io/utz/docs/utz_simplify/fn.rdp.html
 [`visvalingam`]: https://docwilco.github.io/utz/docs/utz_simplify/fn.visvalingam.html

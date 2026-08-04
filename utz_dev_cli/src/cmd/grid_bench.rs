@@ -41,28 +41,28 @@ pub struct Args {
     clippy::too_many_lines,
     reason = "linear bench/report command; the stages share the run's accumulators"
 )]
-pub fn run(a: Args) -> utz_build::Result<()> {
-    let (ds, eps_m, deg, npts) = (a.ds, a.eps_m, a.deg, a.npts);
+pub fn run(args: Args) -> utz_build::Result<()> {
+    let (dataset, eps_m, deg, n_points) = (args.ds, args.eps_m, args.deg, args.npts);
 
-    let feats = utz_build::load(&ds)?;
-    let out = topo::encode_topology(&feats, eps_m / 111_320.0);
-    let g = grid::build(&out.simplified, deg, 8);
+    let features = utz_build::load(&dataset)?;
+    let out = topo::encode_topology(&features, eps_m / 111_320.0);
+    let grid = grid::build(&out.simplified, deg, 8);
     let areas = grid::feat_areas(&out.simplified);
-    let csr = grid::intern_csr(&g, Order::CellDominantFirst, &areas);
-    let fpolys: Vec<Vec<QPoly>> = out.simplified.iter().map(quantize).collect();
+    let csr = grid::intern_csr(&grid, Order::CellDominantFirst, &areas);
+    let feature_polys: Vec<Vec<QPoly>> = out.simplified.iter().map(quantize).collect();
     #[expect(
         clippy::cast_precision_loss,
         reason = "CSR byte size ≪ 2^53; KB display"
     )]
     let csr_kb = csr.bytes() as f64 / 1024.0;
-    println!("{} eps={eps_m}m grid={deg}°: {} features, {} uniq lists, {csr_kb:.1} KB CSR, {npts} points",
-        ds.to_uppercase(), fpolys.len(), csr.uniq_lists);
+    println!("{} eps={eps_m}m grid={deg}°: {} features, {} uniq lists, {csr_kb:.1} KB CSR, {n_points} points",
+        dataset.to_uppercase(), feature_polys.len(), csr.uniq_lists);
 
-    let pts: Vec<(i32, i32)> = gen_pts(npts)
+    let points: Vec<(i32, i32)> = gen_pts(n_points)
         .iter()
-        .map(|&(lo, la)| (q24_lon(lo), q24_lat(la)))
+        .map(|&(lon, lat)| (q24_lon(lon), q24_lat(lat)))
         .collect();
-    let (ncols, nrows) = (g.ncols(), g.nrows());
+    let (ncols, nrows) = (grid.ncols(), grid.nrows());
     let cell_of = |px: i32, py: i32| -> usize {
         let lon = f64::from(px) / QMAX_I24 * 180.0;
         let lat = f64::from(py) / QMAX_I24 * 90.0;
@@ -72,21 +72,21 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             clippy::cast_possible_wrap,
             reason = "cell index, fraction dropped then clamped"
         )]
-        let c = (((lon + 180.0) / deg) as isize).clamp(0, ncols as isize - 1) as usize;
+        let col = (((lon + 180.0) / deg) as isize).clamp(0, ncols as isize - 1) as usize;
         #[expect(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
             clippy::cast_possible_wrap,
             reason = "cell index, fraction dropped then clamped"
         )]
-        let r = (((lat + 90.0) / deg) as isize).clamp(0, nrows as isize - 1) as usize;
-        r * ncols + c
+        let row = (((lat + 90.0) / deg) as isize).clamp(0, nrows as isize - 1) as usize;
+        row * ncols + col
     };
     let contains_feat = |fid: u16, px: i32, py: i32| -> bool {
-        fpolys[fid as usize].iter().any(|p| {
-            px >= p.bbox.0 && py >= p.bbox.1 && px <= p.bbox.2 && py <= p.bbox.3 && {
+        feature_polys[fid as usize].iter().any(|poly| {
+            px >= poly.bbox.0 && py >= poly.bbox.1 && px <= poly.bbox.2 && py <= poly.bbox.3 && {
                 let rings: Vec<&[(i32, i32)]> =
-                    p.rings.iter().map(std::vec::Vec::as_slice).collect();
+                    poly.rings.iter().map(std::vec::Vec::as_slice).collect();
                 utz::pip::contains::<i64, _>(&rings, px, py)
             }
         })
@@ -94,19 +94,19 @@ pub fn run(a: Args) -> utz_build::Result<()> {
 
     // ---- grid lookup ----
     let (mut pip_needed, mut fallback) = (0usize, 0usize);
-    let t = Instant::now();
-    let mut got: Vec<Option<u16>> = Vec::with_capacity(npts);
-    for &(px, py) in &pts {
-        let p = csr.primary[cell_of(px, py)];
-        got.push(if p == 0x7FFF {
+    let timer = Instant::now();
+    let mut got: Vec<Option<u16>> = Vec::with_capacity(n_points);
+    for &(px, py) in &points {
+        let tag = csr.primary[cell_of(px, py)];
+        got.push(if tag == 0x7FFF {
             None
-        } else if p & 0x8000 == 0 {
-            Some(p) // interior cell: O(1)
+        } else if tag & 0x8000 == 0 {
+            Some(tag) // interior cell: O(1)
         } else {
             pip_needed += 1;
-            let li = (p & 0x7FFF) as usize;
-            let list =
-                &csr.list_ids[csr.list_offsets[li] as usize..csr.list_offsets[li + 1] as usize];
+            let list_index = (tag & 0x7FFF) as usize;
+            let list = &csr.list_ids
+                [csr.list_offsets[list_index] as usize..csr.list_offsets[list_index + 1] as usize];
             let hit = list.iter().copied().find(|&fid| contains_feat(fid, px, py));
             if hit.is_none() {
                 fallback += 1;
@@ -114,34 +114,40 @@ pub fn run(a: Args) -> utz_build::Result<()> {
             Some(hit.unwrap_or(list[0]))
         });
     }
-    let t_grid = t.elapsed();
+    let t_grid = timer.elapsed();
 
     // ---- linear first-hit scan, same geometry ----
-    let t = Instant::now();
-    let mut lin: Vec<Option<u16>> = Vec::with_capacity(npts);
-    for &(px, py) in &pts {
-        lin.push(
-            (0..u16::try_from(fpolys.len()).expect("feature count fits u16"))
+    let timer = Instant::now();
+    let mut linear: Vec<Option<u16>> = Vec::with_capacity(n_points);
+    for &(px, py) in &points {
+        linear.push(
+            (0..u16::try_from(feature_polys.len()).expect("feature count fits u16"))
                 .find(|&fid| contains_feat(fid, px, py)),
         );
     }
-    let t_lin = t.elapsed();
+    let t_linear = timer.elapsed();
 
     // agreement (tzid-level: dominant-first order vs id order may pick either
     // side of a shared border for boundary-claimed points)
-    let tz =
-        |o: &Option<u16>| o.map(|f| out.simplified[f as usize].tzid.clone().unwrap_or_default());
+    let tzid_of = |id: &Option<u16>| {
+        id.map(|fid| {
+            out.simplified[fid as usize]
+                .tzid
+                .clone()
+                .unwrap_or_default()
+        })
+    };
     // disagreements where both answers contain the point are benign (TZBB
     // overlap areas / boundary claiming — either tzid is valid); a grid answer
     // that does NOT contain the point is genuinely wrong.
     let (mut diff, mut wrong, mut shown) = (0usize, 0usize, 0usize);
-    for (i, (a, b)) in got.iter().zip(&lin).enumerate() {
-        if tz(a) == tz(b) {
+    for (i, (grid_answer, linear_answer)) in got.iter().zip(&linear).enumerate() {
+        if tzid_of(grid_answer) == tzid_of(linear_answer) {
             continue;
         }
         diff += 1;
-        let (px, py) = pts[i];
-        let ok = a.is_some_and(|fa| contains_feat(fa, px, py));
+        let (px, py) = points[i];
+        let ok = grid_answer.is_some_and(|fid| contains_feat(fid, px, py));
         if !ok {
             wrong += 1;
             if shown < 8 {
@@ -150,12 +156,12 @@ pub fn run(a: Args) -> utz_build::Result<()> {
                     f64::from(px) / QMAX_I24 * 180.0,
                     f64::from(py) / QMAX_I24 * 90.0,
                 );
-                let p = csr.primary[cell_of(px, py)];
+                let tag = csr.primary[cell_of(px, py)];
                 println!(
                     "  WRONG ({lon:.4},{lat:.4}) grid={:?} lin={:?} cell={}",
-                    tz(a),
-                    tz(b),
-                    if p & 0x8000 != 0 {
+                    tzid_of(grid_answer),
+                    tzid_of(linear_answer),
+                    if tag & 0x8000 != 0 {
                         "border"
                     } else {
                         "interior"
@@ -171,50 +177,53 @@ pub fn run(a: Args) -> utz_build::Result<()> {
 
     #[expect(
         clippy::cast_precision_loss,
-        reason = "pip_needed ≤ npts point count ≪ 2^53; percentage display"
+        reason = "pip_needed ≤ n_points point count ≪ 2^53; percentage display"
     )]
-    let pip_pct = 100.0 * pip_needed as f64 / npts as f64;
-    println!("  PIP needed: {pip_needed}/{npts} ({pip_pct:.1}%)   fallbacks: {fallback}   tzid disagreements vs linear: {diff}");
+    let pip_pct = 100.0 * pip_needed as f64 / n_points as f64;
+    println!("  PIP needed: {pip_needed}/{n_points} ({pip_pct:.1}%)   fallbacks: {fallback}   tzid disagreements vs linear: {diff}");
     #[expect(
         clippy::cast_precision_loss,
         reason = "elapsed µs ≪ 2^53 (would be 285 years); µs/lookup display"
     )]
-    let us = |t: std::time::Duration| t.as_micros() as f64 / npts as f64;
+    let us = |elapsed: std::time::Duration| elapsed.as_micros() as f64 / n_points as f64;
     println!("  grid:   {:>9.2?}  ({:.2} µs/lookup)", t_grid, us(t_grid));
     println!(
         "  linear: {:>9.2?}  ({:.2} µs/lookup)   grid speedup {:.1}x\n",
-        t_lin,
-        us(t_lin),
-        t_lin.as_secs_f64() / t_grid.as_secs_f64()
+        t_linear,
+        us(t_linear),
+        t_linear.as_secs_f64() / t_grid.as_secs_f64()
     );
     Ok(())
 }
 
-fn quantize(f: &Feat) -> Vec<QPoly> {
-    f.polys
+fn quantize(feature: &Feat) -> Vec<QPoly> {
+    feature
+        .polys
         .iter()
-        .filter_map(|p| {
-            let rings: Vec<Vec<(i32, i32)>> = p
+        .filter_map(|poly| {
+            let rings: Vec<Vec<(i32, i32)>> = poly
                 .iter()
-                .map(|r| {
-                    let mut q: Vec<(i32, i32)> =
-                        r.iter().map(|&(x, y)| (q24_lon(x), q24_lat(y))).collect();
-                    q.dedup();
-                    if q.first() == q.last() && q.len() > 1 {
-                        q.pop();
+                .map(|ring| {
+                    let mut quantized: Vec<(i32, i32)> = ring
+                        .iter()
+                        .map(|&(x, y)| (q24_lon(x), q24_lat(y)))
+                        .collect();
+                    quantized.dedup();
+                    if quantized.first() == quantized.last() && quantized.len() > 1 {
+                        quantized.pop();
                     }
-                    q
+                    quantized
                 })
-                .filter(|r| r.len() >= 3)
+                .filter(|ring| ring.len() >= 3)
                 .collect();
             if rings.is_empty() {
                 return None;
             }
-            let mut bb = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+            let mut bbox = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
             for &(x, y) in &rings[0] {
-                bb = (bb.0.min(x), bb.1.min(y), bb.2.max(x), bb.3.max(y));
+                bbox = (bbox.0.min(x), bbox.1.min(y), bbox.2.max(x), bbox.3.max(y));
             }
-            Some(QPoly { bbox: bb, rings })
+            Some(QPoly { bbox, rings })
         })
         .collect()
 }

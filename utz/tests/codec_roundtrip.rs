@@ -42,7 +42,7 @@ fn every_codec_roundtrips_through_the_real_encoder() {
         let compressed =
             utz_encode::encode::compress(&raw, codec).expect("encoder side must accept");
         let decoded = utz::decompress::decompress(codec, raw.len(), &compressed)
-            .unwrap_or_else(|e| panic!("{codec:?}: reader backend refused: {e}"));
+            .unwrap_or_else(|error| panic!("{codec:?}: reader backend refused: {error}"));
         assert_eq!(decoded, raw, "{codec:?} roundtrip");
     }
 }

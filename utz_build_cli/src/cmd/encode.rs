@@ -59,70 +59,77 @@ pub struct Args {
 /// Unknown codec/algo/geom name, dataset load/parse or encode failure, the
 /// verify lookup coming back empty, or I/O writing the asset and its guard
 /// file.
-pub fn run(a: Args) -> utz_build::Result<()> {
-    let codec = match a.codec.as_str() {
+pub fn run(args: Args) -> utz_build::Result<()> {
+    let codec = match args.codec.as_str() {
         "none" | "uncompressed" => Codec::Uncompressed,
         "gzip" => Codec::Gzip,
         "zstd" => Codec::Zstd,
         "brotli" => Codec::Brotli,
         "xz" => Codec::Xz,
-        c => {
+        other => {
             return Err(Error::Msg(format!(
-                "unknown codec {c:?}: use none|gzip|zstd|brotli|xz"
+                "unknown codec {other:?}: use none|gzip|zstd|brotli|xz"
             )))
         }
     };
-    let simplify = match a.algo.as_str() {
+    let simplify = match args.algo.as_str() {
         "none" => SimplifyAlgo::None,
         "rdp" => SimplifyAlgo::Rdp,
         "vw" | "visvalingam" => SimplifyAlgo::Visvalingam,
         "ii" | "imai-iri" => SimplifyAlgo::ImaiIri,
-        c => {
+        other => {
             return Err(Error::Msg(format!(
-                "unknown algo {c:?}: use none|rdp|vw|ii"
+                "unknown algo {other:?}: use none|rdp|vw|ii"
             )))
         }
     };
-    let geom = match a.geom.as_str() {
+    let geom = match args.geom.as_str() {
         "varint-arcs" | "varint" | "delta" => GeomEncoding::VarintArcs,
         "fixed-width-arcs" | "fixed" => GeomEncoding::FixedWidthArcs,
         "full-rings" | "eager" | "image" => GeomEncoding::FullRings,
         "coarse" => GeomEncoding::Coarse,
-        c => {
+        other => {
             return Err(Error::Msg(format!(
-                "unknown geom {c:?}: use varint-arcs|fixed-width-arcs|full-rings|coarse"
+                "unknown geom {other:?}: use varint-arcs|fixed-width-arcs|full-rings|coarse"
             )))
         }
     };
-    let out = a.out.unwrap_or_else(|| {
-        let w = a.w_min.map(|w| format!("-w{w}")).unwrap_or_default();
-        PathBuf::from(format!("{}-{}m{}-{}.utz", a.ds, a.eps_m, w, a.codec))
+    let out = args.out.unwrap_or_else(|| {
+        let weight_suffix = args
+            .w_min
+            .map(|floor| format!("-w{floor}"))
+            .unwrap_or_default();
+        PathBuf::from(format!(
+            "{}-{}m{}-{}.utz",
+            args.ds, args.eps_m, weight_suffix, args.codec
+        ))
     });
 
     let mut config = Config::new()
-        .dataset(&a.ds)
-        .rdp_meters(a.eps_m)
-        .quant_bits(a.qbits)
-        .grid_deg(a.grid_deg)
+        .dataset(&args.ds)
+        .rdp_meters(args.eps_m)
+        .quant_bits(args.qbits)
+        .grid_deg(args.grid_deg)
         .codec(codec)
         .simplify_algo(simplify)
         .geom(geom)
         .out_path(&out);
-    if let Some(w) = a.w_min {
-        config = config.density_weight_floor(w);
+    if let Some(floor) = args.w_min {
+        config = config.density_weight_floor(floor);
     }
     let path = config.generate()?;
 
     // sanity: the runtime must accept what we just wrote
     let container = std::fs::read(&path)?;
     let size = container.len();
-    let f = utz::Finder::from_vec(container)?;
-    let release = f.tzbb_release().to_string();
-    if f.lookup(utz::Position {
-        lon: -0.1276,
-        lat: 51.5072,
-    })?
-    .is_none()
+    let finder = utz::Finder::from_vec(container)?;
+    let release = finder.tzbb_release().to_string();
+    if finder
+        .lookup(utz::Position {
+            lon: -0.1276,
+            lat: 51.5072,
+        })?
+        .is_none()
     {
         // don't leave a bad asset (or its guard) where a good one may
         // have been

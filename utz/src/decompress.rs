@@ -116,23 +116,25 @@ fn decompress_ruzstd(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8
     use ruzstd::decoding::{BlockDecodingStrategy, FrameDecoder};
     use ruzstd::io::Read as _;
     let mut input = body;
-    let mut dec = FrameDecoder::new();
-    dec.init(&mut input)
+    let mut decoder = FrameDecoder::new();
+    decoder
+        .init(&mut input)
         .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
     let mut out = alloc::vec![0u8; raw_len];
     let mut decoded_len = 0;
     loop {
-        dec.decode_blocks(&mut input, BlockDecodingStrategy::UptoBlocks(1))
+        decoder
+            .decode_blocks(&mut input, BlockDecodingStrategy::UptoBlocks(1))
             .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
-        decoded_len += dec
+        decoded_len += decoder
             .read(&mut out[decoded_len..])
             // We could detect Truncated, but it's a real PITA to catch all
             // cases. Just trust that this provides enough detail.
             .map_err(|source| Error::decoder_failed(codec, format_args!("{source}")))?;
-        if dec.can_collect() != 0 {
+        if decoder.can_collect() != 0 {
             return Err(Error::RawLengthMismatch); // frame holds more than raw_len declared
         }
-        if dec.is_finished() {
+        if decoder.is_finished() {
             break;
         }
     }
@@ -152,17 +154,17 @@ fn decompress_brotli(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8
     use brotli_decompressor::{BrotliDecompressStream, BrotliResult, BrotliState};
     let mut out = alloc::vec![0u8; raw_len];
     let mut state = BrotliState::new(HeapAlloc, HeapAlloc, HeapAlloc);
-    let (mut avail_in, mut in_off) = (body.len(), 0usize);
-    let (mut avail_out, mut out_off) = (raw_len, 0usize);
-    let mut total = 0usize;
+    let (mut available_input, mut input_offset) = (body.len(), 0usize);
+    let (mut available_output, mut output_offset) = (raw_len, 0usize);
+    let mut total_written = 0usize;
     match BrotliDecompressStream(
-        &mut avail_in,
-        &mut in_off,
+        &mut available_input,
+        &mut input_offset,
         body,
-        &mut avail_out,
-        &mut out_off,
+        &mut available_output,
+        &mut output_offset,
         &mut out,
-        &mut total,
+        &mut total_written,
         &mut state,
     ) {
         BrotliResult::ResultSuccess => {}
@@ -175,7 +177,7 @@ fn decompress_brotli(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8
             ))
         }
     }
-    if out_off != raw_len {
+    if output_offset != raw_len {
         return Err(Error::RawLengthMismatch); // frame shorter than raw_len declared
     }
     Ok(out)
@@ -335,14 +337,14 @@ mod tests {
     #[cfg_attr(feature = "brotli", test_case(Codec::Brotli, "BROTLI_DECODER_"; "brotli"))]
     #[cfg_attr(feature = "xz", test_case(Codec::Xz, ""; "xz"))]
     fn corrupt_stream_carries_detail(expected: Codec, detail_contains: &str) {
-        let err = decompress(expected, 64, b"definitely not a valid stream...")
+        let error = decompress(expected, 64, b"definitely not a valid stream...")
             .expect_err("garbage must not decode");
-        match &err {
+        match &error {
             Error::DecoderFailed { codec, detail } => {
                 assert_eq!(*codec, expected);
                 assert!(!detail.is_empty(), "backend diagnostic must not be empty");
                 assert!(detail.contains(detail_contains));
-                let text = alloc::format!("{err}");
+                let text = alloc::format!("{error}");
                 assert!(text.contains(&alloc::format!("codec {expected:?}")));
                 assert!(text.contains(detail.as_str()));
             }

@@ -87,33 +87,33 @@ enum Error {
 }
 
 fn main() -> Result<(), Error> {
-    let a = Args::parse();
-    let bytes = match embedded(&a.asset) {
-        Some(b) => b.to_vec(),
-        None => std::fs::read(&a.asset)?,
+    let args = Args::parse();
+    let bytes = match embedded(&args.asset) {
+        Some(embedded_bytes) => embedded_bytes.to_vec(),
+        None => std::fs::read(&args.asset)?,
     };
     let size = bytes.len();
     let finder = utz::Finder::from_vec(bytes)?;
     #[expect(clippy::cast_precision_loss, reason = "asset size ≪ 2^53; KiB display")]
-    let kib = size as f64 / 1024.0;
+    let size_kib = size as f64 / 1024.0;
     println!(
-        "{}: {kib:.1} KiB asset, tzbb release {:?}",
-        a.asset,
+        "{}: {size_kib:.1} KiB asset, tzbb release {:?}",
+        args.asset,
         finder.tzbb_release()
     );
 
-    let pts = utz_bench_common::gen_pts(a.npts);
-    let t0 = Instant::now();
-    let mut now_us = move || u64::try_from(t0.elapsed().as_micros()).expect("elapsed fits u64");
-    let r = utz_bench_common::run_rounds(&finder, &pts, a.rounds, &mut now_us);
+    let points = utz_bench_common::gen_pts(args.npts);
+    let start = Instant::now();
+    let mut now_us = move || u64::try_from(start.elapsed().as_micros()).expect("elapsed fits u64");
+    let result = utz_bench_common::run_rounds(&finder, &points, args.rounds, &mut now_us);
     println!(
         "{} lookups · {} hits · {} µs · {:.3} µs/lookup · {:.0} lookups/s · checksum {}",
-        r.lookups,
-        r.hits,
-        r.elapsed_us,
-        r.us_per_lookup(),
-        1e6 / r.us_per_lookup(),
-        r.checksum
+        result.lookups,
+        result.hits,
+        result.elapsed_us,
+        result.us_per_lookup(),
+        1e6 / result.us_per_lookup(),
+        result.checksum
     );
     Ok(())
 }

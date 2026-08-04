@@ -31,11 +31,11 @@ pub struct Args {
 /// past the 15-bit tag, or `list_ids` length past `u16`.
 pub fn run(args: &Args) -> utz_build::Result<()> {
     let eps_m = args.eps_m;
-    let pts = gen_pts(NPTS);
+    let points = gen_pts(NPTS);
 
     for dataset in ["now", "1970"] {
-        let feats = utz_build::load(dataset)?;
-        let out = topo::encode_topology(&feats, eps_m / 111_320.0);
+        let features = utz_build::load(dataset)?;
+        let out = topo::encode_topology(&features, eps_m / 111_320.0);
         let areas = grid::feat_areas(&out.simplified);
         println!(
             "{} eps={eps_m}m, {} features, dominant-first CSR, {NPTS} sample points",
@@ -64,8 +64,8 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
                 clippy::cast_sign_loss,
                 reason = "deg ≤ 10 → tiny positive integer"
             )]
-            let sub = ((deg * 4.0).round() as usize).max(2);
-            let grid = grid::build(&out.simplified, deg, sub);
+            let subcells = ((deg * 4.0).round() as usize).max(2);
+            let grid = grid::build(&out.simplified, deg, subcells);
             let csr = grid::intern_csr(&grid, Order::CellDominantFirst, &areas);
 
             let total = grid.ncols() * grid.nrows();
@@ -74,7 +74,7 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
                 .iter()
                 .filter(|&&tag| tag & 0x8000 != 0 && tag != 0x7FFF)
                 .count();
-            let hits = pts
+            let hits = points
                 .iter()
                 .filter(|&&(lon, lat)| {
                     #[expect(

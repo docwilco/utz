@@ -13,7 +13,7 @@ fn main() {
     println!("cargo:rerun-if-changed=data/compact.utz");
     let bytes = std::fs::read("data/compact.utz")
         .expect("data/compact.utz missing: run scripts/gen-presets.sh");
-    let h = PayloadHeader::from_asset(&bytes)
+    let header = PayloadHeader::from_asset(&bytes)
         .expect("data/compact.utz is not a current-version asset: run scripts/gen-presets.sh");
     let expected = (
         Dataset::Now,
@@ -26,14 +26,14 @@ fn main() {
         10_u16,
     );
     let actual = (
-        h.dataset,
-        h.eps_m,
-        h.quant_bits,
-        h.grid_deg,
-        h.simplify_algo,
-        h.geom,
-        h.codec,
-        h.density_weight_floor_e4,
+        header.dataset,
+        header.eps_m,
+        header.quant_bits,
+        header.grid_deg,
+        header.simplify_algo,
+        header.geom,
+        header.codec,
+        header.density_weight_floor_e4,
     );
     assert_eq!(
         actual, expected,

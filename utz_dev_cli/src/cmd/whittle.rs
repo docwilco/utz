@@ -92,11 +92,11 @@ const RECIPES: [Recipe; 4] = [
     reason = "byte counts ≪ 2^53; human-unit display"
 )]
 fn human(bytes: u64) -> String {
-    let b = bytes as f64;
-    if b >= 1024.0 * 1024.0 {
-        format!("{:.1} MB", b / 1024.0 / 1024.0)
+    let value = bytes as f64;
+    if value >= 1024.0 * 1024.0 {
+        format!("{:.1} MB", value / 1024.0 / 1024.0)
     } else {
-        format!("{:.1} KB", b / 1024.0)
+        format!("{:.1} KB", value / 1024.0)
     }
 }
 
@@ -104,11 +104,11 @@ fn human(bytes: u64) -> String {
     clippy::cast_precision_loss,
     reason = "byte counts ≪ 2^53; ratio display"
 )]
-fn stage(label: &str, bytes: u64, prev: u64, source: u64) {
+fn stage(label: &str, bytes: u64, previous: u64, source: u64) {
     println!(
         "  {label:<34} {:>10}   ÷{:<6.2} ÷{:<8.1}",
         human(bytes),
-        prev as f64 / bytes as f64,
+        previous as f64 / bytes as f64,
         source as f64 / bytes as f64
     );
 }
@@ -120,7 +120,9 @@ fn geojson_entry_size(zip_path: &std::path::Path) -> utz_build::Result<u64> {
         let entry = zip.by_index(i)?;
         if std::path::Path::new(entry.name())
             .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("json") || e.eq_ignore_ascii_case("geojson"))
+            .is_some_and(|extension| {
+                extension.eq_ignore_ascii_case("json") || extension.eq_ignore_ascii_case("geojson")
+            })
         {
             return Ok(entry.size());
         }
@@ -132,16 +134,16 @@ fn geojson_entry_size(zip_path: &std::path::Path) -> utz_build::Result<u64> {
     clippy::cast_precision_loss,
     reason = "byte counts ≪ 2^53; ratio display"
 )]
-fn ratio(n: u64, d: u64) -> f64 {
-    n as f64 / d as f64
+fn ratio(numerator: u64, denominator: u64) -> f64 {
+    numerator as f64 / denominator as f64
 }
 
 /// Raw payload + compressed asset per geometry encoding, with ratios
 /// vs `VarintArcs`: the size columns of the `GeomEncoding` ladder table.
 fn encodings_matrix(
-    r: &Recipe,
-    t: &topo::Topology,
-    feats: &[Feat],
+    recipe: &Recipe,
+    topology: &topo::Topology,
+    features: &[Feat],
     release: &str,
 ) -> utz_build::Result<()> {
     println!(
@@ -149,7 +151,7 @@ fn encodings_matrix(
         "encoding",
         "payload",
         "×va",
-        format!("{:?}", r.codec),
+        format!("{:?}", recipe.codec),
         "×va",
         "xz",
         "×va"
@@ -161,34 +163,35 @@ fn encodings_matrix(
         (GeomEncoding::FullRings, "full-rings"),
         (GeomEncoding::Coarse, "coarse"),
     ] {
-        let p = Params {
-            dataset: utz_build::dataset(r.ds)?.code(),
+        let params = Params {
+            dataset: utz_build::dataset(recipe.ds)?.code(),
             tzbb_release: release,
-            eps_m: r.eps_m,
-            quant_bits: r.quant_bits,
-            grid_deg: r.grid_deg,
+            eps_m: recipe.eps_m,
+            quant_bits: recipe.quant_bits,
+            grid_deg: recipe.grid_deg,
             codec: Codec::Uncompressed,
             simplify: SimplifyAlgo::Rdp,
             geom,
-            density_weight_floor: Some(r.density_weight_floor),
+            density_weight_floor: Some(recipe.density_weight_floor),
         };
-        let (payload, _) = encode::payload_from_topology(t, &t.arc_coords, feats, &p)?;
-        let container = encode::finish(&payload, r.codec)?;
+        let (payload, _) =
+            encode::payload_from_topology(topology, &topology.arc_coords, features, &params)?;
+        let container = encode::finish(&payload, recipe.codec)?;
         let xz = encode::finish(&payload, Codec::Xz)?;
         let sizes = (
             payload.len() as u64,
             container.len() as u64,
             xz.len() as u64,
         );
-        let b = *base.get_or_insert(sizes);
+        let baseline = *base.get_or_insert(sizes);
         println!(
             "  {label:<18} {:>10} ×{:<6.2} {:>10} ×{:<6.2} {:>10} ×{:<6.2}",
             human(sizes.0),
-            ratio(sizes.0, b.0),
+            ratio(sizes.0, baseline.0),
             human(sizes.1),
-            ratio(sizes.1, b.1),
+            ratio(sizes.1, baseline.1),
             human(sizes.2),
-            ratio(sizes.2, b.2),
+            ratio(sizes.2, baseline.2),
         );
     }
     Ok(())
@@ -196,36 +199,42 @@ fn encodings_matrix(
 
 /// # Errors
 /// Density-grid load, dataset download/parse, or encode failure.
-pub fn run(a: &Args) -> utz_build::Result<()> {
+pub fn run(args: &Args) -> utz_build::Result<()> {
     let cache = utz_build::cache_dir();
     let density = DensityGrid::load(&cache)?;
     let release = loader::resolve_release(&cache)?;
 
-    for r in RECIPES {
-        if a.preset != "all" && a.preset != r.name {
+    for recipe in RECIPES {
+        if args.preset != "all" && args.preset != recipe.name {
             continue;
         }
-        report_recipe(&r, &cache, &density, &release, a.extended)?;
+        report_recipe(&recipe, &cache, &density, &release, args.extended)?;
     }
     Ok(())
 }
 
 /// Measure and print every whittling stage for one recipe.
 fn report_recipe(
-    r: &Recipe,
+    recipe: &Recipe,
     cache: &std::path::Path,
     density: &DensityGrid,
     release: &str,
     extended: bool,
 ) -> utz_build::Result<()> {
-    let ds = utz_build::dataset(r.ds)?;
-    let zip_path = download::fetch(&loader::dataset_url(ds, release), cache)?;
+    let dataset = utz_build::dataset(recipe.ds)?;
+    let zip_path = download::fetch(&loader::dataset_url(dataset, release), cache)?;
     let geojson = geojson_entry_size(&zip_path)?;
-    let feats = loader::load_geojson_zip(&zip_path)?;
+    let features = loader::load_geojson_zip(&zip_path)?;
 
     println!(
         "{} ({}, ε {} m w{}, i{}, {:.4}°, {:?}, TZBB {release})",
-        r.name, r.ds, r.eps_m, r.density_weight_floor, r.quant_bits, r.grid_deg, r.codec
+        recipe.name,
+        recipe.ds,
+        recipe.eps_m,
+        recipe.density_weight_floor,
+        recipe.quant_bits,
+        recipe.grid_deg,
+        recipe.codec
     );
     println!(
         "  {:<34} {:>10}   {:<7} {:<8}",
@@ -234,10 +243,10 @@ fn report_recipe(
 
     // parsed coordinates as f64 pairs: the in-memory baseline every
     // later stage is measured against
-    let coords = coord_count(&feats) * 16;
+    let coords = coord_count(&features) * 16;
     println!(
         "  {:<34} {:>10}   {:<7} {:<8}",
-        format!("source GeoJSON ({} zones)", feats.len()),
+        format!("source GeoJSON ({} zones)", features.len()),
         human(geojson),
         "",
         ""
@@ -245,51 +254,56 @@ fn report_recipe(
     stage("parsed coordinates (f64 pairs)", coords, geojson, coords);
 
     // shared-arc topology, no simplification: pure border dedup
-    let t0 = topo::build_topology_algo(&feats, encode::to_simplify(SimplifyAlgo::None, 0.0));
-    let arc_verts0: u64 = arc_verts(&t0);
+    let raw_topology =
+        topo::build_topology_algo(&features, encode::to_simplify(SimplifyAlgo::None, 0.0));
+    let arc_verts0: u64 = arc_verts(&raw_topology);
     stage(
-        &format!("shared-arc topology ({} arcs)", t0.arc_coords.len()),
+        &format!(
+            "shared-arc topology ({} arcs)",
+            raw_topology.arc_coords.len()
+        ),
         arc_verts0 * 16,
         coords,
         coords,
     );
 
     // the recipe's density-weighted simplification
-    let eps_deg = r.eps_m / 111_320.0;
-    let weight = DensityWeight::new(r.density_weight_floor);
+    let eps_deg = recipe.eps_m / 111_320.0;
+    let weight = DensityWeight::new(recipe.density_weight_floor);
     let algo = encode::to_simplify(SimplifyAlgo::Rdp, eps_deg);
-    let t =
-        topo::build_topology_weighted(&feats, algo, &|a, b| weight.weight(density.max_along(a, b)));
-    let arc_verts1: u64 = arc_verts(&t);
+    let topology = topo::build_topology_weighted(&features, algo, &|start, end| {
+        weight.weight(density.max_along(start, end))
+    });
+    let arc_verts1: u64 = arc_verts(&topology);
     stage(
-        &format!("simplified (ε {} m weighted)", r.eps_m),
+        &format!("simplified (ε {} m weighted)", recipe.eps_m),
         arc_verts1 * 16,
         arc_verts0 * 16,
         coords,
     );
 
     // quantize + delta/varint code + grid + serialize
-    let p = Params {
-        dataset: ds.code(),
+    let params = Params {
+        dataset: dataset.code(),
         tzbb_release: release,
-        eps_m: r.eps_m,
-        quant_bits: r.quant_bits,
-        grid_deg: r.grid_deg,
+        eps_m: recipe.eps_m,
+        quant_bits: recipe.quant_bits,
+        grid_deg: recipe.grid_deg,
         codec: Codec::Uncompressed,
         simplify: SimplifyAlgo::Rdp,
         geom: encode::GeomEncoding::VarintArcs,
-        density_weight_floor: Some(r.density_weight_floor),
+        density_weight_floor: Some(recipe.density_weight_floor),
     };
-    let payload = report_payload(&t, &feats, &p, coords, arc_verts1)?;
+    let payload = report_payload(&topology, &features, &params, coords, arc_verts1)?;
 
-    let container = encode::finish(&payload, r.codec)?;
+    let container = encode::finish(&payload, recipe.codec)?;
     stage(
-        &format!("compressed container ({:?})", r.codec),
+        &format!("compressed container ({:?})", recipe.codec),
         container.len() as u64,
         payload.len() as u64,
         coords,
     );
-    if r.static_twin {
+    if recipe.static_twin {
         let flat = encode::finish(&payload, Codec::Uncompressed)?;
         stage(
             "uncompressed twin (-static)",
@@ -300,7 +314,7 @@ fn report_recipe(
     }
 
     if extended {
-        encodings_matrix(r, &t, &feats, release)?;
+        encodings_matrix(recipe, &topology, &features, release)?;
     }
     println!();
     Ok(())
@@ -309,18 +323,19 @@ fn report_recipe(
 /// Serialize the varint payload and print the quantize / varint-code /
 /// serialize stages; returns the payload for the compression stages.
 fn report_payload(
-    t: &topo::Topology,
-    feats: &[Feat],
-    p: &Params,
+    topology: &topo::Topology,
+    features: &[Feat],
+    params: &Params,
     coords: u64,
     arc_verts1: u64,
 ) -> utz_build::Result<Vec<u8>> {
-    let (payload, stats) = encode::payload_from_topology(t, &t.arc_coords, feats, p)?;
+    let (payload, stats) =
+        encode::payload_from_topology(topology, &topology.arc_coords, features, params)?;
     // quantization alone: the surviving vertices at the declared
     // coordinate width (what fixed-width-arcs would store)
-    let quantized = u64::from(stats.n_verts) * 2 * u64::from(p.quant_bits / 8);
+    let quantized = u64::from(stats.n_verts) * 2 * u64::from(params.quant_bits / 8);
     stage(
-        &format!("quantized (i{} fixed-width)", p.quant_bits),
+        &format!("quantized (i{} fixed-width)", params.quant_bits),
         quantized,
         arc_verts1 * 16,
         coords,

@@ -14,12 +14,12 @@
 
 #[test]
 fn new_loads_the_compact_preset() {
-    let f = utz::Finder::new().expect("compact asset decodes");
+    let finder = utz::Finder::new().expect("compact asset decodes");
     assert!(
-        !f.tzbb_release().is_empty(),
+        !finder.tzbb_release().is_empty(),
         "header carries a TZBB release tag"
     );
-    let london = f
+    let london = finder
         .lookup(utz::Position {
             lon: -0.1276,
             lat: 51.5072,
@@ -27,7 +27,7 @@ fn new_loads_the_compact_preset() {
         .expect("position in range");
     assert!(london.is_some(), "accurate lookup resolves");
     assert_eq!(
-        f.lookup_coarse(utz::Position {
+        finder.lookup_coarse(utz::Position {
             lon: -0.1276,
             lat: 51.5072
         }),
