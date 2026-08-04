@@ -219,6 +219,9 @@ pub fn parse(header: &[u8]) -> Result<PayloadLayout> {
         return Err(Error::GeometryNotCompiledIn(h.geom));
     }
 
+    // The tzid pool sits right after the zone string-offset table at blob
+    // offset 0: n_features+1 fencepost entries (last one marks the end of
+    // the final string), 2 bytes each.
     let pool = (h.n_features as usize + 1) * 2;
 
     let n_polys = h.eager_polys as usize;
