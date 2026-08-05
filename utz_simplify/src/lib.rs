@@ -234,17 +234,18 @@ fn rdp_mark(points: &[(f64, f64)], e2_of: impl Fn(usize) -> f64) -> Vec<RdpVerte
 /// The recursive core: `vertices` spans one shortcut segment, endpoint to
 /// endpoint, and both endpoints are already kept.
 fn rdp_recurse(vertices: &mut [RdpVertex]) {
-    if vertices.len() <= 2 {
+    let [start, interior @ .., end] = &*vertices else {
         return;
-    }
-    let (start, end) = (vertices[0].point, vertices[vertices.len() - 1].point);
-    // farthest point, measured in units of its own tolerance
+    };
+    let (start, end) = (start.point, end.point);
+    // farthest point, measured in units of its own tolerance; an empty
+    // interior leaves the ratio at 0, which ends the recursion below
     let (mut farthest_index, mut farthest_ratio) = (0, 0.0);
-    for (i, vertex) in vertices.iter().enumerate().take(vertices.len() - 1).skip(1) {
+    for (i, vertex) in interior.iter().enumerate() {
         let ratio = seg_dist2(vertex.point, start, end) / vertex.e2;
         if ratio > farthest_ratio {
             farthest_ratio = ratio;
-            farthest_index = i;
+            farthest_index = i + 1;
         }
     }
     if farthest_ratio > 1.0 {
