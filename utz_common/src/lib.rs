@@ -7,6 +7,8 @@
 
 use scroll::{Pread, Pwrite};
 
+pub mod presets;
+
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
@@ -297,6 +299,21 @@ pub enum Dataset {
 }
 
 impl Dataset {
+    /// Returns the canonical dataset name (`now`, `1970`, or `all`, with
+    /// a `land-` prefix for the land-only variants), the spelling the
+    /// builder's dataset parser accepts.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Dataset::Now => "now",
+            Dataset::Since1970 => "1970",
+            Dataset::All => "all",
+            Dataset::NowLandOnly => "land-now",
+            Dataset::Since1970LandOnly => "land-1970",
+            Dataset::AllLandOnly => "land-all",
+        }
+    }
+
     /// The dataset a header byte names, if any.
     #[must_use]
     pub const fn from_byte(byte: u8) -> Option<Dataset> {

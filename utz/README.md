@@ -68,6 +68,9 @@ generates your own asset with `utz_build`:
 | `balanced`    | ε 50 m, i24    | varint arcs | brotli | ~1.2 MB | |
 | `accurate`    | ε 10 m, i32    | varint arcs | brotli | ~8.1 MB | full zone set (every distinct tzid); the others merge zones identical since now |
 
+(The canonical recipe values behind this table live in
+`utz_common::presets`.)
+
 Preset features are additive across the whole dependency tree, and
 [`Finder::new()`] exists only while exactly one preset is enabled: with
 several in the union there is no single default to load, so `new()` is
@@ -259,9 +262,9 @@ utz_build::Config::new()
     .generate()?;       // writes $OUT_DIR/tz.utz (+ .guard.rs)
 ```
 
-Preset recipes double as starting points for one-knob variants:
-`Config::tiny().codec(Codec::Uncompressed)` is exactly the `tiny-static`
-recipe.
+Preset recipes double as starting points for one-knob variants, e.g.
+`Config::tiny().geom(GeomEncoding::Coarse)` for a grid-only build of
+the `tiny` recipe.
 
 The features must then match the asset: `custom`, an
 [environment](#environments), the [geometry decoder](#geometry-decoders) for

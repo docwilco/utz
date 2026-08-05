@@ -21,10 +21,14 @@
 //!
 //! The preset recipes double as constructors. Start from one and
 //! override a single knob instead of spelling the whole recipe:
-//! `Config::compact().codec(Codec::Uncompressed)`.
+//! `Config::compact().codec(Codec::Uncompressed)`. The recipe values
+//! themselves live in one place, the [`utz_common::presets`] table; the
+//! constructors here are thin wrappers over
+//! [`from_recipe()`](Config::from_recipe).
 
 use std::path::PathBuf;
 
+use utz_common::presets::{self, Recipe};
 use utz_encode::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgo};
 
 /// The builder for a custom `.utz` asset. The defaults are dataset `now`,
@@ -69,56 +73,66 @@ impl Config {
         Config::default()
     }
 
-    /// Returns the `tiny` preset recipe: RDP ε=10 000 m with pop-density
-    /// floor 0.001, i16, a 2° grid, and gzip. A preset constructor is a
-    /// starting point for one-knob variants: `tiny-static` is
-    /// `Config::tiny().codec(Codec::Uncompressed)`.
+    /// Returns a config carrying the given recipe's knobs, typically one
+    /// of the [`utz_common::presets`] constants. The named preset
+    /// constructors below are thin wrappers over this; call it directly
+    /// to drive the builder from the table (e.g. iterating
+    /// [`presets::ALL`]).
+    #[must_use]
+    pub fn from_recipe(recipe: &Recipe) -> Self {
+        let config = Config::new()
+            .dataset(recipe.dataset.name())
+            .rdp_meters(recipe.eps_m)
+            .quant_bits(recipe.quant_bits.bits())
+            .grid_deg(recipe.grid_deg)
+            .codec(recipe.codec)
+            .simplify_algo(recipe.simplify_algo)
+            .geom(recipe.geom);
+        match recipe.density_weight_floor() {
+            Some(floor) => config.density_weight_floor(floor),
+            None => config,
+        }
+    }
+
+    /// Returns the `tiny` preset recipe ([`presets::TINY`]): RDP
+    /// ε=10 000 m with pop-density floor 0.001, i16, a 2° grid, and
+    /// gzip. A preset constructor is a starting point for one-knob
+    /// variants: `Config::tiny().geom(GeomEncoding::Coarse)`.
     #[must_use]
     pub fn tiny() -> Self {
-        Config::new()
-            .rdp_meters(10_000.0)
-            .density_weight_floor(0.001)
-            .quant_bits(16)
-            .grid_deg(2.0)
-            .codec(Codec::Gzip)
+        Config::from_recipe(&presets::TINY)
     }
 
-    /// Returns the `compact` preset recipe: RDP ε=1 000 m with
-    /// pop-density floor 0.001, i24, a 4/3° grid, and xz.
+    /// Returns the `tiny-static` preset recipe ([`presets::TINY_STATIC`]),
+    /// which is `tiny` stored uncompressed so the asset is readable in
+    /// place with zero decode RAM.
+    #[must_use]
+    pub fn tiny_static() -> Self {
+        Config::from_recipe(&presets::TINY_STATIC)
+    }
+
+    /// Returns the `compact` preset recipe ([`presets::COMPACT`]): RDP
+    /// ε=1 000 m with pop-density floor 0.001, i24, a 4/3° grid, and xz.
     #[must_use]
     pub fn compact() -> Self {
-        Config::new()
-            .rdp_meters(1_000.0)
-            .density_weight_floor(0.001)
-            .quant_bits(24)
-            .grid_deg(4.0 / 3.0)
-            .codec(Codec::Xz)
+        Config::from_recipe(&presets::COMPACT)
     }
 
-    /// Returns the `balanced` preset recipe: RDP ε=50 m with pop-density
-    /// floor 0.020, i24, a 2/3° grid, and brotli.
+    /// Returns the `balanced` preset recipe ([`presets::BALANCED`]): RDP
+    /// ε=50 m with pop-density floor 0.020, i24, a 2/3° grid, and
+    /// brotli.
     #[must_use]
     pub fn balanced() -> Self {
-        Config::new()
-            .rdp_meters(50.0)
-            .density_weight_floor(0.020)
-            .quant_bits(24)
-            .grid_deg(2.0 / 3.0)
-            .codec(Codec::Brotli)
+        Config::from_recipe(&presets::BALANCED)
     }
 
-    /// Returns the `accurate` preset recipe: dataset `all` (the full
-    /// Comprehensive zone set; the other presets use `now`), RDP ε=10 m
-    /// with pop-density floor 0.10, i32, a 0.5° grid, and brotli.
+    /// Returns the `accurate` preset recipe ([`presets::ACCURATE`]):
+    /// dataset `all` (the full Comprehensive zone set; the other presets
+    /// use `now`), RDP ε=10 m with pop-density floor 0.10, i32, a 0.5°
+    /// grid, and brotli.
     #[must_use]
     pub fn accurate() -> Self {
-        Config::new()
-            .dataset("all")
-            .rdp_meters(10.0)
-            .density_weight_floor(0.10)
-            .quant_bits(32)
-            .grid_deg(0.5)
-            .codec(Codec::Brotli)
+        Config::from_recipe(&presets::ACCURATE)
     }
 
     /// Sets the dataset: `[land-]now|1970|all` (see

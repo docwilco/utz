@@ -4,7 +4,8 @@
 //! decoded size (~1.9 MB).
 //!
 //! Regenerate (writes `data/balanced.utz`, gitignored) from the canonical
-//! recipe; the build script refuses assets that do not match it:
+//! recipe in `utz_common::presets`; the build script refuses assets that
+//! do not match it:
 //!
 //! ```text
 //! cargo run --release -p utz_build_cli -- gen-preset balanced

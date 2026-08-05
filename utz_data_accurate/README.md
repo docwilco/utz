@@ -6,7 +6,8 @@ i32, a 0.5° grid, and brotli; it costs ~8.1 MB of flash, and peak
 decode RAM equals the decoded size (~10.6 MB).
 
 Regenerate (writes `data/accurate.utz`, gitignored) from the canonical
-recipe; the build script refuses assets that do not match it:
+recipe in `utz_common::presets`; the build script refuses assets that
+do not match it:
 
 ```
 cargo run --release -p utz_build_cli -- gen-preset accurate

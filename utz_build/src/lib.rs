@@ -96,6 +96,7 @@
 // The consumer surface: Config plus the names its knobs and results
 // need. The encoder machinery itself stays in utz_encode; the internal
 // tooling (utz_dev_cli, utz_viz) depends on that crate directly.
+pub use utz_common::presets;
 pub use utz_encode::encode::{Codec, GeomEncoding, SimplifyAlgo};
 pub use utz_encode::Feat;
 

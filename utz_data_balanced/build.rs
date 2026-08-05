@@ -1,42 +1,23 @@
 //! Recipe guard: refuse to compile against an asset whose header does
-//! not match this preset's recipe. Regenerate with
-//! `scripts/gen-presets.sh` (or `utz_build_cli gen-preset balanced`).
+//! not match this preset's recipe in [`utz_common::presets`]. Regenerate
+//! with `scripts/gen-presets.sh` (or `utz_build_cli gen-preset balanced`).
 
-use utz_common::{Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo};
+use utz_common::presets::{Provenance, BALANCED};
+use utz_common::PayloadHeader;
 
 fn main() {
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "the encoder stores grid_deg through the same f64-to-f32 cast; the guard must match it bit-exactly"
-    )]
-    let grid_deg = (2.0_f64 / 3.0) as f32;
-    println!("cargo:rerun-if-changed=data/balanced.utz");
-    let bytes = std::fs::read("data/balanced.utz")
-        .expect("data/balanced.utz missing: run scripts/gen-presets.sh");
-    let header = PayloadHeader::from_asset(&bytes)
-        .expect("data/balanced.utz is not a current-version asset: run scripts/gen-presets.sh");
-    let expected = (
-        Dataset::Now,
-        50.0_f32,
-        QuantBits::Bits24,
-        grid_deg,
-        SimplifyAlgo::Rdp,
-        GeomEncoding::VarintArcs,
-        Codec::Brotli,
-        200_u16,
-    );
-    let actual = (
-        header.dataset,
-        header.eps_m,
-        header.quant_bits,
-        header.grid_deg,
-        header.simplify_algo,
-        header.geom,
-        header.codec,
-        header.density_weight_floor_e4,
-    );
+    let recipe = &BALANCED;
+    let asset = format!("data/{}.utz", recipe.name);
+    println!("cargo:rerun-if-changed={asset}");
+    let bytes = std::fs::read(&asset)
+        .unwrap_or_else(|error| panic!("{asset} missing ({error}): run scripts/gen-presets.sh"));
+    let header = PayloadHeader::from_asset(&bytes).unwrap_or_else(|| {
+        panic!("{asset} is not a current-version asset: run scripts/gen-presets.sh")
+    });
     assert_eq!(
-        actual, expected,
-        "data/balanced.utz does not match the balanced recipe: run scripts/gen-presets.sh"
+        Provenance::from(&header),
+        Provenance::from(recipe),
+        "{asset} does not match the {} recipe: run scripts/gen-presets.sh",
+        recipe.name
     );
 }

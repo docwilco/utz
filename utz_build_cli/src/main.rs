@@ -16,7 +16,8 @@ enum Cmd {
     /// Generates a .utz asset to disk from explicit knobs.
     #[command(visible_alias = "encode")]
     Gen(cmd::encode::Args),
-    /// Generates a preset asset from its canonical Config recipe.
+    /// Generates a preset asset (or every preset) from the canonical
+    /// recipe table.
     GenPreset(cmd::gen_preset::Args),
 }
 

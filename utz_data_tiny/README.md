@@ -6,7 +6,8 @@ gzip; it costs ~71 KB of flash, and peak decode RAM equals the decoded
 size (~125 KB).
 
 Regenerate (writes `data/tiny.utz`, gitignored) from the canonical
-recipe; the build script refuses assets that do not match it:
+recipe in `utz_common::presets`; the build script refuses assets that
+do not match it:
 
 ```
 cargo run --release -p utz_build_cli -- gen-preset tiny

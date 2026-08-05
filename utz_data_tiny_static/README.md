@@ -7,7 +7,8 @@ zero-copy via `Finder::from_static()` with ~0 RAM and no decoder, and
 works on the bare `core` rung.
 
 Regenerate (writes `data/tiny-static.utz`, gitignored) from the canonical
-recipe; the build script refuses assets that do not match it:
+recipe in `utz_common::presets`; the build script refuses assets that
+do not match it:
 
 ```
 cargo run --release -p utz_build_cli -- gen-preset tiny-static
