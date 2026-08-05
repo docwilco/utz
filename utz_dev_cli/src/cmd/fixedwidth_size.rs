@@ -25,18 +25,6 @@ use utz::format::{self, read_fixed, read_u16, read_u32, read_varint, unzigzag};
 use utz_common::GeomEncoding;
 use utz_encode::encode::{compress, Codec};
 
-fn write_varint(mut value: u64, out: &mut Vec<u8>) {
-    loop {
-        let byte = (value & 0x7f) as u8;
-        value >>= 7;
-        if value == 0 {
-            out.push(byte);
-            break;
-        }
-        out.push(byte | 0x80);
-    }
-}
-
 fn write_fixed(value: i32, coord_bytes: usize, out: &mut Vec<u8>) {
     out.extend_from_slice(&value.cast_unsigned().to_le_bytes()[..coord_bytes]);
 }
@@ -159,7 +147,7 @@ fn variant_fixed_arcs(
     for id in 0..header.n_arcs as usize {
         a_offsets.push(u32::try_from(a_data.len()).expect("arc data fits u32"));
         let coords = arc_coords(payload, header, id);
-        write_varint(coords.len() as u64, &mut a_data);
+        utz_encode::topo::put_varint(&mut a_data, coords.len() as u64);
         for (x, y) in coords {
             write_fixed(x, coord_bytes, &mut a_data);
             write_fixed(y, coord_bytes, &mut a_data);

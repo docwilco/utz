@@ -19,10 +19,15 @@ fn pushb(out: &mut Vec<u8>, value: i32, bits: u32) {
     out.extend_from_slice(&value.to_le_bytes()[0..byte_len]);
 }
 
-fn zigzag(value: i64) -> u64 {
+/// Zigzag-encodes a signed delta for [`put_varint()`]; the reader's
+/// inverse is `utz::format::unzigzag()`.
+#[must_use]
+pub fn zigzag(value: i64) -> u64 {
     ((value << 1) ^ (value >> 63)).cast_unsigned()
 }
-fn put_varint(out: &mut Vec<u8>, mut value: u64) {
+/// Appends `value` as a varint, low 7 bits per byte with the high bit
+/// as continuation; the reader's inverse is `utz::format::read_varint()`.
+pub fn put_varint(out: &mut Vec<u8>, mut value: u64) {
     loop {
         let byte = (value & 0x7f) as u8;
         value >>= 7;

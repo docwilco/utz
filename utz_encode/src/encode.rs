@@ -32,6 +32,7 @@ pub use utz_common::{Dataset, MAGIC, PAYLOAD_HEADER_LEN, PROLOGUE_LEN, VERSION};
 
 use crate::error::ensure;
 use crate::grid::{self, Order};
+use crate::topo::{put_varint, zigzag};
 use crate::{clean, dq_lat, dq_lon, q_lat, q_lon, qmax_for, topo, Arc, Error, Feat};
 /// Checked narrowing for serializer counts and offsets: the format stores
 /// these at fixed width and a wrap would silently corrupt the container, so
@@ -833,19 +834,4 @@ pub fn compress(raw: &[u8], codec: Codec) -> crate::Result<Vec<u8>> {
             writer.finish().map_err(xz_err)?
         }
     })
-}
-
-fn zigzag(value: i64) -> u64 {
-    ((value << 1) ^ (value >> 63)).cast_unsigned()
-}
-fn put_varint(out: &mut Vec<u8>, mut value: u64) {
-    loop {
-        let byte = (value & 0x7f) as u8;
-        value >>= 7;
-        if value == 0 {
-            out.push(byte);
-            break;
-        }
-        out.push(byte | 0x80);
-    }
 }
