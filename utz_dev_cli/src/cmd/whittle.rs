@@ -165,7 +165,7 @@ fn encodings_matrix(
         (GeomEncoding::Coarse, "coarse"),
     ] {
         let params = Params {
-            dataset: utz_build::dataset(recipe.ds)?.code(),
+            dataset: utz_build::dataset(recipe.ds)?,
             tzbb_release: release,
             epsilon_m: recipe.epsilon_m,
             quant_bits: recipe.quant_bits,
@@ -288,7 +288,7 @@ fn report_recipe(
 
     // quantize + delta/varint code + grid + serialize
     let params = Params {
-        dataset: dataset.code(),
+        dataset,
         tzbb_release: release,
         epsilon_m: recipe.epsilon_m,
         quant_bits: recipe.quant_bits,

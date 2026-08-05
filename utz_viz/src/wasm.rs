@@ -45,7 +45,7 @@
 //! ```
 
 use crate::misassign::{self, Acc, ArcParams, Quant};
-use utz_encode::encode::{self, Codec, GeomEncoding, Params, PayloadStats};
+use utz_encode::encode::{self, Codec, Dataset, GeomEncoding, Params, PayloadStats};
 use utz_encode::topo::Topology;
 use utz_encode::{validate, Arc, Feat};
 use utz_simplify::{simplify_weighted, DensityWeight, Simplify};
@@ -58,7 +58,7 @@ struct State {
     /// The features carry tzid/offset metadata only (their polys are
     /// empty); the geometry lives in `topo`.
     feats: Vec<Feat>,
-    dataset_code: u8,
+    dataset: Dataset,
     release: String,
     /// The result of the last `utz_enc_payload()` call, which is the
     /// input to `utz_enc_compress()`.
@@ -148,7 +148,7 @@ fn parse_blob(bytes: &[u8]) -> Option<State> {
         }
     }
     // ---- topology section (see viz::dataset_bin) ----
-    let dataset_code = reader.u8()?;
+    let dataset = Dataset::from_byte(reader.u8()?)?;
     let release_len = reader.u8()? as usize;
     let release = String::from_utf8(reader.take(release_len)?.to_vec()).ok()?;
     let n_features = reader.u16()? as usize;
@@ -195,7 +195,7 @@ fn parse_blob(bytes: &[u8]) -> Option<State> {
         },
         densities,
         feats,
-        dataset_code,
+        dataset,
         release,
         payload: Vec::new(),
         stats: PayloadStats::default(),
@@ -322,7 +322,7 @@ pub extern "C" fn utz_enc_payload(
     };
     let arcs = simplified_arcs(state, algorithm, epsilon_m, w_min, None);
     let params = Params {
-        dataset: state.dataset_code,
+        dataset: state.dataset,
         tzbb_release: &state.release,
         epsilon_m,
         quant_bits,

@@ -323,6 +323,25 @@ impl Dataset {
         }
     }
 
+    /// The zone-set half of the name (`"now"`, `"1970"`, or `"all"`),
+    /// which picks how aggressively zones with identical rules are
+    /// merged.
+    #[must_use]
+    pub const fn zone_set(self) -> &'static str {
+        match self {
+            Dataset::Now | Dataset::NowLandOnly => "now",
+            Dataset::Since1970 | Dataset::Since1970LandOnly => "1970",
+            Dataset::All | Dataset::AllLandOnly => "all",
+        }
+    }
+
+    /// Whether maritime timezones cover the oceans (`false` names the
+    /// `land-` releases).
+    #[must_use]
+    pub const fn oceans(self) -> bool {
+        matches!(self, Dataset::Now | Dataset::Since1970 | Dataset::All)
+    }
+
     /// The dataset a header byte names, if any.
     #[must_use]
     pub const fn from_byte(byte: u8) -> Option<Dataset> {

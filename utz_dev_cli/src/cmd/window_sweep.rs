@@ -103,7 +103,7 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
 
     for (epsilon_m, quant_bits) in shapes {
         let params = Params {
-            dataset: utz_build::dataset(&args.ds)?.code(),
+            dataset: utz_build::dataset(&args.ds)?,
             tzbb_release: "dev",
             epsilon_m,
             quant_bits,

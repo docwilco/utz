@@ -85,8 +85,8 @@ pub fn resolve_release(cache_dir: &Path) -> crate::Result<String> {
 /// and `with-oceans` selects ocean cover.
 #[must_use]
 pub fn dataset_url(dataset: Dataset, release: &str) -> String {
-    let oceans = if dataset.oceans { "-with-oceans" } else { "" };
-    let zone_set = match dataset.zone_set {
+    let oceans = if dataset.oceans() { "-with-oceans" } else { "" };
+    let zone_set = match dataset.zone_set() {
         "all" => "",
         set_name => &format!("-{set_name}"),
     };

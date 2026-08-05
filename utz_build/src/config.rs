@@ -133,18 +133,6 @@ impl Config {
         self
     }
 
-    /// Deprecated name for
-    /// [`epsilon_meters()`](Config::epsilon_meters), kept from when
-    /// Ramer–Douglas–Peucker was the only simplifier in the pipeline.
-    #[deprecated(
-        since = "0.5.0",
-        note = "renamed to `epsilon_meters`; the tolerance drives every simplify algorithm, not just RDP"
-    )]
-    #[must_use]
-    pub fn rdp_meters(self, epsilon_m: f64) -> Self {
-        self.epsilon_meters(epsilon_m)
-    }
-
     /// Sets the quantization width: 16 / 24 / 32 (default 24). Any other
     /// value fails at [`generate()`](Config::generate), not here.
     #[must_use]
@@ -235,7 +223,7 @@ impl Config {
         let cache = self.cache_dir.clone().unwrap_or_else(crate::cache_dir);
         let (features, release) = crate::load_with_release_in(&self.dataset, &cache)?;
         let params = Params {
-            dataset: crate::dataset(&self.dataset)?.code(),
+            dataset: crate::dataset(&self.dataset)?,
             tzbb_release: &release,
             epsilon_m: self.epsilon_m,
             quant_bits: self.quant_bits,

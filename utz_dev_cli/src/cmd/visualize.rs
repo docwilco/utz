@@ -97,13 +97,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
         let features = utz_build::loader::load_geojson_zip(&zip)?;
         let topo0 = topo::build_topology(&features, 0.0);
         let verts: usize = topo0.arc_coords.iter().map(std::vec::Vec::len).sum();
-        let bin = viz::dataset_bin(
-            &topo0,
-            &features,
-            dataset_kind.code(),
-            "webdist",
-            density.get(),
-        );
+        let bin = viz::dataset_bin(&topo0, &features, dataset_kind, "webdist", density.get());
         let bin_z = write_z(&bin_path, &bin)?;
         let zones_z = write_z(&zones_path, &zones_bin(&features, dataset)?)?;
         #[expect(
@@ -220,7 +214,7 @@ fn zip_fp(zip: &Path) -> String {
 fn zones_bin(features: &[utz_build::Feat], dataset: &str) -> utz_build::Result<Vec<u8>> {
     const STEP: f64 = 0.1;
     let params = Params {
-        dataset: utz_build::dataset(dataset)?.code(),
+        dataset: utz_build::dataset(dataset)?,
         tzbb_release: "webdist",
         epsilon_m: 100.0,
         quant_bits: 24,

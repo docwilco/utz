@@ -96,7 +96,7 @@
 // The consumer surface: Config plus the names its knobs and results
 // need. The encoder machinery itself stays in utz_encode; the internal
 // tooling (utz_dev_cli, utz_viz) depends on that crate directly.
-pub use utz_common::presets;
+pub use utz_common::{presets, Dataset};
 pub use utz_encode::encode::{Codec, GeomEncoding, SimplifyAlgorithm};
 pub use utz_encode::Feat;
 
@@ -112,46 +112,6 @@ pub use config::Config;
 
 use std::path::PathBuf;
 
-/// The two dataset knobs, zone set × ocean coverage. In TZBB's
-/// terminology, `now` is "Same since now", `1970` is "Same since 1970",
-/// and `all` is "Comprehensive" (every tzid, the unsuffixed release). μTZ
-/// defaults to with-oceans; a `land-` prefix selects the land-only
-/// releases.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct Dataset {
-    /// The zone set (`"now"`, `"1970"`, or `"all"`), which picks how
-    /// aggressively zones with identical rules are merged.
-    pub zone_set: &'static str,
-    /// Whether maritime timezones cover the oceans (`false` selects the
-    /// `land-` releases).
-    pub oceans: bool,
-}
-
-impl Dataset {
-    /// Returns the canonical name: `now`, `1970`, `all`, `land-now`, and
-    /// so on.
-    #[must_use]
-    pub fn name(&self) -> String {
-        if self.oceans {
-            self.zone_set.to_string()
-        } else {
-            format!("land-{}", self.zone_set)
-        }
-    }
-    /// Returns the header byte (see encode.rs): the zone set sits in bits
-    /// 0–1 (0 is now, 1 is 1970, 2 is all), and a set bit 2 means
-    /// land-only.
-    #[must_use]
-    pub fn code(&self) -> u8 {
-        let zone_set_code = match self.zone_set {
-            "now" => 0,
-            "1970" => 1,
-            _ => 2,
-        };
-        zone_set_code | if self.oceans { 0 } else { 4 }
-    }
-}
-
 /// Parses a dataset name (`[land-]now|1970|all`; the legacy
 /// `osm`/`osm1970` are accepted).
 ///
@@ -162,16 +122,16 @@ pub fn dataset(name: &str) -> crate::Result<Dataset> {
         Some(stripped) => (true, stripped),
         None => (false, name),
     };
-    let zone_set = match rest {
-        "now" | "osm" => "now",
-        "1970" | "osm1970" => "1970",
-        "all" | "full" | "comprehensive" => "all",
+    let dataset = match (rest, land_only) {
+        ("now" | "osm", false) => Dataset::Now,
+        ("now" | "osm", true) => Dataset::NowLandOnly,
+        ("1970" | "osm1970", false) => Dataset::Since1970,
+        ("1970" | "osm1970", true) => Dataset::Since1970LandOnly,
+        ("all" | "full" | "comprehensive", false) => Dataset::All,
+        ("all" | "full" | "comprehensive", true) => Dataset::AllLandOnly,
         _ => return Err(Error::UnknownDataset { ds: name.into() }),
     };
-    Ok(Dataset {
-        zone_set,
-        oceans: !land_only,
-    })
+    Ok(dataset)
 }
 
 /// Loads a dataset via the download+`GeoJSON` pipeline (conditional-GET

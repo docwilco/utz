@@ -50,7 +50,7 @@ pub fn webdist_index() -> utz_build::Result<String> {
 pub fn dataset_bin(
     topology: &utz_encode::topo::Topology,
     feats: &[utz_encode::Feat],
-    dataset_code: u8,
+    dataset: utz_build::Dataset,
     release: &str,
     grid: Option<&utz_build::density::DensityGrid>,
 ) -> Vec<u8> {
@@ -101,7 +101,7 @@ pub fn dataset_bin(
         }
     }
     // ---- topology section ----
-    out.push(dataset_code);
+    out.push(dataset as u8);
     assert!(release.len() < 256, "release tag too long");
     out.push(u8::try_from(release.len()).expect("release len fits u8"));
     out.extend_from_slice(release.as_bytes());

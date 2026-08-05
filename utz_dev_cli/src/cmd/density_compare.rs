@@ -115,7 +115,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
 
     // container size delta (same knobs, zstd; topologies already built above)
     let params = Params {
-        dataset: 0,
+        dataset: utz_build::dataset(&dataset)?,
         tzbb_release: "density-compare",
         epsilon_m,
         quant_bits: 24,

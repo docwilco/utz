@@ -41,7 +41,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
 
     let features = utz_build::load(&dataset)?;
     let params = Params {
-        dataset: utz_build::dataset(&dataset)?.code(),
+        dataset: utz_build::dataset(&dataset)?,
         tzbb_release: "roundtrip-dev",
         epsilon_m,
         quant_bits,

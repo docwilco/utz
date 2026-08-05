@@ -27,8 +27,8 @@
 //! runtime PIPs is exactly what the grid indexed.
 
 use scroll::{Pread, Pwrite, LE};
-use utz_common::{Dataset, PayloadHeader, QuantBits, PAYLOAD_HEADER_LEN, PROLOGUE_LEN};
-pub use utz_common::{MAGIC, VERSION};
+pub use utz_common::{Dataset, MAGIC, VERSION};
+use utz_common::{PayloadHeader, QuantBits, PAYLOAD_HEADER_LEN, PROLOGUE_LEN};
 
 use crate::error::ensure;
 use crate::grid::{self, Order};
@@ -71,10 +71,9 @@ pub fn to_simplify(algorithm: SimplifyAlgorithm, epsilon_deg: f64) -> utz_simpli
 /// provenance recorded in the asset's header.
 #[derive(Clone, Copy)]
 pub struct Params<'a> {
-    /// The dataset code byte. Bits 0–1 select the zone set (0 is now, 1 is
-    /// 1970, 2 is all/comprehensive), and a set bit 2 means land-only
-    /// (clear means with-oceans).
-    pub dataset: u8,
+    /// The dataset the features came from, recorded in the header as
+    /// provenance.
+    pub dataset: Dataset,
     /// The TZBB release tag recorded in the header (the rules snapshot and
     /// cache key).
     pub tzbb_release: &'a str,
@@ -278,7 +277,7 @@ pub fn payload_from_topology(
         uniq: c16(csr.uniq_lists),
         release_len: c16(params.tzbb_release.len()),
         flags: 0, // reserved
-        dataset: Dataset::from_byte(params.dataset).expect("guarded by ensure_header_limits"),
+        dataset: params.dataset,
         quant_bits: QuantBits::from_byte(
             u8::try_from(params.quant_bits).expect("quant_bits guarded to 16/24/32"),
         )
@@ -591,14 +590,6 @@ fn ensure_header_limits(
             what: "tzbb_release bytes",
             n: params.tzbb_release.len(),
             max: u16::MAX as usize
-        }
-    );
-    ensure!(
-        Dataset::from_byte(params.dataset).is_some(),
-        Error::FormatLimit {
-            what: "dataset byte (zone set 0-2, land-only bit)",
-            n: params.dataset as usize,
-            max: 0b110
         }
     );
     Ok(())

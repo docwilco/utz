@@ -36,7 +36,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     for epsilon_m in [100.0f64, 250.0, 500.0, 1000.0, 2000.0] {
         for quant_bits in [16u32, 24] {
             let params = Params {
-                dataset: utz_build::dataset(&dataset)?.code(),
+                dataset: utz_build::dataset(&dataset)?,
                 tzbb_release: "dev",
                 epsilon_m,
                 quant_bits,
