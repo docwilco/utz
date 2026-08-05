@@ -159,11 +159,8 @@ impl Config {
     }
 
     /// Sets the simplification algorithm, default [`SimplifyAlgorithm::Rdp`].
-    /// [`SimplifyAlgorithm::ImaiIri`] gives provably minimum vertices for the
-    /// same ε (−4 to −19% measured, at a slower encode);
-    /// [`SimplifyAlgorithm::Visvalingam`] trades the deviation bound for a
-    /// cartographically smoother caricature; [`SimplifyAlgorithm::None`] keeps
-    /// every source vertex.
+    /// The variants and their measured trade-offs are documented on
+    /// [`SimplifyAlgorithm`].
     #[must_use]
     pub fn simplify_algorithm(mut self, algorithm: SimplifyAlgorithm) -> Self {
         self.simplify = algorithm;

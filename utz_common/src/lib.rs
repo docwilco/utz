@@ -244,11 +244,16 @@ pub enum SimplifyAlgorithm {
     #[default]
     Rdp = 1,
     /// Visvalingam–Whyatt repeatedly drops the vertex spanning the
-    /// smallest triangle; the ε-driven pipeline derives its area threshold
-    /// as ε², matching the viewer.
+    /// smallest triangle, trading RDP's deviation bound for a
+    /// cartographically smoother caricature; the ε-driven pipeline
+    /// derives its area threshold as ε², matching the viewer.
     Visvalingam = 2,
     /// Imai–Iri produces provably minimum vertices for the same ε bound
-    /// as RDP, at a slower encode.
+    /// as RDP, at a slower encode. Measured against RDP on full-planet
+    /// arcs it keeps 3.8% fewer vertices at ε = 100 m, rising to 18–19%
+    /// fewer at ε = 500–2000 m; a full-pipeline check at ε = 2000 m
+    /// produced a 12.6% smaller compressed asset for about four seconds
+    /// of extra encode time.
     ImaiIri = 3,
 }
 
