@@ -1,6 +1,6 @@
 [package]
 name = "utz_dev_cli"
-version = "0.3.0+2026c"
+version = "0.4.0+2026c"
 edition.workspace = true
 license = "MIT"
 repository.workspace = true

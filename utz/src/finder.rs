@@ -176,7 +176,7 @@ impl EagerCoord for (i16, i16) {
 /// | feature | adds mode    | API |
 /// |---------|--------------|-----|
 /// | `core`  | zero-copy    | [`from_static()`](Finder::from_static), [`lookup()`](Finder::lookup), [`lookup_coarse()`](Finder::lookup_coarse) (and their `_unchecked` variants) |
-/// | `alloc` | lazy + eager | [`from_slice()`](Finder::from_slice), [`from_vec()`](Finder::from_vec), [`eager_from_slice()`](Finder::eager_from_slice), [`preload()`](Finder::preload), [`preload_bytes()`](Finder::preload_bytes) |
+/// | `alloc` | lazy + eager | [`from_slice()`](Finder::from_slice), [`from_vec()`](Finder::from_vec), [`eager_from_slice()`](Finder::eager_from_slice), [`preload()`](Finder::preload), [`preload_size()`](Finder::preload_size) |
 /// | `std`   |              | [`from_reader()`](Finder::from_reader) |
 pub struct Finder {
     payload: Payload,
@@ -573,7 +573,7 @@ impl Finder {
     #[cfg(feature = "alloc")]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "alloc", feature = "std"))))]
     #[must_use]
-    pub fn preload_bytes(&self) -> usize {
+    pub fn preload_size(&self) -> usize {
         if matches!(
             self.layout.geom,
             GeomEncoding::FullRings | GeomEncoding::Coarse
@@ -594,7 +594,7 @@ impl Finder {
 
     /// Decodes all polygons into RAM once (eager mode): repeat lookups
     /// then skip decoding entirely, making this the fastest mode. It
-    /// costs [`preload_bytes()`](Finder::preload_bytes)
+    /// costs [`preload_size()`](Finder::preload_size)
     /// (≈ uncompressed geometry at quant-nearest width: i16 pairs for
     /// i16-quant assets, half the cache, and i32 otherwise) in heap. The
     /// whole cache is reserved exactly up front, so peak use equals the

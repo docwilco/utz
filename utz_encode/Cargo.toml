@@ -1,6 +1,6 @@
 [package]
 name = "utz_encode"
-version = "0.3.0+2026c"
+version = "0.4.0+2026c"
 edition.workspace = true
 license = "MIT"
 repository.workspace = true
@@ -26,12 +26,12 @@ zstd = ["dep:zstd"]
 [dependencies]
 derive_more = { workspace = true }
 # the shared Codec types + PayloadHeader (also used by the utz reader)
-utz_common = { path = "../utz_common", version = "0.3.0", default-features = false }
+utz_common = { path = "../utz_common", version = "0.4.0", default-features = false }
 scroll = { version = "0.13", default-features = false }
 # 2D cell grids without hand-rolled index arithmetic
 ndarray = { version = "0.17", default-features = false, features = ["std"] }
 # simplification menu + DensityWeight (shared with the viewer via this cdylib)
-utz_simplify = { path = "../utz_simplify", version = "0.3.0" }
+utz_simplify = { path = "../utz_simplify", version = "0.4.0" }
 # codecs (all pure Rust except optional zstd)
 miniz_oxide = "0.9"
 brotli = "8.0"

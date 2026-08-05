@@ -36,7 +36,7 @@ pub struct Sections {
 }
 
 /// One preset's trip down the pipeline, as counts and byte sizes per
-/// stage. Coordinate stages are counts; the `*_bytes` helpers price them
+/// stage. Coordinate stages are counts; the `*_size` helpers price them
 /// as f64 pairs (16 bytes), the in-memory representation they reduce.
 #[derive(Clone, Copy, Debug)]
 pub struct StageLadder {
@@ -60,15 +60,15 @@ pub struct StageLadder {
 
 impl StageLadder {
     #[must_use]
-    pub const fn coords_bytes(&self) -> u64 {
+    pub const fn coords_size(&self) -> u64 {
         self.coords * 16
     }
     #[must_use]
-    pub const fn arc_bytes(&self) -> u64 {
+    pub const fn arc_size(&self) -> u64 {
         self.arc_verts * 16
     }
     #[must_use]
-    pub const fn simplified_bytes(&self) -> u64 {
+    pub const fn simplified_size(&self) -> u64 {
         self.simplified_verts * 16
     }
 }

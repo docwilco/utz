@@ -171,7 +171,7 @@ fn eager_leg(label: &str, blob: &'static [u8], points: &[(f64, f64)]) {
     let mut finder = Finder::from_static(blob).expect("from_static");
     // exact requirement from the v2 header counts; preload reserves exactly
     // (no growth doubling), so fit means fit
-    let needed_bytes = finder.preload_bytes();
+    let needed_bytes = finder.preload_size();
     if !fits(needed_bytes) {
         println!("SKIP {}: eager cache needs {} KiB — no heap region fits", label, needed_bytes / 1024);
         return;

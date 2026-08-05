@@ -1,6 +1,6 @@
 [package]
 name = "utz"
-version = "0.3.0+2026c"
+version = "0.4.0+2026c"
 edition.workspace = true
 license = "MIT"
 repository.workspace = true
@@ -86,11 +86,11 @@ zstd = { version = "0.13", optional = true }
 # shim (decompress.rs), keeping the decoder alloc-clean → preset-eligible
 brotli-decompressor = { version = "5.0", optional = true, default-features = false }
 lzma-rust2 = { version = "0.18", optional = true, default-features = false, features = ["xz"] }
-utz_data_tiny = { path = "../utz_data_tiny", version = "0.3.0", optional = true }
-utz_data_tiny_static = { path = "../utz_data_tiny_static", version = "0.3.0", optional = true }
-utz_data_compact = { path = "../utz_data_compact", version = "0.3.0", optional = true }
-utz_data_balanced = { path = "../utz_data_balanced", version = "0.3.0", optional = true }
-utz_data_accurate = { path = "../utz_data_accurate", version = "0.3.0", optional = true }
+utz_data_tiny = { path = "../utz_data_tiny", version = "0.4.0", optional = true }
+utz_data_tiny_static = { path = "../utz_data_tiny_static", version = "0.4.0", optional = true }
+utz_data_compact = { path = "../utz_data_compact", version = "0.4.0", optional = true }
+utz_data_balanced = { path = "../utz_data_balanced", version = "0.4.0", optional = true }
+utz_data_accurate = { path = "../utz_data_accurate", version = "0.4.0", optional = true }
 # re-exported for embedding FullRings assets 4-aligned (see workspace toml)
 include_bytes_aligned = { workspace = true }
 
@@ -103,13 +103,13 @@ default-features = false
 # the shared Codec types; no alloc — the enum must exist on the core rung
 path = "../utz_common"
 default-features = false
-version = "0.3.0"
+version = "0.4.0"
 
 [dev-dependencies]
-utz_common = { path = "../utz_common", version = "0.3.0" }
+utz_common = { path = "../utz_common", version = "0.4.0" }
 # the real encoder, for cross-crate codec roundtrip tests (the unit-test
 # vectors alone can't catch encoder/decoder parameter drift)
-utz_encode = { path = "../utz_encode", version = "0.3.0", features = ["zstd"] }
+utz_encode = { path = "../utz_encode", version = "0.4.0", features = ["zstd"] }
 geo = { workspace = true }
 geo-types = { workspace = true }
 test-case = "3.3"

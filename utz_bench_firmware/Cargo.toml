@@ -4,7 +4,7 @@
 
 [package]
 name = "utz_bench_firmware"
-version = "0.3.0+2026c"
+version = "0.4.0+2026c"
 edition = "2021"
 license = "MIT"
 publish = false

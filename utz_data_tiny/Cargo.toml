@@ -1,6 +1,6 @@
 [package]
 name = "utz_data_tiny"
-version = "0.3.0+2026c"
+version = "0.4.0+2026c"
 edition.workspace = true
 license = "MIT AND ODbL-1.0"
 repository.workspace = true
@@ -24,4 +24,4 @@ workspace = true
 
 # the recipe guard in build.rs parses the asset header
 [build-dependencies]
-utz_common = { path = "../utz_common", version = "0.3.0" }
+utz_common = { path = "../utz_common", version = "0.4.0" }

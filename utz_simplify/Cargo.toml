@@ -1,6 +1,6 @@
 [package]
 name = "utz_simplify"
-version = "0.3.0+2026c"
+version = "0.4.0+2026c"
 edition.workspace = true
 license = "MIT"
 repository.workspace = true
@@ -26,4 +26,4 @@ crate-type = ["lib"]
 workspace = true
 
 [dev-dependencies]
-utz_common = { path = "../utz_common", version = "0.3.0" }
+utz_common = { path = "../utz_common", version = "0.4.0" }

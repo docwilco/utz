@@ -175,7 +175,7 @@ use then follows from how the asset was loaded:
   lives in owned RAM and nothing else is cached (the RAM notes in the
   [preset table](#presets) are this buffer).
 - **eager** ([`Finder::preload()`]): all rings are additionally decoded up
-  front into a flat cache, the fastest mode; [`Finder::preload_bytes()`]
+  front into a flat cache, the fastest mode; [`Finder::preload_size()`]
   tells you the exact cost before you pay it.
 - **eager from compressed** ([`Finder::eager_from_slice()`]): the asset
   decodes straight to the eager cache and the encoded geometry is
@@ -451,7 +451,7 @@ population-density weighting derived from
 [`Finder::from_slice()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_slice
 [`Finder::from_static()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.from_static
 [`Finder::preload()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload
-[`Finder::preload_bytes()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload_bytes
+[`Finder::preload_size()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.preload_size
 [`Finder::lookup()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.lookup
 [`Finder::lookup_unchecked()`]: https://docwilco.github.io/utz/docs/utz/struct.Finder.html#method.lookup_unchecked
 [`Error::InvalidPosition`]: https://docwilco.github.io/utz/docs/utz/enum.Error.html#variant.InvalidPosition
