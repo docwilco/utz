@@ -239,13 +239,15 @@ fn rdp_recurse(vertices: &mut [RdpVertex]) {
     };
     let (start, end) = (start.point, end.point);
     // farthest point, measured in units of its own tolerance; an empty
-    // interior leaves the ratio at 0, which ends the recursion below
+    // interior leaves the ratio at 0, which ends the recursion below.
+    // zipping (1..) indexes each vertex by its position in `vertices` (the
+    // split below needs that), not its position in `interior`
     let (mut farthest_index, mut farthest_ratio) = (0, 0.0);
-    for (i, vertex) in interior.iter().enumerate() {
+    for (i, vertex) in (1..).zip(interior) {
         let ratio = seg_dist2(vertex.point, start, end) / vertex.e2;
         if ratio > farthest_ratio {
             farthest_ratio = ratio;
-            farthest_index = i + 1;
+            farthest_index = i;
         }
     }
     if farthest_ratio > 1.0 {
