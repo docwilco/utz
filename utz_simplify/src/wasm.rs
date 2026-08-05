@@ -9,9 +9,9 @@
 //! ```js
 //! const { instance } = await WebAssembly.instantiate(wasmBytes);
 //! const { memory, utz_alloc, utz_free, utz_simplify } = instance.exports;
-//! const n = pts.length;                       // pts: [[x,y], ...]
+//! const n = points.length;                       // points: [[x,y], ...]
 //! const ptr = utz_alloc(n * 2);
-//! new Float64Array(memory.buffer, ptr, n * 2).set(pts.flat());
+//! new Float64Array(memory.buffer, ptr, n * 2).set(points.flat());
 //! const kept = utz_simplify(ALGO_RDP, ptr, n, epsDeg); // simplifies in place
 //! const out = new Float64Array(memory.buffer, ptr, kept * 2).slice();
 //! utz_free(ptr, n * 2);
@@ -45,16 +45,21 @@ pub unsafe extern "C" fn utz_free(ptr: *mut f64, n_f64: usize) {
     drop(Vec::from_raw_parts(ptr, 0, n_f64));
 }
 
-/// Simplifies `n_pts` interleaved `x,y` doubles IN PLACE and returns the
+/// Simplifies `n_points` interleaved `x,y` doubles IN PLACE and returns the
 /// number of points kept (the buffer's first `kept * 2` doubles). An unknown
 /// `algo` or a non-positive parameter leaves the polyline unchanged.
 ///
 /// # Safety
-/// `xy` must point at `n_pts * 2` valid doubles (e.g. from [`utz_alloc()`]).
+/// `xy` must point at `n_points * 2` valid doubles (e.g. from [`utz_alloc()`]).
 #[no_mangle]
-pub unsafe extern "C" fn utz_simplify(algo: u32, xy: *mut f64, n_pts: usize, param: f64) -> usize {
-    let buffer = core::slice::from_raw_parts_mut(xy, n_pts * 2);
-    let pts: Vec<(f64, f64)> = buffer
+pub unsafe extern "C" fn utz_simplify(
+    algo: u32,
+    xy: *mut f64,
+    n_points: usize,
+    param: f64,
+) -> usize {
+    let buffer = core::slice::from_raw_parts_mut(xy, n_points * 2);
+    let points: Vec<(f64, f64)> = buffer
         .chunks_exact(2)
         .map(|chunk| (chunk[0], chunk[1]))
         .collect();
@@ -69,7 +74,7 @@ pub unsafe extern "C" fn utz_simplify(algo: u32, xy: *mut f64, n_pts: usize, par
         ALGO_IMAI_IRI => Simplify::ImaiIri { eps: param },
         _ => Simplify::None,
     };
-    let out = simplify(algo, &pts);
+    let out = simplify(algo, &points);
     for (i, (x, y)) in out.iter().enumerate() {
         buffer[i * 2] = *x;
         buffer[i * 2 + 1] = *y;
@@ -78,30 +83,30 @@ pub unsafe extern "C" fn utz_simplify(algo: u32, xy: *mut f64, n_pts: usize, par
 }
 
 /// [`utz_simplify()`] with population-density weighting: `densities` points
-/// at `n_pts` per-vertex densities (people/km²), mapped through
+/// at `n_points` per-vertex densities (people/km²), mapped through
 /// [`DensityWeight::new()`]`(w_min)`, so the browser's weighting slider runs
 /// the exact map the builder uses, not a JS reimplementation. `w_min ≥ 1`
 /// turns weighting off (identical to [`utz_simplify()`]).
 ///
 /// # Safety
-/// `xy` must point at `n_pts * 2` valid doubles and `densities` at `n_pts`
+/// `xy` must point at `n_points * 2` valid doubles and `densities` at `n_points`
 /// valid doubles (e.g. from [`utz_alloc()`]).
 #[no_mangle]
 pub unsafe extern "C" fn utz_simplify_w(
     algo: u32,
     xy: *mut f64,
-    n_pts: usize,
+    n_points: usize,
     param: f64,
     densities: *const f64,
     w_min: f64,
 ) -> usize {
-    let buffer = core::slice::from_raw_parts_mut(xy, n_pts * 2);
-    let pts: Vec<(f64, f64)> = buffer
+    let buffer = core::slice::from_raw_parts_mut(xy, n_points * 2);
+    let points: Vec<(f64, f64)> = buffer
         .chunks_exact(2)
         .map(|chunk| (chunk[0], chunk[1]))
         .collect();
     let model = DensityWeight::new(w_min);
-    let weights: Vec<f64> = core::slice::from_raw_parts(densities, n_pts)
+    let weights: Vec<f64> = core::slice::from_raw_parts(densities, n_points)
         .iter()
         .map(|&density| model.weight(density))
         .collect();
@@ -116,7 +121,7 @@ pub unsafe extern "C" fn utz_simplify_w(
         ALGO_IMAI_IRI => Simplify::ImaiIri { eps: param },
         _ => Simplify::None,
     };
-    let out = simplify_weighted(algo, &pts, &weights);
+    let out = simplify_weighted(algo, &points, &weights);
     for (i, (x, y)) in out.iter().enumerate() {
         buffer[i * 2] = *x;
         buffer[i * 2 + 1] = *y;

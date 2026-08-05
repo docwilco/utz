@@ -56,26 +56,35 @@ pub enum Simplify {
 
 /// Dispatches on [`Simplify`].
 #[must_use]
-pub fn simplify(algo: Simplify, pts: &[(f64, f64)]) -> Vec<(f64, f64)> {
+pub fn simplify(algo: Simplify, points: &[(f64, f64)]) -> Vec<(f64, f64)> {
     match algo {
-        Simplify::None => pts.to_vec(),
-        Simplify::Rdp { eps } => rdp(pts, eps),
-        Simplify::Visvalingam { min_area } => visvalingam(pts, min_area),
-        Simplify::ImaiIri { eps } => imai_iri(pts, eps),
+        Simplify::None => points.to_vec(),
+        Simplify::Rdp { eps } => rdp(points, eps),
+        Simplify::Visvalingam { min_area } => visvalingam(points, min_area),
+        Simplify::ImaiIri { eps } => imai_iri(points, eps),
     }
 }
 
 /// [`simplify()`] with per-vertex tolerance multipliers: the effective
-/// parameter at `pts[i]` is `param * weights[i]` (for Visvalingam,
+/// parameter at `points[i]` is `param * weights[i]` (for Visvalingam,
 /// `min_area * weights[i]²`). Callers pass one strictly positive weight per
 /// point; all-ones weights reproduce [`simplify()`].
+///
+/// # Panics
+///
+/// Panics if `points.len() != weights.len()`.
 #[must_use]
-pub fn simplify_weighted(algo: Simplify, pts: &[(f64, f64)], weights: &[f64]) -> Vec<(f64, f64)> {
+pub fn simplify_weighted(
+    algo: Simplify,
+    points: &[(f64, f64)],
+    weights: &[f64],
+) -> Vec<(f64, f64)> {
+    assert_eq!(points.len(), weights.len(), "one weight per point");
     match algo {
-        Simplify::None => pts.to_vec(),
-        Simplify::Rdp { eps } => rdp_w(pts, eps, weights),
-        Simplify::Visvalingam { min_area } => visvalingam_w(pts, min_area, weights),
-        Simplify::ImaiIri { eps } => imai_iri_w(pts, eps, weights),
+        Simplify::None => points.to_vec(),
+        Simplify::Rdp { eps } => rdp_w(points, eps, weights),
+        Simplify::Visvalingam { min_area } => visvalingam_w(points, min_area, weights),
+        Simplify::ImaiIri { eps } => imai_iri_w(points, eps, weights),
     }
 }
 
@@ -144,37 +153,39 @@ fn seg_dist2(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
 /// Runs Ramer–Douglas–Peucker, keeping both endpoints; the result has
 /// ≥ 2 points.
 #[must_use]
-pub fn rdp(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
-    if pts.len() < 3 || eps <= 0.0 {
-        return pts.to_vec();
+pub fn rdp(points: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
+    if points.len() < 3 || eps <= 0.0 {
+        return points.to_vec();
     }
     let e2 = eps * eps;
-    let keep = rdp_keep(pts, |_| e2);
-    pts.iter()
+    let keep = rdp_keep(points, |_| e2);
+    points
+        .iter()
         .zip(keep)
         .filter(|(_, kept)| *kept)
         .map(|(&point, _)| point)
         .collect()
 }
 
-/// [`rdp()`] with per-vertex multipliers: the deviation at `pts[i]` stays
+/// [`rdp()`] with per-vertex multipliers: the deviation at `points[i]` stays
 /// ≤ `eps * weights[i]`.
 ///
 /// # Panics
 ///
-/// Panics if `pts.len() != weights.len()`.
+/// Panics if `points.len() != weights.len()`.
 #[must_use]
-pub fn rdp_w(pts: &[(f64, f64)], eps: f64, weights: &[f64]) -> Vec<(f64, f64)> {
-    assert_eq!(pts.len(), weights.len(), "one weight per point");
-    if pts.len() < 3 || eps <= 0.0 {
-        return pts.to_vec();
+pub fn rdp_w(points: &[(f64, f64)], eps: f64, weights: &[f64]) -> Vec<(f64, f64)> {
+    assert_eq!(points.len(), weights.len(), "one weight per point");
+    if points.len() < 3 || eps <= 0.0 {
+        return points.to_vec();
     }
     let e2: Vec<f64> = weights
         .iter()
         .map(|&weight| (eps * weight).powi(2))
         .collect();
-    let keep = rdp_keep(pts, |i| e2[i]);
-    pts.iter()
+    let keep = rdp_keep(points, |i| e2[i]);
+    points
+        .iter()
         .zip(keep)
         .filter(|(_, kept)| *kept)
         .map(|(&point, _)| point)
@@ -183,17 +194,17 @@ pub fn rdp_w(pts: &[(f64, f64)], eps: f64, weights: &[f64]) -> Vec<(f64, f64)> {
 
 /// The keep-mask form of RDP (the Imai–Iri prefilter needs kept points mapped
 /// back to original indices). `e2_of(i)` gives the squared tolerance at
-/// `pts[i]`.
-fn rdp_keep(pts: &[(f64, f64)], e2_of: impl Fn(usize) -> f64 + Copy) -> Vec<bool> {
-    let mut keep = vec![false; pts.len()];
+/// `points[i]`.
+fn rdp_keep(points: &[(f64, f64)], e2_of: impl Fn(usize) -> f64 + Copy) -> Vec<bool> {
+    let mut keep = vec![false; points.len()];
     keep[0] = true;
     *keep.last_mut().unwrap() = true;
-    rdp_rec(pts, 0, pts.len() - 1, e2_of, &mut keep);
+    rdp_rec(points, 0, points.len() - 1, e2_of, &mut keep);
     keep
 }
 
 fn rdp_rec(
-    pts: &[(f64, f64)],
+    points: &[(f64, f64)],
     start: usize,
     end: usize,
     e2_of: impl Fn(usize) -> f64 + Copy,
@@ -205,7 +216,7 @@ fn rdp_rec(
     // farthest point, measured in units of its own tolerance
     let (mut farthest_index, mut farthest_ratio) = (start, 0.0);
     for i in start + 1..end {
-        let ratio = seg_dist2(pts[i], pts[start], pts[end]) / e2_of(i);
+        let ratio = seg_dist2(points[i], points[start], points[end]) / e2_of(i);
         if ratio > farthest_ratio {
             farthest_ratio = ratio;
             farthest_index = i;
@@ -213,8 +224,8 @@ fn rdp_rec(
     }
     if farthest_ratio > 1.0 {
         keep[farthest_index] = true;
-        rdp_rec(pts, start, farthest_index, e2_of, keep);
-        rdp_rec(pts, farthest_index, end, e2_of, keep);
+        rdp_rec(points, start, farthest_index, e2_of, keep);
+        rdp_rec(points, farthest_index, end, e2_of, keep);
     }
 }
 
@@ -222,22 +233,22 @@ fn rdp_rec(
 /// triangle (prev, point, next) has the smallest area, while that area is
 /// < `min_area`. Ties break on the lower index for reproducible builds.
 #[must_use]
-pub fn visvalingam(pts: &[(f64, f64)], min_area: f64) -> Vec<(f64, f64)> {
-    vw_impl(pts, min_area, |_| 1.0)
+pub fn visvalingam(points: &[(f64, f64)], min_area: f64) -> Vec<(f64, f64)> {
+    vw_impl(points, min_area, |_| 1.0)
 }
 
-/// [`visvalingam()`] with per-vertex multipliers: `pts[i]` is dropped while
+/// [`visvalingam()`] with per-vertex multipliers: `points[i]` is dropped while
 /// its triangle area is < `min_area * weights[i]²` (areas scale as
 /// distance²).
 ///
 /// # Panics
 ///
-/// Panics if `pts.len() != weights.len()`.
+/// Panics if `points.len() != weights.len()`.
 #[must_use]
-pub fn visvalingam_w(pts: &[(f64, f64)], min_area: f64, weights: &[f64]) -> Vec<(f64, f64)> {
-    assert_eq!(pts.len(), weights.len(), "one weight per point");
+pub fn visvalingam_w(points: &[(f64, f64)], min_area: f64, weights: &[f64]) -> Vec<(f64, f64)> {
+    assert_eq!(points.len(), weights.len(), "one weight per point");
     let w2: Vec<f64> = weights.iter().map(|&weight| weight * weight).collect();
-    vw_impl(pts, min_area, |i| w2[i])
+    vw_impl(points, min_area, |i| w2[i])
 }
 
 /// A heap entry for [`vw_impl()`]; the max-heap is ordered by a Reverse-style
@@ -268,13 +279,13 @@ impl PartialOrd for VwEntry {
 /// `triangle_area / w2_of(index)`, compared against the unscaled `min_area`
 /// (division by 1.0 is bit-exact, so the scalar path is unchanged).
 fn vw_impl(
-    pts: &[(f64, f64)],
+    points: &[(f64, f64)],
     min_area: f64,
     w2_of: impl Fn(usize) -> f64 + Copy,
 ) -> Vec<(f64, f64)> {
-    let n = pts.len();
+    let n = points.len();
     if n < 3 || min_area <= 0.0 {
-        return pts.to_vec();
+        return points.to_vec();
     }
     let triangle_area = |a: (f64, f64), b: (f64, f64), c: (f64, f64)| -> f64 {
         0.5 * ((b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)).abs()
@@ -287,7 +298,7 @@ fn vw_impl(
     let mut heap = std::collections::BinaryHeap::with_capacity(n);
     for i in 1..n - 1 {
         heap.push(VwEntry {
-            area: triangle_area(pts[i - 1], pts[i], pts[i + 1]) / w2_of(i),
+            area: triangle_area(points[i - 1], points[i], points[i + 1]) / w2_of(i),
             index: i,
             stamp: 0,
         });
@@ -308,9 +319,9 @@ fn vw_impl(
                 stamp[neighbor] += 1;
                 heap.push(VwEntry {
                     area: triangle_area(
-                        pts[previous[neighbor]],
-                        pts[neighbor],
-                        pts[next[neighbor]],
+                        points[previous[neighbor]],
+                        points[neighbor],
+                        points[next[neighbor]],
                     ) / w2_of(neighbor),
                     index: neighbor,
                     stamp: stamp[neighbor],
@@ -318,7 +329,8 @@ fn vw_impl(
             }
         }
     }
-    pts.iter()
+    points
+        .iter()
         .zip(alive)
         .filter(|(_, is_alive)| *is_alive)
         .map(|(&point, _)| point)
@@ -326,7 +338,7 @@ fn vw_impl(
 }
 
 /// Runs Imai–Iri: it returns the minimum-vertex polyline whose deviation from
-/// `pts` is ≤ `eps` (a BFS finds the fewest hops from the first to the last
+/// `points` is ≤ `eps` (a BFS finds the fewest hops from the first to the last
 /// point over the graph of "shortcut" segments that stay within `eps` of
 /// every skipped point).
 ///
@@ -339,16 +351,16 @@ fn vw_impl(
 /// compose, so the total stays ≤ `eps`; prefiltered results are near-optimal
 /// rather than optimal.
 #[must_use]
-pub fn imai_iri(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
-    if pts.len() < 3 || eps <= 0.0 {
-        return pts.to_vec();
+pub fn imai_iri(points: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
+    if points.len() < 3 || eps <= 0.0 {
+        return points.to_vec();
     }
-    if pts.len() <= II_MAX {
-        return imai_iri_core(pts, |_| eps);
+    if points.len() <= II_MAX {
+        return imai_iri_core(points, |_| eps);
     }
     let mut pre_eps = eps * 0.1;
     loop {
-        let prefiltered = rdp(pts, pre_eps);
+        let prefiltered = rdp(points, pre_eps);
         if prefiltered.len() <= 2 * II_MAX || pre_eps >= eps * 0.5 {
             let rest = eps - pre_eps;
             return imai_iri_core(&prefiltered, |_| rest);
@@ -361,7 +373,7 @@ pub fn imai_iri(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
 /// transient memory.
 const II_MAX: usize = 8192;
 
-/// [`imai_iri()`] with per-vertex multipliers: the deviation at `pts[i]`
+/// [`imai_iri()`] with per-vertex multipliers: the deviation at `points[i]`
 /// stays ≤ `eps * weights[i]`. Above `II_MAX` points the RDP prefilter
 /// composes per point, so that bound is exact only where `weights` is locally
 /// ~constant across a prefilter shortcut (a negligible caveat for weights
@@ -370,21 +382,21 @@ const II_MAX: usize = 8192;
 ///
 /// # Panics
 ///
-/// Panics if `pts.len() != weights.len()`.
+/// Panics if `points.len() != weights.len()`.
 #[must_use]
-pub fn imai_iri_w(pts: &[(f64, f64)], eps: f64, weights: &[f64]) -> Vec<(f64, f64)> {
-    assert_eq!(pts.len(), weights.len(), "one weight per point");
-    if pts.len() < 3 || eps <= 0.0 {
-        return pts.to_vec();
+pub fn imai_iri_w(points: &[(f64, f64)], eps: f64, weights: &[f64]) -> Vec<(f64, f64)> {
+    assert_eq!(points.len(), weights.len(), "one weight per point");
+    if points.len() < 3 || eps <= 0.0 {
+        return points.to_vec();
     }
-    if pts.len() <= II_MAX {
-        return imai_iri_core(pts, |i| eps * weights[i]);
+    if points.len() <= II_MAX {
+        return imai_iri_core(points, |i| eps * weights[i]);
     }
     // mirrors the scalar adaptive prefilter arithmetic exactly, so all-ones
     // weights stay bit-identical to imai_iri
     let mut pre_eps = eps * 0.1;
     loop {
-        let keep = rdp_keep(pts, |i| (pre_eps * weights[i]).powi(2));
+        let keep = rdp_keep(points, |i| (pre_eps * weights[i]).powi(2));
         let kept_count = keep.iter().filter(|keep_flag| **keep_flag).count();
         if kept_count <= 2 * II_MAX || pre_eps >= eps * 0.5 {
             let kept_indices: Vec<usize> = keep
@@ -393,7 +405,7 @@ pub fn imai_iri_w(pts: &[(f64, f64)], eps: f64, weights: &[f64]) -> Vec<(f64, f6
                 .filter(|(_, keep_flag)| **keep_flag)
                 .map(|(i, _)| i)
                 .collect();
-            let prefiltered: Vec<(f64, f64)> = kept_indices.iter().map(|&i| pts[i]).collect();
+            let prefiltered: Vec<(f64, f64)> = kept_indices.iter().map(|&i| points[i]).collect();
             let rest = eps - pre_eps;
             return imai_iri_core(&prefiltered, |prefiltered_index| {
                 rest * weights[kept_indices[prefiltered_index]]
@@ -471,25 +483,25 @@ impl Wedge {
     }
 }
 
-/// Runs the ray-validity sweep from `pts[from]`: it walks `ks` (the
+/// Runs the ray-validity sweep from `points[from]`: it walks `ks` (the
 /// intermediate points in sweep order), calling `visit(k_target, ok)` where
-/// `ok` holds iff the ray from `pts[from]` toward `pts[k_target]` stays
+/// `ok` holds iff the ray from `points[from]` toward `points[k_target]` stays
 /// within ε of every point already swept.
 /// `dist(p_k, seg(i,j)) ≤ ε_k ⟺ ray-from-i ok ∧ ray-from-j ok`, so two
 /// sweeps decide segment validity exactly. The Chan–Chin lemma is pointwise
 /// in `k`, so each point may carry its own tolerance `eps_of(k)`.
 fn ray_sweep(
-    pts: &[(f64, f64)],
+    points: &[(f64, f64)],
     from: usize,
     ks: impl Iterator<Item = usize>,
     eps_of: impl Fn(usize) -> f64 + Copy,
     mut visit: impl FnMut(usize, bool) -> bool,
 ) {
-    let anchor = pts[from];
+    let anchor = points[from];
     let mut wedge = Wedge::new();
     let mut has_far = false; // some swept point is > its ε from the anchor
     for k in ks {
-        let delta = (pts[k].0 - anchor.0, pts[k].1 - anchor.1);
+        let delta = (points[k].0 - anchor.0, points[k].1 - anchor.1);
         let ok = if delta == (0.0, 0.0) {
             !has_far
         } else {
@@ -513,15 +525,15 @@ fn ray_sweep(
     }
 }
 
-fn imai_iri_core(pts: &[(f64, f64)], eps_of: impl Fn(usize) -> f64 + Copy) -> Vec<(f64, f64)> {
-    let n = pts.len();
+fn imai_iri_core(points: &[(f64, f64)], eps_of: impl Fn(usize) -> f64 + Copy) -> Vec<(f64, f64)> {
+    let n = points.len();
     let words = n.div_ceil(64);
     // lazily computed backward rows: bit i of row j ⟺ ray from p_j toward
     // p_i stays within ε of every point strictly between i and j
     let mut backward_rows: Vec<Option<Vec<u64>>> = vec![None; n];
     let backward_row = |j: usize| -> Vec<u64> {
         let mut bits = vec![0u64; words];
-        ray_sweep(pts, j, (0..j).rev(), eps_of, |i, ok| {
+        ray_sweep(points, j, (0..j).rev(), eps_of, |i, ok| {
             if i != usize::MAX && ok {
                 bits[i / 64] |= 1 << (i % 64);
             }
@@ -538,7 +550,7 @@ fn imai_iri_core(pts: &[(f64, f64)], eps_of: impl Fn(usize) -> f64 + Copy) -> Ve
         let mut next_frontier = Vec::new();
         for &i in &frontier {
             let mut done = false;
-            ray_sweep(pts, i, i + 1..n, eps_of, |j, forward_ok| {
+            ray_sweep(points, i, i + 1..n, eps_of, |j, forward_ok| {
                 if j == usize::MAX {
                     return false; // wedge pinched shut — stop this sweep
                 }
@@ -565,7 +577,7 @@ fn imai_iri_core(pts: &[(f64, f64)], eps_of: impl Fn(usize) -> f64 + Copy) -> Ve
     while *path.last().unwrap() != 0 {
         path.push(parent[*path.last().unwrap()]);
     }
-    path.iter().rev().map(|&i| pts[i]).collect()
+    path.iter().rev().map(|&i| points[i]).collect()
 }
 
 #[cfg(test)]
@@ -602,10 +614,14 @@ mod tests {
 
     #[test]
     fn endpoints_always_kept() {
-        let pts = wiggle(50, 1);
-        for out in [rdp(&pts, 0.5), visvalingam(&pts, 0.5), imai_iri(&pts, 0.5)] {
-            assert_eq!(out.first(), pts.first());
-            assert_eq!(out.last(), pts.last());
+        let points = wiggle(50, 1);
+        for out in [
+            rdp(&points, 0.5),
+            visvalingam(&points, 0.5),
+            imai_iri(&points, 0.5),
+        ] {
+            assert_eq!(out.first(), points.first());
+            assert_eq!(out.last(), points.last());
             assert!(out.len() >= 2);
         }
     }
@@ -631,14 +647,14 @@ mod tests {
     #[test]
     fn eps_bound_honored() {
         for seed in 1..=20u64 {
-            let pts = wiggle(200, seed);
+            let points = wiggle(200, seed);
             for eps in [0.05, 0.2, 0.8] {
                 assert!(
-                    max_deviation(&pts, &rdp(&pts, eps)) <= eps + 1e-12,
+                    max_deviation(&points, &rdp(&points, eps)) <= eps + 1e-12,
                     "rdp seed {seed}"
                 );
                 assert!(
-                    max_deviation(&pts, &imai_iri(&pts, eps)) <= eps + 1e-12,
+                    max_deviation(&points, &imai_iri(&points, eps)) <= eps + 1e-12,
                     "ii seed {seed}"
                 );
             }
@@ -648,9 +664,10 @@ mod tests {
     #[test]
     fn imai_iri_never_more_verts_than_rdp() {
         for seed in 1..=20u64 {
-            let pts = wiggle(200, seed);
+            let points = wiggle(200, seed);
             for eps in [0.05, 0.2, 0.8] {
-                let (rdp_len, imai_iri_len) = (rdp(&pts, eps).len(), imai_iri(&pts, eps).len());
+                let (rdp_len, imai_iri_len) =
+                    (rdp(&points, eps).len(), imai_iri(&points, eps).len());
                 assert!(
                     imai_iri_len <= rdp_len,
                     "seed {seed} eps {eps}: imai-iri {imai_iri_len} > rdp {rdp_len}"
@@ -662,8 +679,8 @@ mod tests {
     #[test]
     fn imai_iri_optimal_vs_bruteforce() {
         // exhaustively check minimality on small inputs
-        fn brute_min(pts: &[(f64, f64)], e2: f64) -> usize {
-            let n = pts.len();
+        fn brute_min(points: &[(f64, f64)], e2: f64) -> usize {
+            let n = points.len();
             // BFS is the definition of minimal; validate against subset search
             for keep in 2..=n {
                 // try all interior subsets of size keep-2
@@ -687,9 +704,9 @@ mod tests {
                     indices.extend(interior);
                     indices.push(n - 1);
                     let ok = indices.windows(2).all(|window| {
-                        pts[window[0] + 1..window[1]]
-                            .iter()
-                            .all(|&point| seg_dist2(point, pts[window[0]], pts[window[1]]) <= e2)
+                        points[window[0] + 1..window[1]].iter().all(|&point| {
+                            seg_dist2(point, points[window[0]], points[window[1]]) <= e2
+                        })
                     });
                     if ok {
                         return keep;
@@ -699,10 +716,10 @@ mod tests {
             n
         }
         for seed in 1..=10u64 {
-            let pts = wiggle(9, seed);
+            let points = wiggle(9, seed);
             for eps in [0.1, 0.4, 1.0] {
-                let imai_iri_len = imai_iri(&pts, eps).len();
-                let optimal_len = brute_min(&pts, eps * eps);
+                let imai_iri_len = imai_iri(&points, eps).len();
+                let optimal_len = brute_min(&points, eps * eps);
                 assert_eq!(imai_iri_len, optimal_len, "seed {seed} eps {eps}");
             }
         }
@@ -710,10 +727,10 @@ mod tests {
 
     #[test]
     fn visvalingam_monotone_in_threshold() {
-        let pts = wiggle(200, 7);
+        let points = wiggle(200, 7);
         let mut last = usize::MAX;
         for min_area in [0.001, 0.01, 0.1, 1.0] {
-            let n = visvalingam(&pts, min_area).len();
+            let n = visvalingam(&points, min_area).len();
             assert!(n <= last);
             last = n;
         }
@@ -721,27 +738,30 @@ mod tests {
 
     #[test]
     fn dispatch_matches_direct() {
-        let pts = wiggle(100, 3);
-        assert_eq!(simplify(Simplify::None, &pts), pts);
-        assert_eq!(simplify(Simplify::Rdp { eps: 0.2 }, &pts), rdp(&pts, 0.2));
+        let points = wiggle(100, 3);
+        assert_eq!(simplify(Simplify::None, &points), points);
         assert_eq!(
-            simplify(Simplify::Visvalingam { min_area: 0.2 }, &pts),
-            visvalingam(&pts, 0.2)
+            simplify(Simplify::Rdp { eps: 0.2 }, &points),
+            rdp(&points, 0.2)
         );
         assert_eq!(
-            simplify(Simplify::ImaiIri { eps: 0.2 }, &pts),
-            imai_iri(&pts, 0.2)
+            simplify(Simplify::Visvalingam { min_area: 0.2 }, &points),
+            visvalingam(&points, 0.2)
+        );
+        assert_eq!(
+            simplify(Simplify::ImaiIri { eps: 0.2 }, &points),
+            imai_iri(&points, 0.2)
         );
     }
 
     /// naive O(n) per-check BFS: the reference the wedge core must match
-    fn imai_iri_naive(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
-        let n = pts.len();
+    fn imai_iri_naive(points: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
+        let n = points.len();
         let e2 = eps * eps;
         let valid = |i: usize, j: usize| {
-            pts[i + 1..j]
+            points[i + 1..j]
                 .iter()
-                .all(|&point| seg_dist2(point, pts[i], pts[j]) <= e2)
+                .all(|&point| seg_dist2(point, points[i], points[j]) <= e2)
         };
         let mut parent = vec![usize::MAX; n];
         let mut frontier = vec![0usize];
@@ -765,7 +785,7 @@ mod tests {
         while *path.last().unwrap() != 0 {
             path.push(parent[*path.last().unwrap()]);
         }
-        path.iter().rev().map(|&i| pts[i]).collect()
+        path.iter().rev().map(|&i| points[i]).collect()
     }
 
     #[test]
@@ -773,11 +793,11 @@ mod tests {
         // the disjoint-interval wraparound bug needed n ≈ thousands to
         // surface — cover both small and large inputs
         for seed in 1..=30u64 {
-            let pts = wiggle(400, seed);
+            let points = wiggle(400, seed);
             for eps in [0.03, 0.1, 0.3, 0.9] {
                 let (wedge_len, naive_len) = (
-                    imai_iri_core(&pts, |_| eps).len(),
-                    imai_iri_naive(&pts, eps).len(),
+                    imai_iri_core(&points, |_| eps).len(),
+                    imai_iri_naive(&points, eps).len(),
                 );
                 assert_eq!(
                     wedge_len, naive_len,
@@ -786,11 +806,11 @@ mod tests {
             }
         }
         for seed in 1..=3u64 {
-            let pts = wiggle(3000, seed);
+            let points = wiggle(3000, seed);
             for eps in [0.3, 0.9] {
                 let (wedge_len, naive_len) = (
-                    imai_iri_core(&pts, |_| eps).len(),
-                    imai_iri_naive(&pts, eps).len(),
+                    imai_iri_core(&points, |_| eps).len(),
+                    imai_iri_naive(&points, eps).len(),
                 );
                 assert_eq!(
                     wedge_len, naive_len,
@@ -802,11 +822,11 @@ mod tests {
 
     #[test]
     fn long_arc_prefilter_keeps_bound() {
-        let pts = wiggle(II_MAX + 2000, 11); // > II_MAX → adaptive rdp prefilter + core
+        let points = wiggle(II_MAX + 2000, 11); // > II_MAX → adaptive rdp prefilter + core
         let eps = 0.3;
-        let out = imai_iri(&pts, eps);
-        assert!(max_deviation(&pts, &out) <= eps + 1e-12);
-        assert!(out.len() < pts.len());
+        let out = imai_iri(&points, eps);
+        assert!(max_deviation(&points, &out) <= eps + 1e-12);
+        assert!(out.len() < points.len());
     }
 
     /// distance from one original point to the simplified polyline
@@ -827,37 +847,44 @@ mod tests {
     #[test]
     fn weighted_uniform_matches_scalar() {
         for seed in 1..=10u64 {
-            let pts = wiggle(300, seed);
-            let ones = vec![1.0; pts.len()];
+            let points = wiggle(300, seed);
+            let ones = vec![1.0; points.len()];
             for eps in [0.05, 0.2, 0.8] {
-                assert_eq!(rdp_w(&pts, eps, &ones), rdp(&pts, eps), "rdp seed {seed}");
                 assert_eq!(
-                    visvalingam_w(&pts, eps, &ones),
-                    visvalingam(&pts, eps),
+                    rdp_w(&points, eps, &ones),
+                    rdp(&points, eps),
+                    "rdp seed {seed}"
+                );
+                assert_eq!(
+                    visvalingam_w(&points, eps, &ones),
+                    visvalingam(&points, eps),
                     "vw seed {seed}"
                 );
                 assert_eq!(
-                    imai_iri_w(&pts, eps, &ones),
-                    imai_iri(&pts, eps),
+                    imai_iri_w(&points, eps, &ones),
+                    imai_iri(&points, eps),
                     "ii seed {seed}"
                 );
             }
         }
         // prefilter path: the weighted adaptive loop mirrors the scalar one
-        let pts = wiggle(II_MAX + 2000, 5);
-        let ones = vec![1.0; pts.len()];
-        assert_eq!(imai_iri_w(&pts, 0.3, &ones), imai_iri(&pts, 0.3));
+        let points = wiggle(II_MAX + 2000, 5);
+        let ones = vec![1.0; points.len()];
+        assert_eq!(imai_iri_w(&points, 0.3, &ones), imai_iri(&points, 0.3));
     }
 
     #[test]
     fn weighted_per_point_bound() {
         // n ≤ II_MAX so the imai-iri bound is exact (no prefilter composition)
         for seed in 1..=10u64 {
-            let pts = wiggle(300, seed);
-            let weights = rand_weights(pts.len(), 0.1, seed);
+            let points = wiggle(300, seed);
+            let weights = rand_weights(points.len(), 0.1, seed);
             let eps = 0.4;
-            for out in [rdp_w(&pts, eps, &weights), imai_iri_w(&pts, eps, &weights)] {
-                for (i, &point) in pts.iter().enumerate() {
+            for out in [
+                rdp_w(&points, eps, &weights),
+                imai_iri_w(&points, eps, &weights),
+            ] {
+                for (i, &point) in points.iter().enumerate() {
                     let (deviation, bound) = (point_dev(point, &out), eps * weights[i]);
                     assert!(
                         deviation <= bound + 1e-12,
@@ -891,38 +918,38 @@ mod tests {
         // > II_MAX: per-point bound may relax where weights vary within a
         // prefilter shortcut, but the global eps·max(weights) bound always
         // holds
-        let pts = wiggle(II_MAX + 2000, 13);
+        let points = wiggle(II_MAX + 2000, 13);
         #[expect(
             clippy::cast_precision_loss,
-            reason = "i < pts.len() = II_MAX+2000 ≪ 2^53; test weights"
+            reason = "i < points.len() = II_MAX+2000 ≪ 2^53; test weights"
         )]
-        let weights: Vec<f64> = (0..pts.len())
+        let weights: Vec<f64> = (0..points.len())
             .map(|i| 0.6 + 0.4 * (i as f64 / 500.0).sin())
             .collect();
         let eps = 0.3;
-        let out = imai_iri_w(&pts, eps, &weights);
-        assert!(out.len() < pts.len());
-        for &point in &pts {
+        let out = imai_iri_w(&points, eps, &weights);
+        assert!(out.len() < points.len());
+        for &point in &points {
             assert!(point_dev(point, &out) <= eps + 1e-12);
         }
     }
 
     #[test]
     fn weighted_dispatch_matches_direct() {
-        let pts = wiggle(100, 3);
-        let weights = rand_weights(pts.len(), 0.2, 9);
-        assert_eq!(simplify_weighted(Simplify::None, &pts, &weights), pts);
+        let points = wiggle(100, 3);
+        let weights = rand_weights(points.len(), 0.2, 9);
+        assert_eq!(simplify_weighted(Simplify::None, &points, &weights), points);
         assert_eq!(
-            simplify_weighted(Simplify::Rdp { eps: 0.2 }, &pts, &weights),
-            rdp_w(&pts, 0.2, &weights)
+            simplify_weighted(Simplify::Rdp { eps: 0.2 }, &points, &weights),
+            rdp_w(&points, 0.2, &weights)
         );
         assert_eq!(
-            simplify_weighted(Simplify::Visvalingam { min_area: 0.2 }, &pts, &weights),
-            visvalingam_w(&pts, 0.2, &weights)
+            simplify_weighted(Simplify::Visvalingam { min_area: 0.2 }, &points, &weights),
+            visvalingam_w(&points, 0.2, &weights)
         );
         assert_eq!(
-            simplify_weighted(Simplify::ImaiIri { eps: 0.2 }, &pts, &weights),
-            imai_iri_w(&pts, 0.2, &weights)
+            simplify_weighted(Simplify::ImaiIri { eps: 0.2 }, &points, &weights),
+            imai_iri_w(&points, 0.2, &weights)
         );
     }
 
