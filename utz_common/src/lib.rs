@@ -233,6 +233,10 @@ pub enum GeomEncoding {
 /// guarantees, citations, and the density-weighted variants are
 /// documented in the [`utz_simplify`] crate.
 ///
+/// RDP is the default because I had the best results with it when combined with
+/// the population density weighting. But your mileage may vary, so I kept the
+/// algorithms in for people to play with.
+///
 /// [`utz_simplify`]: ../utz_simplify/index.html
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
 #[repr(u8)]
