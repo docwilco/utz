@@ -180,11 +180,9 @@ pub fn rdp(points: &[(f64, f64)], epsilon: f64) -> Vec<(f64, f64)> {
         return points.to_vec();
     }
     let e2 = epsilon * epsilon;
-    let keep = rdp_keep(points, |_| e2);
-    points
-        .iter()
-        .zip(keep)
-        .filter_map(|(&point, kept)| kept.then_some(point))
+    rdp_mark(points, |_| e2)
+        .into_iter()
+        .filter_map(|vertex| vertex.kept.then_some(vertex.point))
         .collect()
 }
 
@@ -200,52 +198,59 @@ pub fn rdp_w(points: &[(f64, f64)], epsilon: f64, weights: &[f64]) -> Vec<(f64, 
     if points.len() < 3 || epsilon <= 0.0 {
         return points.to_vec();
     }
-    let e2: Vec<f64> = weights
-        .iter()
-        .map(|&weight| (epsilon * weight).powi(2))
-        .collect();
-    let keep = rdp_keep(points, |i| e2[i]);
-    points
-        .iter()
-        .zip(keep)
-        .filter_map(|(&point, kept)| kept.then_some(point))
+    rdp_mark(points, |i| (epsilon * weights[i]).powi(2))
+        .into_iter()
+        .filter_map(|vertex| vertex.kept.then_some(vertex.point))
         .collect()
 }
 
-/// The keep-mask form of RDP (the Imai–Iri prefilter needs kept points mapped
-/// back to original indices). `e2_of(i)` gives the squared tolerance at
-/// `points[i]`.
-fn rdp_keep(points: &[(f64, f64)], e2_of: impl Fn(usize) -> f64 + Copy) -> Vec<bool> {
-    let mut keep = vec![false; points.len()];
-    keep[0] = true;
-    *keep.last_mut().unwrap() = true;
-    rdp_rec(points, 0, points.len() - 1, e2_of, &mut keep);
-    keep
+/// One working vertex of the RDP pass: the point, its squared tolerance,
+/// and whether the pass keeps it.
+struct RdpVertex {
+    point: (f64, f64),
+    e2: f64,
+    kept: bool,
 }
 
-fn rdp_rec(
-    points: &[(f64, f64)],
-    start: usize,
-    end: usize,
-    e2_of: impl Fn(usize) -> f64 + Copy,
-    keep: &mut [bool],
-) {
-    if end <= start + 1 {
+/// Runs RDP and returns every vertex with its `kept` flag set (the Imai–Iri
+/// prefilter needs kept points mapped back to original indices, so nothing
+/// is dropped here). `e2_of(i)` gives the squared tolerance at `points[i]`.
+fn rdp_mark(points: &[(f64, f64)], e2_of: impl Fn(usize) -> f64) -> Vec<RdpVertex> {
+    let mut vertices: Vec<RdpVertex> = points
+        .iter()
+        .enumerate()
+        .map(|(i, &point)| RdpVertex {
+            point,
+            e2: e2_of(i),
+            kept: false,
+        })
+        .collect();
+    vertices.first_mut().unwrap().kept = true;
+    vertices.last_mut().unwrap().kept = true;
+    rdp_recurse(&mut vertices);
+    vertices
+}
+
+/// The recursive core: `vertices` spans one shortcut segment, endpoint to
+/// endpoint, and both endpoints are already kept.
+fn rdp_recurse(vertices: &mut [RdpVertex]) {
+    if vertices.len() <= 2 {
         return;
     }
+    let (start, end) = (vertices[0].point, vertices[vertices.len() - 1].point);
     // farthest point, measured in units of its own tolerance
-    let (mut farthest_index, mut farthest_ratio) = (start, 0.0);
-    for i in start + 1..end {
-        let ratio = seg_dist2(points[i], points[start], points[end]) / e2_of(i);
+    let (mut farthest_index, mut farthest_ratio) = (0, 0.0);
+    for (i, vertex) in vertices.iter().enumerate().take(vertices.len() - 1).skip(1) {
+        let ratio = seg_dist2(vertex.point, start, end) / vertex.e2;
         if ratio > farthest_ratio {
             farthest_ratio = ratio;
             farthest_index = i;
         }
     }
     if farthest_ratio > 1.0 {
-        keep[farthest_index] = true;
-        rdp_rec(points, start, farthest_index, e2_of, keep);
-        rdp_rec(points, farthest_index, end, e2_of, keep);
+        vertices[farthest_index].kept = true;
+        rdp_recurse(&mut vertices[..=farthest_index]);
+        rdp_recurse(&mut vertices[farthest_index..]);
     }
 }
 
@@ -415,13 +420,13 @@ pub fn imai_iri_w(points: &[(f64, f64)], epsilon: f64, weights: &[f64]) -> Vec<(
     // weights stay bit-identical to imai_iri
     let mut pre_epsilon = epsilon * 0.1;
     loop {
-        let keep = rdp_keep(points, |i| (pre_epsilon * weights[i]).powi(2));
-        let kept_count = keep.iter().filter(|keep_flag| **keep_flag).count();
+        let vertices = rdp_mark(points, |i| (pre_epsilon * weights[i]).powi(2));
+        let kept_count = vertices.iter().filter(|vertex| vertex.kept).count();
         if kept_count <= 2 * II_MAX || pre_epsilon >= epsilon * 0.5 {
-            let kept_indices: Vec<usize> = keep
+            let kept_indices: Vec<usize> = vertices
                 .iter()
                 .enumerate()
-                .filter_map(|(i, keep_flag)| keep_flag.then_some(i))
+                .filter_map(|(i, vertex)| vertex.kept.then_some(i))
                 .collect();
             let prefiltered: Vec<(f64, f64)> = kept_indices.iter().map(|&i| points[i]).collect();
             let rest = epsilon - pre_epsilon;
