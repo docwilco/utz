@@ -184,8 +184,7 @@ pub fn rdp(points: &[(f64, f64)], epsilon: f64) -> Vec<(f64, f64)> {
     points
         .iter()
         .zip(keep)
-        .filter(|(_, kept)| *kept)
-        .map(|(&point, _)| point)
+        .filter_map(|(&point, kept)| kept.then_some(point))
         .collect()
 }
 
@@ -209,8 +208,7 @@ pub fn rdp_w(points: &[(f64, f64)], epsilon: f64, weights: &[f64]) -> Vec<(f64, 
     points
         .iter()
         .zip(keep)
-        .filter(|(_, kept)| *kept)
-        .map(|(&point, _)| point)
+        .filter_map(|(&point, kept)| kept.then_some(point))
         .collect()
 }
 
@@ -354,8 +352,7 @@ fn vw_impl(
     points
         .iter()
         .zip(alive)
-        .filter(|(_, is_alive)| *is_alive)
-        .map(|(&point, _)| point)
+        .filter_map(|(&point, is_alive)| is_alive.then_some(point))
         .collect()
 }
 
@@ -424,8 +421,7 @@ pub fn imai_iri_w(points: &[(f64, f64)], epsilon: f64, weights: &[f64]) -> Vec<(
             let kept_indices: Vec<usize> = keep
                 .iter()
                 .enumerate()
-                .filter(|(_, keep_flag)| **keep_flag)
-                .map(|(i, _)| i)
+                .filter_map(|(i, keep_flag)| keep_flag.then_some(i))
                 .collect();
             let prefiltered: Vec<(f64, f64)> = kept_indices.iter().map(|&i| points[i]).collect();
             let rest = epsilon - pre_epsilon;
