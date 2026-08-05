@@ -29,20 +29,20 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     );
     println!(
         "{:>7}{:>6}{:>12}{:>12}{:>12}{:>12}{:>12}",
-        "eps(m)", "quant", "raw", "gzip", "zstd22", "br.q11", "xz9"
+        "epsilon(m)", "quant", "raw", "gzip", "zstd22", "br.q11", "xz9"
     );
     println!("{}", "-".repeat(73));
 
-    for eps_m in [100.0f64, 250.0, 500.0, 1000.0, 2000.0] {
+    for epsilon_m in [100.0f64, 250.0, 500.0, 1000.0, 2000.0] {
         for quant_bits in [16u32, 24] {
             let params = Params {
                 dataset: utz_build::dataset(&dataset)?.code(),
                 tzbb_release: "dev",
-                eps_m,
+                epsilon_m,
                 quant_bits,
                 grid_deg,
                 codec: Codec::Uncompressed,
-                simplify: encode::SimplifyAlgo::default(),
+                simplify: encode::SimplifyAlgorithm::default(),
                 geom: encode::GeomEncoding::default(),
                 density_weight_floor: None,
             };
@@ -64,7 +64,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
             let raw_kb = payload.len() as f64 / 1024.0;
             println!(
                 "{:>7}{:>6}{:>11} K{:>11} K{:>11} K{:>11} K{:>11} K",
-                eps_m,
+                epsilon_m,
                 format!("i{quant_bits}"),
                 format!("{raw_kb:.1}"),
                 kb(Codec::Gzip)?,

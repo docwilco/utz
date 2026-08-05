@@ -97,7 +97,7 @@
 // need. The encoder machinery itself stays in utz_encode; the internal
 // tooling (utz_dev_cli, utz_viz) depends on that crate directly.
 pub use utz_common::presets;
-pub use utz_encode::encode::{Codec, GeomEncoding, SimplifyAlgo};
+pub use utz_encode::encode::{Codec, GeomEncoding, SimplifyAlgorithm};
 pub use utz_encode::Feat;
 
 pub mod error;
@@ -219,9 +219,9 @@ pub fn encode_weighted(
     grid: &density::DensityGrid,
     model: utz_simplify::DensityWeight,
 ) -> crate::Result<Vec<u8>> {
-    let eps_deg = params.eps_m / 111_320.0;
-    let algo = utz_encode::encode::to_simplify(params.simplify, eps_deg);
-    let topology = utz_encode::topo::build_topology_weighted(features, algo, &|a, b| {
+    let epsilon_deg = params.epsilon_m / 111_320.0;
+    let algorithm = utz_encode::encode::to_simplify(params.simplify, epsilon_deg);
+    let topology = utz_encode::topo::build_topology_weighted(features, algorithm, &|a, b| {
         model.weight(grid.max_along(a, b))
     });
     Ok(utz_encode::encode::finish(

@@ -45,20 +45,24 @@ fn c16(value: usize) -> u16 {
     u16::try_from(value).expect("exceeds u16 format width")
 }
 
-pub use utz_common::{Codec, GeomEncoding, SimplifyAlgo};
+pub use utz_common::{Codec, GeomEncoding, SimplifyAlgorithm};
 
 /// Builds the ε-driven `Simplify` for the topology builder: ε is a max
 /// deviation in degrees for RDP and Imai–Iri, and Visvalingam's area
 /// threshold is derived as ε². The viewer uses the same convention, so
 /// parameters found in the viewer plug straight into build scripts.
 #[must_use]
-pub fn to_simplify(algo: SimplifyAlgo, eps_deg: f64) -> utz_simplify::Simplify {
-    match algo {
-        SimplifyAlgo::None => utz_simplify::Simplify::None,
-        SimplifyAlgo::Rdp => utz_simplify::Simplify::Rdp { eps: eps_deg },
-        SimplifyAlgo::ImaiIri => utz_simplify::Simplify::ImaiIri { eps: eps_deg },
-        SimplifyAlgo::Visvalingam => utz_simplify::Simplify::Visvalingam {
-            min_area: eps_deg * eps_deg,
+pub fn to_simplify(algorithm: SimplifyAlgorithm, epsilon_deg: f64) -> utz_simplify::Simplify {
+    match algorithm {
+        SimplifyAlgorithm::None => utz_simplify::Simplify::None,
+        SimplifyAlgorithm::Rdp => utz_simplify::Simplify::Rdp {
+            epsilon: epsilon_deg,
+        },
+        SimplifyAlgorithm::ImaiIri => utz_simplify::Simplify::ImaiIri {
+            epsilon: epsilon_deg,
+        },
+        SimplifyAlgorithm::Visvalingam => utz_simplify::Simplify::Visvalingam {
+            min_area: epsilon_deg * epsilon_deg,
         },
     }
 }
@@ -74,7 +78,7 @@ pub struct Params<'a> {
     /// The TZBB release tag recorded in the header (the rules snapshot and
     /// cache key).
     pub tzbb_release: &'a str,
-    pub eps_m: f64,
+    pub epsilon_m: f64,
     /// The quantization bit width: 16, 24, or 32.
     pub quant_bits: u32,
     /// The grid cell size in degrees, within 0.1–45; fractional values
@@ -83,7 +87,7 @@ pub struct Params<'a> {
     pub codec: Codec,
     /// The simplification algorithm, applied by [`build_payload()`] and
     /// recorded in the header either way.
-    pub simplify: SimplifyAlgo,
+    pub simplify: SimplifyAlgorithm,
     /// The arc-store encoding, delta+varint (the default) or fixed-width.
     pub geom: GeomEncoding,
     /// The population-density weight floor, recorded in the header as
@@ -131,8 +135,8 @@ pub fn encode(feats: &[Feat], params: &Params) -> crate::Result<Vec<u8>> {
 ///
 /// The errors are those of [`payload_from_topology()`].
 pub fn build_payload(feats: &[Feat], params: &Params) -> crate::Result<Vec<u8>> {
-    let algo = to_simplify(params.simplify, params.eps_m / 111_320.0);
-    let topology = topo::build_topology_algo(feats, algo);
+    let algorithm = to_simplify(params.simplify, params.epsilon_m / 111_320.0);
+    let topology = topo::build_topology_algorithm(feats, algorithm);
     Ok(payload_from_topology(&topology, &topology.arc_coords, feats, params)?.0)
 }
 
@@ -164,7 +168,7 @@ fn density_weight_floor_e4(floor: Option<f64>) -> crate::Result<u16> {
 /// Serializes an already-simplified topology: quantize → grid → sections.
 /// `arc_coords` may differ from `topology.arc_coords` (the wasm viewer
 /// simplifies per-arc itself); `feats` supplies only per-feature metadata
-/// (tzid, offset). Geometry comes from the arcs. `params.eps_m` is recorded
+/// (tzid, offset). Geometry comes from the arcs. `params.epsilon_m` is recorded
 /// in the header, not applied.
 ///
 /// # Errors
@@ -250,7 +254,7 @@ pub fn payload_from_topology(
     out.extend_from_slice(params.tzbb_release.as_bytes());
 
     #[expect(clippy::cast_possible_truncation, reason = "f32 header fields")]
-    let (grid_deg, eps_m) = (params.grid_deg as f32, params.eps_m as f32);
+    let (grid_deg, epsilon_m) = (params.grid_deg as f32, params.epsilon_m as f32);
     let header_len = c32(PAYLOAD_HEADER_LEN);
     let header = PayloadHeader {
         arcs_off: arcs_off - header_len,
@@ -267,7 +271,7 @@ pub fn payload_from_topology(
         },
         raw_len: c32(out.len() - PAYLOAD_HEADER_LEN),
         grid_deg,
-        eps_m,
+        epsilon_m,
         n_features: c16(feats.len()),
         ncols: c16(cell_grid.ncols()),
         nrows: c16(cell_grid.nrows()),
@@ -279,7 +283,7 @@ pub fn payload_from_topology(
             u8::try_from(params.quant_bits).expect("quant_bits guarded to 16/24/32"),
         )
         .expect("quant_bits guarded to 16/24/32"),
-        simplify_algo: params.simplify,
+        simplify_algorithm: params.simplify,
         geom: params.geom,
         codec: Codec::Uncompressed, // finish() records the actual codec
         density_weight_floor_e4,

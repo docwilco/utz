@@ -10,8 +10,8 @@
 //! Every flag maps to one [`utz_build::Config`] knob.
 //!
 //! ```text
-//! utz_build_cli gen [ds] [eps_m] [--codec none|gzip|zstd|brotli|xz]
-//!     [--qbits 24] [--grid-deg 2] [--algo rdp|vw|ii|none]
+//! utz_build_cli gen [ds] [epsilon_m] [--codec none|gzip|zstd|brotli|xz]
+//!     [--qbits 24] [--grid-deg 2] [--algorithm rdp|vw|ii|none]
 //!     [--geom varint-arcs|fixed-width-arcs|full-rings|coarse]
 //!     [--w-min <mult>] [-o out.utz]
 //! ```
@@ -20,7 +20,7 @@
 
 use std::path::PathBuf;
 
-use utz_build::{Codec, Config, Error, GeomEncoding, SimplifyAlgo};
+use utz_build::{Codec, Config, Error, GeomEncoding, SimplifyAlgorithm};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -29,7 +29,7 @@ pub struct Args {
     ds: String,
     /// The simplification tolerance ceiling in meters.
     #[arg(default_value_t = 500.0)]
-    eps_m: f64,
+    epsilon_m: f64,
     /// The payload codec, one of none|gzip|zstd|brotli|xz (firmware wants
     /// none).
     #[arg(long, default_value = "zstd")]
@@ -43,7 +43,7 @@ pub struct Args {
     grid_deg: f64,
     /// The simplification algorithm, one of none|rdp|vw|ii.
     #[arg(long, default_value = "rdp")]
-    algo: String,
+    algorithm: String,
     /// The geometry encoding, one of
     /// varint-arcs|fixed-width-arcs|full-rings|coarse (see `GeomEncoding`
     /// for the size/speed ladder).
@@ -53,13 +53,13 @@ pub struct Args {
     /// between 0 and 1 (the presets use 0.001-0.10).
     #[arg(long)]
     w_min: Option<f64>,
-    /// The output path (the default is `<ds>-<eps>m[-w<min>]-<codec>.utz`).
+    /// The output path (the default is `<ds>-<epsilon>m[-w<min>]-<codec>.utz`).
     #[arg(long, short)]
     out: Option<PathBuf>,
 }
 
 /// # Errors
-/// The command fails on an unknown codec/algo/geom name, a dataset
+/// The command fails on an unknown codec/algorithm/geom name, a dataset
 /// load/parse or encode failure, the verify lookup coming back empty, or
 /// an I/O error writing the asset and its guard file.
 pub fn run(args: Args) -> utz_build::Result<()> {
@@ -75,14 +75,14 @@ pub fn run(args: Args) -> utz_build::Result<()> {
             )))
         }
     };
-    let simplify = match args.algo.as_str() {
-        "none" => SimplifyAlgo::None,
-        "rdp" => SimplifyAlgo::Rdp,
-        "vw" | "visvalingam" => SimplifyAlgo::Visvalingam,
-        "ii" | "imai-iri" => SimplifyAlgo::ImaiIri,
+    let simplify = match args.algorithm.as_str() {
+        "none" => SimplifyAlgorithm::None,
+        "rdp" => SimplifyAlgorithm::Rdp,
+        "vw" | "visvalingam" => SimplifyAlgorithm::Visvalingam,
+        "ii" | "imai-iri" => SimplifyAlgorithm::ImaiIri,
         other => {
             return Err(Error::Msg(format!(
-                "unknown algo {other:?}: use none|rdp|vw|ii"
+                "unknown algorithm {other:?}: use none|rdp|vw|ii"
             )))
         }
     };
@@ -104,17 +104,17 @@ pub fn run(args: Args) -> utz_build::Result<()> {
             .unwrap_or_default();
         PathBuf::from(format!(
             "{}-{}m{}-{}.utz",
-            args.ds, args.eps_m, weight_suffix, args.codec
+            args.ds, args.epsilon_m, weight_suffix, args.codec
         ))
     });
 
     let mut config = Config::new()
         .dataset(&args.ds)
-        .rdp_meters(args.eps_m)
+        .rdp_meters(args.epsilon_m)
         .quant_bits(args.qbits)
         .grid_deg(args.grid_deg)
         .codec(codec)
-        .simplify_algo(simplify)
+        .simplify_algorithm(simplify)
         .geom(geom)
         .out_path(&out);
     if let Some(floor) = args.w_min {

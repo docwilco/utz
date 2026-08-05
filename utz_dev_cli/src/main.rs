@@ -27,7 +27,7 @@ enum Cmd {
     /// Runs the end-to-end asset roundtrip: it encodes, decodes, and
     /// validates vs linear PIP.
     Roundtrip(cmd::roundtrip::Args),
-    /// Prints the full-asset size table: eps × quant × codec.
+    /// Prints the full-asset size table: epsilon × quant × codec.
     SizeTable(cmd::size_table::Args),
     /// Measures the per-stage pipeline size reduction on the preset
     /// recipes.
@@ -40,7 +40,7 @@ enum Cmd {
     /// cleanup).
     QuantClean(cmd::quant_clean::Args),
     /// Runs the topology-aware RDP sweep (size and lookup accuracy per
-    /// eps).
+    /// epsilon).
     RdpSweep(cmd::rdp_sweep::Args),
     /// Sweeps grid size × P(PIP) × memory with the real interned-CSR
     /// builder.

@@ -6,7 +6,7 @@
 //! dominant-first ordering as decided.
 //!
 //! ```text
-//! utz_dev_cli csr-sweep [eps_m]
+//! utz_dev_cli csr-sweep [epsilon_m]
 //! ```
 //!
 //! [`utz_encode::grid`]: ../utz_encode/grid/index.html
@@ -21,7 +21,7 @@ const NPTS: usize = 200_000;
 pub struct Args {
     /// The simplification tolerance in meters.
     #[arg(default_value_t = 500.0)]
-    eps_m: f64,
+    epsilon_m: f64,
 }
 
 /// # Errors
@@ -32,15 +32,15 @@ pub struct Args {
 /// unique-list index past the 15-bit tag, or a `list_ids` length past
 /// `u16`.
 pub fn run(args: &Args) -> utz_build::Result<()> {
-    let eps_m = args.eps_m;
+    let epsilon_m = args.epsilon_m;
     let points = gen_pts(NPTS);
 
     for dataset in ["now", "1970"] {
         let features = utz_build::load(dataset)?;
-        let out = topo::encode_topology(&features, eps_m / 111_320.0);
+        let out = topo::encode_topology(&features, epsilon_m / 111_320.0);
         let areas = grid::feat_areas(&out.simplified);
         println!(
-            "{} eps={eps_m}m, {} features, dominant-first CSR, {NPTS} sample points",
+            "{} epsilon={epsilon_m}m, {} features, dominant-first CSR, {NPTS} sample points",
             dataset.to_uppercase(),
             out.simplified.len()
         );

@@ -14,7 +14,7 @@
 //! compare `Provenance::from(&header)` against `Provenance::from(recipe)`
 //! with no literals of its own.
 
-use crate::{Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo};
+use crate::{Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgorithm};
 
 /// One preset's complete build recipe: the name and every encoder knob
 /// that determines the shipped asset's provenance stamp.
@@ -27,14 +27,14 @@ pub struct Recipe {
     pub dataset: Dataset,
     /// The simplification tolerance in meters, as the builder takes it
     /// (the header stores the `f32` cast).
-    pub eps_m: f64,
+    pub epsilon_m: f64,
     /// The coordinate quantization width.
     pub quant_bits: QuantBits,
     /// The grid cell size in degrees, as the builder takes it (the
     /// header stores the `f32` cast).
     pub grid_deg: f64,
     /// The simplification algorithm the encoder runs.
-    pub simplify_algo: SimplifyAlgo,
+    pub simplify_algorithm: SimplifyAlgorithm,
     /// The geometry encoding.
     pub geom: GeomEncoding,
     /// The payload compression codec.
@@ -50,10 +50,10 @@ pub struct Recipe {
 pub const TINY: Recipe = Recipe {
     name: "tiny",
     dataset: Dataset::Now,
-    eps_m: 10_000.0,
+    epsilon_m: 10_000.0,
     quant_bits: QuantBits::Bits16,
     grid_deg: 2.0,
-    simplify_algo: SimplifyAlgo::Rdp,
+    simplify_algorithm: SimplifyAlgorithm::Rdp,
     geom: GeomEncoding::VarintArcs,
     codec: Codec::Gzip,
     density_weight_floor_e4: 10,
@@ -71,7 +71,7 @@ pub const TINY_STATIC: Recipe = Recipe {
 /// i24, a 4/3° grid, and xz.
 pub const COMPACT: Recipe = Recipe {
     name: "compact",
-    eps_m: 1_000.0,
+    epsilon_m: 1_000.0,
     quant_bits: QuantBits::Bits24,
     grid_deg: 4.0 / 3.0,
     codec: Codec::Xz,
@@ -82,7 +82,7 @@ pub const COMPACT: Recipe = Recipe {
 /// a 2/3° grid, and brotli.
 pub const BALANCED: Recipe = Recipe {
     name: "balanced",
-    eps_m: 50.0,
+    epsilon_m: 50.0,
     quant_bits: QuantBits::Bits24,
     grid_deg: 2.0 / 3.0,
     codec: Codec::Brotli,
@@ -96,7 +96,7 @@ pub const BALANCED: Recipe = Recipe {
 pub const ACCURATE: Recipe = Recipe {
     name: "accurate",
     dataset: Dataset::All,
-    eps_m: 10.0,
+    epsilon_m: 10.0,
     quant_bits: QuantBits::Bits32,
     grid_deg: 0.5,
     codec: Codec::Brotli,
@@ -139,13 +139,13 @@ pub struct Provenance {
     /// The dataset the asset was built from.
     pub dataset: Dataset,
     /// The simplification tolerance in meters, as stamped in the header.
-    pub eps_m: f32,
+    pub epsilon_m: f32,
     /// The coordinate quantization width.
     pub quant_bits: QuantBits,
     /// The grid cell size in degrees, as stamped in the header.
     pub grid_deg: f32,
     /// The simplification algorithm the encoder ran.
-    pub simplify_algo: SimplifyAlgo,
+    pub simplify_algorithm: SimplifyAlgorithm,
     /// The geometry encoding.
     pub geom: GeomEncoding,
     /// The payload compression codec.
@@ -158,10 +158,10 @@ impl From<&PayloadHeader> for Provenance {
     fn from(header: &PayloadHeader) -> Provenance {
         Provenance {
             dataset: header.dataset,
-            eps_m: header.eps_m,
+            epsilon_m: header.epsilon_m,
             quant_bits: header.quant_bits,
             grid_deg: header.grid_deg,
-            simplify_algo: header.simplify_algo,
+            simplify_algorithm: header.simplify_algorithm,
             geom: header.geom,
             codec: header.codec,
             density_weight_floor_e4: header.density_weight_floor_e4,
@@ -173,14 +173,14 @@ impl From<&Recipe> for Provenance {
     fn from(recipe: &Recipe) -> Provenance {
         #[expect(
             clippy::cast_possible_truncation,
-            reason = "the encoder stamps eps_m and grid_deg through this same f64-to-f32 cast, so the provenance stamp matches it bit-exactly"
+            reason = "the encoder stamps epsilon_m and grid_deg through this same f64-to-f32 cast, so the provenance stamp matches it bit-exactly"
         )]
         Provenance {
             dataset: recipe.dataset,
-            eps_m: recipe.eps_m as f32,
+            epsilon_m: recipe.epsilon_m as f32,
             quant_bits: recipe.quant_bits,
             grid_deg: recipe.grid_deg as f32,
-            simplify_algo: recipe.simplify_algo,
+            simplify_algorithm: recipe.simplify_algorithm,
             geom: recipe.geom,
             codec: recipe.codec,
             density_weight_floor_e4: recipe.density_weight_floor_e4,
@@ -241,7 +241,10 @@ mod tests {
         )]
         for recipe in &ALL {
             let provenance = Provenance::from(recipe);
-            assert_eq!(provenance.eps_m.to_bits(), (recipe.eps_m as f32).to_bits());
+            assert_eq!(
+                provenance.epsilon_m.to_bits(),
+                (recipe.epsilon_m as f32).to_bits()
+            );
             assert_eq!(
                 provenance.grid_deg.to_bits(),
                 (recipe.grid_deg as f32).to_bits()

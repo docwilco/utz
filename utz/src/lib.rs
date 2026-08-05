@@ -493,7 +493,7 @@ pub mod pip;
 
 mod finder;
 pub use finder::{Finder, Position};
-pub use utz_common::{Codec, Dataset, GeomEncoding, QuantBits, SimplifyAlgo};
+pub use utz_common::{Codec, Dataset, GeomEncoding, QuantBits, SimplifyAlgorithm};
 
 /// The preset assets baked in by the asset-source features. With exactly one
 /// preset enabled, `Finder::new()` loads it; with several in the tree, pick

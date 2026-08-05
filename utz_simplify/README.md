@@ -27,7 +27,7 @@ speed, which is worthless at build time.
 
 Each algorithm also has a weighted variant ([`simplify_weighted()`],
 `*_w`): a per-vertex tolerance multiplier `weights[i]` makes the effective
-parameter `eps * weights[i]` (for Visvalingam it is
+parameter `epsilon * weights[i]` (for Visvalingam it is
 `min_area * weights[i]²`, because areas scale as distance²). The builder
 uses this for population-density-aware refinement: denser areas get smaller
 multipliers, so boundaries stay precise where people live.

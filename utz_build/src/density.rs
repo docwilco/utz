@@ -15,7 +15,7 @@
 //!
 //! The resolution rationale is that weighting only needs
 //! order-of-magnitude density near a boundary: 4′ (~7.4 km) cells are far
-//! below any useful eps ceiling while keeping the grid cheap to hold in
+//! below any useful epsilon ceiling while keeping the grid cheap to hold in
 //! memory.
 //!
 //! [GHS-POP R2023A]: https://human-settlement.emergency.copernicus.eu/ghs_pop2023.php

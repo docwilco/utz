@@ -49,13 +49,13 @@ pub fn run(args: Args) -> utz_build::Result<()> {
 
     println!(
         "{:>8}{:>10}{:>9}{:>12}{:>12}{:>12}{:>11}",
-        "eps(m)", "verts", "%kept", "raw", "zstd22", "xz.dmax", "mismatch"
+        "epsilon(m)", "verts", "%kept", "raw", "zstd22", "xz.dmax", "mismatch"
     );
     println!("{}", "-".repeat(74));
 
-    for eps_m in [0.0f64, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2000.0] {
-        let eps_deg = eps_m / 111_320.0;
-        let out = topo::encode_topology(&features, eps_deg);
+    for epsilon_m in [0.0f64, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2000.0] {
+        let epsilon_deg = epsilon_m / 111_320.0;
+        let out = topo::encode_topology(&features, epsilon_deg);
         let raw = out.bytes.len();
         let zstd_len = zstd::encode_all(&out.bytes[..], 22).unwrap().len();
         let xz_len = xz_dmax(&out.bytes);
@@ -77,7 +77,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
         );
         println!(
             "{:>8}{:>10}{kept_pct:>8.1}%{:>12}{:>12}{:>12}{miss_pct:>10.3}%",
-            eps_m, out.verts, raw, zstd_len, xz_len
+            epsilon_m, out.verts, raw, zstd_len, xz_len
         );
     }
     Ok(())

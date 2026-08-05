@@ -7,8 +7,8 @@ This crate is the command-line counterpart of a `build.rs` using
 OTA images, and experiments, where a build script is the wrong shape.
 
 ```
-utz_build_cli gen [ds] [eps_m] [--qbits 24] [--grid-deg 2]
-    [--codec none|gzip|zstd|brotli|xz] [--algo rdp|vw|ii|none]
+utz_build_cli gen [ds] [epsilon_m] [--qbits 24] [--grid-deg 2]
+    [--codec none|gzip|zstd|brotli|xz] [--algorithm rdp|vw|ii|none]
     [--geom varint-arcs|fixed-width-arcs|full-rings|coarse]
     [--w-min <mult>] [-o out.utz]
 utz_build_cli gen-preset [tiny|tiny-static|compact|balanced|accurate]

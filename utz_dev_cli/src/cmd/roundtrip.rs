@@ -4,7 +4,7 @@
 //! reference).
 //!
 //! ```text
-//! utz_dev_cli roundtrip [ds] [eps_m] [npts]
+//! utz_dev_cli roundtrip [ds] [epsilon_m] [npts]
 //! ```
 
 use std::time::Instant;
@@ -19,7 +19,7 @@ pub struct Args {
     ds: String,
     /// The simplification tolerance in meters.
     #[arg(default_value_t = 500.0)]
-    eps_m: f64,
+    epsilon_m: f64,
     /// The number of sample points.
     #[arg(default_value_t = 100_000)]
     npts: usize,
@@ -36,18 +36,18 @@ pub struct Args {
     reason = "linear bench/report command; the stages share the run's accumulators"
 )]
 pub fn run(args: Args) -> utz_build::Result<()> {
-    let (dataset, eps_m, n_points) = (args.ds, args.eps_m, args.npts);
+    let (dataset, epsilon_m, n_points) = (args.ds, args.epsilon_m, args.npts);
     let quant_bits = 24u32;
 
     let features = utz_build::load(&dataset)?;
     let params = Params {
         dataset: utz_build::dataset(&dataset)?.code(),
         tzbb_release: "roundtrip-dev",
-        eps_m,
+        epsilon_m,
         quant_bits,
         grid_deg: 2.0,
         codec: Codec::Uncompressed,
-        simplify: encode::SimplifyAlgo::default(),
+        simplify: encode::SimplifyAlgorithm::default(),
         geom: encode::GeomEncoding::default(),
         density_weight_floor: None,
     };
@@ -81,7 +81,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
         reason = "|lat/90·qmax| ≤ qmax < 2^31"
     )]
     let quantize_lat = |lat: f64| (lat / 90.0 * qmax).round() as i32;
-    let topology = topo::build_topology(&features, eps_m / 111_320.0);
+    let topology = topo::build_topology(&features, epsilon_m / 111_320.0);
     let dequantized_arcs: Vec<Vec<(f64, f64)>> = topology
         .arc_coords
         .iter()

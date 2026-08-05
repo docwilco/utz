@@ -6,7 +6,7 @@
 //! heatmap.
 //!
 //! ```text
-//! utz_dev_cli density-compare [ds] [eps_m] [w_min]
+//! utz_dev_cli density-compare [ds] [epsilon_m] [w_min]
 //! ```
 
 use utz_build::density::DensityGrid;
@@ -21,61 +21,23 @@ pub struct Args {
     ds: String,
     /// The simplification tolerance in meters.
     #[arg(default_value_t = 500.0)]
-    eps_m: f64,
+    epsilon_m: f64,
     /// The weighted-floor multiplier at max density.
     #[arg(default_value_t = 0.1)]
     density_weight_floor: f64,
 }
 
-/// # Errors
-/// The command fails on a dataset load/parse, density-grid load, or encode
-/// failure.
-///
-/// # Panics
-/// The command panics if a vertex's density sample matches no band: the
-/// bands cover all of `0.0..`, so only a NaN or negative sample can do
-/// that.
-pub fn run(args: Args) -> utz_build::Result<()> {
-    // stored vertices binned by the density at the vertex itself
-    const BANDS: [(f64, f64, &str); 4] = [
-        (0.0, 5.0, "<5 (empty)"),
-        (5.0, 100.0, "5-100 (rural)"),
-        (100.0, 1000.0, "100-1k (town)"),
-        (1000.0, f64::INFINITY, ">=1k (city)"),
-    ];
-    let (dataset, eps_m, w_min) = (args.ds, args.eps_m, args.density_weight_floor);
+/// The density bands stored vertices are binned into, by the density at the
+/// vertex itself.
+const BANDS: [(f64, f64, &str); 4] = [
+    (0.0, 5.0, "<5 (empty)"),
+    (5.0, 100.0, "5-100 (rural)"),
+    (100.0, 1000.0, "100-1k (town)"),
+    (1000.0, f64::INFINITY, ">=1k (city)"),
+];
 
-    let features = utz_build::load(&dataset)?;
-    let grid = DensityGrid::load(&utz_build::cache_dir())?;
-    let model = DensityWeight::new(w_min);
-
-    let eps_deg = eps_m / 111_320.0;
-    let topology_uniform = topo::build_topology(&features, eps_deg);
-    let topology_weighted = topo::build_topology_weighted(
-        &features,
-        topo::Simplify::Rdp { eps: eps_deg },
-        &|start, end| model.weight(grid.max_along(start, end)),
-    );
-
-    let hist = |topology: &topo::Topology| -> [usize; 4] {
-        let mut histogram = [0usize; 4];
-        for arc in &topology.arc_coords {
-            for &(x, y) in arc {
-                let density = grid.sample(x, y);
-                histogram[BANDS
-                    .iter()
-                    .position(|band| density >= band.0 && density < band.1)
-                    .unwrap()] += 1;
-            }
-        }
-        histogram
-    };
-    let (hist_uniform, hist_weighted) = (hist(&topology_uniform), hist(&topology_weighted));
-
-    println!(
-        "{dataset} · RDP ε {eps_m} m ceiling · weighted floor ×{w_min} (ε {} m)\n",
-        eps_m * w_min
-    );
+/// Prints the per-band vertex counts and the totals row.
+fn print_band_table(hist_uniform: &[usize; 4], hist_weighted: &[usize; 4]) {
     println!(
         "{:>16} {:>10} {:>10} {:>9}",
         "density band", "uniform", "weighted", "delta"
@@ -103,16 +65,63 @@ pub fn run(args: Args) -> utz_build::Result<()> {
         "total",
         sum_weighted.cast_signed() - sum_uniform.cast_signed()
     );
+}
+
+/// # Errors
+/// The command fails on a dataset load/parse, density-grid load, or encode
+/// failure.
+///
+/// # Panics
+/// The command panics if a vertex's density sample matches no band: the
+/// bands cover all of `0.0..`, so only a NaN or negative sample can do
+/// that.
+pub fn run(args: Args) -> utz_build::Result<()> {
+    let (dataset, epsilon_m, w_min) = (args.ds, args.epsilon_m, args.density_weight_floor);
+
+    let features = utz_build::load(&dataset)?;
+    let grid = DensityGrid::load(&utz_build::cache_dir())?;
+    let model = DensityWeight::new(w_min);
+
+    let epsilon_deg = epsilon_m / 111_320.0;
+    let topology_uniform = topo::build_topology(&features, epsilon_deg);
+    let topology_weighted = topo::build_topology_weighted(
+        &features,
+        topo::Simplify::Rdp {
+            epsilon: epsilon_deg,
+        },
+        &|start, end| model.weight(grid.max_along(start, end)),
+    );
+
+    let hist = |topology: &topo::Topology| -> [usize; 4] {
+        let mut histogram = [0usize; 4];
+        for arc in &topology.arc_coords {
+            for &(x, y) in arc {
+                let density = grid.sample(x, y);
+                histogram[BANDS
+                    .iter()
+                    .position(|band| density >= band.0 && density < band.1)
+                    .unwrap()] += 1;
+            }
+        }
+        histogram
+    };
+    let (hist_uniform, hist_weighted) = (hist(&topology_uniform), hist(&topology_weighted));
+
+    println!(
+        "{dataset} · RDP ε {epsilon_m} m ceiling · weighted floor ×{w_min} (ε {} m)\n",
+        epsilon_m * w_min
+    );
+    print_band_table(&hist_uniform, &hist_weighted);
 
     // container size delta (same knobs, zstd; topologies already built above)
     let params = Params {
         dataset: 0,
         tzbb_release: "density-compare",
-        eps_m,
+        epsilon_m,
         quant_bits: 24,
         grid_deg: 2.0,
         codec: Codec::Zstd,
-        simplify: encode::SimplifyAlgo::default(),
+        simplify: encode::SimplifyAlgorithm::default(),
         density_weight_floor: None,
         geom: encode::GeomEncoding::default(),
     };

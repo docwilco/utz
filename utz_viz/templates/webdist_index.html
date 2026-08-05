@@ -217,7 +217,7 @@ var WASM_P = fetch('utz_viz.wasm').then(function (r) {
 });
 
 var ALGO = [
-  // ids match utz_common::SimplifyAlgo's header bytes
+  // ids match utz_common::SimplifyAlgorithm's header bytes
   { id: 1, key: 'rdp', name: 'RDP' },
   { id: 2, key: 'vw', name: 'Visvalingam' },
   { id: 3, key: 'ii', name: 'Imai–Iri' },
@@ -1174,12 +1174,12 @@ function fmtF64(x) {
   var v = String(x);
   return v.indexOf('.') < 0 && v.indexOf('e') < 0 ? v + '.0' : v;
 }
-// the `utz_build_cli gen` line reproducing this layer's asset (the CLI's --algo
+// the `utz_build_cli gen` line reproducing this layer's asset (the CLI's --algorithm
 // names: rdp | vw | ii | none)
 function encExportCli(s) {
   var p = encParams(s);
   var out = ['utz_build_cli gen', p.name, String(p.epsM)];
-  if (p.algoKey !== 'rdp') out.push('--algo ' + (p.algoKey === 'raw' ? 'none' : p.algoKey));
+  if (p.algoKey !== 'rdp') out.push('--algorithm ' + (p.algoKey === 'raw' ? 'none' : p.algoKey));
   out.push('--qbits ' + p.qbits, '--grid-deg ' + p.gridDeg);
   if (p.wmin < 1) out.push('--w-min ' + p.wmin);
   if (p.geom) out.push('--geom ' + ENC_GEOMS[p.geom].key);
@@ -1191,9 +1191,9 @@ function encExportConfig(s) {
   var p = encParams(s);
   var out = ['utz_build::Config::new()', '    .dataset("' + p.name + '")',
     '    .rdp_meters(' + fmtF64(p.epsM) + ')'];
-  if (p.algoKey === 'vw') out.push('    .simplify_algo(utz_build::SimplifyAlgo::Visvalingam)');
-  if (p.algoKey === 'ii') out.push('    .simplify_algo(utz_build::SimplifyAlgo::ImaiIri)');
-  if (p.algoKey === 'raw') out.push('    .simplify_algo(utz_build::SimplifyAlgo::None)');
+  if (p.algoKey === 'vw') out.push('    .simplify_algorithm(utz_build::SimplifyAlgorithm::Visvalingam)');
+  if (p.algoKey === 'ii') out.push('    .simplify_algorithm(utz_build::SimplifyAlgorithm::ImaiIri)');
+  if (p.algoKey === 'raw') out.push('    .simplify_algorithm(utz_build::SimplifyAlgorithm::None)');
   if (p.wmin < 1) out.push('    .density_weight_floor(' + fmtF64(p.wmin) + ')');
   out.push('    .quant_bits(' + p.qbits + ')', '    .grid_deg(' + fmtF64(p.gridDeg) + ')',
     '    .codec(utz_build::' + EXPORT_CODECS[s.expCodec.selectedIndex].cfg + ')');

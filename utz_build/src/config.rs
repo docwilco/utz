@@ -29,7 +29,7 @@
 use std::path::PathBuf;
 
 use utz_common::presets::{self, Recipe};
-use utz_encode::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgo};
+use utz_encode::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgorithm};
 
 /// The builder for a custom `.utz` asset. The defaults are dataset `now`,
 /// RDP ε=500 m, no density weighting, i24, a 2° grid, gzip, varint-arcs
@@ -37,11 +37,11 @@ use utz_encode::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgo};
 #[derive(Clone, Debug)]
 pub struct Config {
     dataset: String,
-    eps_m: f64,
+    epsilon_m: f64,
     quant_bits: u32,
     grid_deg: f64,
     codec: Codec,
-    simplify: SimplifyAlgo,
+    simplify: SimplifyAlgorithm,
     geom: GeomEncoding,
     density_weight_floor: Option<f64>,
     out: Option<PathBuf>,
@@ -52,11 +52,11 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             dataset: "now".into(),
-            eps_m: 500.0,
+            epsilon_m: 500.0,
             quant_bits: 24,
             grid_deg: 2.0,
             codec: Codec::Gzip,
-            simplify: SimplifyAlgo::Rdp,
+            simplify: SimplifyAlgorithm::Rdp,
             geom: GeomEncoding::VarintArcs,
             density_weight_floor: None,
             out: None,
@@ -124,12 +124,12 @@ impl Config {
 
     /// Sets the simplification tolerance ceiling in meters (default 500).
     /// The value is the ε of whichever
-    /// [`simplify_algo()`](Config::simplify_algo) runs: it is a
+    /// [`simplify_algorithm()`](Config::simplify_algorithm) runs: it is a
     /// max-deviation bound for RDP and Imai–Iri, and Visvalingam derives
     /// its area threshold as ε².
     #[must_use]
-    pub fn rdp_meters(mut self, eps_m: f64) -> Self {
-        self.eps_m = eps_m;
+    pub fn rdp_meters(mut self, epsilon_m: f64) -> Self {
+        self.epsilon_m = epsilon_m;
         self
     }
 
@@ -158,15 +158,15 @@ impl Config {
         self
     }
 
-    /// Sets the simplification algorithm, default [`SimplifyAlgo::Rdp`].
-    /// [`SimplifyAlgo::ImaiIri`] gives provably minimum vertices for the
+    /// Sets the simplification algorithm, default [`SimplifyAlgorithm::Rdp`].
+    /// [`SimplifyAlgorithm::ImaiIri`] gives provably minimum vertices for the
     /// same ε (−4 to −19% measured, at a slower encode);
-    /// [`SimplifyAlgo::Visvalingam`] trades the deviation bound for a
-    /// cartographically smoother caricature; [`SimplifyAlgo::None`] keeps
+    /// [`SimplifyAlgorithm::Visvalingam`] trades the deviation bound for a
+    /// cartographically smoother caricature; [`SimplifyAlgorithm::None`] keeps
     /// every source vertex.
     #[must_use]
-    pub fn simplify_algo(mut self, algo: SimplifyAlgo) -> Self {
-        self.simplify = algo;
+    pub fn simplify_algorithm(mut self, algorithm: SimplifyAlgorithm) -> Self {
+        self.simplify = algorithm;
         self
     }
 
@@ -228,7 +228,7 @@ impl Config {
         let params = Params {
             dataset: crate::dataset(&self.dataset)?.code(),
             tzbb_release: &release,
-            eps_m: self.eps_m,
+            epsilon_m: self.epsilon_m,
             quant_bits: self.quant_bits,
             grid_deg: self.grid_deg,
             codec: self.codec,
@@ -271,11 +271,11 @@ impl From<&Recipe> for Config {
     fn from(recipe: &Recipe) -> Config {
         let config = Config::new()
             .dataset(recipe.dataset.name())
-            .rdp_meters(recipe.eps_m)
+            .rdp_meters(recipe.epsilon_m)
             .quant_bits(recipe.quant_bits.bits())
             .grid_deg(recipe.grid_deg)
             .codec(recipe.codec)
-            .simplify_algo(recipe.simplify_algo)
+            .simplify_algorithm(recipe.simplify_algorithm)
             .geom(recipe.geom);
         match recipe.density_weight_floor() {
             Some(floor) => config.density_weight_floor(floor),

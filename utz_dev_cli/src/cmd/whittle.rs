@@ -14,7 +14,7 @@
 
 use utz_build::density::DensityGrid;
 use utz_build::{download, loader};
-use utz_encode::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgo};
+use utz_encode::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgorithm};
 use utz_encode::{topo, Feat};
 use utz_simplify::DensityWeight;
 use utz_viz::{arc_verts, coord_count};
@@ -35,7 +35,7 @@ pub struct Args {
 struct Recipe {
     name: &'static str,
     ds: &'static str,
-    eps_m: f64,
+    epsilon_m: f64,
     quant_bits: u32,
     grid_deg: f64,
     density_weight_floor: f64,
@@ -48,7 +48,7 @@ const RECIPES: [Recipe; 4] = [
     Recipe {
         name: "tiny",
         ds: "now",
-        eps_m: 10_000.0,
+        epsilon_m: 10_000.0,
         quant_bits: 16,
         grid_deg: 2.0,
         density_weight_floor: 0.001,
@@ -58,7 +58,7 @@ const RECIPES: [Recipe; 4] = [
     Recipe {
         name: "compact",
         ds: "now",
-        eps_m: 1_000.0,
+        epsilon_m: 1_000.0,
         quant_bits: 24,
         grid_deg: 4.0 / 3.0,
         density_weight_floor: 0.001,
@@ -68,7 +68,7 @@ const RECIPES: [Recipe; 4] = [
     Recipe {
         name: "balanced",
         ds: "now",
-        eps_m: 50.0,
+        epsilon_m: 50.0,
         quant_bits: 24,
         grid_deg: 2.0 / 3.0,
         density_weight_floor: 0.020,
@@ -78,7 +78,7 @@ const RECIPES: [Recipe; 4] = [
     Recipe {
         name: "accurate",
         ds: "all",
-        eps_m: 10.0,
+        epsilon_m: 10.0,
         quant_bits: 32,
         grid_deg: 0.5,
         density_weight_floor: 0.10,
@@ -167,11 +167,11 @@ fn encodings_matrix(
         let params = Params {
             dataset: utz_build::dataset(recipe.ds)?.code(),
             tzbb_release: release,
-            eps_m: recipe.eps_m,
+            epsilon_m: recipe.epsilon_m,
             quant_bits: recipe.quant_bits,
             grid_deg: recipe.grid_deg,
             codec: Codec::Uncompressed,
-            simplify: SimplifyAlgo::Rdp,
+            simplify: SimplifyAlgorithm::Rdp,
             geom,
             density_weight_floor: Some(recipe.density_weight_floor),
         };
@@ -232,7 +232,7 @@ fn report_recipe(
         "{} ({}, ε {} m w{}, i{}, {:.4}°, {:?}, TZBB {release})",
         recipe.name,
         recipe.ds,
-        recipe.eps_m,
+        recipe.epsilon_m,
         recipe.density_weight_floor,
         recipe.quant_bits,
         recipe.grid_deg,
@@ -256,8 +256,10 @@ fn report_recipe(
     stage("parsed coordinates (f64 pairs)", coords, geojson, coords);
 
     // shared-arc topology, no simplification: pure border dedup
-    let raw_topology =
-        topo::build_topology_algo(&features, encode::to_simplify(SimplifyAlgo::None, 0.0));
+    let raw_topology = topo::build_topology_algorithm(
+        &features,
+        encode::to_simplify(SimplifyAlgorithm::None, 0.0),
+    );
     let arc_verts0: u64 = arc_verts(&raw_topology);
     stage(
         &format!(
@@ -270,15 +272,15 @@ fn report_recipe(
     );
 
     // the recipe's density-weighted simplification
-    let eps_deg = recipe.eps_m / 111_320.0;
+    let epsilon_deg = recipe.epsilon_m / 111_320.0;
     let weight = DensityWeight::new(recipe.density_weight_floor);
-    let algo = encode::to_simplify(SimplifyAlgo::Rdp, eps_deg);
-    let topology = topo::build_topology_weighted(&features, algo, &|start, end| {
+    let algorithm = encode::to_simplify(SimplifyAlgorithm::Rdp, epsilon_deg);
+    let topology = topo::build_topology_weighted(&features, algorithm, &|start, end| {
         weight.weight(density.max_along(start, end))
     });
     let arc_verts1: u64 = arc_verts(&topology);
     stage(
-        &format!("simplified (ε {} m weighted)", recipe.eps_m),
+        &format!("simplified (ε {} m weighted)", recipe.epsilon_m),
         arc_verts1 * 16,
         arc_verts0 * 16,
         coords,
@@ -288,11 +290,11 @@ fn report_recipe(
     let params = Params {
         dataset: dataset.code(),
         tzbb_release: release,
-        eps_m: recipe.eps_m,
+        epsilon_m: recipe.epsilon_m,
         quant_bits: recipe.quant_bits,
         grid_deg: recipe.grid_deg,
         codec: Codec::Uncompressed,
-        simplify: SimplifyAlgo::Rdp,
+        simplify: SimplifyAlgorithm::Rdp,
         geom: encode::GeomEncoding::VarintArcs,
         density_weight_floor: Some(recipe.density_weight_floor),
     };

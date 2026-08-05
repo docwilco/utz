@@ -47,7 +47,7 @@
 //! |     28 | u32  | `n_arcs`: arc count (geom 0/1; zero otherwise) |
 //! |     32 | u32  | `raw_len`: decompressed blob size; every section must end within it |
 //! |     36 | f32  | `grid_deg`: cell size in degrees, > 0, may be fractional |
-//! |     40 | f32  | `eps_m`: simplification ε in meters (provenance) |
+//! |     40 | f32  | `epsilon_m`: simplification ε in meters (provenance) |
 //! |     44 | u16  | `n_features`: zone count, < 0x7FFF (15-bit ids) |
 //! |     46 | u16  | `ncols` |
 //! |     48 | u16  | `nrows` |
@@ -56,7 +56,7 @@
 //! |     54 | u16  | `flags`: reserved, must be zero |
 //! |     56 | u8   | `dataset`: 0 now / 1 1970 / 2 all; +4 for the land-only variant |
 //! |     57 | u8   | `quant_bits`: the width itself, 16 / 24 / 32 |
-//! |     58 | u8   | `simplify_algo`: 0 none / 1 RDP / 2 Visvalingam / 3 Imai–Iri (provenance) |
+//! |     58 | u8   | `simplify_algorithm`: 0 none / 1 RDP / 2 Visvalingam / 3 Imai–Iri (provenance) |
 //! |     59 | u8   | `geom`: 0 `VarintArcs` / 1 `FixedWidthArcs` / 2 `FullRings` / 3 `Coarse` |
 //! |     60 | u8   | `codec`: 0 uncompressed / 1 gzip / 2 zstd / 3 brotli / 4 xz |
 //! |     61 | u16  | `density_weight_floor_e4`: weight floor ×1e−4, ≤ 10000 (provenance) |
@@ -165,7 +165,7 @@
 //! typed error instead of panicking a lookup later.
 
 use scroll::Pread;
-use utz_common::{Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo};
+use utz_common::{Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgorithm};
 pub use utz_common::{MAGIC, PAYLOAD_HEADER_LEN, PROLOGUE_LEN, VERSION};
 
 use crate::{caps, Error, Result};
@@ -184,10 +184,10 @@ pub struct PayloadLayout {
     /// A reserved field that must be zero (room for future format flags).
     pub flags: u16,
     /// This field is provenance, not decode logic.
-    pub simplify_algo: SimplifyAlgo,
+    pub simplify_algorithm: SimplifyAlgorithm,
     /// The cell size in degrees; fractional values (e.g. 0.5) are allowed.
     pub grid_deg: f32,
-    pub eps_m: f32,
+    pub epsilon_m: f32,
     /// The population-density weight floor ×1e-4 the asset was built with
     /// (0 means unweighted; provenance, exposed as
     /// [`Finder::density_weight_floor()`](crate::Finder::density_weight_floor)).
@@ -346,7 +346,7 @@ pub fn outer(bytes: &[u8]) -> Result<usize> {
 /// [`Error::GeometryNotCompiledIn`] if the geometry encoding has no
 /// compiled-in decoder.
 pub fn parse(header_bytes: &[u8]) -> Result<PayloadLayout> {
-    // an invalid enum byte (quant_bits/geom/simplify_algo/dataset) fails the
+    // an invalid enum byte (quant_bits/geom/simplify_algorithm/dataset) fails the
     // header read itself as BadInput; running out of bytes means the source
     // ends inside the header
     let header: PayloadHeader =
@@ -408,9 +408,9 @@ pub fn parse(header_bytes: &[u8]) -> Result<PayloadLayout> {
         quant_bits: header.quant_bits,
         geom: header.geom,
         flags: header.flags,
-        simplify_algo: header.simplify_algo,
+        simplify_algorithm: header.simplify_algorithm,
         grid_deg: header.grid_deg,
-        eps_m: header.eps_m,
+        epsilon_m: header.epsilon_m,
         density_weight_floor_e4: header.density_weight_floor_e4,
         n_features: header.n_features,
         pool,
@@ -611,7 +611,7 @@ pub fn release<'p>(layout: &PayloadLayout, payload: &'p [u8]) -> &'p [u8] {
 mod tests {
     use super::*;
     use scroll::Pwrite;
-    use utz_common::{Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo};
+    use utz_common::{Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgorithm};
 
     /// A minimal consistent varint-arcs header: one feature with an empty
     /// tzid, no arcs, no polys, a 1×1 grid whose cell is `NO_ZONE`, and a
@@ -628,7 +628,7 @@ mod tests {
             n_arcs: 0,
             raw_len: 20,
             grid_deg: 360.0,
-            eps_m: 500.0,
+            epsilon_m: 500.0,
             n_features: 1,
             ncols: 1,
             nrows: 1,
@@ -637,7 +637,7 @@ mod tests {
             flags: 0,
             dataset: Dataset::Now,
             quant_bits: QuantBits::Bits24,
-            simplify_algo: SimplifyAlgo::Rdp,
+            simplify_algorithm: SimplifyAlgorithm::Rdp,
             geom: GeomEncoding::VarintArcs,
             codec: Codec::Uncompressed,
             density_weight_floor_e4: 10,

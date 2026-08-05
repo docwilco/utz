@@ -271,7 +271,7 @@ pub fn dev_max(arc: &[(f64, f64)], i0: usize, i1: usize) -> f64 {
 pub struct ArcParams {
     /// The algorithm and parameter handed to `utz_simplify` (the
     /// parameter is in degrees; Visvalingam takes degrees squared).
-    pub algo: Simplify,
+    pub algorithm: Simplify,
     /// The density weighting floor; `>= 1` (or no densities) turns
     /// weighting off.
     pub density_weight_floor: f64,
@@ -332,9 +332,9 @@ pub fn arc_misassign(
                 .iter()
                 .map(|&density| model.weight(density))
                 .collect();
-            simplify_weighted(params.algo, source, &weights)
+            simplify_weighted(params.algorithm, source, &weights)
         }
-        _ => simplify(params.algo, source),
+        _ => simplify(params.algorithm, source),
     };
     let kept_len = kept.len();
     let mut deviations = vec![0.0f32; kept_len];
@@ -574,7 +574,7 @@ mod tests {
     #[test]
     fn driver_sq_i16_matches_js() {
         let params = ArcParams {
-            algo: Simplify::Rdp { eps: 0.15 },
+            algorithm: Simplify::Rdp { epsilon: 0.15 },
             density_weight_floor: 1.0,
             quant: Quant::I16,
             pre: false,
@@ -601,7 +601,7 @@ mod tests {
     #[test]
     fn driver_qs_i24_matches_js() {
         let params = ArcParams {
-            algo: Simplify::Rdp { eps: 0.05 },
+            algorithm: Simplify::Rdp { epsilon: 0.05 },
             density_weight_floor: 1.0,
             quant: Quant::I24,
             pre: true,
@@ -636,7 +636,7 @@ mod tests {
     fn driver_qs_i16_drop_matches_js() {
         // Q→S with drops: the walk-match runs against the snapped source
         let params = ArcParams {
-            algo: Simplify::Rdp { eps: 0.15 },
+            algorithm: Simplify::Rdp { epsilon: 0.15 },
             density_weight_floor: 1.0,
             quant: Quant::I16,
             pre: true,
@@ -661,9 +661,9 @@ mod tests {
 
     #[test]
     fn driver_none_f32_matches_js() {
-        // algo None: no pockets, pure display-snap pricing
+        // algorithm None: no pockets, pure display-snap pricing
         let params = ArcParams {
-            algo: Simplify::None,
+            algorithm: Simplify::None,
             density_weight_floor: 1.0,
             quant: Quant::F32,
             pre: false,
@@ -687,7 +687,7 @@ mod tests {
     #[test]
     fn driver_accumulates_across_arcs() {
         let params = ArcParams {
-            algo: Simplify::Rdp { eps: 0.15 },
+            algorithm: Simplify::Rdp { epsilon: 0.15 },
             density_weight_floor: 1.0,
             quant: Quant::I16,
             pre: false,

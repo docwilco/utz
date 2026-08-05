@@ -7,7 +7,7 @@
 //! `peak ≈ decoded + window + state` model.
 //!
 //! ```text
-//! utz_dev_cli window-sweep [ds] [grid_deg] [--eps E [--quant B]]
+//! utz_dev_cli window-sweep [ds] [grid_deg] [--epsilon E [--quant B]]
 //! ```
 
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -66,8 +66,8 @@ pub struct Args {
     grid_deg: f64,
     /// Sweeps a single ε (meters) instead of the preset-candidate list.
     #[arg(long)]
-    eps: Option<f64>,
-    /// The quant bits for --eps (the default is 24 if ε≤250, else 16).
+    epsilon: Option<f64>,
+    /// The quant bits for --epsilon (the default is 24 if ε≤250, else 16).
     #[arg(long)]
     quant: Option<u32>,
 }
@@ -86,10 +86,10 @@ pub struct Args {
 )]
 pub fn run(args: &Args) -> utz_build::Result<()> {
     // preset candidates: i16 pairs with ε≥500, i24 with ε≤250
-    let shapes: Vec<(f64, u32)> = match args.eps {
-        Some(eps) => vec![(
-            eps,
-            args.quant.unwrap_or(if eps <= 250.0 { 24 } else { 16 }),
+    let shapes: Vec<(f64, u32)> = match args.epsilon {
+        Some(epsilon) => vec![(
+            epsilon,
+            args.quant.unwrap_or(if epsilon <= 250.0 { 24 } else { 16 }),
         )],
         None => vec![
             (2000.0, 16),
@@ -101,15 +101,15 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
     };
     let features = utz_build::load(&args.ds)?;
 
-    for (eps_m, quant_bits) in shapes {
+    for (epsilon_m, quant_bits) in shapes {
         let params = Params {
             dataset: utz_build::dataset(&args.ds)?.code(),
             tzbb_release: "dev",
-            eps_m,
+            epsilon_m,
             quant_bits,
             grid_deg: args.grid_deg,
             codec: Codec::Uncompressed,
-            simplify: encode::SimplifyAlgo::default(),
+            simplify: encode::SimplifyAlgorithm::default(),
             geom: encode::GeomEncoding::default(),
             density_weight_floor: None,
         };
@@ -123,7 +123,7 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
         println!(
             "\n{} ε={}m i{quant_bits}, grid {}° — raw {raw_kb:.1} K",
             args.ds.to_uppercase(),
-            eps_m,
+            epsilon_m,
             args.grid_deg
         );
         println!(

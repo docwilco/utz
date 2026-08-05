@@ -77,7 +77,7 @@ pub struct PayloadHeader {
     /// allowed.
     pub grid_deg: f32,
     /// The simplification tolerance the asset was built with (provenance).
-    pub eps_m: f32,
+    pub epsilon_m: f32,
     pub n_features: u16,
     /// The grid's column count.
     pub ncols: u16,
@@ -91,12 +91,12 @@ pub struct PayloadHeader {
     pub flags: u16,
     pub dataset: Dataset,
     pub quant_bits: QuantBits,
-    pub simplify_algo: SimplifyAlgo,
+    pub simplify_algorithm: SimplifyAlgorithm,
     pub geom: GeomEncoding,
     /// The section blob's compression codec.
     pub codec: Codec,
     /// The population-density weight floor in fixed-point 1e-4, where 0
-    /// means unweighted and 10000 means 1.0. Like `eps_m`, it is
+    /// means unweighted and 10000 means 1.0. Like `epsilon_m`, it is
     /// provenance for the density-weighted simplification knob.
     pub density_weight_floor_e4: u16,
     /// This byte is reserved and must be zero (it pads the header to 64
@@ -217,7 +217,7 @@ pub enum GeomEncoding {
     /// A grid-only asset carrying the header, tzid pool, parent table,
     /// and grid, with no geometry at all. `lookup()` answers at cell
     /// precision, the same answer `lookup_coarse()` gives; precision is a
-    /// property of the asset, like `eps_m`. It is by far the smallest
+    /// property of the asset, like `epsilon_m`. It is by far the smallest
     /// storage (table above) and works on any endianness, and a reader
     /// built only for coarse assets compiles no point-in-polygon code.
     Coarse = 3,
@@ -236,7 +236,7 @@ pub enum GeomEncoding {
 /// [`utz_simplify`]: ../utz_simplify/index.html
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pread, Pwrite)]
 #[repr(u8)]
-pub enum SimplifyAlgo {
+pub enum SimplifyAlgorithm {
     /// No simplification runs; the geometry is stored as sourced.
     None = 0,
     /// Ramer–Douglas–Peucker keeps every point within a maximum deviation
@@ -252,15 +252,15 @@ pub enum SimplifyAlgo {
     ImaiIri = 3,
 }
 
-impl SimplifyAlgo {
+impl SimplifyAlgorithm {
     /// The algorithm a header byte names, if any.
     #[must_use]
-    pub const fn from_byte(byte: u8) -> Option<SimplifyAlgo> {
+    pub const fn from_byte(byte: u8) -> Option<SimplifyAlgorithm> {
         match byte {
-            0 => Some(SimplifyAlgo::None),
-            1 => Some(SimplifyAlgo::Rdp),
-            2 => Some(SimplifyAlgo::Visvalingam),
-            3 => Some(SimplifyAlgo::ImaiIri),
+            0 => Some(SimplifyAlgorithm::None),
+            1 => Some(SimplifyAlgorithm::Rdp),
+            2 => Some(SimplifyAlgorithm::Visvalingam),
+            3 => Some(SimplifyAlgorithm::ImaiIri),
             _ => None,
         }
     }
@@ -406,7 +406,8 @@ mod tests {
     use scroll::{Pread, Pwrite, LE};
 
     use super::{
-        Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgo, PAYLOAD_HEADER_LEN,
+        Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgorithm,
+        PAYLOAD_HEADER_LEN,
     };
 
     #[test]
@@ -422,7 +423,7 @@ mod tests {
             n_arcs: 8,
             raw_len: 14,
             grid_deg: 0.5,
-            eps_m: 50.0,
+            epsilon_m: 50.0,
             n_features: 9,
             ncols: 10,
             nrows: 11,
@@ -431,7 +432,7 @@ mod tests {
             flags: 0,
             dataset: Dataset::Now,
             quant_bits: QuantBits::Bits24,
-            simplify_algo: SimplifyAlgo::Rdp,
+            simplify_algorithm: SimplifyAlgorithm::Rdp,
             geom: GeomEncoding::FixedWidthArcs,
             codec: Codec::Brotli,
             density_weight_floor_e4: 200,
@@ -461,7 +462,7 @@ mod tests {
             n_arcs: 0,
             raw_len: 0,
             grid_deg: 1.0,
-            eps_m: 0.0,
+            epsilon_m: 0.0,
             n_features: 0,
             ncols: 0,
             nrows: 0,
@@ -470,7 +471,7 @@ mod tests {
             flags: 0,
             dataset: Dataset::Now,
             quant_bits: QuantBits::Bits16,
-            simplify_algo: SimplifyAlgo::None,
+            simplify_algorithm: SimplifyAlgorithm::None,
             geom: GeomEncoding::VarintArcs,
             codec: Codec::Uncompressed,
             density_weight_floor_e4: 0,

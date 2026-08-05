@@ -4,7 +4,7 @@
 //! quantized simplified geometry.
 //!
 //! ```text
-//! utz_dev_cli grid-bench [ds] [eps_m] [deg] [npts]
+//! utz_dev_cli grid-bench [ds] [epsilon_m] [deg] [npts]
 //! ```
 
 use std::time::Instant;
@@ -24,7 +24,7 @@ pub struct Args {
     ds: String,
     /// The simplification tolerance in meters.
     #[arg(default_value_t = 500.0)]
-    eps_m: f64,
+    epsilon_m: f64,
     /// The grid cell size in degrees.
     #[arg(default_value_t = 2.0)]
     deg: f64,
@@ -44,10 +44,10 @@ pub struct Args {
     reason = "linear bench/report command; the stages share the run's accumulators"
 )]
 pub fn run(args: Args) -> utz_build::Result<()> {
-    let (dataset, eps_m, deg, n_points) = (args.ds, args.eps_m, args.deg, args.npts);
+    let (dataset, epsilon_m, deg, n_points) = (args.ds, args.epsilon_m, args.deg, args.npts);
 
     let features = utz_build::load(&dataset)?;
-    let out = topo::encode_topology(&features, eps_m / 111_320.0);
+    let out = topo::encode_topology(&features, epsilon_m / 111_320.0);
     let grid = grid::build(&out.simplified, deg, 8);
     let areas = grid::feat_areas(&out.simplified);
     let csr = grid::intern_csr(&grid, Order::CellDominantFirst, &areas);
@@ -57,7 +57,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
         reason = "CSR byte size ≪ 2^53; KB display"
     )]
     let csr_kb = csr.bytes() as f64 / 1024.0;
-    println!("{} eps={eps_m}m grid={deg}°: {} features, {} uniq lists, {csr_kb:.1} KB CSR, {n_points} points",
+    println!("{} epsilon={epsilon_m}m grid={deg}°: {} features, {} uniq lists, {csr_kb:.1} KB CSR, {n_points} points",
         dataset.to_uppercase(), feature_polys.len(), csr.uniq_lists);
 
     let points: Vec<(i32, i32)> = gen_pts(n_points)

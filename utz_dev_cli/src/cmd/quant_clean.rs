@@ -7,7 +7,7 @@
 //! surviving crossing/overlap as a live-viewer URL.
 //!
 //! ```text
-//! utz_dev_cli quant-clean [ds] [eps_m] [qbits...] [--locate]
+//! utz_dev_cli quant-clean [ds] [epsilon_m] [qbits...] [--locate]
 //! ```
 //!
 //! [`utz_encode::clean`]: ../utz_encode/clean/index.html
@@ -24,7 +24,7 @@ pub struct Args {
     ds: String,
     /// The simplification tolerance in meters.
     #[arg(default_value_t = 500.0)]
-    eps_m: f64,
+    epsilon_m: f64,
     /// The quantization widths to report (16/24/32).
     #[arg(default_values_t = [16u32, 24])]
     qbits: Vec<u32>,
@@ -46,11 +46,11 @@ pub struct Args {
 )]
 pub fn run(args: &Args) -> utz_build::Result<()> {
     let features = utz_build::load(&args.ds)?;
-    let topology = topo::build_topology(&features, args.eps_m / 111_320.0);
+    let topology = topo::build_topology(&features, args.epsilon_m / 111_320.0);
     println!(
         "{} · RDP ε {} m · {} arcs, {} rings\n",
         args.ds,
-        args.eps_m,
+        args.epsilon_m,
         topology.arc_coords.len(),
         topology.ring_refs.len()
     );
@@ -163,7 +163,7 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
                 let zones = tzids.iter().copied().collect::<Vec<_>>().join(" + ");
                 println!(
                     "    {kind:<7} {zones:<44} {}#m={at},15&l0={},rdp,{},i{quant_bits},off",
-                    args.viewer, args.ds, args.eps_m
+                    args.viewer, args.ds, args.epsilon_m
                 );
             }
         }

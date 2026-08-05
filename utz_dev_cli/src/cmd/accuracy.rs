@@ -7,14 +7,14 @@
 //! line; the decomposition itself is `utz_viz::misassign`, shared
 //! with the viewer's simplify worker). Per config this reports:
 //!   - the max deviation (m, same flat 111 320 m/deg convention as
-//!     `eps_m`),
+//!     `epsilon_m`),
 //!   - the misassigned area (km², the sum of |pocket|), and
 //!   - the misassigned population (people: pocket area × GHS-POP density
 //!     at the pocket; pockets are ≤ ε wide, far below the 4′ grid, so one
 //!     sample per pocket is essentially exact).
 //!
 //! ```text
-//! utz_dev_cli accuracy [ds] [eps_m] [w_min] [rdp|vw|ii]
+//! utz_dev_cli accuracy [ds] [epsilon_m] [w_min] [rdp|vw|ii]
 //! ```
 
 use utz_build::density::DensityGrid;
@@ -31,30 +31,31 @@ pub struct Args {
     ds: String,
     /// The simplification tolerance in meters.
     #[arg(default_value_t = 500.0)]
-    eps_m: f64,
+    epsilon_m: f64,
     /// The weighted-floor multiplier at max density.
     #[arg(default_value_t = 0.052)]
     w_min: f64,
     /// The simplification algorithm, one of rdp|vw|ii.
     #[arg(default_value = "rdp")]
-    algo: String,
+    algorithm: String,
 }
 
 /// # Errors
 /// The command fails on a dataset load/parse or density-grid load failure.
 ///
 /// # Panics
-/// The command panics if `algo` is not one of rdp|vw|ii.
+/// The command panics if `algorithm` is not one of rdp|vw|ii.
 pub fn run(args: Args) -> utz_build::Result<()> {
-    let (dataset, eps_m, w_min, algo_key) = (args.ds, args.eps_m, args.w_min, args.algo);
-    let algo = |eps_deg: f64| -> Simplify {
-        let algo = match algo_key.as_str() {
-            "rdp" => utz_encode::encode::SimplifyAlgo::Rdp,
-            "vw" => utz_encode::encode::SimplifyAlgo::Visvalingam,
-            "ii" => utz_encode::encode::SimplifyAlgo::ImaiIri,
-            key => panic!("unknown algo {key:?}: use rdp|vw|ii"),
+    let (dataset, epsilon_m, w_min, algorithm_key) =
+        (args.ds, args.epsilon_m, args.w_min, args.algorithm);
+    let algorithm = |epsilon_deg: f64| -> Simplify {
+        let algorithm = match algorithm_key.as_str() {
+            "rdp" => utz_encode::encode::SimplifyAlgorithm::Rdp,
+            "vw" => utz_encode::encode::SimplifyAlgorithm::Visvalingam,
+            "ii" => utz_encode::encode::SimplifyAlgorithm::ImaiIri,
+            key => panic!("unknown algorithm {key:?}: use rdp|vw|ii"),
         };
-        utz_encode::encode::to_simplify(algo, eps_deg)
+        utz_encode::encode::to_simplify(algorithm, epsilon_deg)
     };
 
     let features = utz_build::load(&dataset)?;
@@ -62,25 +63,25 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     let raw_topology = topo::build_topology(&features, 0.0);
     let model = DensityWeight::new(w_min);
 
-    let eps_deg = eps_m / 111_320.0;
+    let epsilon_deg = epsilon_m / 111_320.0;
     let configs: Vec<(String, Topology)> = vec![
         (
-            format!("uniform ε{eps_m}"),
-            topo::build_topology_algo(&features, algo(eps_deg)),
+            format!("uniform ε{epsilon_m}"),
+            topo::build_topology_algorithm(&features, algorithm(epsilon_deg)),
         ),
         (
-            format!("uniform ε{}", eps_m / 2.0),
-            topo::build_topology_algo(&features, algo(eps_deg / 2.0)),
+            format!("uniform ε{}", epsilon_m / 2.0),
+            topo::build_topology_algorithm(&features, algorithm(epsilon_deg / 2.0)),
         ),
         (
-            format!("weighted ε{eps_m}×{w_min}"),
-            topo::build_topology_weighted(&features, algo(eps_deg), &|start, end| {
+            format!("weighted ε{epsilon_m}×{w_min}"),
+            topo::build_topology_weighted(&features, algorithm(epsilon_deg), &|start, end| {
                 model.weight(grid.max_along(start, end))
             }),
         ),
     ];
 
-    println!("{dataset} · {algo_key} · misassignment vs raw ε=0 arcs\n");
+    println!("{dataset} · {algorithm_key} · misassignment vs raw ε=0 arcs\n");
     println!(
         "{:>22} {:>9} {:>10} {:>12} {:>14}",
         "config", "verts", "max dev", "misassigned", "misassigned"
@@ -148,7 +149,7 @@ fn measure(raw_topology: &Topology, simplified_topology: &Topology, grid: &Densi
 
 /// Max perpendicular deviation of the chain's interior vertices from the
 /// clamped shortcut chord (`chain.first()` → `chain.last()`), in flat
-/// degrees (same convention as `eps_m`).
+/// degrees (same convention as `epsilon_m`).
 fn max_dev_deg(chain: &[(f64, f64)]) -> f64 {
     let (start, end) = (chain[0], *chain.last().unwrap());
     let (dx, dy) = (end.0 - start.0, end.1 - start.1);

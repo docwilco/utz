@@ -112,33 +112,38 @@ impl Topology {
 /// quantization: [`build_topology()`] runs first, followed by arc-store
 /// serialization.
 #[must_use]
-pub fn encode_topology(feats: &[Feat], eps_deg: f64) -> TopoOut {
-    encode_topology_q(feats, eps_deg, 24)
+pub fn encode_topology(feats: &[Feat], epsilon_deg: f64) -> TopoOut {
+    encode_topology_q(feats, epsilon_deg, 24)
 }
 
 /// `qbits` selects the absolute grid: 16 gives i16 (~611 m lon), 24 gives
 /// i24 (~2.4 m), and 32 gives cm precision.
 #[must_use]
-pub fn encode_topology_q(feats: &[Feat], eps_deg: f64, qbits: u32) -> TopoOut {
-    encode_topology_qm(feats, eps_deg, qbits, false)
+pub fn encode_topology_q(feats: &[Feat], epsilon_deg: f64, qbits: u32) -> TopoOut {
+    encode_topology_qm(feats, epsilon_deg, qbits, false)
 }
 
 /// Builds the topology: vertices are deduped, shared arcs are cut at
 /// junctions, and topology-aware RDP runs on each arc exactly once with
 /// endpoints fixed.
 #[must_use]
-pub fn build_topology(feats: &[Feat], eps_deg: f64) -> Topology {
-    build_topology_algo(feats, Simplify::Rdp { eps: eps_deg })
+pub fn build_topology(feats: &[Feat], epsilon_deg: f64) -> Topology {
+    build_topology_algorithm(
+        feats,
+        Simplify::Rdp {
+            epsilon: epsilon_deg,
+        },
+    )
 }
 
 /// This is [`build_topology()`] with the simplification algorithm as a knob
 /// (the `utz_simplify` menu: RDP, Visvalingam–Whyatt, Imai–Iri, or None).
 #[must_use]
-pub fn build_topology_algo(feats: &[Feat], algo: Simplify) -> Topology {
-    build_topology_impl(feats, algo, None)
+pub fn build_topology_algorithm(feats: &[Feat], algorithm: Simplify) -> Topology {
+    build_topology_impl(feats, algorithm, None)
 }
 
-/// This is [`build_topology_algo()`] with spatially varying tolerance:
+/// This is [`build_topology_algorithm()`] with spatially varying tolerance:
 /// `edge_weight(a, b)`
 /// returns the tolerance multiplier for one arc edge (in practice
 /// `DensityWeight::weight(DensityGrid::max_along(a, b))`), and each vertex
@@ -148,10 +153,10 @@ pub fn build_topology_algo(feats: &[Feat], algo: Simplify) -> Topology {
 /// once, so neighbouring zones stay stitched by construction.
 pub fn build_topology_weighted(
     feats: &[Feat],
-    algo: Simplify,
+    algorithm: Simplify,
     edge_weight: &EdgeWeightFn<'_>,
 ) -> Topology {
-    build_topology_impl(feats, algo, Some(edge_weight))
+    build_topology_impl(feats, algorithm, Some(edge_weight))
 }
 
 /// The tolerance multiplier for the edge `a`–`b` (see
@@ -164,7 +169,7 @@ pub type EdgeWeightFn<'a> = dyn Fn((f64, f64), (f64, f64)) -> f64 + 'a;
 )]
 fn build_topology_impl(
     feats: &[Feat],
-    algo: Simplify,
+    algorithm: Simplify,
     edge_weight: Option<&EdgeWeightFn<'_>>,
 ) -> Topology {
     // 1. dedup vertices (bit-exact) -> ids + coords
@@ -324,7 +329,7 @@ fn build_topology_impl(
                 .map(|&vertex_id| vertex_coords[vertex_id as usize])
                 .collect();
             match edge_weight {
-                None => simplify(algo, &coords),
+                None => simplify(algorithm, &coords),
                 Some(weight_fn) => {
                     let edge_weights: Vec<f64> = coords
                         .windows(2)
@@ -341,7 +346,7 @@ fn build_topology_impl(
                             left.min(right).min(1.0) // refine-only, endpoints kept anyway
                         })
                         .collect();
-                    utz_simplify::simplify_weighted(algo, &coords, &vertex_weights)
+                    utz_simplify::simplify_weighted(algorithm, &coords, &vertex_weights)
                 }
             }
         })
@@ -365,9 +370,14 @@ fn build_topology_impl(
     clippy::too_many_lines,
     reason = "linear serialization of one container; the stages share the running buffer and section offsets"
 )]
-pub fn encode_topology_qm(feats: &[Feat], eps_deg: f64, qbits: u32, abs_fixed: bool) -> TopoOut {
+pub fn encode_topology_qm(
+    feats: &[Feat],
+    epsilon_deg: f64,
+    qbits: u32,
+    abs_fixed: bool,
+) -> TopoOut {
     let qmax = qmax_for(qbits);
-    let topo = build_topology(feats, eps_deg);
+    let topo = build_topology(feats, epsilon_deg);
     let Topology {
         arc_coords,
         ring_refs,
@@ -543,7 +553,7 @@ mod tests {
                 polys: vec![vec![sea, hole] as Poly],
             },
         ];
-        let topology = build_topology_algo(&feats, Simplify::Rdp { eps: 0.0 });
+        let topology = build_topology_algorithm(&feats, Simplify::Rdp { epsilon: 0.0 });
         // sea outline + island ring shared once = 2 arcs, not 3
         assert_eq!(
             topology.arc_coords.len(),
@@ -607,7 +617,7 @@ mod tests {
                 polys: vec![vec![eight_rev] as Poly],
             },
         ];
-        let topology = build_topology_algo(&feats, Simplify::Rdp { eps: 0.0 });
+        let topology = build_topology_algorithm(&feats, Simplify::Rdp { epsilon: 0.0 });
         assert_eq!(
             topology.arc_coords.len(),
             1,
@@ -634,8 +644,9 @@ mod tests {
     #[test]
     fn weighted_all_ones_matches_unweighted() {
         let feats = two_squares();
-        let unweighted = build_topology_algo(&feats, Simplify::Rdp { eps: 0.01 });
-        let weighted = build_topology_weighted(&feats, Simplify::Rdp { eps: 0.01 }, &|_, _| 1.0);
+        let unweighted = build_topology_algorithm(&feats, Simplify::Rdp { epsilon: 0.01 });
+        let weighted =
+            build_topology_weighted(&feats, Simplify::Rdp { epsilon: 0.01 }, &|_, _| 1.0);
         assert_eq!(unweighted.arc_coords, weighted.arc_coords);
         assert_eq!(unweighted.ring_refs, weighted.ring_refs);
     }
@@ -653,7 +664,7 @@ mod tests {
                 1.0
             }
         };
-        let topology = build_topology_weighted(&feats, Simplify::Rdp { eps: 0.01 }, &weight);
+        let topology = build_topology_weighted(&feats, Simplify::Rdp { epsilon: 0.01 }, &weight);
         let reconstructed = topology.reconstruct(&feats, &topology.arc_coords);
         for feature in &reconstructed {
             let ring = &feature.polys[0][0];
@@ -662,9 +673,9 @@ mod tests {
             // …and the uniform-weight stretches still simplify away
             assert!(!ring.contains(&dropped_bump), "{ring:?}");
         }
-        // unweighted at the same eps drops every bump
+        // unweighted at the same epsilon drops every bump
         let reconstructed_unweighted = {
-            let unweighted = build_topology_algo(&feats, Simplify::Rdp { eps: 0.01 });
+            let unweighted = build_topology_algorithm(&feats, Simplify::Rdp { epsilon: 0.01 });
             unweighted.reconstruct(&feats, &unweighted.arc_coords)
         };
         assert!(!reconstructed_unweighted[0].polys[0][0].contains(&kept_bump));

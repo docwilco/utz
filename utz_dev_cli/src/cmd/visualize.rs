@@ -222,13 +222,13 @@ fn zones_bin(features: &[utz_build::Feat], dataset: &str) -> utz_build::Result<V
     let params = Params {
         dataset: utz_build::dataset(dataset)?.code(),
         tzbb_release: "webdist",
-        eps_m: 100.0,
+        epsilon_m: 100.0,
         quant_bits: 24,
         grid_deg: 2.0,
         // the asset never leaves this process (encode -> from_vec -> drop),
         // so compressing it would only burn CPU
         codec: Codec::Uncompressed,
-        simplify: encode::SimplifyAlgo::default(),
+        simplify: encode::SimplifyAlgorithm::default(),
         density_weight_floor: None,
         geom: encode::GeomEncoding::default(),
     };

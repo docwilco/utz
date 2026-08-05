@@ -18,7 +18,7 @@
 //! const ptr = utz_enc_alloc(blob.byteLength);
 //! new Uint8Array(memory.buffer).set(blob, ptr);
 //! if (!utz_enc_init(ptr, blob.byteLength)) throw 'bad blob';   // frees ptr
-//! const payloadLen = utz_enc_payload(algo, epsM, wMin, qbits, gridDeg, geom);
+//! const payloadLen = utz_enc_payload(algorithm, epsilonM, wMin, qbits, gridDeg, geom);
 //! const sections = [...Array(12)].map((_, i) => utz_enc_stat(i));
 //! const brotliLen = utz_enc_compress(3);
 //! ```
@@ -37,7 +37,7 @@
 //! for (each arc) {
 //!   new Float64Array(memory.buffer, buf, n * 2).set(rawXy);
 //!   if (dens) new Float64Array(memory.buffer, dbuf, n).set(dens);
-//!   const k = utz_ws_arc(algo, epsDeg, wMin, quantCode, pre, buf, n, dens ? dbuf : 0);
+//!   const k = utz_ws_arc(algorithm, epsilonDeg, wMin, quantCode, pre, buf, n, dens ? dbuf : 0);
 //!   const xy = new Float64Array(memory.buffer, buf, k * 2);
 //!   const devs = new Float32Array(memory.buffer, utz_ws_devs_ptr(), k);
 //! }
@@ -224,7 +224,7 @@ pub unsafe extern "C" fn utz_enc_init(ptr: *mut u8, len: usize) -> u32 {
 }
 
 /// The simplify stage shared by [`utz_enc_payload()`] and
-/// [`utz_enc_problems()`]. The `algo` ids are as in
+/// [`utz_enc_problems()`]. The `algorithm` ids are as in
 /// `utz_simplify/src/wasm.rs`, ε arrives in meters and is converted the
 /// way the builder converts it (divided by 111 320, and squared for
 /// Visvalingam), and density weighting is optional (`w_min < 1`, which
@@ -234,17 +234,17 @@ pub unsafe extern "C" fn utz_enc_init(ptr: *mut u8, len: usize) -> u32 {
 /// coords, which is a no-op.
 fn simplified_arcs(
     state: &State,
-    algo: u32,
-    eps_m: f64,
+    algorithm: u32,
+    epsilon_m: f64,
     w_min: f64,
     pre_snap_bits: Option<u32>,
 ) -> Vec<Arc> {
-    let algo = utz_encode::encode::to_simplify(
-        u8::try_from(algo)
+    let algorithm = utz_encode::encode::to_simplify(
+        u8::try_from(algorithm)
             .ok()
-            .and_then(utz_encode::encode::SimplifyAlgo::from_byte)
-            .unwrap_or(utz_encode::encode::SimplifyAlgo::None),
-        eps_m / 111_320.0,
+            .and_then(utz_encode::encode::SimplifyAlgorithm::from_byte)
+            .unwrap_or(utz_encode::encode::SimplifyAlgorithm::None),
+        epsilon_m / 111_320.0,
     );
     let model = DensityWeight::new(w_min);
     let weighted = w_min < 1.0 && !state.densities.is_empty();
@@ -280,9 +280,9 @@ fn simplified_arcs(
                     .iter()
                     .map(|&density| model.weight(f64::from(density)))
                     .collect();
-                simplify_weighted(algo, input, &weights)
+                simplify_weighted(algorithm, input, &weights)
             } else {
-                utz_simplify::simplify(algo, input)
+                utz_simplify::simplify(algorithm, input)
             };
             base += arc.len();
             out
@@ -310,8 +310,8 @@ fn len_u32(n: usize) -> u32 {
 /// arcs, 2 full rings, 3 coarse); unknown values fall back to varint arcs.
 #[no_mangle]
 pub extern "C" fn utz_enc_payload(
-    algo: u32,
-    eps_m: f64,
+    algorithm: u32,
+    epsilon_m: f64,
     w_min: f64,
     quant_bits: u32,
     grid_deg: f64,
@@ -320,11 +320,11 @@ pub extern "C" fn utz_enc_payload(
     let Some(state) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else {
         return 0;
     };
-    let arcs = simplified_arcs(state, algo, eps_m, w_min, None);
+    let arcs = simplified_arcs(state, algorithm, epsilon_m, w_min, None);
     let params = Params {
         dataset: state.dataset_code,
         tzbb_release: &state.release,
-        eps_m,
+        epsilon_m,
         quant_bits,
         grid_deg,
         codec: Codec::Uncompressed,
@@ -334,11 +334,11 @@ pub extern "C" fn utz_enc_payload(
             3 => GeomEncoding::Coarse,
             _ => GeomEncoding::VarintArcs,
         },
-        // the viewer's algo knob sends SimplifyAlgo header bytes
-        simplify: u8::try_from(algo)
+        // the viewer's algorithm knob sends SimplifyAlgorithm header bytes
+        simplify: u8::try_from(algorithm)
             .ok()
-            .and_then(utz_encode::encode::SimplifyAlgo::from_byte)
-            .unwrap_or(utz_encode::encode::SimplifyAlgo::Rdp),
+            .and_then(utz_encode::encode::SimplifyAlgorithm::from_byte)
+            .unwrap_or(utz_encode::encode::SimplifyAlgorithm::Rdp),
         density_weight_floor: (w_min < 1.0).then_some(w_min),
     };
     match encode::payload_from_topology(&state.topo, &arcs, &state.feats, &params) {
@@ -404,8 +404,8 @@ pub extern "C" fn utz_enc_payload_ptr() -> *const u8 {
 /// dedupes by location and joins the zone names.
 #[no_mangle]
 pub extern "C" fn utz_enc_problems(
-    algo: u32,
-    eps_m: f64,
+    algorithm: u32,
+    epsilon_m: f64,
     w_min: f64,
     quant_bits: u32,
     pre: u32,
@@ -416,7 +416,13 @@ pub extern "C" fn utz_enc_problems(
     if !matches!(quant_bits, 16 | 24 | 32) {
         return 0;
     }
-    let arcs = simplified_arcs(state, algo, eps_m, w_min, (pre != 0).then_some(quant_bits));
+    let arcs = simplified_arcs(
+        state,
+        algorithm,
+        epsilon_m,
+        w_min,
+        (pre != 0).then_some(quant_bits),
+    );
     let problems = validate::find_problems(&state.topo, &arcs, quant_bits);
     let mut out = Vec::with_capacity(problems.len() * 12);
     #[expect(
@@ -528,7 +534,7 @@ pub extern "C" fn utz_ws_reset() {
 
 /// Runs one arc through the whole simplify-worker pipeline
 /// ([`misassign::arc_misassign()`]): it pre-snaps when `pre` != 0 (the
-/// Q→S order), simplifies (the `algo` ids and `param` are as in
+/// Q→S order), simplifies (the `algorithm` ids and `param` are as in
 /// `utz_simplify`, density-weighted when `densities` is non-null and
 /// `w_min` < 1), and prices the pockets and the display snap into the
 /// running accumulators. The `quant` codes are the viewer's quant-knob
@@ -542,7 +548,7 @@ pub extern "C" fn utz_ws_reset() {
 /// valid doubles or be null (e.g. from `utz_alloc()`).
 #[no_mangle]
 pub unsafe extern "C" fn utz_ws_arc(
-    algo: u32,
+    algorithm: u32,
     param: f64,
     w_min: f64,
     quant: u32,
@@ -560,10 +566,10 @@ pub unsafe extern "C" fn utz_ws_arc(
     let densities = (!densities.is_null()).then(|| core::slice::from_raw_parts(densities, n_pts));
     let params = ArcParams {
         // same ids as utz_simplify's wasm exports; unknown ids pass through
-        algo: match algo {
-            1 => Simplify::Rdp { eps: param },
+        algorithm: match algorithm {
+            1 => Simplify::Rdp { epsilon: param },
             2 => Simplify::Visvalingam { min_area: param },
-            3 => Simplify::ImaiIri { eps: param },
+            3 => Simplify::ImaiIri { epsilon: param },
             _ => Simplify::None,
         },
         density_weight_floor: w_min,

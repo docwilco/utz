@@ -128,7 +128,7 @@ and the known-point tests as regression fixtures. Nothing else survives.
 
 ```
 header:      magic, version, dataset(now|1970|all), tzbb_release,
-             eps, quant_bits, simplify_algo (rdp|vw|ii, §14.8),
+             epsilon, quant_bits, simplify_algorithm (rdp|vw|ii, §14.8),
              geom (v3: delta+varint | fixed-width | v6: eager-image), grid_deg, codec,
              eager_coords/eager_rings/eager_polys u32 (v2)
 zone table:  tzid string pool + offsets
@@ -425,7 +425,7 @@ union, never triggered — unlike "exactly one of N", which union breaks.)
    **`GeomEncoding::Coarse` (geom byte 3, 2026-07-09)**: grid-only assets —
    header + tzid pool + parent + grid, no geometry. `lookup()` answers at
    cell precision (the dominant-first head; precision is an asset property,
-   like `eps_m`) — `lookup_coarse` and `lookup` coincide. `geom-coarse`
+   like `epsilon_m`) — `lookup_coarse` and `lookup` coincide. `geom-coarse`
    builds compile no PIP code, no unsafe, any endianness; the pure-coarse
    feature set `{core, custom, geom-coarse}` is the smallest possible utz.
    Measured: **tiny-coarse = 40.8 K flash (⅓ of tiny-static), host 0.036
@@ -699,8 +699,8 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
    - Corridor/streaming family (Reumann–Witkam, Opheim, Lang, Zhao–Saalfeld):
      **rejected** — quality-per-vertex worse than RDP; their single-pass
      speed advantage is worthless at build time.
-   **Knob built (2026-07, decided "knob only")**: `simplify_algo` header
-   byte (0=RDP, 1=VW, 2=II) + `Config::simplify_algo` / `gen --algo rdp|ii`
+   **Knob built (2026-07, decided "knob only")**: `simplify_algorithm` header
+   byte (0=RDP, 1=VW, 2=II) + `Config::simplify_algorithm` / `gen --algorithm rdp|ii`
    — VW is area-knobbed, so the ε-driven pipeline points it at the topo
    builder API instead. **RDP stays the default**; presets are RDP. Full-
    pipeline spot check at ε=2000 i16: II 68.8 K gzip vs RDP 78.7 K

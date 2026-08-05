@@ -8,7 +8,7 @@
 //! comparison is pure per-edge PIP.
 //!
 //! ```text
-//! utz_dev_cli pip-bench [ds] [eps_m] [npts]
+//! utz_dev_cli pip-bench [ds] [epsilon_m] [npts]
 //! ```
 
 use std::time::Instant;
@@ -24,7 +24,7 @@ pub struct Args {
     ds: String,
     /// The simplification tolerance in meters.
     #[arg(default_value_t = 500.0)]
-    eps_m: f64,
+    epsilon_m: f64,
     /// The number of sample points.
     #[arg(default_value_t = 20_000)]
     npts: usize,
@@ -50,10 +50,10 @@ struct P<'a> {
     reason = "linear bench/report command; the stages share the run's accumulators"
 )]
 pub fn run(args: Args) -> utz_build::Result<()> {
-    let (dataset, eps_m, n_points) = (args.ds, args.eps_m, args.npts);
+    let (dataset, epsilon_m, n_points) = (args.ds, args.epsilon_m, args.npts);
 
     let features = utz_build::load(&dataset)?;
-    let out = topo::encode_topology(&features, eps_m / 111_320.0);
+    let out = topo::encode_topology(&features, epsilon_m / 111_320.0);
     let quantized = quantize(&out.simplified);
     let verts: usize = quantized
         .iter()
@@ -62,7 +62,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
         .map(std::vec::Vec::len)
         .sum();
     println!(
-        "{} eps={eps_m}m: {} features, {verts} quantized verts, {n_points} points\n",
+        "{} epsilon={epsilon_m}m: {} features, {verts} quantized verts, {n_points} points\n",
         dataset.to_uppercase(),
         quantized.len()
     );

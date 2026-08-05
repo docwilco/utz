@@ -12,19 +12,19 @@
 //! const n = points.length;                       // points: [[x,y], ...]
 //! const ptr = utz_alloc(n * 2);
 //! new Float64Array(memory.buffer, ptr, n * 2).set(points.flat());
-//! const kept = utz_simplify(ALGO_RDP, ptr, n, epsDeg); // simplifies in place
+//! const kept = utz_simplify(ALGORITHM_RDP, ptr, n, epsilonDeg); // simplifies in place
 //! const out = new Float64Array(memory.buffer, ptr, kept * 2).slice();
 //! utz_free(ptr, n * 2);
 //! ```
 
 use crate::{simplify, simplify_weighted, DensityWeight, Simplify};
 
-// ids match utz_common::SimplifyAlgo's header bytes; any other value
+// ids match utz_common::SimplifyAlgorithm's header bytes; any other value
 // simplifies as None (coords pass through unchanged)
-pub const ALGO_NONE: u32 = 0;
-pub const ALGO_RDP: u32 = 1;
-pub const ALGO_VISVALINGAM: u32 = 2;
-pub const ALGO_IMAI_IRI: u32 = 3;
+pub const ALGORITHM_NONE: u32 = 0;
+pub const ALGORITHM_RDP: u32 = 1;
+pub const ALGORITHM_VISVALINGAM: u32 = 2;
+pub const ALGORITHM_IMAI_IRI: u32 = 3;
 
 /// Allocates space for `n_f64` doubles; every call must be paired with
 /// [`utz_free()`].
@@ -47,13 +47,13 @@ pub unsafe extern "C" fn utz_free(ptr: *mut f64, n_f64: usize) {
 
 /// Simplifies `n_points` interleaved `x,y` doubles IN PLACE and returns the
 /// number of points kept (the buffer's first `kept * 2` doubles). An unknown
-/// `algo` or a non-positive parameter leaves the polyline unchanged.
+/// `algorithm` or a non-positive parameter leaves the polyline unchanged.
 ///
 /// # Safety
 /// `xy` must point at `n_points * 2` valid doubles (e.g. from [`utz_alloc()`]).
 #[no_mangle]
 pub unsafe extern "C" fn utz_simplify(
-    algo: u32,
+    algorithm: u32,
     xy: *mut f64,
     n_points: usize,
     param: f64,
@@ -65,16 +65,16 @@ pub unsafe extern "C" fn utz_simplify(
         .collect();
     #[expect(
         clippy::match_same_arms,
-        reason = "ALGO_NONE is the ABI id for None; the wildcard separately keeps unknown ids safe"
+        reason = "ALGORITHM_NONE is the ABI id for None; the wildcard separately keeps unknown ids safe"
     )]
-    let algo = match algo {
-        ALGO_NONE => Simplify::None,
-        ALGO_RDP => Simplify::Rdp { eps: param },
-        ALGO_VISVALINGAM => Simplify::Visvalingam { min_area: param },
-        ALGO_IMAI_IRI => Simplify::ImaiIri { eps: param },
+    let algorithm = match algorithm {
+        ALGORITHM_NONE => Simplify::None,
+        ALGORITHM_RDP => Simplify::Rdp { epsilon: param },
+        ALGORITHM_VISVALINGAM => Simplify::Visvalingam { min_area: param },
+        ALGORITHM_IMAI_IRI => Simplify::ImaiIri { epsilon: param },
         _ => Simplify::None,
     };
-    let out = simplify(algo, &points);
+    let out = simplify(algorithm, &points);
     for (i, (x, y)) in out.iter().enumerate() {
         buffer[i * 2] = *x;
         buffer[i * 2 + 1] = *y;
@@ -93,7 +93,7 @@ pub unsafe extern "C" fn utz_simplify(
 /// valid doubles (e.g. from [`utz_alloc()`]).
 #[no_mangle]
 pub unsafe extern "C" fn utz_simplify_w(
-    algo: u32,
+    algorithm: u32,
     xy: *mut f64,
     n_points: usize,
     param: f64,
@@ -112,16 +112,16 @@ pub unsafe extern "C" fn utz_simplify_w(
         .collect();
     #[expect(
         clippy::match_same_arms,
-        reason = "ALGO_NONE is the ABI id for None; the wildcard separately keeps unknown ids safe"
+        reason = "ALGORITHM_NONE is the ABI id for None; the wildcard separately keeps unknown ids safe"
     )]
-    let algo = match algo {
-        ALGO_NONE => Simplify::None,
-        ALGO_RDP => Simplify::Rdp { eps: param },
-        ALGO_VISVALINGAM => Simplify::Visvalingam { min_area: param },
-        ALGO_IMAI_IRI => Simplify::ImaiIri { eps: param },
+    let algorithm = match algorithm {
+        ALGORITHM_NONE => Simplify::None,
+        ALGORITHM_RDP => Simplify::Rdp { epsilon: param },
+        ALGORITHM_VISVALINGAM => Simplify::Visvalingam { min_area: param },
+        ALGORITHM_IMAI_IRI => Simplify::ImaiIri { epsilon: param },
         _ => Simplify::None,
     };
-    let out = simplify_weighted(algo, &points, &weights);
+    let out = simplify_weighted(algorithm, &points, &weights);
     for (i, (x, y)) in out.iter().enumerate() {
         buffer[i * 2] = *x;
         buffer[i * 2 + 1] = *y;
