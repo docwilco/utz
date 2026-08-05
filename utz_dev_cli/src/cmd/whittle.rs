@@ -13,6 +13,7 @@
 //! ```
 
 use utz_build::density::DensityGrid;
+use utz_build::presets::{self, Recipe};
 use utz_build::{download, loader};
 use utz_encode::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgorithm};
 use utz_encode::{topo, Feat};
@@ -30,62 +31,12 @@ pub struct Args {
     extended: bool,
 }
 
-/// One preset recipe, mirroring `utz_build::Config::{tiny,compact,balanced,
-/// accurate}` (pinned there and in scripts/gen-presets.sh).
-struct Recipe {
-    name: &'static str,
-    ds: &'static str,
-    epsilon_m: f64,
-    quant_bits: u32,
-    grid_deg: f64,
-    density_weight_floor: f64,
-    codec: Codec,
-    /// Whether to also report the uncompressed asset (the `-static` twin).
-    static_twin: bool,
+/// The uncompressed sibling of a recipe (e.g. `tiny-static` for `tiny`),
+/// if the preset table carries one; it is reported as an extra stage of
+/// its base preset instead of as a row of its own.
+fn static_twin(recipe: &Recipe) -> Option<&'static Recipe> {
+    presets::by_name(&format!("{}-static", recipe.name))
 }
-
-const RECIPES: [Recipe; 4] = [
-    Recipe {
-        name: "tiny",
-        ds: "now",
-        epsilon_m: 10_000.0,
-        quant_bits: 16,
-        grid_deg: 2.0,
-        density_weight_floor: 0.001,
-        codec: Codec::Gzip,
-        static_twin: true,
-    },
-    Recipe {
-        name: "compact",
-        ds: "now",
-        epsilon_m: 1_000.0,
-        quant_bits: 24,
-        grid_deg: 4.0 / 3.0,
-        density_weight_floor: 0.001,
-        codec: Codec::Xz,
-        static_twin: false,
-    },
-    Recipe {
-        name: "balanced",
-        ds: "now",
-        epsilon_m: 50.0,
-        quant_bits: 24,
-        grid_deg: 2.0 / 3.0,
-        density_weight_floor: 0.020,
-        codec: Codec::Brotli,
-        static_twin: false,
-    },
-    Recipe {
-        name: "accurate",
-        ds: "all",
-        epsilon_m: 10.0,
-        quant_bits: 32,
-        grid_deg: 0.5,
-        density_weight_floor: 0.10,
-        codec: Codec::Brotli,
-        static_twin: false,
-    },
-];
 
 #[expect(
     clippy::cast_precision_loss,
@@ -165,15 +116,15 @@ fn encodings_matrix(
         (GeomEncoding::Coarse, "coarse"),
     ] {
         let params = Params {
-            dataset: utz_build::dataset(recipe.ds)?,
+            dataset: recipe.dataset,
             tzbb_release: release,
             epsilon_m: recipe.epsilon_m,
-            quant_bits: recipe.quant_bits,
+            quant_bits: recipe.quant_bits.bits(),
             grid_deg: recipe.grid_deg,
             codec: Codec::Uncompressed,
-            simplify: SimplifyAlgorithm::Rdp,
+            simplify: recipe.simplify_algorithm,
             geom,
-            density_weight_floor: Some(recipe.density_weight_floor),
+            density_weight_floor: recipe.density_weight_floor(),
         };
         let (payload, _) =
             encode::payload_from_topology(topology, &topology.arc_coords, features, &params)?;
@@ -206,11 +157,15 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
     let density = DensityGrid::load(&cache)?;
     let release = loader::resolve_release(&cache)?;
 
-    for recipe in RECIPES {
+    for recipe in &presets::ALL {
+        // -static twins ride along with their base preset's report
+        if recipe.name.ends_with("-static") {
+            continue;
+        }
         if args.preset != "all" && args.preset != recipe.name {
             continue;
         }
-        report_recipe(&recipe, &cache, &density, &release, args.extended)?;
+        report_recipe(recipe, &cache, &density, &release, args.extended)?;
     }
     Ok(())
 }
@@ -223,18 +178,19 @@ fn report_recipe(
     release: &str,
     extended: bool,
 ) -> utz_build::Result<()> {
-    let dataset = utz_build::dataset(recipe.ds)?;
-    let zip_path = download::fetch(&loader::dataset_url(dataset, release), cache)?;
+    let zip_path = download::fetch(&loader::dataset_url(recipe.dataset, release), cache)?;
     let geojson = geojson_entry_size(&zip_path)?;
     let features = loader::load_geojson_zip(&zip_path)?;
 
+    let floor_label = recipe
+        .density_weight_floor()
+        .map_or_else(|| "unweighted".to_string(), |floor| format!("w{floor}"));
     println!(
-        "{} ({}, ε {} m w{}, i{}, {:.4}°, {:?}, TZBB {release})",
+        "{} ({}, ε {} m {floor_label}, i{}, {:.4}°, {:?}, TZBB {release})",
         recipe.name,
-        recipe.ds,
+        recipe.dataset.name(),
         recipe.epsilon_m,
-        recipe.density_weight_floor,
-        recipe.quant_bits,
+        recipe.quant_bits.bits(),
         recipe.grid_deg,
         recipe.codec
     );
@@ -271,16 +227,21 @@ fn report_recipe(
         coords,
     );
 
-    // the recipe's density-weighted simplification
+    // the recipe's simplification, density-weighted when the recipe is
     let epsilon_deg = recipe.epsilon_m / 111_320.0;
-    let weight = DensityWeight::new(recipe.density_weight_floor);
-    let algorithm = encode::to_simplify(SimplifyAlgorithm::Rdp, epsilon_deg);
-    let topology = topo::build_topology_weighted(&features, algorithm, &|start, end| {
-        weight.weight(density.max_along(start, end))
-    });
+    let algorithm = encode::to_simplify(recipe.simplify_algorithm, epsilon_deg);
+    let topology = match recipe.density_weight_floor() {
+        Some(floor) => {
+            let weight = DensityWeight::new(floor);
+            topo::build_topology_weighted(&features, algorithm, &|start, end| {
+                weight.weight(density.max_along(start, end))
+            })
+        }
+        None => topo::build_topology_algorithm(&features, algorithm),
+    };
     let arc_verts1: u64 = arc_verts(&topology);
     stage(
-        &format!("simplified (ε {} m weighted)", recipe.epsilon_m),
+        &format!("simplified (ε {} m {floor_label})", recipe.epsilon_m),
         arc_verts1 * 16,
         arc_verts0 * 16,
         coords,
@@ -288,15 +249,15 @@ fn report_recipe(
 
     // quantize + delta/varint code + grid + serialize
     let params = Params {
-        dataset,
+        dataset: recipe.dataset,
         tzbb_release: release,
         epsilon_m: recipe.epsilon_m,
-        quant_bits: recipe.quant_bits,
+        quant_bits: recipe.quant_bits.bits(),
         grid_deg: recipe.grid_deg,
         codec: Codec::Uncompressed,
-        simplify: SimplifyAlgorithm::Rdp,
-        geom: encode::GeomEncoding::VarintArcs,
-        density_weight_floor: Some(recipe.density_weight_floor),
+        simplify: recipe.simplify_algorithm,
+        geom: recipe.geom,
+        density_weight_floor: recipe.density_weight_floor(),
     };
     let payload = report_payload(&topology, &features, &params, coords, arc_verts1)?;
 
@@ -307,10 +268,10 @@ fn report_recipe(
         payload.len() as u64,
         coords,
     );
-    if recipe.static_twin {
-        let flat = encode::finish(&payload, Codec::Uncompressed)?;
+    if let Some(twin) = static_twin(recipe) {
+        let flat = encode::finish(&payload, twin.codec)?;
         stage(
-            "uncompressed twin (-static)",
+            &format!("uncompressed twin ({})", twin.name),
             flat.len() as u64,
             coords,
             coords,
