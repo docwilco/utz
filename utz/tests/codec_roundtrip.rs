@@ -23,10 +23,10 @@ fn payload() -> Vec<u8> {
     let mut lcg = Lcg::new(PAYLOAD_SEED);
     let mut out = Vec::with_capacity(PAYLOAD_SIZE);
     while out.len() < PAYLOAD_SIZE {
-        let word = lcg.next_u64();
+        let bits = lcg.next_u64();
         // short pseudo-runs make it compress like real section data
-        let run = usize::try_from(word & 0x1F).expect("5-bit mask fits") + 1;
-        let byte = u8::try_from((word >> 8) & 0x3F).expect("6-bit mask fits");
+        let run = usize::try_from(bits & 0x1F).expect("5-bit mask fits") + 1;
+        let byte = u8::try_from((bits >> 8) & 0x3F).expect("6-bit mask fits");
         out.extend(std::iter::repeat_n(byte, run));
     }
     out
