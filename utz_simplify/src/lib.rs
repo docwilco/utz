@@ -54,6 +54,34 @@ pub enum Simplify {
     ImaiIri { epsilon: f64 },
 }
 
+/// The algorithm codes [`Simplify::from_code()`] accepts, which are also
+/// the WASM exports' ABI ids. They match the header bytes of the asset
+/// format's `SimplifyAlgorithm` enum (`utz_common`), pinned by a
+/// dev-dependency test rather than a real dependency: this crate stays
+/// dependency-free.
+pub const ALGORITHM_NONE: u32 = 0;
+pub const ALGORITHM_RDP: u32 = 1;
+pub const ALGORITHM_VISVALINGAM: u32 = 2;
+pub const ALGORITHM_IMAI_IRI: u32 = 3;
+
+impl Simplify {
+    /// The algorithm an [`ALGORITHM_NONE`]-family code names, carrying
+    /// `param` as the algorithm's own parameter: a max deviation ε for
+    /// RDP and Imai–Iri, a minimum triangle area for Visvalingam. No ε²
+    /// derivation happens here; an ε-driven caller applies that policy
+    /// itself (see `utz_encode::encode::to_simplify()`). An unknown code
+    /// simplifies as [`Simplify::None`], so coordinates pass through.
+    #[must_use]
+    pub fn from_code(code: u32, param: f64) -> Simplify {
+        match code {
+            ALGORITHM_RDP => Simplify::Rdp { epsilon: param },
+            ALGORITHM_VISVALINGAM => Simplify::Visvalingam { min_area: param },
+            ALGORITHM_IMAI_IRI => Simplify::ImaiIri { epsilon: param },
+            _ => Simplify::None,
+        }
+    }
+}
+
 /// Dispatches on [`Simplify`].
 #[must_use]
 pub fn simplify(algorithm: Simplify, points: &[(f64, f64)]) -> Vec<(f64, f64)> {
@@ -634,6 +662,15 @@ fn imai_iri_core(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn algorithm_codes_match_the_header_bytes() {
+        use utz_common::SimplifyAlgorithm;
+        assert_eq!(ALGORITHM_NONE, SimplifyAlgorithm::None as u32);
+        assert_eq!(ALGORITHM_RDP, SimplifyAlgorithm::Rdp as u32);
+        assert_eq!(ALGORITHM_VISVALINGAM, SimplifyAlgorithm::Visvalingam as u32);
+        assert_eq!(ALGORITHM_IMAI_IRI, SimplifyAlgorithm::ImaiIri as u32);
+    }
 
     /// deterministic pseudo-random polyline (LCG, same recipe as pip tests)
     fn wiggle(n: usize, seed: u64) -> Vec<(f64, f64)> {

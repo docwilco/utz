@@ -19,13 +19,6 @@
 
 use crate::{simplify, simplify_weighted, DensityWeight, Simplify};
 
-// ids match utz_common::SimplifyAlgorithm's header bytes; any other value
-// simplifies as None (coords pass through unchanged)
-pub const ALGORITHM_NONE: u32 = 0;
-pub const ALGORITHM_RDP: u32 = 1;
-pub const ALGORITHM_VISVALINGAM: u32 = 2;
-pub const ALGORITHM_IMAI_IRI: u32 = 3;
-
 /// Allocates space for `n_f64` doubles; every call must be paired with
 /// [`utz_free()`].
 #[no_mangle]
@@ -63,17 +56,7 @@ pub unsafe extern "C" fn utz_simplify(
         .chunks_exact(2)
         .map(|chunk| (chunk[0], chunk[1]))
         .collect();
-    #[expect(
-        clippy::match_same_arms,
-        reason = "ALGORITHM_NONE is the ABI id for None; the wildcard separately keeps unknown ids safe"
-    )]
-    let algorithm = match algorithm {
-        ALGORITHM_NONE => Simplify::None,
-        ALGORITHM_RDP => Simplify::Rdp { epsilon: param },
-        ALGORITHM_VISVALINGAM => Simplify::Visvalingam { min_area: param },
-        ALGORITHM_IMAI_IRI => Simplify::ImaiIri { epsilon: param },
-        _ => Simplify::None,
-    };
+    let algorithm = Simplify::from_code(algorithm, param);
     let out = simplify(algorithm, &points);
     for (i, (x, y)) in out.iter().enumerate() {
         buffer[i * 2] = *x;
@@ -110,17 +93,7 @@ pub unsafe extern "C" fn utz_simplify_w(
         .iter()
         .map(|&density| model.weight(density))
         .collect();
-    #[expect(
-        clippy::match_same_arms,
-        reason = "ALGORITHM_NONE is the ABI id for None; the wildcard separately keeps unknown ids safe"
-    )]
-    let algorithm = match algorithm {
-        ALGORITHM_NONE => Simplify::None,
-        ALGORITHM_RDP => Simplify::Rdp { epsilon: param },
-        ALGORITHM_VISVALINGAM => Simplify::Visvalingam { min_area: param },
-        ALGORITHM_IMAI_IRI => Simplify::ImaiIri { epsilon: param },
-        _ => Simplify::None,
-    };
+    let algorithm = Simplify::from_code(algorithm, param);
     let out = simplify_weighted(algorithm, &points, &weights);
     for (i, (x, y)) in out.iter().enumerate() {
         buffer[i * 2] = *x;

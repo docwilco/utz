@@ -572,13 +572,7 @@ pub unsafe extern "C" fn utz_ws_arc(
         .collect();
     let densities = (!densities.is_null()).then(|| core::slice::from_raw_parts(densities, n_pts));
     let params = ArcParams {
-        // same ids as utz_simplify's wasm exports; unknown ids pass through
-        algorithm: match algorithm {
-            1 => Simplify::Rdp { epsilon: param },
-            2 => Simplify::Visvalingam { min_area: param },
-            3 => Simplify::ImaiIri { epsilon: param },
-            _ => Simplify::None,
-        },
+        algorithm: Simplify::from_code(algorithm, param),
         density_weight_floor: w_min,
         quant: Quant::from_code(quant),
         pre: pre != 0,
