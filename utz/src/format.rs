@@ -488,14 +488,12 @@ pub fn check_tables(payload: &[u8], layout: &PayloadLayout) -> Result<()> {
     // grid: interior cells name a feature, border cells a candidate list
     for i in 0..(layout.ncols as usize * layout.nrows as usize) {
         let cell = read_u16(payload, layout.primary + i * 2);
-        if cell == utz_common::NO_ZONE {
-            continue;
-        }
-        if cell & 0x8000 == 0 {
-            if usize::from(cell) >= feature_count {
-                return Err(out_of_range);
-            }
-        } else if usize::from(cell & 0x7FFF) >= uniq {
+        let in_range = match utz_common::CellTag::from_cell(cell) {
+            utz_common::CellTag::Empty => true,
+            utz_common::CellTag::Zone(zone) => usize::from(zone) < feature_count,
+            utz_common::CellTag::Border(list_index) => usize::from(list_index) < uniq,
+        };
+        if !in_range {
             return Err(out_of_range);
         }
     }

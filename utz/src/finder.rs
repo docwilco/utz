@@ -32,7 +32,7 @@ use alloc::vec::Vec;
 use crate::decompress;
 use crate::format::{self, read_fixed, read_u16, read_u32, read_varint, unzigzag, PayloadLayout};
 use crate::{caps, pip, Codec, Error, Result};
-use utz_common::{grid_cell, GeomEncoding, QuantBits, NO_ZONE};
+use utz_common::{grid_cell, CellTag, GeomEncoding, QuantBits};
 
 /// A geographic position in degrees, **order-neutral by design**: you
 /// construct it with named fields, so there is no argument order to get
@@ -711,13 +711,13 @@ impl Finder {
     #[must_use]
     pub fn lookup_unchecked(&self, position: Position) -> Option<&str> {
         let (px, py) = self.quantize(position);
-        match self.cell_value(px, py) {
-            cell if cell == NO_ZONE => None,
-            cell if cell & 0x8000 == 0 => self.tzid(cell),
-            cell => {
+        match CellTag::from_cell(self.cell_value(px, py)) {
+            CellTag::Empty => None,
+            CellTag::Zone(zone) => self.tzid(zone),
+            CellTag::Border(list_index) => {
                 // border cell: candidates are the POLYS whose rings touch it
                 // — resolve the winner's feature via the parent table
-                let (start, end) = self.list_bounds(cell & 0x7FFF);
+                let (start, end) = self.list_bounds(list_index);
                 let payload = self.payload_bytes();
                 // coarse assets carry no geometry: cell precision IS the
                 // asset's precision — the dominant-first head is the answer
@@ -761,11 +761,11 @@ impl Finder {
     #[must_use]
     pub fn lookup_coarse_unchecked(&self, position: Position) -> Option<&str> {
         let (px, py) = self.quantize(position);
-        match self.cell_value(px, py) {
-            cell if cell == NO_ZONE => None,
-            cell if cell & 0x8000 == 0 => self.tzid(cell),
-            cell => {
-                let (start, _) = self.list_bounds(cell & 0x7FFF);
+        match CellTag::from_cell(self.cell_value(px, py)) {
+            CellTag::Empty => None,
+            CellTag::Zone(zone) => self.tzid(zone),
+            CellTag::Border(list_index) => {
+                let (start, _) = self.list_bounds(list_index);
                 // dominant-first head (a poly id)
                 self.tzid(self.parent_of(read_u16(self.payload_bytes(), start)))
             }

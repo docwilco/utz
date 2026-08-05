@@ -247,8 +247,10 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
             feature_stats.border_cells, poly_stats.border_cells
         );
         println!(
-            "  uniq lists (cap 32767) {:9}          {:9}",
-            feature_stats.uniq_lists, poly_stats.uniq_lists
+            "  uniq lists (cap {}) {:9}          {:9}",
+            utz_common::NO_ZONE,
+            feature_stats.uniq_lists,
+            poly_stats.uniq_lists
         );
         println!(
             "  list_ids (cap 65535)   {:9}          {:9}",

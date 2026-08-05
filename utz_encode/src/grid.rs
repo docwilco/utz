@@ -362,7 +362,7 @@ pub fn intern_csr(grid: &CellGrid, order: Order, areas: &[f64]) -> Csr {
                 lists.push(list);
                 next
             });
-            *primary_cell = 0x8000 | list_index;
+            *primary_cell = utz_common::BORDER_FLAG | list_index;
         } else {
             // interior (single candidate) or no-ring cell: dominant zone
             let zone = if set.len() == 1 { set[0] } else { dominant };

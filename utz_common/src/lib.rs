@@ -38,6 +38,45 @@ pub const PAYLOAD_HEADER_LEN: usize = 64;
 /// flags a border cell carrying a candidate-list index instead.
 pub const NO_ZONE: u16 = 0x7FFF;
 
+/// A primary-grid cell's border flag: the u16's high bit set means the
+/// low 15 bits index a candidate list instead of naming a zone.
+pub const BORDER_FLAG: u16 = 0x8000;
+
+/// The mask selecting a primary-grid cell's 15-bit value, a zone id or
+/// (under [`BORDER_FLAG`]) a candidate-list index. Zone ids and list
+/// indices stay strictly below [`NO_ZONE`], the all-bits-set sentinel.
+pub const CELL_ID_MASK: u16 = 0x7FFF;
+
+/// One decoded primary-grid cell. The wire form is the u16 the
+/// constants above describe; this decoder is shared by the runtime
+/// lookup, the format validator, and the encoder's measurement tools,
+/// so the tag layout is interpreted in exactly one place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CellTag {
+    /// No zone covers the cell.
+    Empty,
+    /// A single zone covers the cell; a lookup answers without any
+    /// point-in-polygon test.
+    Zone(u16),
+    /// A zone boundary passes through the cell; the value indexes the
+    /// cell's candidate list.
+    Border(u16),
+}
+
+impl CellTag {
+    /// Decodes a primary-table cell value.
+    #[must_use]
+    pub const fn from_cell(cell: u16) -> CellTag {
+        if cell & BORDER_FLAG != 0 {
+            CellTag::Border(cell & CELL_ID_MASK)
+        } else if cell == NO_ZONE {
+            CellTag::Empty
+        } else {
+            CellTag::Zone(cell)
+        }
+    }
+}
+
 /// The primary-grid cell containing a lon/lat position, as `(row, col)`:
 /// truncate toward zero, then clamp into the grid. The encoder's
 /// rasterizer, the runtime reader, and the measurement tools all share

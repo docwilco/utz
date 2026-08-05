@@ -27,8 +27,8 @@
 //! runtime PIPs is exactly what the grid indexed.
 
 use scroll::{Pread, Pwrite, LE};
+use utz_common::{CellTag, PayloadHeader, QuantBits, NO_ZONE, PAYLOAD_HEADER_LEN, PROLOGUE_LEN};
 pub use utz_common::{Dataset, MAGIC, VERSION};
-use utz_common::{PayloadHeader, QuantBits, PAYLOAD_HEADER_LEN, PROLOGUE_LEN};
 
 use crate::error::ensure;
 use crate::grid::{self, Order};
@@ -201,11 +201,11 @@ pub fn payload_from_topology(
     );
     let density_weight_floor_e4 = density_weight_floor_e4(params.density_weight_floor)?;
     ensure!(
-        feats.len() < 0x7FFF,
+        feats.len() < usize::from(NO_ZONE),
         Error::FormatLimit {
             what: "feature count (15-bit zone ids)",
             n: feats.len(),
-            max: 0x7FFE
+            max: usize::from(NO_ZONE) - 1
         }
     );
     let qmax = qmax_for(params.quant_bits);
@@ -375,19 +375,19 @@ fn poly_grid(
         }
     }
     ensure!(
-        poly_feats.len() < 0x7FFF,
+        poly_feats.len() < usize::from(NO_ZONE),
         Error::FormatLimit {
             what: "polygon count (15-bit ids)",
             n: poly_feats.len(),
-            max: 0x7FFE
+            max: usize::from(NO_ZONE) - 1
         }
     );
     let cell_grid = grid::build(&poly_feats, params.grid_deg, 8);
     let areas = grid::feat_areas(&poly_feats);
     let mut csr = grid::intern_csr(&cell_grid, Order::CellDominantFirst, &areas);
     for cell in &mut csr.primary {
-        if *cell & 0x8000 == 0 && *cell != 0x7FFF {
-            *cell = parent[*cell as usize];
+        if let CellTag::Zone(poly) = CellTag::from_cell(*cell) {
+            *cell = parent[usize::from(poly)];
         }
     }
     // the format's CSR tables are u16: border-cell tags carry a 15-bit
@@ -395,7 +395,7 @@ fn poly_grid(
     // on a dense dataset can overflow both. Fail loudly instead of the `as
     // u16` wrap silently corrupting the tables.
     ensure!(
-        csr.uniq_lists < 0x7FFF,
+        csr.uniq_lists < usize::from(NO_ZONE),
         Error::GridLists {
             deg: params.grid_deg,
             n: csr.uniq_lists

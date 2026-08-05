@@ -74,7 +74,12 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
             let border = csr
                 .primary
                 .iter()
-                .filter(|&&tag| tag & 0x8000 != 0 && tag != 0x7FFF)
+                .filter(|&&tag| {
+                    matches!(
+                        utz_common::CellTag::from_cell(tag),
+                        utz_common::CellTag::Border(_)
+                    )
+                })
                 .count();
             let hits = points
                 .iter()
@@ -82,14 +87,17 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
                     let (row, col) =
                         utz_common::grid_cell(lon, lat, deg, grid.ncols(), grid.nrows());
                     let tag = csr.primary[row * grid.ncols() + col];
-                    tag & 0x8000 != 0 && tag != 0x7FFF
+                    matches!(
+                        utz_common::CellTag::from_cell(tag),
+                        utz_common::CellTag::Border(_)
+                    )
                 })
                 .count();
 
             let primary_bytes = csr.primary.len() * 2;
             let side_bytes = (csr.list_offsets.len() + csr.list_ids.len()) * 2;
             assert!(
-                csr.uniq_lists < 0x7FFF,
+                csr.uniq_lists < usize::from(utz_common::NO_ZONE),
                 "list index overflows the 15-bit tag at {deg}°"
             );
             assert!(

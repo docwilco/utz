@@ -87,20 +87,20 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     let mut got: Vec<Option<u16>> = Vec::with_capacity(n_points);
     for &(px, py) in &points {
         let tag = csr.primary[cell_of(px, py)];
-        got.push(if tag == 0x7FFF {
-            None
-        } else if tag & 0x8000 == 0 {
-            Some(tag) // interior cell: O(1)
-        } else {
-            pip_needed += 1;
-            let list_index = (tag & 0x7FFF) as usize;
-            let list = &csr.list_ids
-                [csr.list_offsets[list_index] as usize..csr.list_offsets[list_index + 1] as usize];
-            let hit = list.iter().copied().find(|&fid| contains_feat(fid, px, py));
-            if hit.is_none() {
-                fallback += 1;
-            } // quantization pushed the point off every candidate
-            Some(hit.unwrap_or(list[0]))
+        got.push(match utz_common::CellTag::from_cell(tag) {
+            utz_common::CellTag::Empty => None,
+            utz_common::CellTag::Zone(zone) => Some(zone), // interior cell: O(1)
+            utz_common::CellTag::Border(list_index) => {
+                pip_needed += 1;
+                let list_index = usize::from(list_index);
+                let list = &csr.list_ids[csr.list_offsets[list_index] as usize
+                    ..csr.list_offsets[list_index + 1] as usize];
+                let hit = list.iter().copied().find(|&fid| contains_feat(fid, px, py));
+                if hit.is_none() {
+                    fallback += 1;
+                } // quantization pushed the point off every candidate
+                Some(hit.unwrap_or(list[0]))
+            }
         });
     }
     let t_grid = timer.elapsed();
@@ -150,7 +150,10 @@ pub fn run(args: Args) -> utz_build::Result<()> {
                     "  WRONG ({lon:.4},{lat:.4}) grid={:?} lin={:?} cell={}",
                     tzid_of(grid_answer),
                     tzid_of(linear_answer),
-                    if tag & 0x8000 != 0 {
+                    if matches!(
+                        utz_common::CellTag::from_cell(tag),
+                        utz_common::CellTag::Border(_)
+                    ) {
                         "border"
                     } else {
                         "interior"

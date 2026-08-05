@@ -84,10 +84,10 @@ fn early_exit(grid: &grid::CellGrid, csr: &grid::Csr) -> f64 {
     let (mut hit, mut total) = (0u64, 0u64);
     // row-major zip: primary cell c ↔ tallies cell c
     for (&tag, tallies) in csr.primary.iter().zip(grid.tallies.iter()) {
-        if tag & 0x8000 == 0 {
+        let utz_common::CellTag::Border(list_index) = utz_common::CellTag::from_cell(tag) else {
             continue;
-        }
-        let list_index = (tag & 0x7FFF) as usize;
+        };
+        let list_index = usize::from(list_index);
         let first = csr.list_ids[csr.list_offsets[list_index] as usize];
         for &(zone, count) in tallies {
             total += u64::from(count);
