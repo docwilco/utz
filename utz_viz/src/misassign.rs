@@ -72,9 +72,15 @@ pub fn qc(value: f64, mode: Quant, span: f64) -> f64 {
         )]
         Quant::F32 => f64::from(value as f32),
         Quant::I32 => js_round(value * 1e7) / 1e7,
-        Quant::I24 => js_round(value / span * 8_388_607.0) / 8_388_607.0 * span,
-        Quant::I16 => js_round(value / span * 32_767.0) / 32_767.0 * span,
+        Quant::I24 => snap(value, span, utz_encode::qmax_for(24)),
+        Quant::I16 => snap(value, span, utz_encode::qmax_for(16)),
     }
+}
+
+/// The integer-grid snap round trip with JS rounding: quantize onto the
+/// half-range `qmax` grid, dequantize back to degrees.
+fn snap(value: f64, span: f64, qmax: f64) -> f64 {
+    js_round(value / span * qmax) / qmax * span
 }
 
 /// Running misassignment totals: area in km² and people.

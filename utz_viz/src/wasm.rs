@@ -248,11 +248,7 @@ fn simplified_arcs(
     );
     let model = DensityWeight::new(w_min);
     let weighted = w_min < 1.0 && !state.densities.is_empty();
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "qmax = 2^(quant_bits-1)-1 ≤ 2^31-1, exact in f64"
-    )]
-    let qmax = pre_snap_bits.map(|bits| ((1u64 << (bits - 1)) - 1) as f64);
+    let qmax = pre_snap_bits.map(utz_encode::qmax_for);
     let mut base = 0usize;
     state
         .topo
@@ -266,8 +262,14 @@ fn simplified_arcs(
                         .iter()
                         .map(|&(x, y)| {
                             (
-                                (x / 180.0 * quant_max).round() / quant_max * 180.0,
-                                (y / 90.0 * quant_max).round() / quant_max * 90.0,
+                                utz_encode::dq_lon(
+                                    f64::from(utz_encode::q_lon(x, quant_max)),
+                                    quant_max,
+                                ),
+                                utz_encode::dq_lat(
+                                    f64::from(utz_encode::q_lat(y, quant_max)),
+                                    quant_max,
+                                ),
                             )
                         })
                         .collect();

@@ -60,23 +60,10 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
             matches!(quant_bits, 16 | 24 | 32),
             Error::Msg(format!("qbits must be 16/24/32 (got {quant_bits})"))
         );
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "qmax = 2^(bits-1)-1 < 2^31, exact in f64"
-        )]
-        let qmax = ((1u64 << (quant_bits - 1)) - 1) as f64;
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "|coord·qmax| ≤ qmax < 2^31"
-        )]
+        let qmax = utz_encode::qmax_for(quant_bits);
         let quant = |arc: &Vec<(f64, f64)>| -> Vec<(i32, i32)> {
             arc.iter()
-                .map(|&(x, y)| {
-                    (
-                        ((x / 180.0 * qmax).round()) as i32,
-                        ((y / 90.0 * qmax).round()) as i32,
-                    )
-                })
+                .map(|&(x, y)| (utz_encode::q_lon(x, qmax), utz_encode::q_lat(y, qmax)))
                 .collect()
         };
 

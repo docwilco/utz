@@ -66,8 +66,8 @@ pub fn run(args: Args) -> utz_build::Result<()> {
         .collect();
     let (ncols, nrows) = (grid.ncols(), grid.nrows());
     let cell_of = |px: i32, py: i32| -> usize {
-        let lon = f64::from(px) / QMAX_I24 * 180.0;
-        let lat = f64::from(py) / QMAX_I24 * 90.0;
+        let lon = utz_encode::dq_lon(f64::from(px), QMAX_I24);
+        let lat = utz_encode::dq_lat(f64::from(py), QMAX_I24);
         let (row, col) = utz_common::grid_cell(lon, lat, deg, ncols, nrows);
         row * ncols + col
     };
@@ -142,8 +142,8 @@ pub fn run(args: Args) -> utz_build::Result<()> {
             if shown < 8 {
                 shown += 1;
                 let (lon, lat) = (
-                    f64::from(px) / QMAX_I24 * 180.0,
-                    f64::from(py) / QMAX_I24 * 90.0,
+                    utz_encode::dq_lon(f64::from(px), QMAX_I24),
+                    utz_encode::dq_lat(f64::from(py), QMAX_I24),
                 );
                 let tag = csr.primary[cell_of(px, py)];
                 println!(

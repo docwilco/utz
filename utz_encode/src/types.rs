@@ -34,37 +34,9 @@ pub struct Feat {
 // the container (see `push_i24`/`fixed_bytes`) but live in i32 in memory —
 // these helpers quantize at the i24 default width, hence the names. The
 // variable-width equivalents are local closures over a `qmax` (encode/topo).
-pub const QMAX_I24: f64 = 8_388_607.0; // 2^23 - 1
+pub use utz_common::{dq_lat, dq_lon, q_lat, q_lon, qmax_for};
 
-/// The half-range of an `i{bits}` quantization grid (`2^(bits-1) - 1`).
-#[must_use]
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "qmax = 2^(bits-1)-1 ≤ 2^31-1, exact in f64"
-)]
-pub fn qmax_for(bits: u32) -> f64 {
-    ((1u64 << (bits - 1)) - 1) as f64
-}
-
-/// Quantizes a longitude onto a grid with half-range `qmax` (see
-/// [`qmax_for()`]).
-#[must_use]
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "lon bounded, |lon/180*qmax| < i32::MAX; float as saturates"
-)]
-pub fn q_lon(lon: f64, qmax: f64) -> i32 {
-    (lon / 180.0 * qmax).round() as i32
-}
-/// Quantizes a latitude onto a grid with half-range `qmax`.
-#[must_use]
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "lat bounded, |lat/90*qmax| < i32::MAX; float as saturates"
-)]
-pub fn q_lat(lat: f64, qmax: f64) -> i32 {
-    (lat / 90.0 * qmax).round() as i32
-}
+pub const QMAX_I24: f64 = qmax_for(24);
 
 #[must_use]
 pub fn q24_lon(lon: f64) -> i32 {

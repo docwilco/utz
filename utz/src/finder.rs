@@ -772,32 +772,22 @@ impl Finder {
         }
     }
 
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "qmax = 2^(quant_bits-1)-1 ≤ 2^31-1, exact in f64"
-    )]
     fn qmax(&self) -> f64 {
-        ((1u64 << (self.layout.quant_bits.bits() - 1)) - 1) as f64
+        utz_common::qmax_for(self.layout.quant_bits.bits())
     }
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "|v*qmax| < i32::MAX for in-range lon/lat; float as saturates, and the unchecked lookups document that wild input clamps"
-    )]
     fn quantize(&self, position: Position) -> (i32, i32) {
-        // round-half-away like the encoder (f64::round is std-only)
-        let round = |value: f64| (value + if value >= 0.0 { 0.5 } else { -0.5 }) as i32;
         let qmax = self.qmax();
         (
-            round(position.lon / 180.0 * qmax),
-            round(position.lat / 90.0 * qmax),
+            utz_common::q_lon(position.lon, qmax),
+            utz_common::q_lat(position.lat, qmax),
         )
     }
 
     fn cell_value(&self, px: i32, py: i32) -> u16 {
         let (header, qmax) = (&self.layout, self.qmax());
         let cell_deg = f64::from(header.grid_deg);
-        let lon = f64::from(px) / qmax * 180.0;
-        let lat = f64::from(py) / qmax * 90.0;
+        let lon = utz_common::dq_lon(f64::from(px), qmax);
+        let lat = utz_common::dq_lat(f64::from(py), qmax);
         let (row, col) = grid_cell(
             lon,
             lat,

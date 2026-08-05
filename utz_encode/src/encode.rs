@@ -32,7 +32,7 @@ pub use utz_common::{Dataset, MAGIC, VERSION};
 
 use crate::error::ensure;
 use crate::grid::{self, Order};
-use crate::{clean, q_lat, q_lon, qmax_for, topo, Arc, Error, Feat};
+use crate::{clean, dq_lat, dq_lon, q_lat, q_lon, qmax_for, topo, Arc, Error, Feat};
 /// Checked narrowing for serializer counts and offsets: the format stores
 /// these at fixed width and a wrap would silently corrupt the container, so
 /// the helpers panic.
@@ -351,13 +351,12 @@ fn poly_grid(
     params: &Params,
     qmax: f64,
 ) -> crate::Result<(grid::CellGrid, grid::Csr, Vec<u16>)> {
-    let dequantize = |value: i32, half: f64| f64::from(value) / qmax * half;
     let arcs_snapped: Vec<Arc> = clean_geom
         .arcs_q
         .iter()
         .map(|arc| {
             arc.iter()
-                .map(|&(x, y)| (dequantize(x, 180.0), dequantize(y, 90.0)))
+                .map(|&(x, y)| (dq_lon(f64::from(x), qmax), dq_lat(f64::from(y), qmax)))
                 .collect()
         })
         .collect();

@@ -115,8 +115,8 @@ pub fn find_problems(
     bad.locs
         .iter()
         .map(|location| Problem {
-            lon: location.x / qmax * 180.0,
-            lat: location.y / qmax * 90.0,
+            lon: crate::dq_lon(location.x, qmax),
+            lat: crate::dq_lat(location.y, qmax),
             kind: location.kind,
             feat: owner[location.ring],
         })

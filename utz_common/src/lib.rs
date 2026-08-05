@@ -77,6 +77,56 @@ impl CellTag {
     }
 }
 
+/// The half-range of an `i{bits}` quantization grid (`2^(bits-1) - 1`).
+#[must_use]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "qmax = 2^(bits-1)-1 ≤ 2^31-1, exact in f64"
+)]
+pub const fn qmax_for(bits: u32) -> f64 {
+    ((1u64 << (bits - 1)) - 1) as f64
+}
+
+/// Rounds half away from zero via the truncating cast: `core` has no
+/// `f64::round`, and the encoder shares this exact expression with the
+/// reader's lookup quantizer so the two stay bit-identical.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "callers bound |value| below i32::MAX; float as saturates"
+)]
+fn round_q(value: f64) -> i32 {
+    (value + if value >= 0.0 { 0.5 } else { -0.5 }) as i32
+}
+
+/// Quantizes a longitude onto a grid with half-range `qmax` (see
+/// [`qmax_for()`]).
+#[must_use]
+pub fn q_lon(lon: f64, qmax: f64) -> i32 {
+    round_q(lon / 180.0 * qmax)
+}
+
+/// Quantizes a latitude onto a grid with half-range `qmax`.
+#[must_use]
+pub fn q_lat(lat: f64, qmax: f64) -> i32 {
+    round_q(lat / 90.0 * qmax)
+}
+
+/// Dequantizes a longitude from a grid with half-range `qmax`, the
+/// inverse of [`q_lon()`]. The input is `f64` so fractional grid
+/// positions (e.g. ring intersection points) dequantize too; stored
+/// coordinates pass through `f64::from`.
+#[must_use]
+pub fn dq_lon(value: f64, qmax: f64) -> f64 {
+    value / qmax * 180.0
+}
+
+/// Dequantizes a latitude from a grid with half-range `qmax`, the
+/// inverse of [`q_lat()`].
+#[must_use]
+pub fn dq_lat(value: f64, qmax: f64) -> f64 {
+    value / qmax * 90.0
+}
+
 /// The primary-grid cell containing a lon/lat position, as `(row, col)`:
 /// truncate toward zero, then clamp into the grid. The encoder's
 /// rasterizer, the runtime reader, and the measurement tools all share

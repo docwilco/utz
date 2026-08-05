@@ -78,12 +78,7 @@ fn load_feats(bytes: &[u8]) -> (format::PayloadLayout, Vec<Feat>) {
         ),
         "arc-store containers only (geom 0/1)"
     );
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "qmax = 2^(bits-1)-1 < 2^31, exact in f64"
-    )]
-    let qmax = ((1u64 << (header.quant_bits.bits() - 1)) - 1) as f64;
-    let dequantize = |value: i32, half: f64| f64::from(value) / qmax * half;
+    let qmax = utz_encode::qmax_for(header.quant_bits.bits());
     let mut features: Vec<Feat> = (0..header.n_features)
         .map(|_| Feat {
             offset: 0.0,
@@ -111,10 +106,12 @@ fn load_feats(bytes: &[u8]) -> (format::PayloadLayout, Vec<Feat>) {
                 if reversed {
                     arc.reverse();
                 }
-                ring.extend(
-                    arc.iter()
-                        .map(|&(x, y)| (dequantize(x, 180.0), dequantize(y, 90.0))),
-                );
+                ring.extend(arc.iter().map(|&(x, y)| {
+                    (
+                        utz_encode::dq_lon(f64::from(x), qmax),
+                        utz_encode::dq_lat(f64::from(y), qmax),
+                    )
+                }));
             }
             position = ref_position;
             if ring.len() > 1 && ring.first() == ring.last() {
