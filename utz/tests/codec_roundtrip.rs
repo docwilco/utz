@@ -11,12 +11,12 @@
     feature = "xz"
 ))]
 
-use utz_common::Lcg;
+use utz_common::{Lcg, PAYLOAD_SEED};
 
 /// A few MB of compressible-but-not-trivial payload: varint-ish noise
 /// with runs, deterministic via the workspace LCG.
 fn payload() -> Vec<u8> {
-    let mut lcg = Lcg::new(0x757a_7472_6970);
+    let mut lcg = Lcg::new(PAYLOAD_SEED);
     let mut out = Vec::with_capacity(4 << 20);
     while out.len() < 4 << 20 {
         let word = lcg.next_u64();

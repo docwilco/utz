@@ -122,7 +122,7 @@ fn lookup(refs: &[Ref], lon: f64, lat: f64) -> String {
     String::new()
 }
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {
-    utz_common::gen_pts(0x1234_5678, n)
+    utz_common::gen_pts(utz_common::POINT_SEED, n)
 }
 fn xz_dmax(raw: &[u8]) -> usize {
     use lzma_rust2::Write as _; // no_std lzma-rust2 XzWriter

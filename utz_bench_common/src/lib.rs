@@ -9,12 +9,12 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-/// Generates deterministic pseudo-random lon/lat points (with the same
-/// seed as the `utz_build` measurement commands, so numbers are
-/// comparable).
+/// Generates deterministic pseudo-random lon/lat points (from
+/// `utz_common::POINT_SEED`, the same seed as the measurement commands,
+/// so numbers are comparable).
 #[must_use]
 pub fn gen_pts(count: usize) -> Vec<(f64, f64)> {
-    utz_common::gen_pts(0x1234_5678, count)
+    utz_common::gen_pts(utz_common::POINT_SEED, count)
 }
 
 pub struct BenchResult {

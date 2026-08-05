@@ -131,5 +131,5 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
 }
 
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {
-    utz_common::gen_pts(0x1234_5678, n)
+    utz_common::gen_pts(utz_common::POINT_SEED, n)
 }

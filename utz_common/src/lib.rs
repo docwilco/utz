@@ -374,6 +374,15 @@ impl Lcg {
     }
 }
 
+/// The workspace-wide seed for `gen_pts()` point sampling. Every bench
+/// and measurement command draws the same point sequence from it, so
+/// lookup numbers stay comparable across tools.
+pub const POINT_SEED: u64 = 0x1234_5678;
+
+/// The workspace-wide seed for pseudo-random payload bytes in codec
+/// roundtrip tests (ASCII `uztrip`).
+pub const PAYLOAD_SEED: u64 = 0x757a_7472_6970;
+
 /// Generates `count` uniform world points `(lon, lat)` from `seed`. This
 /// is the shared sampler behind the measurement commands and benches: the
 /// same seed gives the same points, so numbers stay comparable across
