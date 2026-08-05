@@ -13,12 +13,16 @@
 
 use utz_common::{Lcg, PAYLOAD_SEED};
 
+/// 4 MiB: large enough that encoder-declared window and dictionary
+/// parameters come into play on the reader side.
+const PAYLOAD_SIZE: usize = 4 << 20;
+
 /// A few MB of compressible-but-not-trivial payload: varint-ish noise
 /// with runs, deterministic via the workspace LCG.
 fn payload() -> Vec<u8> {
     let mut lcg = Lcg::new(PAYLOAD_SEED);
-    let mut out = Vec::with_capacity(4 << 20);
-    while out.len() < 4 << 20 {
+    let mut out = Vec::with_capacity(PAYLOAD_SIZE);
+    while out.len() < PAYLOAD_SIZE {
         let word = lcg.next_u64();
         // short pseudo-runs make it compress like real section data
         let run = usize::try_from(word & 0x1F).expect("5-bit mask fits") + 1;
