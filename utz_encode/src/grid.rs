@@ -14,7 +14,46 @@ use std::collections::{HashMap, HashSet};
 use ndarray::Array2;
 
 use crate::Feat;
-use utz_common::NO_ZONE;
+use utz_common::{grid_cell, NO_ZONE};
+
+/// The grid dimensions for a cell size, `(ncols, nrows)` =
+/// `ceil(360/deg) × ceil(180/deg)`. The sweep tools share this with the
+/// encoder so their cell counts measure exactly the grid it builds.
+#[must_use]
+pub fn grid_dims(deg: f64) -> (usize, usize) {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "deg >= 0.1 so at most 3600 cells; float as saturates"
+    )]
+    let dims = ((360.0 / deg).ceil() as usize, (180.0 / deg).ceil() as usize);
+    dims
+}
+
+/// Walks the segment `start`→`end` in `deg`-sized steps at 2×
+/// oversampling (the rasterizer's edge density), visiting every
+/// interpolated point including both endpoints. Cell membership per
+/// point is [`utz_common::grid_cell()`]; the sweep tools share this walk
+/// so a change to the sampling density cannot leave them measuring a
+/// different rasterization than the encoder's.
+pub fn walk_edge(start: (f64, f64), end: (f64, f64), deg: f64, visit: &mut impl FnMut(f64, f64)) {
+    let (x0, y0) = start;
+    let (x1, y1) = end;
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "span/deg bounded by world size; float as saturates"
+    )]
+    let steps = ((((x1 - x0).abs()).max((y1 - y0).abs()) / deg * 2.0).ceil() as usize).max(1);
+    for step in 0..=steps {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "step ≤ steps ≤ 2·360/deg ≪ 2^53; interpolation parameter"
+        )]
+        let t = step as f64 / steps as f64;
+        visit(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+    }
+}
 
 /// Cell arrays are `[row, col]`-indexed and iterate row-major, the same
 /// order the primary table serializes in.
@@ -51,12 +90,7 @@ impl CellGrid {
 /// Panics if any coordinate is NaN (scanline crossings become unsortable).
 #[must_use]
 pub fn build(feats: &[Feat], deg: f64, subdivision: usize) -> CellGrid {
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "deg >= 0.1 so at most 3600 cells; float as saturates"
-    )]
-    let (ncols, nrows) = ((360.0 / deg).ceil() as usize, (180.0 / deg).ceil() as usize);
+    let (ncols, nrows) = grid_dims(deg);
 
     let mut sets = edge_walk(feats, deg, ncols, nrows);
     let owner = subcell_owners(
@@ -116,41 +150,16 @@ pub fn build(feats: &[Feat], deg: f64, subdivision: usize) -> CellGrid {
 /// cell with ≥2 candidates is a border cell needing PIP.
 fn edge_walk(feats: &[Feat], deg: f64, ncols: usize, nrows: usize) -> Array2<HashSet<u16>> {
     let mut sets: Array2<HashSet<u16>> = Array2::from_elem((nrows, ncols), HashSet::new());
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::cast_possible_wrap,
-        reason = "cast saturates then clamped to grid range"
-    )]
-    let cell = |lon: f64, lat: f64| -> [usize; 2] {
-        let col = (((lon + 180.0) / deg) as isize).clamp(0, ncols as isize - 1) as usize;
-        let row = (((lat + 90.0) / deg) as isize).clamp(0, nrows as isize - 1) as usize;
-        [row, col]
-    };
     for (feature_id, feature) in feats.iter().enumerate() {
+        let feature_id = u16::try_from(feature_id).expect("feature id fits u16");
         for poly in &feature.polys {
             for ring in poly {
                 let ring_len = ring.len();
                 for i in 0..ring_len {
-                    let (x0, y0) = ring[i];
-                    let (x1, y1) = ring[(i + 1) % ring_len];
-                    #[expect(
-                        clippy::cast_possible_truncation,
-                        clippy::cast_sign_loss,
-                        reason = "span/deg bounded by world size; float as saturates"
-                    )]
-                    let steps = ((((x1 - x0).abs()).max((y1 - y0).abs()) / deg * 2.0).ceil()
-                        as usize)
-                        .max(1);
-                    for step in 0..=steps {
-                        #[expect(
-                            clippy::cast_precision_loss,
-                            reason = "step ≤ steps ≤ 2·360/deg ≪ 2^53; interpolation parameter"
-                        )]
-                        let t = step as f64 / steps as f64;
-                        sets[cell(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)]
-                            .insert(u16::try_from(feature_id).expect("feature id fits u16"));
-                    }
+                    walk_edge(ring[i], ring[(i + 1) % ring_len], deg, &mut |lon, lat| {
+                        let (row, col) = grid_cell(lon, lat, deg, ncols, nrows);
+                        sets[[row, col]].insert(feature_id);
+                    });
                 }
             }
         }

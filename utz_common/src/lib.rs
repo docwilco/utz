@@ -38,6 +38,26 @@ pub const PAYLOAD_HEADER_LEN: usize = 64;
 /// flags a border cell carrying a candidate-list index instead.
 pub const NO_ZONE: u16 = 0x7FFF;
 
+/// The primary-grid cell containing a lon/lat position, as `(row, col)`:
+/// truncate toward zero, then clamp into the grid. The encoder's
+/// rasterizer, the runtime reader, and the measurement tools all share
+/// this one formula, so what a lookup probes is exactly what the grid
+/// indexed.
+#[must_use]
+pub fn grid_cell(lon: f64, lat: f64, deg: f64, ncols: usize, nrows: usize) -> (usize, usize) {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_wrap,
+        reason = "cast saturates, then the clamp keeps the index in grid range"
+    )]
+    let cell = (
+        (((lat + 90.0) / deg) as i64).clamp(0, nrows as i64 - 1) as usize,
+        (((lon + 180.0) / deg) as i64).clamp(0, ncols as i64 - 1) as usize,
+    );
+    cell
+}
+
 /// The container's one fixed header record, which carries everything the
 /// reader needs to locate every section. It sits in PLAINTEXT right after
 /// the outer header (only the section blob after it is compressed), so

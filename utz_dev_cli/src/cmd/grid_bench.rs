@@ -68,20 +68,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     let cell_of = |px: i32, py: i32| -> usize {
         let lon = f64::from(px) / QMAX_I24 * 180.0;
         let lat = f64::from(py) / QMAX_I24 * 90.0;
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            clippy::cast_possible_wrap,
-            reason = "cell index, fraction dropped then clamped"
-        )]
-        let col = (((lon + 180.0) / deg) as isize).clamp(0, ncols as isize - 1) as usize;
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            clippy::cast_possible_wrap,
-            reason = "cell index, fraction dropped then clamped"
-        )]
-        let row = (((lat + 90.0) / deg) as isize).clamp(0, nrows as isize - 1) as usize;
+        let (row, col) = utz_common::grid_cell(lon, lat, deg, ncols, nrows);
         row * ncols + col
     };
     let contains_feat = |fid: u16, px: i32, py: i32| -> bool {

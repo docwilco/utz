@@ -79,22 +79,8 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
             let hits = points
                 .iter()
                 .filter(|&&(lon, lat)| {
-                    #[expect(
-                        clippy::cast_possible_truncation,
-                        clippy::cast_sign_loss,
-                        clippy::cast_possible_wrap,
-                        reason = "cell index, fraction dropped then clamped"
-                    )]
-                    let col = (((lon + 180.0) / deg) as isize).clamp(0, grid.ncols() as isize - 1)
-                        as usize;
-                    #[expect(
-                        clippy::cast_possible_truncation,
-                        clippy::cast_sign_loss,
-                        clippy::cast_possible_wrap,
-                        reason = "cell index, fraction dropped then clamped"
-                    )]
-                    let row = (((lat + 90.0) / deg) as isize).clamp(0, grid.nrows() as isize - 1)
-                        as usize;
+                    let (row, col) =
+                        utz_common::grid_cell(lon, lat, deg, grid.ncols(), grid.nrows());
                     let tag = csr.primary[row * grid.ncols() + col];
                     tag & 0x8000 != 0 && tag != 0x7FFF
                 })

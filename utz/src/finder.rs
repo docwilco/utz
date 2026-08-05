@@ -32,7 +32,7 @@ use alloc::vec::Vec;
 use crate::decompress;
 use crate::format::{self, read_fixed, read_u16, read_u32, read_varint, unzigzag, PayloadLayout};
 use crate::{caps, pip, Codec, Error, Result};
-use utz_common::{GeomEncoding, QuantBits, NO_ZONE};
+use utz_common::{grid_cell, GeomEncoding, QuantBits, NO_ZONE};
 
 /// A geographic position in degrees, **order-neutral by design**: you
 /// construct it with named fields, so there is no argument order to get
@@ -793,22 +793,21 @@ impl Finder {
         )
     }
 
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "cast saturates then clamped to grid range"
-    )]
     fn cell_value(&self, px: i32, py: i32) -> u16 {
         let (header, qmax) = (&self.layout, self.qmax());
         let cell_deg = f64::from(header.grid_deg);
         let lon = f64::from(px) / qmax * 180.0;
         let lat = f64::from(py) / qmax * 90.0;
-        let col =
-            (((lon + 180.0) / cell_deg) as i64).clamp(0, i64::from(header.ncols) - 1) as usize;
-        let row = (((lat + 90.0) / cell_deg) as i64).clamp(0, i64::from(header.nrows) - 1) as usize;
+        let (row, col) = grid_cell(
+            lon,
+            lat,
+            cell_deg,
+            usize::from(header.ncols),
+            usize::from(header.nrows),
+        );
         read_u16(
             self.payload_bytes(),
-            header.primary + (row * header.ncols as usize + col) * 2,
+            header.primary + (row * usize::from(header.ncols) + col) * 2,
         )
     }
 

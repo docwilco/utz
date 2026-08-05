@@ -39,57 +39,21 @@ pub fn run(args: Args) -> utz_build::Result<()> {
 
     for deg in 1u32..=20 {
         let deg_f64 = f64::from(deg);
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "ceil(360/deg) is a small positive integer"
-        )]
-        let ncols = ((360.0 / deg_f64).ceil()) as usize;
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "ceil(180/deg) is a small positive integer"
-        )]
-        let nrows = ((180.0 / deg_f64).ceil()) as usize;
+        let (ncols, nrows) = utz_encode::grid::grid_dims(deg_f64);
         let total = ncols * nrows;
         let mut border = vec![false; total];
-        let cell = |lon: f64, lat: f64| -> usize {
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::cast_sign_loss,
-                clippy::cast_possible_wrap,
-                reason = "cell index, fraction dropped then clamped"
-            )]
-            let col = (((lon + 180.0) / deg_f64) as isize).clamp(0, ncols as isize - 1) as usize;
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::cast_sign_loss,
-                clippy::cast_possible_wrap,
-                reason = "cell index, fraction dropped then clamped"
-            )]
-            let row = (((lat + 90.0) / deg_f64) as isize).clamp(0, nrows as isize - 1) as usize;
-            row * ncols + col
-        };
         for ring in &rings {
             let ring_len = ring.len();
             for i in 0..ring_len {
-                let (x0, y0) = ring[i];
-                let (x1, y1) = ring[(i + 1) % ring_len];
-                #[expect(
-                    clippy::cast_possible_truncation,
-                    clippy::cast_sign_loss,
-                    reason = "edge span in cells is small and non-negative"
-                )]
-                let span = (((x1 - x0).abs()).max((y1 - y0).abs()) / deg_f64 * 2.0).ceil() as usize;
-                let steps = span.max(1);
-                for step in 0..=steps {
-                    #[expect(
-                        clippy::cast_precision_loss,
-                        reason = "step ≤ steps = small per-edge cell span; exact"
-                    )]
-                    let t = step as f64 / steps as f64;
-                    border[cell(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)] = true;
-                }
+                utz_encode::grid::walk_edge(
+                    ring[i],
+                    ring[(i + 1) % ring_len],
+                    deg_f64,
+                    &mut |lon, lat| {
+                        let (row, col) = utz_common::grid_cell(lon, lat, deg_f64, ncols, nrows);
+                        border[row * ncols + col] = true;
+                    },
+                );
             }
         }
         let border_count = border.iter().filter(|&&x| x).count();
