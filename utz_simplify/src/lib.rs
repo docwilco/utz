@@ -275,8 +275,7 @@ pub fn visvalingam(points: &[(f64, f64)], min_area: f64) -> Vec<(f64, f64)> {
 #[must_use]
 pub fn visvalingam_w(points: &[(f64, f64)], min_area: f64, weights: &[f64]) -> Vec<(f64, f64)> {
     assert_eq!(points.len(), weights.len(), "one weight per point");
-    let w2: Vec<f64> = weights.iter().map(|&weight| weight * weight).collect();
-    vw_impl(points, min_area, |i| w2[i])
+    vw_impl(points, min_area, |i| weights[i] * weights[i])
 }
 
 /// A heap entry for [`vw_impl()`]; the max-heap is ordered by a Reverse-style
@@ -303,14 +302,25 @@ impl PartialOrd for VwEntry {
     }
 }
 
+/// One working vertex of the VW pass: the point, its squared weight, its
+/// neighbors in the doubly linked list of surviving vertices, and the
+/// liveness/staleness state the heap entries are checked against. The
+/// endpoint sentinels (`previous` of the first vertex, `next` of the last)
+/// are out of bounds but never followed, because endpoints are never
+/// removed.
+struct VwVertex {
+    point: (f64, f64),
+    w2: f64,
+    previous: usize,
+    next: usize,
+    alive: bool,
+    stamp: u32,
+}
+
 /// The shared VW core: heap entries hold the *effective* area
-/// `triangle_area / w2_of(index)`, compared against the unscaled `min_area`
-/// (division by 1.0 is bit-exact, so the scalar path is unchanged).
-fn vw_impl(
-    points: &[(f64, f64)],
-    min_area: f64,
-    w2_of: impl Fn(usize) -> f64 + Copy,
-) -> Vec<(f64, f64)> {
+/// `triangle_area / w2`, compared against the unscaled `min_area` (division
+/// by 1.0 is bit-exact, so the scalar path is unchanged).
+fn vw_impl(points: &[(f64, f64)], min_area: f64, w2_of: impl Fn(usize) -> f64) -> Vec<(f64, f64)> {
     let n = points.len();
     if n < 3 || min_area <= 0.0 {
         return points.to_vec();
@@ -318,49 +328,61 @@ fn vw_impl(
     let triangle_area = |a: (f64, f64), b: (f64, f64), c: (f64, f64)| -> f64 {
         0.5 * ((b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)).abs()
     };
-    let mut previous: Vec<usize> = (0..n).map(|i| i.wrapping_sub(1)).collect();
-    let mut next: Vec<usize> = (1..=n).collect();
-    let mut alive = vec![true; n];
-    let mut stamp = vec![0u32; n];
+    let mut vertices: Vec<VwVertex> = points
+        .iter()
+        .enumerate()
+        .map(|(i, &point)| VwVertex {
+            point,
+            w2: w2_of(i),
+            previous: i.wrapping_sub(1),
+            next: i + 1,
+            alive: true,
+            stamp: 0,
+        })
+        .collect();
+    let effective_area = |vertices: &[VwVertex], i: usize| -> f64 {
+        let vertex = &vertices[i];
+        triangle_area(
+            vertices[vertex.previous].point,
+            vertex.point,
+            vertices[vertex.next].point,
+        ) / vertex.w2
+    };
 
     let mut heap = std::collections::BinaryHeap::with_capacity(n);
     for i in 1..n - 1 {
         heap.push(VwEntry {
-            area: triangle_area(points[i - 1], points[i], points[i + 1]) / w2_of(i),
+            area: effective_area(&vertices, i),
             index: i,
             stamp: 0,
         });
     }
     while let Some(entry) = heap.pop() {
-        if !alive[entry.index] || entry.stamp != stamp[entry.index] {
+        if !vertices[entry.index].alive || entry.stamp != vertices[entry.index].stamp {
             continue; // stale entry
         }
         if entry.area >= min_area {
             break;
         }
-        alive[entry.index] = false;
-        let (previous_index, next_index) = (previous[entry.index], next[entry.index]);
-        next[previous_index] = next_index;
-        previous[next_index] = previous_index;
+        vertices[entry.index].alive = false;
+        let (previous_index, next_index) =
+            (vertices[entry.index].previous, vertices[entry.index].next);
+        vertices[previous_index].next = next_index;
+        vertices[next_index].previous = previous_index;
         for neighbor in [previous_index, next_index] {
             if neighbor != 0 && neighbor != n - 1 {
-                stamp[neighbor] += 1;
+                vertices[neighbor].stamp += 1;
                 heap.push(VwEntry {
-                    area: triangle_area(
-                        points[previous[neighbor]],
-                        points[neighbor],
-                        points[next[neighbor]],
-                    ) / w2_of(neighbor),
+                    area: effective_area(&vertices, neighbor),
                     index: neighbor,
-                    stamp: stamp[neighbor],
+                    stamp: vertices[neighbor].stamp,
                 });
             }
         }
     }
-    points
-        .iter()
-        .zip(alive)
-        .filter_map(|(&point, is_alive)| is_alive.then_some(point))
+    vertices
+        .into_iter()
+        .filter_map(|vertex| vertex.alive.then_some(vertex.point))
         .collect()
 }
 
