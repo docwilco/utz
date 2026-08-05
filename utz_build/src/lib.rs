@@ -17,7 +17,7 @@
 //!
 //! ```no_run
 //! utz_build::Config::new()
-//!     .dataset("now")     // [land-]now | 1970 | all
+//!     .dataset(utz_build::Dataset::Now)
 //!     .epsilon_meters(500.0)  // simplification tolerance ceiling
 //!     .quant_bits(24)     // 16 / 24 / 32
 //!     .codec(utz_build::Codec::Gzip)

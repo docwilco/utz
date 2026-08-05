@@ -6,7 +6,7 @@
 //! ```no_run
 //! // build.rs
 //! let out = utz_build::Config::new()
-//!     .dataset("now")
+//!     .dataset(utz_build::Dataset::Now)
 //!     .epsilon_meters(500.0)
 //!     .generate()
 //!     .unwrap();
@@ -29,14 +29,14 @@
 use std::path::PathBuf;
 
 use utz_common::presets::{self, Recipe};
-use utz_encode::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgorithm};
+use utz_encode::encode::{self, Codec, Dataset, GeomEncoding, Params, SimplifyAlgorithm};
 
 /// The builder for a custom `.utz` asset. The defaults are dataset `now`,
 /// RDP ε=500 m, no density weighting, i24, a 2° grid, gzip, varint-arcs
 /// geometry, and output to `$OUT_DIR/tz.utz`.
 #[derive(Clone, Debug)]
 pub struct Config {
-    dataset: String,
+    dataset: Dataset,
     epsilon_m: f64,
     quant_bits: u32,
     grid_deg: f64,
@@ -51,7 +51,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            dataset: "now".into(),
+            dataset: Dataset::Now,
             epsilon_m: 500.0,
             quant_bits: 24,
             grid_deg: 2.0,
@@ -114,11 +114,12 @@ impl Config {
         Config::from(&presets::ACCURATE)
     }
 
-    /// Sets the dataset: `[land-]now|1970|all` (see
-    /// [`Dataset`](crate::Dataset)).
+    /// Sets the dataset, default [`Dataset::Now`]. A name string
+    /// (`[land-]now|1970|all`) parses via
+    /// [`dataset()`](crate::dataset()).
     #[must_use]
-    pub fn dataset(mut self, dataset: &str) -> Self {
-        self.dataset = dataset.into();
+    pub fn dataset(mut self, dataset: Dataset) -> Self {
+        self.dataset = dataset;
         self
     }
 
@@ -215,15 +216,15 @@ impl Config {
     /// fails the build instead of the first load.
     ///
     /// # Errors
-    /// Returns an error for an invalid dataset name, out-of-range
-    /// `quant_bits`/`grid_deg`, a source download/parse failure, an
-    /// encoding failure, a missing `OUT_DIR` when no `out_path` is set,
-    /// or an I/O failure writing the asset and its guard file.
+    /// Returns an error for out-of-range `quant_bits`/`grid_deg`, a
+    /// source download/parse failure, an encoding failure, a missing
+    /// `OUT_DIR` when no `out_path` is set, or an I/O failure writing
+    /// the asset and its guard file.
     pub fn generate(self) -> crate::Result<PathBuf> {
         let cache = self.cache_dir.clone().unwrap_or_else(crate::cache_dir);
-        let (features, release) = crate::load_with_release_in(&self.dataset, &cache)?;
+        let (features, release) = crate::loader::load_tzbb(self.dataset, &cache)?;
         let params = Params {
-            dataset: crate::dataset(&self.dataset)?,
+            dataset: self.dataset,
             tzbb_release: &release,
             epsilon_m: self.epsilon_m,
             quant_bits: self.quant_bits,
@@ -267,7 +268,7 @@ impl Config {
 impl From<&Recipe> for Config {
     fn from(recipe: &Recipe) -> Config {
         let config = Config::new()
-            .dataset(recipe.dataset.name())
+            .dataset(recipe.dataset)
             .epsilon_meters(recipe.epsilon_m)
             .quant_bits(recipe.quant_bits.bits())
             .grid_deg(recipe.grid_deg)

@@ -109,7 +109,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     });
 
     let mut config = Config::new()
-        .dataset(&args.ds)
+        .dataset(utz_build::dataset(&args.ds)?)
         .epsilon_meters(args.epsilon_m)
         .quant_bits(args.qbits)
         .grid_deg(args.grid_deg)
