@@ -38,5 +38,5 @@ fn eager_from_slice_matches_lazy_and_preload() {
             hits += usize::from(want.is_some());
         }
     }
-    assert!(hits > 1000, "grid should mostly resolve ({hits} hits)");
+    assert_eq!(hits, 1800, "ocean-covered dataset resolves everywhere");
 }
