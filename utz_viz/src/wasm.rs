@@ -482,9 +482,11 @@ pub extern "C" fn utz_enc_tzid_len(i: u32) -> u32 {
 
 /// Runs stage 2 of the live encode: it compresses the resident payload
 /// with one codec byte (1 gzip/zlib, 3 brotli, 4 xz; zstd is feature-gated
-/// off in the wasm build) and returns the compressed size in bytes; the
-/// shipped `.utz` adds a 10-byte outer header. Returns 0 on error, on an
-/// unsupported codec, or when there is no payload.
+/// off in the wasm build) and returns the byte size a shipped `.utz` of
+/// that codec would weigh: the prologue and the plaintext payload header
+/// plus the compressed sections, exactly as `encode::finish()` lays them
+/// out. Returns 0 on error, on an unsupported codec, or when there is no
+/// payload.
 #[no_mangle]
 pub extern "C" fn utz_enc_compress(codec: u32) -> u32 {
     let Some(state) = (unsafe { &*core::ptr::addr_of!(STATE) }) else {
@@ -499,7 +501,10 @@ pub extern "C" fn utz_enc_compress(codec: u32) -> u32 {
         4 => Codec::Xz,
         _ => return 0,
     };
-    encode::compress(&state.payload, codec).map_or(0, |compressed| len_u32(compressed.len()))
+    let sections = &state.payload[encode::PAYLOAD_HEADER_LEN..];
+    encode::compress(sections, codec).map_or(0, |compressed| {
+        len_u32(encode::PROLOGUE_LEN + encode::PAYLOAD_HEADER_LEN + compressed.len())
+    })
 }
 
 /// The simplify worker's misassignment state holds the last arc's

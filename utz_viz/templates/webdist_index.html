@@ -1285,12 +1285,12 @@ function encRender() {
         (cleanV || st[10] ? ' · clean −' + cleanV.toLocaleString() + ' v −' + st[10] + ' rings' : '') +
         '</span></div>';
     }
-    // one line for all codecs; +10 = outer container header ("uTZ1" | ver |
-    // codec | raw_len) — what a shipped .utz of that codec would weigh
+    // one line for all codecs; utz_enc_compress already returns the full
+    // shipped .utz size (prologue + plaintext header + compressed sections)
     h += '<div class="st"><span style="margin-left:22px">' + ENC_CODECS.map(function (c) {
       var r = v.codecs[c.id];
-      return c.name + ' ' + (!r ? '…' : !r.bytes ? 'failed' : fmtB(r.bytes + 10) +
-        ' <span class="pct">(' + (100 * (r.bytes + 10) / v.payload.len).toFixed(1) + '%)</span>');
+      return c.name + ' ' + (!r ? '…' : !r.bytes ? 'failed' : fmtB(r.bytes) +
+        ' <span class="pct">(' + (100 * r.bytes / v.payload.len).toFixed(1) + '%)</span>');
     }).join(' · ') + '</span></div>';
     s.body.innerHTML = h;
   });

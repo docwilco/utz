@@ -27,8 +27,8 @@
 //! runtime PIPs is exactly what the grid indexed.
 
 use scroll::{Pread, Pwrite, LE};
-use utz_common::{CellTag, PayloadHeader, QuantBits, NO_ZONE, PAYLOAD_HEADER_LEN, PROLOGUE_LEN};
-pub use utz_common::{Dataset, MAGIC, VERSION};
+use utz_common::{CellTag, PayloadHeader, QuantBits, NO_ZONE};
+pub use utz_common::{Dataset, MAGIC, PAYLOAD_HEADER_LEN, PROLOGUE_LEN, VERSION};
 
 use crate::error::ensure;
 use crate::grid::{self, Order};
