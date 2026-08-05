@@ -341,6 +341,46 @@ pub enum GeomEncoding {
     Coarse = 3,
 }
 
+impl GeomEncoding {
+    /// The canonical CLI name (`varint-arcs`, `fixed-width-arcs`,
+    /// `full-rings`, or `coarse`), a spelling
+    /// [`from_name()`](GeomEncoding::from_name) accepts.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            GeomEncoding::VarintArcs => "varint-arcs",
+            GeomEncoding::FixedWidthArcs => "fixed-width-arcs",
+            GeomEncoding::FullRings => "full-rings",
+            GeomEncoding::Coarse => "coarse",
+        }
+    }
+
+    /// The encoding a name selects: the canonical names plus the
+    /// `varint`/`delta`, `fixed`, and `eager`/`image` aliases.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<GeomEncoding> {
+        match name {
+            "varint-arcs" | "varint" | "delta" => Some(GeomEncoding::VarintArcs),
+            "fixed-width-arcs" | "fixed" => Some(GeomEncoding::FixedWidthArcs),
+            "full-rings" | "eager" | "image" => Some(GeomEncoding::FullRings),
+            "coarse" => Some(GeomEncoding::Coarse),
+            _ => None,
+        }
+    }
+
+    /// The encoding a header byte names, if any.
+    #[must_use]
+    pub const fn from_byte(byte: u8) -> Option<GeomEncoding> {
+        match byte {
+            0 => Some(GeomEncoding::VarintArcs),
+            1 => Some(GeomEncoding::FixedWidthArcs),
+            2 => Some(GeomEncoding::FullRings),
+            3 => Some(GeomEncoding::Coarse),
+            _ => None,
+        }
+    }
+}
+
 #[cfg_attr(
     on_docsrs,
     doc = "[`utz_simplify`]: https://docs.rs/utz_simplify/latest/utz_simplify/index.html"
@@ -380,6 +420,31 @@ pub enum SimplifyAlgorithm {
 }
 
 impl SimplifyAlgorithm {
+    /// The canonical CLI name (`none|rdp|vw|ii`), a spelling
+    /// [`from_name()`](SimplifyAlgorithm::from_name) accepts.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            SimplifyAlgorithm::None => "none",
+            SimplifyAlgorithm::Rdp => "rdp",
+            SimplifyAlgorithm::Visvalingam => "vw",
+            SimplifyAlgorithm::ImaiIri => "ii",
+        }
+    }
+
+    /// The algorithm a name selects: the canonical names plus the long
+    /// `visvalingam` and `imai-iri` aliases.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<SimplifyAlgorithm> {
+        match name {
+            "none" => Some(SimplifyAlgorithm::None),
+            "rdp" => Some(SimplifyAlgorithm::Rdp),
+            "vw" | "visvalingam" => Some(SimplifyAlgorithm::Visvalingam),
+            "ii" | "imai-iri" => Some(SimplifyAlgorithm::ImaiIri),
+            _ => None,
+        }
+    }
+
     /// The algorithm a header byte names, if any.
     #[must_use]
     pub const fn from_byte(byte: u8) -> Option<SimplifyAlgorithm> {
@@ -460,6 +525,27 @@ impl Dataset {
         matches!(self, Dataset::Now | Dataset::Since1970 | Dataset::All)
     }
 
+    /// The dataset a name selects (`[land-]now|1970|all`; the legacy
+    /// `osm`/`osm1970` and `full`/`comprehensive` aliases are accepted).
+    /// This is the inverse of [`name()`](Dataset::name), kept beside it
+    /// so the two spellings cannot drift apart.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Dataset> {
+        let (land_only, rest) = match name.strip_prefix("land-") {
+            Some(stripped) => (true, stripped),
+            None => (false, name),
+        };
+        match (rest, land_only) {
+            ("now" | "osm", false) => Some(Dataset::Now),
+            ("now" | "osm", true) => Some(Dataset::NowLandOnly),
+            ("1970" | "osm1970", false) => Some(Dataset::Since1970),
+            ("1970" | "osm1970", true) => Some(Dataset::Since1970LandOnly),
+            ("all" | "full" | "comprehensive", false) => Some(Dataset::All),
+            ("all" | "full" | "comprehensive", true) => Some(Dataset::AllLandOnly),
+            _ => None,
+        }
+    }
+
     /// The dataset a header byte names, if any.
     #[must_use]
     pub const fn from_byte(byte: u8) -> Option<Dataset> {
@@ -485,6 +571,48 @@ pub enum Codec {
     Zstd = 2,
     Brotli = 3,
     Xz = 4,
+}
+
+impl Codec {
+    /// The canonical CLI name (`none|gzip|zstd|brotli|xz`), a spelling
+    /// [`from_name()`](Codec::from_name) accepts.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Codec::Uncompressed => "none",
+            Codec::Gzip => "gzip",
+            Codec::Zstd => "zstd",
+            Codec::Brotli => "brotli",
+            Codec::Xz => "xz",
+        }
+    }
+
+    /// The codec a name selects: the canonical names plus the
+    /// `uncompressed` alias.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Codec> {
+        match name {
+            "none" | "uncompressed" => Some(Codec::Uncompressed),
+            "gzip" => Some(Codec::Gzip),
+            "zstd" => Some(Codec::Zstd),
+            "brotli" => Some(Codec::Brotli),
+            "xz" => Some(Codec::Xz),
+            _ => None,
+        }
+    }
+
+    /// The codec a header byte names, if any.
+    #[must_use]
+    pub const fn from_byte(byte: u8) -> Option<Codec> {
+        match byte {
+            0 => Some(Codec::Uncompressed),
+            1 => Some(Codec::Gzip),
+            2 => Some(Codec::Zstd),
+            3 => Some(Codec::Brotli),
+            4 => Some(Codec::Xz),
+            _ => None,
+        }
+    }
 }
 
 /// Knuth's MMIX LCG multiplier (TAOCP vol. 2, 3rd ed., §3.3.4 table 1).
@@ -555,6 +683,53 @@ mod tests {
         Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgorithm,
         PAYLOAD_HEADER_LEN,
     };
+
+    #[test]
+    fn enum_names_round_trip_through_from_name() {
+        for dataset in [
+            Dataset::Now,
+            Dataset::Since1970,
+            Dataset::All,
+            Dataset::NowLandOnly,
+            Dataset::Since1970LandOnly,
+            Dataset::AllLandOnly,
+        ] {
+            assert_eq!(Dataset::from_name(dataset.name()), Some(dataset));
+        }
+        for codec in [
+            Codec::Uncompressed,
+            Codec::Gzip,
+            Codec::Zstd,
+            Codec::Brotli,
+            Codec::Xz,
+        ] {
+            assert_eq!(Codec::from_name(codec.name()), Some(codec));
+        }
+        for algorithm in [
+            SimplifyAlgorithm::None,
+            SimplifyAlgorithm::Rdp,
+            SimplifyAlgorithm::Visvalingam,
+            SimplifyAlgorithm::ImaiIri,
+        ] {
+            assert_eq!(
+                SimplifyAlgorithm::from_name(algorithm.name()),
+                Some(algorithm)
+            );
+        }
+        for geom in [
+            GeomEncoding::VarintArcs,
+            GeomEncoding::FixedWidthArcs,
+            GeomEncoding::FullRings,
+            GeomEncoding::Coarse,
+        ] {
+            assert_eq!(GeomEncoding::from_name(geom.name()), Some(geom));
+        }
+        assert_eq!(
+            Dataset::from_name("land-1970"),
+            Some(Dataset::Since1970LandOnly)
+        );
+        assert_eq!(Dataset::from_name("nowhere"), None);
+    }
 
     #[test]
     fn payload_header_round_trips_at_declared_length() {

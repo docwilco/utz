@@ -63,40 +63,24 @@ pub struct Args {
 /// load/parse or encode failure, the verify lookup coming back empty, or
 /// an I/O error writing the asset and its guard file.
 pub fn run(args: Args) -> utz_build::Result<()> {
-    let codec = match args.codec.as_str() {
-        "none" | "uncompressed" => Codec::Uncompressed,
-        "gzip" => Codec::Gzip,
-        "zstd" => Codec::Zstd,
-        "brotli" => Codec::Brotli,
-        "xz" => Codec::Xz,
-        other => {
-            return Err(Error::Msg(format!(
-                "unknown codec {other:?}: use none|gzip|zstd|brotli|xz"
-            )))
-        }
-    };
-    let simplify = match args.algorithm.as_str() {
-        "none" => SimplifyAlgorithm::None,
-        "rdp" => SimplifyAlgorithm::Rdp,
-        "vw" | "visvalingam" => SimplifyAlgorithm::Visvalingam,
-        "ii" | "imai-iri" => SimplifyAlgorithm::ImaiIri,
-        other => {
-            return Err(Error::Msg(format!(
-                "unknown algorithm {other:?}: use none|rdp|vw|ii"
-            )))
-        }
-    };
-    let geom = match args.geom.as_str() {
-        "varint-arcs" | "varint" | "delta" => GeomEncoding::VarintArcs,
-        "fixed-width-arcs" | "fixed" => GeomEncoding::FixedWidthArcs,
-        "full-rings" | "eager" | "image" => GeomEncoding::FullRings,
-        "coarse" => GeomEncoding::Coarse,
-        other => {
-            return Err(Error::Msg(format!(
-                "unknown geom {other:?}: use varint-arcs|fixed-width-arcs|full-rings|coarse"
-            )))
-        }
-    };
+    let codec = Codec::from_name(&args.codec).ok_or_else(|| {
+        Error::Msg(format!(
+            "unknown codec {:?}: use none|gzip|zstd|brotli|xz",
+            args.codec
+        ))
+    })?;
+    let simplify = SimplifyAlgorithm::from_name(&args.algorithm).ok_or_else(|| {
+        Error::Msg(format!(
+            "unknown algorithm {:?}: use none|rdp|vw|ii",
+            args.algorithm
+        ))
+    })?;
+    let geom = GeomEncoding::from_name(&args.geom).ok_or_else(|| {
+        Error::Msg(format!(
+            "unknown geom {:?}: use varint-arcs|fixed-width-arcs|full-rings|coarse",
+            args.geom
+        ))
+    })?;
     let out = args.out.unwrap_or_else(|| {
         let weight_suffix = args
             .w_min

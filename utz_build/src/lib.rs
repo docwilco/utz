@@ -113,25 +113,13 @@ pub use config::Config;
 use std::path::PathBuf;
 
 /// Parses a dataset name (`[land-]now|1970|all`; the legacy
-/// `osm`/`osm1970` are accepted).
+/// `osm`/`osm1970` are accepted): [`Dataset::from_name()`] with this
+/// crate's error type.
 ///
 /// # Errors
 /// Returns an error for an unrecognized dataset name.
 pub fn dataset(name: &str) -> crate::Result<Dataset> {
-    let (land_only, rest) = match name.strip_prefix("land-") {
-        Some(stripped) => (true, stripped),
-        None => (false, name),
-    };
-    let dataset = match (rest, land_only) {
-        ("now" | "osm", false) => Dataset::Now,
-        ("now" | "osm", true) => Dataset::NowLandOnly,
-        ("1970" | "osm1970", false) => Dataset::Since1970,
-        ("1970" | "osm1970", true) => Dataset::Since1970LandOnly,
-        ("all" | "full" | "comprehensive", false) => Dataset::All,
-        ("all" | "full" | "comprehensive", true) => Dataset::AllLandOnly,
-        _ => return Err(Error::UnknownDataset { ds: name.into() }),
-    };
-    Ok(dataset)
+    Dataset::from_name(name).ok_or_else(|| Error::UnknownDataset { ds: name.into() })
 }
 
 /// Loads a dataset via the download+`GeoJSON` pipeline (conditional-GET

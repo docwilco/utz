@@ -39,21 +39,19 @@ pub struct Args {
 }
 
 /// # Errors
-/// The command fails on a dataset load/parse or density-grid load failure.
-///
-/// # Panics
-/// The command panics if `algorithm` is not one of rdp|vw|ii.
+/// The command fails on an unknown algorithm name or a dataset
+/// load/parse or density-grid load failure.
 pub fn run(args: Args) -> utz_build::Result<()> {
     let (dataset, epsilon_m, w_min, algorithm_key) =
         (args.ds, args.epsilon_m, args.w_min, args.algorithm);
+    let simplify_algorithm =
+        utz_common::SimplifyAlgorithm::from_name(&algorithm_key).ok_or_else(|| {
+            utz_build::Error::Msg(format!(
+                "unknown algorithm {algorithm_key:?}: use none|rdp|vw|ii"
+            ))
+        })?;
     let algorithm = |epsilon_deg: f64| -> Simplify {
-        let algorithm = match algorithm_key.as_str() {
-            "rdp" => utz_encode::encode::SimplifyAlgorithm::Rdp,
-            "vw" => utz_encode::encode::SimplifyAlgorithm::Visvalingam,
-            "ii" => utz_encode::encode::SimplifyAlgorithm::ImaiIri,
-            key => panic!("unknown algorithm {key:?}: use rdp|vw|ii"),
-        };
-        utz_encode::encode::to_simplify(algorithm, epsilon_deg)
+        utz_encode::encode::to_simplify(simplify_algorithm, epsilon_deg)
     };
 
     let features = utz_build::load(&dataset)?;

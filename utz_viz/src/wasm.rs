@@ -330,11 +330,11 @@ pub extern "C" fn utz_enc_payload(
         quant_bits,
         grid_deg,
         codec: Codec::Uncompressed,
-        geom: match geom {
-            1 => GeomEncoding::FixedWidthArcs,
-            2 => GeomEncoding::FullRings,
-            3 => GeomEncoding::Coarse,
-            _ => GeomEncoding::VarintArcs,
+        // the viewer's geom knob sends GeomEncoding header bytes; an
+        // unknown byte is an error, not a silent varint-arcs fallback
+        geom: match u8::try_from(geom).ok().and_then(GeomEncoding::from_byte) {
+            Some(geom) => geom,
+            None => return 0,
         },
         // the viewer's algorithm knob sends SimplifyAlgorithm header bytes
         simplify: u8::try_from(algorithm)
@@ -495,11 +495,12 @@ pub extern "C" fn utz_enc_compress(codec: u32) -> u32 {
     if state.payload.is_empty() {
         return 0;
     }
-    let codec = match codec {
-        1 => Codec::Gzip,
-        3 => Codec::Brotli,
-        4 => Codec::Xz,
-        _ => return 0,
+    // the codec knob sends Codec header bytes; zstd (2) is feature-gated
+    // off in the wasm build, and Uncompressed needs no compress call
+    let Some(codec @ (Codec::Gzip | Codec::Brotli | Codec::Xz)) =
+        u8::try_from(codec).ok().and_then(Codec::from_byte)
+    else {
+        return 0;
     };
     let sections = &state.payload[encode::PAYLOAD_HEADER_LEN..];
     encode::compress(sections, codec).map_or(0, |compressed| {
