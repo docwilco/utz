@@ -37,7 +37,7 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
 
     for dataset in ["now", "1970"] {
         let features = utz_build::load(dataset)?;
-        let out = topo::encode_topology(&features, epsilon_m / 111_320.0);
+        let out = topo::encode_topology(&features, epsilon_m / utz_common::METERS_PER_DEG);
         let areas = grid::feat_areas(&out.simplified);
         println!(
             "{} epsilon={epsilon_m}m, {} features, dominant-first CSR, {NPTS} sample points",

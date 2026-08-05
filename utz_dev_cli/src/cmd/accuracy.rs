@@ -22,8 +22,6 @@ use utz_encode::topo::{self, Simplify, Topology};
 use utz_simplify::DensityWeight;
 use utz_viz::misassign;
 
-const KM_PER_DEG: f64 = 111.32;
-
 #[derive(clap::Args)]
 pub struct Args {
     /// The dataset, one of [land-]now|1970|all.
@@ -63,7 +61,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     let raw_topology = topo::build_topology(&features, 0.0);
     let model = DensityWeight::new(w_min);
 
-    let epsilon_deg = epsilon_m / 111_320.0;
+    let epsilon_deg = epsilon_m / utz_common::METERS_PER_DEG;
     let configs: Vec<(String, Topology)> = vec![
         (
             format!("uniform ε{epsilon_m}"),
@@ -95,7 +93,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
         let measured = measure(&raw_topology, topology, &grid);
         println!(
             "{name:>22} {verts:>9} {:>10.1} {:>12.1} {:>14.0}",
-            measured.max_dev_deg * 111_320.0,
+            measured.max_dev_deg * utz_common::METERS_PER_DEG,
             measured.area_km2,
             measured.people
         );
@@ -138,7 +136,10 @@ fn measure(raw_topology: &Topology, simplified_topology: &Topology, grid: &Densi
             // viewer instead averages its shipped per-vertex densities)
             misassign::pocket_scan(chain, None, |pocket| {
                 let (lonc, latc) = (pocket.lon_sum / pocket.count, pocket.lat_sum / pocket.count);
-                let km2 = pocket.area.abs() * KM_PER_DEG * KM_PER_DEG * latc.to_radians().cos();
+                let km2 = pocket.area.abs()
+                    * utz_common::KM_PER_DEG
+                    * utz_common::KM_PER_DEG
+                    * latc.to_radians().cos();
                 acc.area_km2 += km2;
                 acc.people += km2 * grid.sample(lonc, latc);
             });

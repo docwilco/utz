@@ -77,6 +77,15 @@ impl CellTag {
     }
 }
 
+/// Meters per degree of latitude (and of longitude at the equator):
+/// the workspace's one flat conversion between tolerances in meters
+/// (`epsilon_m`) and coordinate degrees.
+pub const METERS_PER_DEG: f64 = 111_320.0;
+
+/// Kilometers per degree, [`METERS_PER_DEG`] scaled; area math uses
+/// `KM_PER_DEG²` (with a latitude cosine) for km² per square degree.
+pub const KM_PER_DEG: f64 = METERS_PER_DEG / 1000.0;
+
 /// The half-range of an `i{bits}` quantization grid (`2^(bits-1) - 1`).
 #[must_use]
 #[expect(

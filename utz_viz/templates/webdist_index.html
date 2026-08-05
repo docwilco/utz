@@ -652,7 +652,7 @@ Layer.prototype.abort = function () {
   this.busy = false; this.pendingRun = false; this.ready = false; this.spin.classList.remove('on');
 };
 Layer.prototype.send = function () {
-  var epsDeg = this.eps / 111320;
+  var epsDeg = this.eps / 111320; // utz_common::METERS_PER_DEG (JS cannot import it)
   this.worker.postMessage({
     type: 'run', gen: this.gen,
     algoId: ALGO[this.algo].id,
@@ -1651,7 +1651,7 @@ function renderGrid(deg, nc, nr, hit, z, n, pct) {
     for (var cy = 0; cy < nr; cy++) {
       var fy0 = Math.round(cy * s), fy1 = Math.min(z.h, Math.round((cy + 1) * s));
       var latC = 90 - (cy + 0.5) * deg;
-      var areaKm2 = deg * 111.32 * deg * 111.32 * Math.cos(latC * Math.PI / 180);
+      var areaKm2 = deg * 111.32 * deg * 111.32 * Math.cos(latC * Math.PI / 180); // utz_common::KM_PER_DEG
       for (var cx = 0; cx < nc; cx++) {
         if (!hit[cy * nc + cx]) {
           // no boundary crosses this cell → single candidate: sample center

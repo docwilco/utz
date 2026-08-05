@@ -41,7 +41,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
         "encoding", "arc-verts", "raw", "zstd22", "br.w24", "xz.dmax"
     );
     println!("{}", "-".repeat(74));
-    let epsilon_deg = epsilon_m / 111_320.0;
+    let epsilon_deg = epsilon_m / utz_common::METERS_PER_DEG;
     for &quant_bits in &quant_widths {
         for (tag, abs_fixed) in [("delta+varint", false), ("abs-fixed", true)] {
             let out = topo::encode_topology_qm(&features, epsilon_deg, quant_bits, abs_fixed);

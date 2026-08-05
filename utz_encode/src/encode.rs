@@ -135,7 +135,7 @@ pub fn encode(feats: &[Feat], params: &Params) -> crate::Result<Vec<u8>> {
 ///
 /// The errors are those of [`payload_from_topology()`].
 pub fn build_payload(feats: &[Feat], params: &Params) -> crate::Result<Vec<u8>> {
-    let algorithm = to_simplify(params.simplify, params.epsilon_m / 111_320.0);
+    let algorithm = to_simplify(params.simplify, params.epsilon_m / crate::METERS_PER_DEG);
     let topology = topo::build_topology_algorithm(feats, algorithm);
     Ok(payload_from_topology(&topology, &topology.arc_coords, feats, params)?.0)
 }

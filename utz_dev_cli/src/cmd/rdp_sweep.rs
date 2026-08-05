@@ -54,7 +54,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     println!("{}", "-".repeat(74));
 
     for epsilon_m in [0.0f64, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2000.0] {
-        let epsilon_deg = epsilon_m / 111_320.0;
+        let epsilon_deg = epsilon_m / utz_common::METERS_PER_DEG;
         let out = topo::encode_topology(&features, epsilon_deg);
         let raw = out.bytes.len();
         let zstd_len = zstd::encode_all(&out.bytes[..], 22).unwrap().len();

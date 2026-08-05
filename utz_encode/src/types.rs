@@ -34,7 +34,7 @@ pub struct Feat {
 // the container (see `push_i24`/`fixed_bytes`) but live in i32 in memory —
 // these helpers quantize at the i24 default width, hence the names. The
 // variable-width equivalents are local closures over a `qmax` (encode/topo).
-pub use utz_common::{dq_lat, dq_lon, q_lat, q_lon, qmax_for};
+pub use utz_common::{dq_lat, dq_lon, q_lat, q_lon, qmax_for, KM_PER_DEG, METERS_PER_DEG};
 
 pub const QMAX_I24: f64 = qmax_for(24);
 

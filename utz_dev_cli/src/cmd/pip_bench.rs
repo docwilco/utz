@@ -53,7 +53,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     let (dataset, epsilon_m, n_points) = (args.ds, args.epsilon_m, args.npts);
 
     let features = utz_build::load(&dataset)?;
-    let out = topo::encode_topology(&features, epsilon_m / 111_320.0);
+    let out = topo::encode_topology(&features, epsilon_m / utz_common::METERS_PER_DEG);
     let quantized = quantize(&out.simplified);
     let verts: usize = quantized
         .iter()

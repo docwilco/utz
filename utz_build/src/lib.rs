@@ -179,7 +179,7 @@ pub fn encode_weighted(
     grid: &density::DensityGrid,
     model: utz_simplify::DensityWeight,
 ) -> crate::Result<Vec<u8>> {
-    let epsilon_deg = params.epsilon_m / 111_320.0;
+    let epsilon_deg = params.epsilon_m / utz_common::METERS_PER_DEG;
     let algorithm = utz_encode::encode::to_simplify(params.simplify, epsilon_deg);
     let topology = utz_encode::topo::build_topology_weighted(features, algorithm, &|a, b| {
         model.weight(grid.max_along(a, b))

@@ -47,7 +47,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     let (dataset, epsilon_m, deg, n_points) = (args.ds, args.epsilon_m, args.deg, args.npts);
 
     let features = utz_build::load(&dataset)?;
-    let out = topo::encode_topology(&features, epsilon_m / 111_320.0);
+    let out = topo::encode_topology(&features, epsilon_m / utz_common::METERS_PER_DEG);
     let grid = grid::build(&out.simplified, deg, 8);
     let areas = grid::feat_areas(&out.simplified);
     let csr = grid::intern_csr(&grid, Order::CellDominantFirst, &areas);

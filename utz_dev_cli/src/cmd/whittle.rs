@@ -228,7 +228,7 @@ fn report_recipe(
     );
 
     // the recipe's simplification, density-weighted when the recipe is
-    let epsilon_deg = recipe.epsilon_m / 111_320.0;
+    let epsilon_deg = recipe.epsilon_m / utz_common::METERS_PER_DEG;
     let algorithm = encode::to_simplify(recipe.simplify_algorithm, epsilon_deg);
     let topology = match recipe.density_weight_floor() {
         Some(floor) => {

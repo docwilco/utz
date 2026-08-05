@@ -82,7 +82,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     let grid = DensityGrid::load(&utz_build::cache_dir())?;
     let model = DensityWeight::new(w_min);
 
-    let epsilon_deg = epsilon_m / 111_320.0;
+    let epsilon_deg = epsilon_m / utz_common::METERS_PER_DEG;
     let topology_uniform = topo::build_topology(&features, epsilon_deg);
     let topology_weighted = topo::build_topology_weighted(
         &features,

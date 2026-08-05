@@ -46,7 +46,7 @@ pub struct Args {
 )]
 pub fn run(args: &Args) -> utz_build::Result<()> {
     let features = utz_build::load(&args.ds)?;
-    let topology = topo::build_topology(&features, args.epsilon_m / 111_320.0);
+    let topology = topo::build_topology(&features, args.epsilon_m / utz_common::METERS_PER_DEG);
     println!(
         "{} · RDP ε {} m · {} arcs, {} rings\n",
         args.ds,

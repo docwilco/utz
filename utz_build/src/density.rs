@@ -200,7 +200,7 @@ impl DensityGrid {
     /// Panics if the source raster's dimensions or chunk count exceed u32
     /// (not reachable for GHS-POP).
     pub fn from_ghs_pop_tif(tif_path: &Path) -> crate::Result<Self> {
-        const KM_PER_DEG: f64 = 111.32;
+        use utz_common::KM_PER_DEG;
         let mut decoder = Decoder::new(BufReader::new(std::fs::File::open(tif_path)?))?
             .with_limits(Limits::unlimited());
         let (source_width, source_height) = decoder.dimensions()?;

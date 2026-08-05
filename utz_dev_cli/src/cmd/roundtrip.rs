@@ -81,7 +81,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
         reason = "|lat/90·qmax| ≤ qmax < 2^31"
     )]
     let quantize_lat = |lat: f64| (lat / 90.0 * qmax).round() as i32;
-    let topology = topo::build_topology(&features, epsilon_m / 111_320.0);
+    let topology = topo::build_topology(&features, epsilon_m / utz_common::METERS_PER_DEG);
     let dequantized_arcs: Vec<Vec<(f64, f64)>> = topology
         .arc_coords
         .iter()

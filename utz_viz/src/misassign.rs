@@ -183,8 +183,8 @@ pub fn pockets(arc: &[(f64, f64)], densities: Option<&[f64]>, i0: usize, i1: usi
         densities.map(|values| &values[i0..=i1]),
         |pocket| {
             let km2 = pocket.area.abs()
-                * 111.32
-                * 111.32
+                * utz_encode::KM_PER_DEG
+                * utz_encode::KM_PER_DEG
                 * (pocket.lat_sum / pocket.count * core::f64::consts::PI / 180.0).cos();
             acc.area += km2;
             acc.people += km2 * pocket.dens_sum / pocket.count;
@@ -229,8 +229,10 @@ pub fn quant_quad(
         (a.0 * (b.1 - qa.1) + b.0 * (qb.1 - a.1) + qb.0 * (qa.1 - b.1) + qa.0 * (a.1 - qb.1)).abs()
             / 2.0
     };
-    let km2 =
-        area * 111.32 * 111.32 * (f64::midpoint(a.1, b.1) * core::f64::consts::PI / 180.0).cos();
+    let km2 = area
+        * utz_encode::KM_PER_DEG
+        * utz_encode::KM_PER_DEG
+        * (f64::midpoint(a.1, b.1) * core::f64::consts::PI / 180.0).cos();
     acc.area += km2;
     acc.people += km2 * density;
 }
@@ -269,7 +271,7 @@ pub fn dev_max(arc: &[(f64, f64)], i0: usize, i1: usize) -> f64 {
             max_d2 = d2;
         }
     }
-    max_d2.sqrt() * 111_320.0
+    max_d2.sqrt() * utz_encode::METERS_PER_DEG
 }
 
 /// The knobs of one worker run, applied to every arc.

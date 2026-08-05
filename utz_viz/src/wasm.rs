@@ -244,7 +244,7 @@ fn simplified_arcs(
             .ok()
             .and_then(utz_encode::encode::SimplifyAlgorithm::from_byte)
             .unwrap_or(utz_encode::encode::SimplifyAlgorithm::None),
-        epsilon_m / 111_320.0,
+        epsilon_m / utz_encode::METERS_PER_DEG,
     );
     let model = DensityWeight::new(w_min);
     let weighted = w_min < 1.0 && !state.densities.is_empty();
