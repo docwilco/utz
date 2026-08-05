@@ -23,8 +23,8 @@
 //! override a single knob instead of spelling the whole recipe:
 //! `Config::compact().codec(Codec::Uncompressed)`. The recipe values
 //! themselves live in one place, the [`utz_common::presets`] table; the
-//! constructors here are thin wrappers over
-//! [`from_recipe()`](Config::from_recipe).
+//! constructors here are thin wrappers over the `From<&Recipe>`
+//! conversion.
 
 use std::path::PathBuf;
 
@@ -73,34 +73,13 @@ impl Config {
         Config::default()
     }
 
-    /// Returns a config carrying the given recipe's knobs, typically one
-    /// of the [`utz_common::presets`] constants. The named preset
-    /// constructors below are thin wrappers over this; call it directly
-    /// to drive the builder from the table (e.g. iterating
-    /// [`presets::ALL`]).
-    #[must_use]
-    pub fn from_recipe(recipe: &Recipe) -> Self {
-        let config = Config::new()
-            .dataset(recipe.dataset.name())
-            .rdp_meters(recipe.eps_m)
-            .quant_bits(recipe.quant_bits.bits())
-            .grid_deg(recipe.grid_deg)
-            .codec(recipe.codec)
-            .simplify_algo(recipe.simplify_algo)
-            .geom(recipe.geom);
-        match recipe.density_weight_floor() {
-            Some(floor) => config.density_weight_floor(floor),
-            None => config,
-        }
-    }
-
     /// Returns the `tiny` preset recipe ([`presets::TINY`]): RDP
     /// ε=10 000 m with pop-density floor 0.001, i16, a 2° grid, and
     /// gzip. A preset constructor is a starting point for one-knob
     /// variants: `Config::tiny().geom(GeomEncoding::Coarse)`.
     #[must_use]
     pub fn tiny() -> Self {
-        Config::from_recipe(&presets::TINY)
+        Config::from(&presets::TINY)
     }
 
     /// Returns the `tiny-static` preset recipe ([`presets::TINY_STATIC`]),
@@ -108,14 +87,14 @@ impl Config {
     /// place with zero decode RAM.
     #[must_use]
     pub fn tiny_static() -> Self {
-        Config::from_recipe(&presets::TINY_STATIC)
+        Config::from(&presets::TINY_STATIC)
     }
 
     /// Returns the `compact` preset recipe ([`presets::COMPACT`]): RDP
     /// ε=1 000 m with pop-density floor 0.001, i24, a 4/3° grid, and xz.
     #[must_use]
     pub fn compact() -> Self {
-        Config::from_recipe(&presets::COMPACT)
+        Config::from(&presets::COMPACT)
     }
 
     /// Returns the `balanced` preset recipe ([`presets::BALANCED`]): RDP
@@ -123,7 +102,7 @@ impl Config {
     /// brotli.
     #[must_use]
     pub fn balanced() -> Self {
-        Config::from_recipe(&presets::BALANCED)
+        Config::from(&presets::BALANCED)
     }
 
     /// Returns the `accurate` preset recipe ([`presets::ACCURATE`]):
@@ -132,7 +111,7 @@ impl Config {
     /// grid, and brotli.
     #[must_use]
     pub fn accurate() -> Self {
-        Config::from_recipe(&presets::ACCURATE)
+        Config::from(&presets::ACCURATE)
     }
 
     /// Sets the dataset: `[land-]now|1970|all` (see
@@ -281,6 +260,34 @@ impl Config {
         std::fs::write(&out, &bytes)?;
         write_guard(&out, self.geom, self.codec)?;
         Ok(out)
+    }
+}
+
+/// Converts a recipe, typically one of the [`utz_common::presets`]
+/// constants, into a config carrying its knobs. The named preset
+/// constructors are thin wrappers over this; use it directly to drive
+/// the builder from the table (e.g. iterating [`presets::ALL`]).
+impl From<&Recipe> for Config {
+    fn from(recipe: &Recipe) -> Config {
+        let config = Config::new()
+            .dataset(recipe.dataset.name())
+            .rdp_meters(recipe.eps_m)
+            .quant_bits(recipe.quant_bits.bits())
+            .grid_deg(recipe.grid_deg)
+            .codec(recipe.codec)
+            .simplify_algo(recipe.simplify_algo)
+            .geom(recipe.geom);
+        match recipe.density_weight_floor() {
+            Some(floor) => config.density_weight_floor(floor),
+            None => config,
+        }
+    }
+}
+
+/// Converts an owned recipe into a config; see [`From<&Recipe>`](#impl-From<%26Recipe>-for-Config).
+impl From<Recipe> for Config {
+    fn from(recipe: Recipe) -> Config {
+        Config::from(&recipe)
     }
 }
 

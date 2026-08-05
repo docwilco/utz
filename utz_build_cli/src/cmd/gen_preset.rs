@@ -1,6 +1,6 @@
 //! Generates one preset asset, or every preset, from the canonical
-//! recipe table. The command drives `utz_build::Config::from_recipe()`
-//! over `utz_build::presets`, so the recipes exist in exactly one place
+//! recipe table. The command drives `utz_build::Config::from()` over
+//! `utz_build::presets`, so the recipes exist in exactly one place
 //! and `scripts/gen-presets.sh` cannot drift from the table (the data
 //! crates' build.rs recipe guards verify the result).
 //!
@@ -57,7 +57,7 @@ fn generate(recipe: &Recipe, out: Option<PathBuf>) -> utz_build::Result<()> {
         }
         dir.join("data").join(format!("{}.utz", recipe.name))
     };
-    let path = Config::from_recipe(recipe).out_path(out).generate()?;
+    let path = Config::from(recipe).out_path(out).generate()?;
     println!("wrote {}", path.display());
     Ok(())
 }
