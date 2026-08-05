@@ -90,11 +90,30 @@ pub fn simplify_weighted(
 
 /// The map from population density to tolerance multiplier, shared by the
 /// builder and the live viewer (it is compiled into the WASM module so the
-/// browser's weighting slider runs the same code). The map only refines: the
-/// weight is 1 below `d_lo` (oceans and deserts, so there is zero size
-/// regression there), `w_min` above `d_hi` (city cores), and log-log linear
-/// between the knees: `weight(d) = (d/d_lo)^-k` with
-/// `k = ln(1/w_min) / ln(d_hi/d_lo)`.
+/// browser's weighting slider runs the same code).
+///
+/// The map is a piecewise curve over density `d` in people/km², shaped by
+/// two knees (`d_lo`, `d_hi`) and a floor (`w_min`):
+///
+/// - Below `d_lo` the weight is 1, leaving the baseline tolerance
+///   untouched. Oceans, deserts, and other empty areas therefore simplify
+///   exactly as they would unweighted, so enabling weighting causes zero
+///   size regression there.
+/// - Above `d_hi` the weight saturates at `w_min`, giving city cores the
+///   finest tolerance the model allows (with `w_min = 0.1`, one tenth of
+///   the baseline).
+/// - Between the knees the curve is the power law
+///   `weight(d) = (d / d_lo)^-k`, which is a straight line in log-log
+///   space. The exponent `k = ln(1/w_min) / ln(d_hi/d_lo)` is the unique
+///   one that meets both knees continuously. A power law fits because
+///   population density spans orders of magnitude: each doubling of
+///   density tightens the weight by the same factor, rather than spending
+///   the whole ramp on the first sliver of the range as a linear
+///   interpolation would.
+///
+/// Every weight is ≤ 1, so the map only ever refines: weighted
+/// simplification keeps at least the boundary detail of the unweighted
+/// baseline and adds more where people live.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct DensityWeight {
     /// The multiplier at saturation (0.1 gives dense areas one tenth the
