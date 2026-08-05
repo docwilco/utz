@@ -7,7 +7,7 @@
 //! // build.rs
 //! let out = utz_build::Config::new()
 //!     .dataset("now")
-//!     .rdp_meters(500.0)
+//!     .epsilon_meters(500.0)
 //!     .generate()
 //!     .unwrap();
 //! // then in the crate:
@@ -128,9 +128,21 @@ impl Config {
     /// max-deviation bound for RDP and Imai–Iri, and Visvalingam derives
     /// its area threshold as ε².
     #[must_use]
-    pub fn rdp_meters(mut self, epsilon_m: f64) -> Self {
+    pub fn epsilon_meters(mut self, epsilon_m: f64) -> Self {
         self.epsilon_m = epsilon_m;
         self
+    }
+
+    /// Deprecated name for
+    /// [`epsilon_meters()`](Config::epsilon_meters), kept from when
+    /// Ramer–Douglas–Peucker was the only simplifier in the pipeline.
+    #[deprecated(
+        since = "0.5.0",
+        note = "renamed to `epsilon_meters`; the tolerance drives every simplify algorithm, not just RDP"
+    )]
+    #[must_use]
+    pub fn rdp_meters(self, epsilon_m: f64) -> Self {
+        self.epsilon_meters(epsilon_m)
     }
 
     /// Sets the quantization width: 16 / 24 / 32 (default 24). Any other
@@ -268,7 +280,7 @@ impl From<&Recipe> for Config {
     fn from(recipe: &Recipe) -> Config {
         let config = Config::new()
             .dataset(recipe.dataset.name())
-            .rdp_meters(recipe.epsilon_m)
+            .epsilon_meters(recipe.epsilon_m)
             .quant_bits(recipe.quant_bits.bits())
             .grid_deg(recipe.grid_deg)
             .codec(recipe.codec)

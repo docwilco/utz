@@ -110,7 +110,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
 
     let mut config = Config::new()
         .dataset(&args.ds)
-        .rdp_meters(args.epsilon_m)
+        .epsilon_meters(args.epsilon_m)
         .quant_bits(args.qbits)
         .grid_deg(args.grid_deg)
         .codec(codec)
