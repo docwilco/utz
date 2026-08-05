@@ -56,3 +56,5 @@
 //! [`cmd::window_sweep`]: ../utz_dev_cli/cmd/window_sweep/index.html
 
 pub mod cmd;
+pub mod decode;
+pub mod qfeat;

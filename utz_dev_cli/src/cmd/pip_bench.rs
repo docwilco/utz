@@ -15,6 +15,7 @@ use std::time::Instant;
 
 use geo::Contains;
 
+use crate::qfeat::QFeat;
 use utz_encode::{q24_lat, q24_lon, topo, Feat};
 
 #[derive(clap::Args)]
@@ -292,40 +293,10 @@ fn timed_scan(
     (got, timer.elapsed())
 }
 
-/// A tzid paired with its polygons, each a list of rings of quantized
-/// vertices.
-type QFeat = (String, Vec<Vec<Vec<(i32, i32)>>>);
-
 /// Quantizes each feature's per-polygon rings to the i24 grid, dropping
 /// degenerate rings, and pairs them with the tzid.
 fn quantize(features: &[Feat]) -> Vec<QFeat> {
-    features
-        .iter()
-        .map(|feature| {
-            let polys = feature
-                .polys
-                .iter()
-                .map(|poly| {
-                    poly.iter()
-                        .map(|ring| {
-                            let mut quantized: Vec<(i32, i32)> = ring
-                                .iter()
-                                .map(|&(x, y)| (q24_lon(x), q24_lat(y)))
-                                .collect();
-                            quantized.dedup();
-                            if quantized.first() == quantized.last() && quantized.len() > 1 {
-                                quantized.pop();
-                            }
-                            quantized
-                        })
-                        .filter(|ring| ring.len() >= 3)
-                        .collect::<Vec<_>>()
-                })
-                .filter(|poly: &Vec<Vec<(i32, i32)>>| !poly.is_empty())
-                .collect();
-            (feature.tzid.clone().unwrap_or_default(), polys)
-        })
-        .collect()
+    crate::qfeat::quantize_features(features, utz_encode::QMAX_I24)
 }
 
 fn gen_pts(n: usize) -> Vec<(f64, f64)> {

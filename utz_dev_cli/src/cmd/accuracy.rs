@@ -92,18 +92,19 @@ pub fn run(args: Args) -> utz_build::Result<()> {
         println!(
             "{name:>22} {verts:>9} {:>10.1} {:>12.1} {:>14.0}",
             measured.max_dev_deg * utz_common::METERS_PER_DEG,
-            measured.area_km2,
-            measured.people
+            measured.misassigned.area,
+            measured.misassigned.people
         );
     }
     Ok(())
 }
 
+/// The command's accumulator: the shared misassignment totals plus the
+/// max deviation, which the viewer reports per vertex instead.
 #[derive(Default)]
 struct Acc {
     max_dev_deg: f64,
-    area_km2: f64,
-    people: f64,
+    misassigned: misassign::Acc,
 }
 
 fn measure(raw_topology: &Topology, simplified_topology: &Topology, grid: &DensityGrid) -> Acc {
@@ -138,8 +139,8 @@ fn measure(raw_topology: &Topology, simplified_topology: &Topology, grid: &Densi
                     * utz_common::KM_PER_DEG
                     * utz_common::KM_PER_DEG
                     * latc.to_radians().cos();
-                acc.area_km2 += km2;
-                acc.people += km2 * grid.sample(lonc, latc);
+                acc.misassigned.area += km2;
+                acc.misassigned.people += km2 * grid.sample(lonc, latc);
             });
         }
     }

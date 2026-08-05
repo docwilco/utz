@@ -9,8 +9,9 @@
 
 use std::time::Instant;
 
+use crate::qfeat::QFeat;
 use utz_encode::encode::{self, Codec, Params};
-use utz_encode::{topo, Feat};
+use utz_encode::topo;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -66,21 +67,9 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     assert_eq!(finder.tzbb_release(), "roundtrip-dev");
 
     // reference: linear first-hit over the same quantized geometry
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "qmax = 2^(bits-1)-1 < 2^31, exact in f64"
-    )]
-    let qmax = ((1u64 << (quant_bits - 1)) - 1) as f64;
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "|lon/180·qmax| ≤ qmax < 2^31"
-    )]
-    let quantize_lon = |lon: f64| (lon / 180.0 * qmax).round() as i32;
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "|lat/90·qmax| ≤ qmax < 2^31"
-    )]
-    let quantize_lat = |lat: f64| (lat / 90.0 * qmax).round() as i32;
+    let qmax = utz_encode::qmax_for(quant_bits);
+    let quantize_lon = |lon: f64| utz_encode::q_lon(lon, qmax);
+    let quantize_lat = |lat: f64| utz_encode::q_lat(lat, qmax);
     let topology = topo::build_topology(&features, epsilon_m / utz_common::METERS_PER_DEG);
     let dequantized_arcs: Vec<Vec<(f64, f64)>> = topology
         .arc_coords
@@ -95,15 +84,15 @@ pub fn run(args: Args) -> utz_build::Result<()> {
                 .iter()
                 .map(|&(qlon, qlat)| {
                     (
-                        f64::from(qlon) / qmax * 180.0,
-                        f64::from(qlat) / qmax * 90.0,
+                        utz_encode::dq_lon(f64::from(qlon), qmax),
+                        utz_encode::dq_lat(f64::from(qlat), qmax),
                     )
                 })
                 .collect()
         })
         .collect();
     let quantized = topology.reconstruct(&features, &dequantized_arcs);
-    let refs = build_refs(&quantized, qmax);
+    let refs = crate::qfeat::quantize_features(&quantized, qmax);
 
     let points = gen_pts(n_points);
     let start = Instant::now();
@@ -240,55 +229,11 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     Ok(())
 }
 
-type Ref = (String, Vec<Vec<Vec<(i32, i32)>>>);
-fn build_refs(features: &[Feat], qmax: f64) -> Vec<Ref> {
-    features
-        .iter()
-        .map(|feature| {
-            let polys = feature
-                .polys
-                .iter()
-                .filter_map(|poly| {
-                    let rings: Vec<Vec<(i32, i32)>> = poly
-                        .iter()
-                        .map(|ring| {
-                            #[expect(
-                                clippy::cast_possible_truncation,
-                                reason = "|coord·qmax| ≤ qmax < 2^31"
-                            )]
-                            let mut quantized: Vec<(i32, i32)> = ring
-                                .iter()
-                                .map(|&(x, y)| {
-                                    (
-                                        (x / 180.0 * qmax).round() as i32,
-                                        (y / 90.0 * qmax).round() as i32,
-                                    )
-                                })
-                                .collect();
-                            quantized.dedup();
-                            if quantized.first() == quantized.last() && quantized.len() > 1 {
-                                quantized.pop();
-                            }
-                            quantized
-                        })
-                        .filter(|ring| ring.len() >= 3)
-                        .collect();
-                    if rings.is_empty() {
-                        None
-                    } else {
-                        Some(rings)
-                    }
-                })
-                .collect();
-            (feature.tzid.clone().unwrap_or_default(), polys)
-        })
-        .collect()
-}
 fn contains(rings: &[Vec<(i32, i32)>], px: i32, py: i32) -> bool {
     let slices: Vec<&[(i32, i32)]> = rings.iter().map(std::vec::Vec::as_slice).collect();
     utz::pip::contains::<i64, _>(&slices, px, py)
 }
-fn lookup_linear(refs: &[Ref], px: i32, py: i32) -> Option<String> {
+fn lookup_linear(refs: &[QFeat], px: i32, py: i32) -> Option<String> {
     refs.iter()
         .find(|(_, polys)| polys.iter().any(|poly| contains(poly, px, py)))
         .map(|(tzid, _)| tzid.clone())

@@ -21,7 +21,7 @@
 //!     utz_data_tiny_static/data/tiny-static.utz <compact-none.utz> ...
 //! ```
 
-use utz::format::{self, read_fixed, read_u16, read_u32, read_varint, unzigzag};
+use utz::format::{self, read_fixed, read_u16, read_u32, read_varint};
 use utz_common::GeomEncoding;
 use utz_encode::encode::{compress, Codec};
 
@@ -31,29 +31,7 @@ fn write_fixed(value: i32, coord_bytes: usize, out: &mut Vec<u8>) {
 
 /// Decodes one arc (forward orientation) into (i32, i32) coords.
 fn arc_coords(payload: &[u8], header: &format::PayloadLayout, id: usize) -> Vec<(i32, i32)> {
-    let coord_bytes = header.quant_bits.bytes();
-    let mut position = header.arc_data + read_u32(payload, header.arc_offsets + id * 4) as usize;
-    let (vcount, after_vcount) = read_varint(payload, position);
-    position = after_vcount;
-    let mut qlon = i64::from(read_fixed(payload, position, header.quant_bits));
-    let mut qlat = i64::from(read_fixed(
-        payload,
-        position + coord_bytes,
-        header.quant_bits,
-    ));
-    position += 2 * coord_bytes;
-    let mut coords = Vec::with_capacity(usize::try_from(vcount).expect("vcount fits usize"));
-    let to_i32 = |coord: i64| i32::try_from(coord).expect("quantized coord fits i32");
-    coords.push((to_i32(qlon), to_i32(qlat)));
-    for _ in 1..vcount {
-        let (dlon, after_dlon) = read_varint(payload, position);
-        let (dlat, after_dlat) = read_varint(payload, after_dlon);
-        position = after_dlat;
-        qlon += unzigzag(dlon);
-        qlat += unzigzag(dlat);
-        coords.push((to_i32(qlon), to_i32(qlat)));
-    }
-    coords
+    crate::decode::arc_coords(payload, header, id)
 }
 
 #[derive(clap::Args)]
