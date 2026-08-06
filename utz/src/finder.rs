@@ -1011,8 +1011,12 @@ impl Finder {
             // SAFETY (slice cast): pair layouts are asserted at the top of
             // this file (Pack24 is align 1; i16/i32 pairs land aligned
             // because full_coords is 4-aligned — checked at load — and their
-            // strides are multiples of the element alignment); parse bounds
-            // the full-rings sections against the header counts.
+            // strides are multiples of the element alignment). Bounds hold
+            // for arbitrary container bytes: parse fits the coordinate
+            // section to the header counts, and check_tables proved both
+            // ring tables monotone and bounded at load, so
+            // coord_start <= coord_end <= eager_coords — the subtraction
+            // cannot wrap and the slice stays inside the section.
             let ring = unsafe {
                 core::slice::from_raw_parts(
                     payload[layout.full_coords + coord_start * core::mem::size_of::<P>()..]

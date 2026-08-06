@@ -440,7 +440,8 @@ pub fn parse(header_bytes: &[u8]) -> Result<PayloadLayout> {
 /// Validates every cross-reference inside the (decompressed) section
 /// tables that [`crate::Finder::lookup()`] follows without further
 /// checks: zone-string offsets, the parent table, grid cell values,
-/// and the candidate lists. The check is one linear pass at load time,
+/// the candidate lists, and (for `FullRings` assets) the ring-end and
+/// per-poly ring tables. The check is one linear pass at load time,
 /// so a corrupt or hostile asset is refused with a typed error instead
 /// of panicking a lookup later.
 ///
@@ -465,6 +466,30 @@ pub fn check_tables(payload: &[u8], layout: &PayloadLayout) -> Result<()> {
     for i in 0..poly_count {
         if usize::from(read_u16(payload, layout.parent + i * 2)) >= feature_count {
             return Err(out_of_range);
+        }
+    }
+    // FullRings ring tables: lookups subslice the coordinate section by
+    // these values with unchecked length math (a wrapped range there is
+    // UB, not a panic), so both tables must be monotone and bounded —
+    // ring ends within the coordinate count, per-poly ring ends within
+    // the ring count. A range's start is the previous entry's end, so
+    // monotonicity bounds both ends of every derived range.
+    if layout.geom == GeomEncoding::FullRings {
+        let mut previous_end = 0u32;
+        for i in 0..layout.eager_rings as usize {
+            let end = read_u32(payload, layout.full_ring_ends + i * 4);
+            if end < previous_end || end > layout.eager_coords {
+                return Err(out_of_range);
+            }
+            previous_end = end;
+        }
+        let mut previous_end = 0u32;
+        for i in 0..poly_count {
+            let end = read_u32(payload, layout.full_polys + i * 20 + 16);
+            if end < previous_end || end > layout.eager_rings {
+                return Err(out_of_range);
+            }
+            previous_end = end;
         }
     }
     // candidate lists: u16[uniq+1] offsets monotone and in range, ids are
@@ -711,6 +736,65 @@ mod tests {
         // zone-string offset running past the pool
         let mut payload = tiny_payload();
         payload[2..4].copy_from_slice(&u16::MAX.to_le_bytes());
+        assert_eq!(check_tables(&payload, &layout), Err(Error::TableOutOfRange));
+    }
+
+    /// The [`tiny_header`] sibling for `FullRings` (geom 2): one feature
+    /// whose single poly has two rings over six i32 coordinate pairs.
+    /// Sections: zone table 0..4, coords 4..52, ring ends 52..60, the
+    /// poly record 60..80 (bbox + ring end), parent 80..82, grid 82..84,
+    /// list offsets 84..86.
+    #[cfg(feature = "geom-full-rings")]
+    fn full_rings_header() -> PayloadHeader {
+        let mut header = tiny_header();
+        header.geom = GeomEncoding::FullRings;
+        header.quant_bits = QuantBits::Bits32;
+        header.arcs_off = 4;
+        header.rings_off = 80;
+        header.grid_off = 82;
+        header.release_off = 86;
+        header.raw_len = 86;
+        header.eager_coords = 6;
+        header.eager_rings = 2;
+        header.eager_polys = 1;
+        header
+    }
+
+    /// The matching section blob (see [`full_rings_header`]): coordinate
+    /// values are irrelevant to the table checks and stay zero, as does
+    /// the parent entry (feature 0) and the poly bbox.
+    #[cfg(feature = "geom-full-rings")]
+    fn full_rings_payload() -> [u8; 86] {
+        let mut payload = [0u8; 86];
+        // ring ends {3, 6}; the poly record's ring end is 2
+        payload[52..56].copy_from_slice(&3u32.to_le_bytes());
+        payload[56..60].copy_from_slice(&6u32.to_le_bytes());
+        payload[76..80].copy_from_slice(&2u32.to_le_bytes());
+        payload[82..84].copy_from_slice(&utz_common::NO_ZONE.to_le_bytes());
+        payload
+    }
+
+    /// The ring tables feed unchecked slice-length math in the lookup
+    /// fold, so [`check_tables()`] must prove them monotone and bounded at
+    /// load: a non-monotone ring-end table is exactly the input that
+    /// would otherwise wrap the fold's coordinate-count subtraction.
+    #[cfg(feature = "geom-full-rings")]
+    #[test]
+    fn full_rings_ring_table_rejections() {
+        let layout = parse(&header_bytes(full_rings_header())).expect("valid header");
+        check_tables(&full_rings_payload(), &layout).expect("valid tables");
+        // non-monotone ring ends {5, 3}
+        let mut payload = full_rings_payload();
+        payload[52..56].copy_from_slice(&5u32.to_le_bytes());
+        payload[56..60].copy_from_slice(&3u32.to_le_bytes());
+        assert_eq!(check_tables(&payload, &layout), Err(Error::TableOutOfRange));
+        // a ring end past the coordinate count
+        let mut payload = full_rings_payload();
+        payload[56..60].copy_from_slice(&7u32.to_le_bytes());
+        assert_eq!(check_tables(&payload, &layout), Err(Error::TableOutOfRange));
+        // the poly record's ring end past the ring count
+        let mut payload = full_rings_payload();
+        payload[76..80].copy_from_slice(&3u32.to_le_bytes());
         assert_eq!(check_tables(&payload, &layout), Err(Error::TableOutOfRange));
     }
 }

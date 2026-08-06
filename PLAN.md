@@ -778,6 +778,19 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
     `from_slice` accepts arbitrary input even if embedded assets are
     trusted), make every block carry a SAFETY comment, and consider
     `#[deny(unsafe_op_in_unsafe_fn)]`/Miri coverage for the testable ones.
+    **First pass (2026-08-06): one real gap found and closed.** The
+    `full_rings_fold` slice cast trusted ring-table values read fresh from
+    the payload each lookup while load time validated only section extents
+    and the last ring end: a hostile container's non-monotone ring-end
+    table wrapped the coordinate-count subtraction in release (no
+    overflow-checks) straight into `from_raw_parts` UB. Fix: `check_tables`
+    now proves both FullRings ring tables monotone and bounded in its
+    load-time pass (`Error::TableOutOfRange`), with synthetic-container
+    rejection tests in format.rs. The other sites verified sound as-is:
+    Pack24 reads stay inside its 6 bytes unconditionally; the wasm statics
+    are single-threaded with no reference outliving a call; the FFI
+    surfaces carry documented alloc-pairing contracts. Still open:
+    `unsafe_op_in_unsafe_fn`, Miri coverage.
 
 ---
 
