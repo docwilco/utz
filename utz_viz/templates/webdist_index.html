@@ -178,16 +178,14 @@ function loadDataset(name) {
       var h = new Uint32Array(buf, 0, 4);
       if (h[0] !== 0x765A5475) throw new Error(name + ': bad magic');
       var nArcs = h[2], nVerts = h[3];
-      var hasRaw = !!(h[1] & 4); // raw ring-coord count before arc dedup
-      var offs0 = hasRaw ? 20 : 16;
+      var offs0 = 20; // magic | flags | n_arcs | n_verts | raw count
       var p = offs0 + 4 * (nArcs + 1);
       p += (8 - p % 8) % 8;
       return {
-        rawCoords: hasRaw ? new Uint32Array(buf, 16, 1)[0] : null,
+        rawCoords: new Uint32Array(buf, 16, 1)[0], // ring coords before arc dedup
         offs: new Uint32Array(buf, offs0, nArcs + 1),
         coords: new Float64Array(buf, p, nVerts * 2),
         dens: (h[1] & 1) ? new Float32Array(buf, p + nVerts * 16, nVerts) : null,
-        hasTopo: !!(h[1] & 2),
         raw: buf,
         stored0: nVerts,
       };
@@ -323,8 +321,7 @@ function syncHash() {
   if (heatCb.checked) parts.push('h=' + heatOp.value);
   if (gridCb.checked) parts.push('g=' + (Math.round(gridDeg * 1000) / 1000) + ',' + gridLayerSel.selectedIndex);
   if (encCb.checked) {
-    // <grid°>[~<geom id>] per slot; parseFloat stops at '~', so old parsers
-    // still read the grid° and drop the geom
+    // <grid°>[~<geom id>] per slot
     parts.push('e=' + encSlots.map(function (s) {
       return s.gridDeg + (s.geomId ? '~' + s.geomId : '');
     }).join(','));
@@ -1125,7 +1122,7 @@ function encSpawn(s, d, name) {
     }
     if (m.type === 'initfail') {
       encAbort(s);
-      s.view = { error: 'blob has no topology section — regenerate the data files (utz_dev_cli visualize)' };
+      s.view = { error: 'malformed dataset blob — regenerate the data files (utz_dev_cli visualize)' };
       encRender();
       return;
     }
@@ -1221,12 +1218,6 @@ function encRequestSlot(s, force) {
   encRender();
   loadDataset(p.name).then(function (d) {
     if (gen !== s.gen || !s.busy) return; // superseded meanwhile
-    if (!d.hasTopo) {
-      s.busy = false; encSyncSpin();
-      s.view = { error: 'blob has no topology section — regenerate the data files (utz_dev_cli visualize)' };
-      encRender();
-      return;
-    }
     if (!s.worker) encSpawn(s, d, p.name);
     if (s.ready) { encSend(s); } else { s.pendingRun = true; }
   }).catch(function (e) {
@@ -1400,7 +1391,7 @@ function probSpawn(name, d) {
       if (prob.pendingRun) { prob.pendingRun = false; probSend(); }
     } else if (m.type === 'initfail') {
       prob.busy = false; probSpin.classList.remove('on');
-      probNote('dataset blob predates the live encode — re-run utz_dev_cli visualize');
+      probNote('malformed dataset blob — re-run utz_dev_cli visualize');
     } else if (m.type === 'problems' && m.gen === prob.gen) {
       prob.busy = false; probSpin.classList.remove('on');
       probRender(m.recs, m.ms);
@@ -1435,7 +1426,6 @@ function probRefresh(force) {
   prob.busy = true; probSpin.classList.add('on');
   loadDataset(p.name).then(function (d) {
     if (gen !== prob.gen) return;
-    if (!d.hasTopo) { prob.busy = false; probSpin.classList.remove('on'); probNote('dataset blob predates the live encode — re-run utz_dev_cli visualize'); return; }
     if (prob.worker && prob.dsName !== p.name) probKill();
     prob.dsName = p.name;
     if (!prob.worker) probSpawn(p.name, d);
@@ -1874,8 +1864,7 @@ function renderReduction() {
         (prev ? ' · <span class="pct">÷' + (prev / bytes).toFixed(2) + '</span>' : '') +
         '</span></div>';
     }
-    var raw = s.data.rawCoords ? s.data.rawCoords * 16 : 0;
-    if (raw) row('parsed coords · ' + s.data.rawCoords.toLocaleString() + ' v · f64', raw, 0);
+    row('parsed coords · ' + s.data.rawCoords.toLocaleString() + ' v · f64', s.data.rawCoords * 16, 0);
     var arcs = s.data.stored0 * 16;
     row('shared arcs · ' + s.data.stored0.toLocaleString() + ' v · f64', arcs, raw);
     var simp = kept * 16;
@@ -1954,11 +1943,10 @@ if (HASH.g) {
 }
 if (HASH.e) {
   // e=<g0>[~<geom0>],<g1>[~<geom1>],… (grid° per layer, fractional ok; the
-  // ~<geom id> suffix picks the geometry encoding); a single value (old
-  // links) applies to every layer
+  // ~<geom id> suffix picks the geometry encoding)
   var ep = HASH.e.split(',');
   encSlots.forEach(function (s, i) {
-    var f = (ep.length === 1 ? ep[0] : ep[i] || '').split('~');
+    var f = (ep[i] || '').split('~');
     var gv = parseFloat(f[0]);
     var geom = parseInt(f[1], 10);
     if (geom >= 1 && geom < ENC_GEOMS.length) {

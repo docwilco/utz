@@ -116,14 +116,9 @@ fn parse_blob(bytes: &[u8]) -> Option<State> {
         return None;
     }
     let flags = reader.u32()?;
-    if flags & 2 == 0 {
-        return None; // no topology section (blob predates the live encode)
-    }
     let n_arcs = reader.u32()? as usize;
     let n_verts = reader.u32()? as usize;
-    if flags & 4 != 0 {
-        reader.u32()?; // raw ring-coordinate count: prefix-only, the JS reads it
-    }
+    reader.u32()?; // raw ring-coordinate count: prefix-only, the JS reads it
     let mut offsets = Vec::with_capacity(n_arcs + 1);
     for _ in 0..=n_arcs {
         offsets.push(reader.u32()? as usize);
@@ -203,9 +198,9 @@ fn parse_blob(bytes: &[u8]) -> Option<State> {
     })
 }
 
-/// Parses a `<ds>.bin.z` blob (uTZv with the topology section) previously
-/// copied into a `utz_enc_alloc(len)` buffer at `ptr`. Takes ownership of
-/// the buffer. Returns 1 on success and 0 on a malformed or legacy blob.
+/// Parses a `<ds>.bin.z` blob (uTZv) previously copied into a
+/// `utz_enc_alloc(len)` buffer at `ptr`. Takes ownership of the buffer.
+/// Returns 1 on success and 0 on a malformed blob.
 ///
 /// # Safety
 /// `ptr`/`len` must come from a single prior `utz_enc_alloc(len)` call whose

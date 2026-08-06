@@ -21,9 +21,8 @@ pub fn webdist_index() -> utz_build::Result<String> {
 
 /// Builds the binary dataset blob for the webdist viewer (all
 /// little-endian). The layout is:
-/// `"uTZv" | u32 flags (bit0 = densities, bit1 = topology, bit2 = raw
-/// coordinate count) | u32 n_arcs | u32 n_verts | u32 raw_coords (bit2)
-/// | u32 offs[n_arcs+1] | pad to 8 | f64 xy[2·n_verts]
+/// `"uTZv" | u32 flags (bit0 = densities) | u32 n_arcs | u32 n_verts
+/// | u32 raw_coords | u32 offs[n_arcs+1] | pad to 8 | f64 xy[2·n_verts]
 /// | f32 dens[n_verts] | topology`. `raw_coords` is the ring-coordinate
 /// count before topology dedup, so the viewer's Reduction ladder can show
 /// what shared arcs saved.
@@ -63,7 +62,7 @@ pub fn dataset_bin(
     };
     let mut out = Vec::with_capacity(24 + 4 * n_arcs + 20 * n_verts);
     out.extend_from_slice(b"uTZv");
-    out.extend_from_slice(&(u32::from(grid.is_some()) | 2 | 4).to_le_bytes());
+    out.extend_from_slice(&u32::from(grid.is_some()).to_le_bytes());
     push_u32(&mut out, n_arcs, "arc count");
     push_u32(&mut out, n_verts, "vert count");
     let raw_coords =
