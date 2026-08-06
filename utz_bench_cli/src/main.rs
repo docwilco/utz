@@ -20,7 +20,7 @@
 //! | `tiny-static`                             | the uncompressed preset |
 //! | `compact-none`, `balanced-none`           | preset recipe, uncompressed |
 //! | `tiny-fixed-static`, `compact-fixed-none` | uncompressed, fixed-width arcs |
-//! | `tiny-eager-static`, `compact-eager-static` | uncompressed, full rings |
+//! | `tiny-full-rings-static`, `compact-full-rings-static` | uncompressed, full rings |
 //! | `tiny-coarse`                             | uncompressed, grid only (cell precision) |
 //!
 //! The presets come from the `utz_data_*` crates via the `utz` preset
@@ -36,7 +36,8 @@ use clap::Parser;
 // the shared custom shapes: uncompressed preset twins across all geometry
 // encodings (recipes + capability guards in utz_bench_common's build.rs)
 use utz_bench_common::assets::{
-    BALANCED_NONE, COMPACT_EAGER, COMPACT_FIXED, COMPACT_NONE, TINY_COARSE, TINY_EAGER, TINY_FIXED,
+    BALANCED_NONE, COMPACT_FIXED, COMPACT_FULL_RINGS, COMPACT_NONE, TINY_COARSE, TINY_FIXED,
+    TINY_FULL_RINGS,
 };
 
 /// The embedded asset for a shape name, if the argument is one.
@@ -45,12 +46,12 @@ fn embedded(name: &str) -> Option<&'static [u8]> {
         "tiny" => utz::data::TINY,
         "tiny-static" => utz::data::TINY_STATIC,
         "tiny-fixed-static" => TINY_FIXED,
-        "tiny-eager-static" => TINY_EAGER,
+        "tiny-full-rings-static" => TINY_FULL_RINGS,
         "tiny-coarse" => TINY_COARSE,
         "compact" => utz::data::COMPACT,
         "compact-none" => COMPACT_NONE,
         "compact-fixed-none" => COMPACT_FIXED,
-        "compact-eager-static" => COMPACT_EAGER,
+        "compact-full-rings-static" => COMPACT_FULL_RINGS,
         "balanced" => utz::data::BALANCED,
         "balanced-none" => BALANCED_NONE,
         "accurate" => utz::data::ACCURATE,
@@ -67,7 +68,7 @@ struct Args {
     /// The built-in shape name (a preset: tiny, tiny-static, compact,
     /// balanced, accurate; or an uncompressed variant: compact-none,
     /// balanced-none, tiny-fixed-static, compact-fixed-none,
-    /// tiny-eager-static, compact-eager-static, tiny-coarse; the crate docs
+    /// tiny-full-rings-static, compact-full-rings-static, tiny-coarse; the crate docs
     /// table explains each) or a .utz asset path.
     asset: String,
     /// The number of uniform lon/lat sample points.

@@ -54,7 +54,7 @@ use utz::data::{
 // only codec none) across all geometry encodings (recipes + capability
 // guards in utz_bench_common's build.rs)
 use utz_bench_common::assets::{
-    BALANCED_NONE, COMPACT_EAGER, COMPACT_FIXED, COMPACT_NONE, TINY_COARSE, TINY_EAGER, TINY_FIXED,
+    BALANCED_NONE, COMPACT_FULL_RINGS, COMPACT_FIXED, COMPACT_NONE, TINY_COARSE, TINY_FULL_RINGS, TINY_FIXED,
 };
 
 /// A modest point count by host standards; lookups run ~250-300x host on
@@ -352,8 +352,8 @@ fn main() -> ! {
     xip_leg("compact xip-flash", COMPACT_NONE, &points);
     xip_leg("compact-fixed xip-flash", COMPACT_FIXED, &points);
     // eager-image: slice kernels straight off flash — eager speed, zero RAM
-    xip_leg("tiny-eager xip-flash", TINY_EAGER, &points);
-    xip_leg("compact-eager xip-flash", COMPACT_EAGER, &points);
+    xip_leg("tiny-full-rings xip-flash", TINY_FULL_RINGS, &points);
+    xip_leg("compact-full-rings xip-flash", COMPACT_FULL_RINGS, &points);
     // grid-only: lookup() == lookup_coarse (cell precision; own checksum)
     xip_leg("tiny-coarse xip-flash", TINY_COARSE, &points);
     xip_leg("balanced xip-flash", BALANCED_NONE, &points);

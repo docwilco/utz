@@ -46,15 +46,15 @@ fn main() {
     Config::tiny()
         .codec(Codec::Uncompressed)
         .geom(GeomEncoding::FullRings)
-        .out_path(format!("{out_dir}/tiny-eager-static.utz"))
+        .out_path(format!("{out_dir}/tiny-full-rings-static.utz"))
         .generate()
-        .expect("generate tiny-eager-static.utz");
+        .expect("generate tiny-full-rings-static.utz");
     Config::compact()
         .codec(Codec::Uncompressed)
         .geom(GeomEncoding::FullRings)
-        .out_path(format!("{out_dir}/compact-eager-static.utz"))
+        .out_path(format!("{out_dir}/compact-full-rings-static.utz"))
         .generate()
-        .expect("generate compact-eager-static.utz");
+        .expect("generate compact-full-rings-static.utz");
     // grid-only coarse asset: cell-precision answers, ~1/4 the flash of even
     // the varint payload — the lookup_coarse tier measured end to end
     Config::tiny()

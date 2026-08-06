@@ -111,10 +111,12 @@ pub mod assets {
     pub static COMPACT_FIXED: &[u8] =
         include_bytes!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz"));
     // full-rings twins need 4-aligned statics (FullRings slice casts)
-    pub static TINY_EAGER: &[u8] =
-        utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/tiny-eager-static.utz"));
-    pub static COMPACT_EAGER: &[u8] =
-        utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/compact-eager-static.utz"));
+    pub static TINY_FULL_RINGS: &[u8] =
+        utz::include_bytes_aligned!(4, concat!(env!("OUT_DIR"), "/tiny-full-rings-static.utz"));
+    pub static COMPACT_FULL_RINGS: &[u8] = utz::include_bytes_aligned!(
+        4,
+        concat!(env!("OUT_DIR"), "/compact-full-rings-static.utz")
+    );
     pub static TINY_COARSE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz"));
 
     // capability guards emitted next to each build.rs asset: a feature
@@ -124,10 +126,13 @@ pub mod assets {
     include!(concat!(env!("OUT_DIR"), "/balanced-none.utz.guard.rs"));
     include!(concat!(env!("OUT_DIR"), "/tiny-fixed-static.utz.guard.rs"));
     include!(concat!(env!("OUT_DIR"), "/compact-fixed-none.utz.guard.rs"));
-    include!(concat!(env!("OUT_DIR"), "/tiny-eager-static.utz.guard.rs"));
     include!(concat!(
         env!("OUT_DIR"),
-        "/compact-eager-static.utz.guard.rs"
+        "/tiny-full-rings-static.utz.guard.rs"
+    ));
+    include!(concat!(
+        env!("OUT_DIR"),
+        "/compact-full-rings-static.utz.guard.rs"
     ));
     include!(concat!(env!("OUT_DIR"), "/tiny-coarse.utz.guard.rs"));
 }

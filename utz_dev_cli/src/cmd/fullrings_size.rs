@@ -1,12 +1,12 @@
 //! Does packing `FullRings` coords to quant width beat general compression
 //! of the zero-padded i32 pairs? (The answer decides whether packed
-//! images are worth it for *compressed* assets; uncompressed XIP always
-//! saves the raw 25–50%.) The command takes uncompressed full-rings
-//! assets, rewrites the coords section at quant width, and compresses
-//! both payloads at preset settings.
+//! coordinates are worth it for *compressed* assets; uncompressed XIP
+//! always saves the raw 25–50%.) The command takes uncompressed
+//! full-rings assets, rewrites the coords section at quant width, and
+//! compresses both payloads at preset settings.
 //!
 //! ```text
-//! utz_dev_cli imagepack-size <eager.utz>...
+//! utz_dev_cli fullrings-size <full-rings.utz>...
 //! ```
 
 use utz::format::{self};
@@ -30,7 +30,7 @@ pub struct Args {
 pub fn run(args: &Args) -> utz_build::Result<()> {
     println!(
         "{:<30} {:>9} {:>9} {:>9} {:>9}",
-        "image payload", "raw", "gzip", "xz", "brotli"
+        "full-rings payload", "raw", "gzip", "xz", "brotli"
     );
     for path in &args.paths {
         let bytes = std::fs::read(path)?;

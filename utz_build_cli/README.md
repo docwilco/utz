@@ -14,7 +14,7 @@ utz_build_cli gen [ds] [epsilon_m] [--qbits 24] [--grid-deg 2]
 utz_build_cli gen-preset [tiny|tiny-static|compact|balanced|accurate]
 ```
 
-[`cmd::encode`] is `gen`: it exposes every knob of
+[`cmd::gen`] is `gen`: it exposes every knob of
 [`utz_build::Config`], one flag each. [`cmd::gen_preset`] drives the
 canonical `utz_build::presets` recipe table (every preset when the
 name is omitted), so preset assets regenerate from a single source
@@ -22,7 +22,7 @@ of truth. The repo-internal measurement and
 viewer commands live in the (unpublished) `utz_dev_cli` crate.
 
 [`utz_build::Config`]: https://docwilco.github.io/utz/docs/utz_build/config/struct.Config.html
-[`cmd::encode`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/encode/index.html
+[`cmd::gen`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/gen/index.html
 [`cmd::gen_preset`]: https://docwilco.github.io/utz/docs/utz_build_cli/cmd/gen_preset/index.html
 
 License: MIT

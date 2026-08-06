@@ -22,7 +22,7 @@ shapes (assets embedded at build time):
 | `tiny-static`                             | the uncompressed preset |
 | `compact-none`, `balanced-none`           | preset recipe, uncompressed |
 | `tiny-fixed-static`, `compact-fixed-none` | uncompressed, fixed-width arcs |
-| `tiny-eager-static`, `compact-eager-static` | uncompressed, full rings |
+| `tiny-full-rings-static`, `compact-full-rings-static` | uncompressed, full rings |
 | `tiny-coarse`                             | uncompressed, grid only (cell precision) |
 
 The presets come from the `utz_data_*` crates via the `utz` preset

@@ -22,7 +22,7 @@ docs state the question it answers and how. The commands group by area:
   [`cmd::density_compare`], [`cmd::rdp_sweep`], and [`cmd::quant_clean`].
 - The **asset size** commands are [`cmd::size_table`], [`cmd::whittle`],
   [`cmd::window_sweep`], [`cmd::quant_size`], [`cmd::fixedwidth_size`],
-  and [`cmd::imagepack_size`].
+  and [`cmd::fullrings_size`].
 - The **grid prefilter design** commands are [`cmd::csr_sweep`],
   [`cmd::gridsweep`], [`cmd::grid2mem`], [`cmd::grid_bench`],
   [`cmd::dominant_cost`], and [`cmd::polygrid_probe`].
@@ -45,7 +45,7 @@ GETs keep it fresh); density-weighted runs additionally fetch GHS-POP
 [`cmd::grid2mem`]: https://docwilco.github.io/utz/docs/utz_dev_cli/cmd/grid2mem/index.html
 [`cmd::grid_bench`]: https://docwilco.github.io/utz/docs/utz_dev_cli/cmd/grid_bench/index.html
 [`cmd::gridsweep`]: https://docwilco.github.io/utz/docs/utz_dev_cli/cmd/gridsweep/index.html
-[`cmd::imagepack_size`]: https://docwilco.github.io/utz/docs/utz_dev_cli/cmd/imagepack_size/index.html
+[`cmd::fullrings_size`]: https://docwilco.github.io/utz/docs/utz_dev_cli/cmd/fullrings_size/index.html
 [`cmd::pip_bench`]: https://docwilco.github.io/utz/docs/utz_dev_cli/cmd/pip_bench/index.html
 [`cmd::polygrid_probe`]: https://docwilco.github.io/utz/docs/utz_dev_cli/cmd/polygrid_probe/index.html
 [`cmd::quant_clean`]: https://docwilco.github.io/utz/docs/utz_dev_cli/cmd/quant_clean/index.html

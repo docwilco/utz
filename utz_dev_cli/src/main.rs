@@ -72,7 +72,7 @@ enum Cmd {
     PolygridProbe(cmd::polygrid_probe::Args),
     /// Compares packed `FullRings` coords vs general compression (geom=2
     /// assets).
-    ImagepackSize(cmd::imagepack_size::Args),
+    FullRingsSize(cmd::fullrings_size::Args),
 }
 
 fn main() -> std::process::ExitCode {
@@ -108,6 +108,6 @@ fn run() -> utz_build::Result<()> {
         Cmd::Amscan(args) => cmd::amscan::run(args),
         Cmd::FixedwidthSize(args) => cmd::fixedwidth_size::run(&args),
         Cmd::PolygridProbe(args) => cmd::polygrid_probe::run(&args),
-        Cmd::ImagepackSize(args) => cmd::imagepack_size::run(&args),
+        Cmd::FullRingsSize(args) => cmd::fullrings_size::run(&args),
     }
 }

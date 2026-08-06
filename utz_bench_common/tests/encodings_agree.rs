@@ -5,7 +5,7 @@
 //! compact (i24) the i32 eager cache and the `Pack24` full-rings kernel.
 
 use utz_bench_common::assets::{
-    COMPACT_EAGER, COMPACT_FIXED, COMPACT_NONE, TINY_EAGER, TINY_FIXED,
+    COMPACT_FIXED, COMPACT_FULL_RINGS, COMPACT_NONE, TINY_FIXED, TINY_FULL_RINGS,
 };
 
 fn agree(name: &str, finders: &[&utz::Finder], points: &[(f64, f64)]) {
@@ -28,7 +28,7 @@ fn geometry_encodings_agree() {
     let tiny_fixed = utz::Finder::from_slice(TINY_FIXED).unwrap();
     let mut tiny_preloaded = utz::Finder::from_slice(TINY_FIXED).unwrap();
     tiny_preloaded.preload();
-    let tiny_full_rings = utz::Finder::from_static(TINY_EAGER).unwrap();
+    let tiny_full_rings = utz::Finder::from_static(TINY_FULL_RINGS).unwrap();
     agree(
         "tiny",
         &[&tiny_fixed, &tiny_preloaded, &tiny_full_rings],
@@ -41,7 +41,7 @@ fn geometry_encodings_agree() {
     let mut compact_preloaded = utz::Finder::from_slice(COMPACT_NONE).unwrap();
     compact_preloaded.preload();
     let compact_fixed = utz::Finder::from_slice(COMPACT_FIXED).unwrap();
-    let compact_full_rings = utz::Finder::from_static(COMPACT_EAGER).unwrap();
+    let compact_full_rings = utz::Finder::from_static(COMPACT_FULL_RINGS).unwrap();
     agree(
         "compact",
         &[
