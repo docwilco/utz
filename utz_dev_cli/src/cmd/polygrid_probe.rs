@@ -59,7 +59,7 @@ fn load_feats(bytes: &[u8]) -> (format::PayloadLayout, Vec<Feat>) {
         let feature_index = read_u16(payload, header.parent + pid * 2) as usize;
         let mut position =
             header.ring_data + read_u32(payload, header.poly_offsets + pid * 4) as usize;
-        position += 4 * coord_bytes; // per-poly bbox (v5)
+        position += 4 * coord_bytes; // skip the per-poly bbox
         let nrings = read_u16(payload, position);
         position += 2;
         let mut rings = Vec::with_capacity(nrings as usize);

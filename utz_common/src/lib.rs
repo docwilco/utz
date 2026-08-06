@@ -355,14 +355,14 @@ impl GeomEncoding {
         }
     }
 
-    /// The encoding a name selects: the canonical names plus the
-    /// `varint`/`delta`, `fixed`, and `eager`/`image` aliases.
+    /// The encoding a name selects, the inverse of
+    /// [`name()`](GeomEncoding::name).
     #[must_use]
     pub fn from_name(name: &str) -> Option<GeomEncoding> {
         match name {
-            "varint-arcs" | "varint" | "delta" => Some(GeomEncoding::VarintArcs),
-            "fixed-width-arcs" | "fixed" => Some(GeomEncoding::FixedWidthArcs),
-            "full-rings" | "eager" | "image" => Some(GeomEncoding::FullRings),
+            "varint-arcs" => Some(GeomEncoding::VarintArcs),
+            "fixed-width-arcs" => Some(GeomEncoding::FixedWidthArcs),
+            "full-rings" => Some(GeomEncoding::FullRings),
             "coarse" => Some(GeomEncoding::Coarse),
             _ => None,
         }
@@ -525,10 +525,11 @@ impl Dataset {
         matches!(self, Dataset::Now | Dataset::Since1970 | Dataset::All)
     }
 
-    /// The dataset a name selects (`[land-]now|1970|all`; the legacy
-    /// `osm`/`osm1970` and `full`/`comprehensive` aliases are accepted).
-    /// This is the inverse of [`name()`](Dataset::name), kept beside it
-    /// so the two spellings cannot drift apart.
+    /// The dataset a name selects (`[land-]now|1970|all`; `full` and
+    /// `comprehensive`, TZBB's own word for the unsuffixed release, are
+    /// accepted for `all`). This is the inverse of
+    /// [`name()`](Dataset::name), kept beside it so the two spellings
+    /// cannot drift apart.
     #[must_use]
     pub fn from_name(name: &str) -> Option<Dataset> {
         let (land_only, rest) = match name.strip_prefix("land-") {
@@ -536,10 +537,10 @@ impl Dataset {
             None => (false, name),
         };
         match (rest, land_only) {
-            ("now" | "osm", false) => Some(Dataset::Now),
-            ("now" | "osm", true) => Some(Dataset::NowLandOnly),
-            ("1970" | "osm1970", false) => Some(Dataset::Since1970),
-            ("1970" | "osm1970", true) => Some(Dataset::Since1970LandOnly),
+            ("now", false) => Some(Dataset::Now),
+            ("now", true) => Some(Dataset::NowLandOnly),
+            ("1970", false) => Some(Dataset::Since1970),
+            ("1970", true) => Some(Dataset::Since1970LandOnly),
             ("all" | "full" | "comprehensive", false) => Some(Dataset::All),
             ("all" | "full" | "comprehensive", true) => Some(Dataset::AllLandOnly),
             _ => None,
@@ -729,6 +730,11 @@ mod tests {
             Some(Dataset::Since1970LandOnly)
         );
         assert_eq!(Dataset::from_name("nowhere"), None);
+        // pre-publish legacy spellings are gone
+        assert_eq!(Dataset::from_name("osm"), None);
+        assert_eq!(Dataset::from_name("osm1970"), None);
+        assert_eq!(GeomEncoding::from_name("eager"), None);
+        assert_eq!(GeomEncoding::from_name("varint"), None);
     }
 
     #[test]

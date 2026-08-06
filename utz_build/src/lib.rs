@@ -112,9 +112,8 @@ pub use config::Config;
 
 use std::path::PathBuf;
 
-/// Parses a dataset name (`[land-]now|1970|all`; the legacy
-/// `osm`/`osm1970` are accepted): [`Dataset::from_name()`] with this
-/// crate's error type.
+/// Parses a dataset name (`[land-]now|1970|all`):
+/// [`Dataset::from_name()`] with this crate's error type.
 ///
 /// # Errors
 /// Returns an error for an unrecognized dataset name.
