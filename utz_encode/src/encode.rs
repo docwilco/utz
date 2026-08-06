@@ -27,7 +27,7 @@
 //! runtime PIPs is exactly what the grid indexed.
 
 use scroll::{Pread, Pwrite, LE};
-use utz_common::{CellTag, PayloadHeader, QuantBits, NO_ZONE};
+use utz_common::{CellTag, PayloadHeader, NO_ZONE};
 pub use utz_common::{Dataset, MAGIC, PAYLOAD_HEADER_LEN, PROLOGUE_LEN, VERSION};
 
 use crate::error::ensure;
@@ -46,7 +46,7 @@ fn c16(value: usize) -> u16 {
     u16::try_from(value).expect("exceeds u16 format width")
 }
 
-pub use utz_common::{Codec, GeomEncoding, SimplifyAlgorithm};
+pub use utz_common::{Codec, GeomEncoding, QuantBits, SimplifyAlgorithm};
 
 /// Builds the ε-driven `Simplify` for the topology builder: ε is a max
 /// deviation in degrees for RDP and Imai–Iri, and Visvalingam's area
@@ -188,12 +188,13 @@ pub fn payload_from_topology(
     feats: &[Feat],
     params: &Params,
 ) -> crate::Result<(Vec<u8>, PayloadStats)> {
-    ensure!(
-        matches!(params.quant_bits, 16 | 24 | 32),
-        Error::QuantBits {
-            bits: params.quant_bits
-        }
-    );
+    // validate the raw knob once; everything downstream carries the enum
+    let quant_bits = u8::try_from(params.quant_bits)
+        .ok()
+        .and_then(QuantBits::from_byte)
+        .ok_or(Error::QuantBits {
+            bits: params.quant_bits,
+        })?;
     ensure!(
         (0.1..=45.0).contains(&params.grid_deg),
         Error::GridDeg {
@@ -209,7 +210,7 @@ pub fn payload_from_topology(
             max: usize::from(NO_ZONE) - 1
         }
     );
-    let qmax = qmax_for(params.quant_bits);
+    let qmax = qmax_for(quant_bits.bits());
     let clean_geom = quantize_clean(topology, arc_coords, qmax);
     let (cell_grid, csr, parent) = poly_grid(&clean_geom, feats, params, qmax)?;
     let full_rings = (params.geom == GeomEncoding::FullRings)
@@ -238,10 +239,10 @@ pub fn payload_from_topology(
     let (arcs_off, rings_off) = write_geometry_sections(
         &mut out,
         params,
+        quant_bits,
         &clean_geom,
         full_rings.as_ref(),
         &parent,
-        feats.len(),
         &mut stats,
     );
 
@@ -279,10 +280,7 @@ pub fn payload_from_topology(
         release_len: c16(params.tzbb_release.len()),
         flags: 0, // reserved
         dataset: params.dataset,
-        quant_bits: QuantBits::from_byte(
-            u8::try_from(params.quant_bits).expect("quant_bits guarded to 16/24/32"),
-        )
-        .expect("quant_bits guarded to 16/24/32"),
+        quant_bits,
         simplify_algorithm: params.simplify,
         geom: params.geom,
         codec: Codec::Uncompressed, // finish() records the actual codec
@@ -515,10 +513,10 @@ fn eager_counts(
 fn write_geometry_sections(
     out: &mut Vec<u8>,
     params: &Params,
+    quant_bits: QuantBits,
     clean_geom: &CleanGeom,
     full_rings: Option<&FullRingsSections>,
     parent: &[u16],
-    n_features: usize,
     stats: &mut PayloadStats,
 ) -> (u32, u32) {
     let (arcs_off, rings_off);
@@ -539,7 +537,7 @@ fn write_geometry_sections(
         }
         arcs_off = c32(out.len());
         stats.zones = arcs_off - stats.header;
-        write_full_rings(out, rings, params.quant_bits);
+        write_full_rings(out, rings, quant_bits);
         // ---- ring index reduces to the parent table ----
         rings_off = c32(out.len());
         stats.arcs = rings_off - arcs_off;
@@ -549,13 +547,13 @@ fn write_geometry_sections(
     } else {
         arcs_off = c32(out.len());
         stats.zones = arcs_off - stats.header;
-        write_arc_store(out, &clean_geom.arcs_q, params.geom, params.quant_bits);
+        write_arc_store(out, &clean_geom.arcs_q, params.geom, quant_bits);
         rings_off = c32(out.len());
         stats.arcs = rings_off - arcs_off;
         for &parent_feature in parent {
             out.extend_from_slice(&parent_feature.to_le_bytes());
         }
-        write_ring_index(out, clean_geom, n_features, parent.len(), params.quant_bits);
+        write_ring_index(out, clean_geom, parent.len(), quant_bits);
     }
     (arcs_off, rings_off)
 }
@@ -625,16 +623,18 @@ fn write_zone_table(out: &mut Vec<u8>, feats: &[Feat]) -> crate::Result<()> {
     Ok(())
 }
 
-/// Fixed-width coord at the quant width (i16→2 B, i24→3 B, i32→4 B).
-fn push_fixed(out: &mut Vec<u8>, value: i32, quant_bits: u32) {
-    let byte_len = (quant_bits as usize).div_ceil(8);
-    out.extend_from_slice(&value.to_le_bytes()[0..byte_len]);
+/// Appends one fixed-width coordinate at the quant width: the value's low
+/// 2, 3, or 4 little-endian bytes for i16, i24, and i32 quantization.
+/// Public so the runtime crate's coordinate-unpacking tests can round-trip
+/// against the encoder's real byte layout instead of a mirror copy.
+pub fn push_fixed(out: &mut Vec<u8>, value: i32, quant_bits: QuantBits) {
+    out.extend_from_slice(&value.to_le_bytes()[0..quant_bits.bytes()]);
 }
 
 /// Full-rings sections: `[coords][ring_ends u32][polys bbox 4×i32 + rend
 /// u32]`, with coords at quant width (i16 4 B/vertex, i24 packed 6 B,
 /// i32 8 B).
-fn write_full_rings(out: &mut Vec<u8>, rings: &FullRingsSections, quant_bits: u32) {
+fn write_full_rings(out: &mut Vec<u8>, rings: &FullRingsSections, quant_bits: QuantBits) {
     for &(x, y) in &rings.coords {
         push_fixed(out, x, quant_bits);
         push_fixed(out, y, quant_bits);
@@ -653,7 +653,12 @@ fn write_full_rings(out: &mut Vec<u8>, rings: &FullRingsSections, quant_bits: u3
 /// Arc store: `arc_offsets u32[n_arcs+1] | per arc: varint vcount |
 /// first vertex fixed | zigzag-varint deltas` (or all-fixed for
 /// `GeomEncoding::FixedWidthArcs`); `n_arcs` lives in the payload header.
-fn write_arc_store(out: &mut Vec<u8>, arcs_q: &[Arc<i32>], geom: GeomEncoding, quant_bits: u32) {
+fn write_arc_store(
+    out: &mut Vec<u8>,
+    arcs_q: &[Arc<i32>],
+    geom: GeomEncoding,
+    quant_bits: QuantBits,
+) {
     let mut arc_data = Vec::new();
     let mut arc_offsets: Vec<u32> = Vec::with_capacity(arcs_q.len() + 1);
     for arc in arcs_q {
@@ -697,14 +702,14 @@ fn write_arc_store(out: &mut Vec<u8>, arcs_q: &[Arc<i32>], geom: GeomEncoding, q
 fn write_ring_index(
     out: &mut Vec<u8>,
     clean_geom: &CleanGeom,
-    n_features: usize,
     n_polys: usize,
-    quant_bits: u32,
+    quant_bits: QuantBits,
 ) {
     let mut ring_data = Vec::new();
     let mut poly_offsets: Vec<u32> = Vec::with_capacity(n_polys + 1);
-    for feature_index in 0..n_features {
-        for poly in &clean_geom.topology.structure[feature_index] {
+    // structure is one entry per feature, in zone-table order
+    for feature_polys in &clean_geom.topology.structure {
+        for poly in feature_polys {
             poly_offsets.push(c32(ring_data.len()));
             // per-poly bbox: the point-granular gate — a streaming
             // miss returns before touching any arc, preload reads instead

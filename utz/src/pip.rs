@@ -430,6 +430,9 @@ mod tests {
     use std::vec;
     use std::vec::Vec;
 
+    #[cfg(feature = "geom-full-rings")]
+    use test_case::test_case;
+
     use super::*;
 
     const SQUARE: &[(i32, i32)] = &[(0, 0), (10, 0), (10, 10), (0, 10)];
@@ -693,6 +696,62 @@ mod tests {
                     assert!(ours && on_boundary, "disagree off-boundary at ({px},{py})");
                 }
             }
+        }
+    }
+
+    /// Packs one coordinate pair through the encoder's real i24 writer
+    /// ([`utz_encode::encode::push_fixed()`], x then y), so the tests below
+    /// round-trip the actual on-disk byte layout — a mirror copy of the
+    /// packing here could drift from the encoder without failing.
+    #[cfg(feature = "geom-full-rings")]
+    fn pack24(x: i32, y: i32) -> Pack24 {
+        use utz_encode::encode::{push_fixed, QuantBits};
+        let mut bytes = Vec::new();
+        push_fixed(&mut bytes, x, QuantBits::Bits24);
+        push_fixed(&mut bytes, y, QuantBits::Bits24);
+        Pack24(bytes.try_into().expect("two i24 coordinates are six bytes"))
+    }
+
+    /// [`Pack24::xy()`] must invert the encoder's packing at every sign and
+    /// byte boundary of the i24 range. The asymmetric pairs are the point:
+    /// the unpack reads two overlapping words, so x's word read pulls in
+    /// y's low byte and y's read starts inside x's top byte — a wrong mask
+    /// or shift lets one coordinate's bytes bleed into the other, which
+    /// same-value pairs would miss.
+    #[cfg(feature = "geom-full-rings")]
+    #[test_case(0, 0; "zero")]
+    #[test_case(1, -1; "y all-ones next to small x")]
+    #[test_case(-1, 1; "x all-ones next to small y")]
+    #[test_case(-(1 << 23), (1 << 23) - 1; "extremes")]
+    #[test_case((1 << 23) - 1, -(1 << 23); "extremes swapped")]
+    #[test_case(0x7F, 0x80; "bit 7 boundary")]
+    #[test_case(-0x80, -0x81; "bit 7 boundary negative")]
+    #[test_case(0xFF, 0x100; "byte 1 boundary")]
+    #[test_case(-0x100, -0x101; "byte 1 boundary negative")]
+    #[test_case(0x7FFF, 0x8000; "bit 15 boundary")]
+    #[test_case(-0x8000, -0x8001; "bit 15 boundary negative")]
+    #[test_case(0xFFFF, 0x10000; "byte 2 boundary")]
+    #[test_case(-0x10000, -0x10001; "byte 2 boundary negative")]
+    #[test_case(0x40_0000, -0x40_0001; "bit 22 boundary")]
+    fn pack24_roundtrip(x: i32, y: i32) {
+        assert_eq!(pack24(x, y).xy(), (x, y));
+    }
+
+    /// [`pack24_roundtrip()`] across the full i24 range: uniform random
+    /// pairs, every draw checked exactly.
+    #[cfg(feature = "geom-full-rings")]
+    #[test_case(0x2424_2424; "seed a")]
+    #[test_case(0x0bad_5eed; "seed b")]
+    fn pack24_roundtrip_full_range(seed: u64) {
+        let mut lcg = utz_common::Lcg::new(seed);
+        // 24 random bits, biased down to the signed i24 range
+        let mut next = || {
+            i32::try_from((lcg.next_u64() >> 40).cast_signed() - (1 << 23))
+                .expect("a 24-bit draw minus 2^23 fits i32")
+        };
+        for _ in 0..20_000 {
+            let (x, y) = (next(), next());
+            assert_eq!(pack24(x, y).xy(), (x, y), "roundtrip broke at ({x},{y})");
         }
     }
 }
