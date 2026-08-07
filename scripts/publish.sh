@@ -32,6 +32,13 @@ publish() {
       sleep 120
       continue
     fi
+    # transient registry/CDN failures (e.g. a 503 with an empty body from
+    # the cache layer on a large upload) deserve a retry, not an abort
+    if echo "$out" | grep -qiE "got 50[0-9]|service unavailable|server error|connection reset|timed out"; then
+      echo "--- server error on $crate (attempt $attempt); sleeping 30s"
+      sleep 30
+      continue
+    fi
     echo "!!! $crate publish FAILED:"
     echo "$out" | tail -20
     exit 1
