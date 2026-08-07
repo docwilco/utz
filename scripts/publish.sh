@@ -28,8 +28,19 @@ publish() {
       break
     fi
     if echo "$out" | grep -qi "rate limit\|429\|too many\|try again"; then
-      echo "--- rate limited on $crate (attempt $attempt); sleeping 120s"
-      sleep 120
+      # no Retry-After header, but the 429 body names the exact time:
+      # "... Please try again after <timestamp> or email help@crates.io ..."
+      local wait=120 until_ts target now
+      until_ts=$(echo "$out" | sed -n 's/.*[Tt]ry again after \(.*\) or email.*/\1/p' | head -1)
+      if [ -n "$until_ts" ]; then
+        target=$(date -d "$until_ts" +%s 2>/dev/null || echo 0)
+        now=$(date +%s)
+        if [ "$target" -gt "$now" ] && [ $((target - now)) -le 3600 ]; then
+          wait=$((target - now + 5))
+        fi
+      fi
+      echo "--- rate limited on $crate (attempt $attempt); sleeping ${wait}s"
+      sleep "$wait"
       continue
     fi
     # transient registry/CDN failures (e.g. a 503 with an empty body from
