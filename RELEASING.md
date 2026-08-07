@@ -40,17 +40,23 @@ dev-dependency on utz_common resolves against the sibling there).
 (pick an asset source / environment / geometry decoder) fire on the
 zero-feature build the verify step runs. The feature matrix is fully
 built by `./scripts/checks.sh all` beforehand, on the same sources the
-package contains.
+package contains. The data crates publish with `--allow-dirty`: their
+gitignored-but-included `.utz` assets trip cargo's dirty check.
+
+`./scripts/publish.sh` runs the whole sequence: it publishes in the
+order below, retries through crates.io's new-crate rate limit, waits
+for the registry to serve each crate before its dependents, and skips
+already-published crates, so a partial run can be rerun from the top.
 
 ```sh
 cargo publish -p utz_common
 cargo publish -p utz_simplify
 cargo publish -p utz_encode
-cargo publish -p utz_data_tiny
-cargo publish -p utz_data_tiny_static
-cargo publish -p utz_data_compact
-cargo publish -p utz_data_balanced
-cargo publish -p utz_data_accurate
+cargo publish -p utz_data_tiny --allow-dirty
+cargo publish -p utz_data_tiny_static --allow-dirty
+cargo publish -p utz_data_compact --allow-dirty
+cargo publish -p utz_data_balanced --allow-dirty
+cargo publish -p utz_data_accurate --allow-dirty
 cargo publish -p utz --no-verify
 cargo publish -p utz_build
 cargo publish -p utz_build_cli
