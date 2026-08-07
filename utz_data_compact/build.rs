@@ -2,8 +2,8 @@
 //! not match this preset's recipe in [`utz_common::presets`]. Regenerate
 //! with `scripts/gen-presets.sh` (or `utz_build_cli gen-preset compact`).
 
-use utz_common::presets::{Provenance, COMPACT};
 use utz_common::PayloadHeader;
+use utz_common::presets::{COMPACT, Provenance};
 
 fn main() {
     let recipe = &COMPACT;

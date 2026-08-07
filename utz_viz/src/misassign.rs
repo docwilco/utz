@@ -16,7 +16,7 @@
 //! `Math.round`/`Math.fround` rounding in [`qc()`]); deviations narrow to
 //! f32 like the worker's `Float32Array`.
 
-use utz_simplify::{simplify, simplify_weighted, DensityWeight, Simplify};
+use utz_simplify::{DensityWeight, Simplify, simplify, simplify_weighted};
 
 /// The display quantization mode, the viewer's quant knob (`f64` is "no
 /// snap").
@@ -359,16 +359,16 @@ pub fn arc_misassign(
                 j += 1;
             }
             indices.push(j);
-            if let Some(previous) = previous {
-                if j > previous + 1 {
-                    pockets(arc, densities, previous, j, simplify_acc);
-                    #[expect(
-                        clippy::cast_possible_truncation,
-                        reason = "the worker stores deviations in a Float32Array; narrowing to f32 is the ABI"
-                    )]
-                    {
-                        deviations[vertex] = dev_max(arc, previous, j) as f32;
-                    }
+            if let Some(previous) = previous
+                && j > previous + 1
+            {
+                pockets(arc, densities, previous, j, simplify_acc);
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "the worker stores deviations in a Float32Array; narrowing to f32 is the ABI"
+                )]
+                {
+                    deviations[vertex] = dev_max(arc, previous, j) as f32;
                 }
             }
             previous = Some(j);

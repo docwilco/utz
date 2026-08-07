@@ -9,7 +9,7 @@
 
 use geo::Contains;
 
-use utz_encode::{topo, Feat};
+use utz_encode::{Feat, topo};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -105,10 +105,10 @@ fn build_refs(features: &[Feat]) -> Vec<Ref> {
 }
 fn closed(ring: &[(f64, f64)]) -> Vec<(f64, f64)> {
     let mut result = ring.to_vec();
-    if result.first() != result.last() {
-        if let Some(&first) = result.first() {
-            result.push(first);
-        }
+    if result.first() != result.last()
+        && let Some(&first) = result.first()
+    {
+        result.push(first);
     }
     result
 }

@@ -319,6 +319,9 @@ fn main() -> ! {
     );
     let (psram_ptr, psram_len) = psram_device.raw_parts();
     if psram_len > 0 {
+        // SAFETY: the region is exactly the mapped PSRAM range the HAL just
+        // probed, otherwise unused, and registered once before any
+        // allocation can land in it
         unsafe {
             esp_alloc::HEAP.add_region(esp_alloc::HeapRegion::new(
                 psram_ptr,

@@ -79,7 +79,7 @@ impl From<ureq::Error> for Error {
 /// An anyhow-style guard that returns a typed [`Error`].
 #[macro_export]
 macro_rules! ensure {
-    ($cond:expr, $err:expr) => {
+    ($cond:expr_2021, $err:expr_2021) => {
         if !($cond) {
             return Err($err.into());
         }

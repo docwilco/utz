@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use crate::{Arc, Feat};
 // simplification lives in utz_simplify (shared with the viz HTML via WASM)
-pub use utz_simplify::{simplify, Simplify};
+pub use utz_simplify::{Simplify, simplify};
 
 // quantization parameterized by bit-width (i16 abs, i24 abs, i32 abs, ...)
 use crate::{q_lat, q_lon, qmax_for};
@@ -396,14 +396,14 @@ pub fn encode_topology_qm(
     let mut pool: Vec<String> = Vec::new();
     let mut tzid_indices: HashMap<String, u16> = HashMap::new();
     for feature in feats {
-        if let Some(tzid) = &feature.tzid {
-            if !tzid_indices.contains_key(tzid) {
-                tzid_indices.insert(
-                    tzid.clone(),
-                    u16::try_from(pool.len()).expect("tzid pool index fits u16"),
-                );
-                pool.push(tzid.clone());
-            }
+        if let Some(tzid) = &feature.tzid
+            && !tzid_indices.contains_key(tzid)
+        {
+            tzid_indices.insert(
+                tzid.clone(),
+                u16::try_from(pool.len()).expect("tzid pool index fits u16"),
+            );
+            pool.push(tzid.clone());
         }
     }
     let mut out = Vec::new();

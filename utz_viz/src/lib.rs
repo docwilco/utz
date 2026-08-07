@@ -13,8 +13,8 @@
 //! [`misassign`]: ../utz_viz/misassign/index.html
 //! [`emit`]: ../utz_viz/emit/index.html
 
-use utz_encode::topo::Topology;
 use utz_encode::Feat;
+use utz_encode::topo::Topology;
 
 #[cfg(feature = "emit")]
 pub mod emit;

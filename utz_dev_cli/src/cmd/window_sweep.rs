@@ -15,7 +15,7 @@ use std::io::Write as _;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::time::Instant;
 
-use utz_build::{ensure, Error};
+use utz_build::{Error, ensure};
 use utz_encode::encode::{self, Codec, Params};
 
 /// Counts live/peak heap bytes for the whole binary (the other subcommands
@@ -28,9 +28,13 @@ struct Tracking;
 static LIVE: AtomicUsize = AtomicUsize::new(0);
 static PEAK: AtomicUsize = AtomicUsize::new(0);
 
+// SAFETY: delegates every allocation decision to System, which upholds the
+// GlobalAlloc contract; the counters never touch the returned memory
 unsafe impl GlobalAlloc for Tracking {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let pointer = System.alloc(layout);
+        // SAFETY: the caller's layout is forwarded unchanged to System,
+        // which upholds the GlobalAlloc contract
+        let pointer = unsafe { System.alloc(layout) };
         if !pointer.is_null() {
             let live = LIVE.fetch_add(layout.size(), Relaxed) + layout.size();
             PEAK.fetch_max(live, Relaxed);
@@ -38,7 +42,9 @@ unsafe impl GlobalAlloc for Tracking {
         pointer
     }
     unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
-        System.dealloc(pointer, layout);
+        // SAFETY: per this fn's contract, pointer/layout name a live System
+        // allocation; both are forwarded unchanged
+        unsafe { System.dealloc(pointer, layout) };
         LIVE.fetch_sub(layout.size(), Relaxed);
     }
 }

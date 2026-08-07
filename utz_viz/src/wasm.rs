@@ -47,8 +47,8 @@
 use crate::misassign::{self, Acc, ArcParams, Quant};
 use utz_encode::encode::{self, Codec, Dataset, GeomEncoding, Params, PayloadStats};
 use utz_encode::topo::Topology;
-use utz_encode::{validate, Arc, Feat};
-use utz_simplify::{simplify_weighted, DensityWeight, Simplify};
+use utz_encode::{Arc, Feat, validate};
+use utz_simplify::{DensityWeight, Simplify, simplify_weighted};
 
 struct State {
     topo: Topology,
@@ -75,7 +75,7 @@ static mut STATE: Option<State> = None;
 
 /// Allocates `n` bytes for the blob upload; `utz_enc_init()` takes
 /// ownership.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn utz_enc_alloc(n: usize) -> *mut u8 {
     let mut buffer = Vec::<u8>::with_capacity(n);
     let ptr = buffer.as_mut_ptr();
@@ -205,16 +205,19 @@ fn parse_blob(bytes: &[u8]) -> Option<State> {
 /// # Safety
 /// `ptr`/`len` must come from a single prior `utz_enc_alloc(len)` call whose
 /// `len` bytes were fully initialized.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn utz_enc_init(ptr: *mut u8, len: usize) -> u32 {
     #[expect(
         clippy::same_length_and_capacity,
         reason = "the buffer comes from utz_enc_alloc's Vec::with_capacity(len), so len is the true capacity; the suggested slice copy would leak that allocation"
     )]
-    let blob = Vec::from_raw_parts(ptr, len, len);
+    // SAFETY: per this fn's contract, (ptr, len) reconstruct the exact Vec
+    // a prior utz_enc_alloc(len) forgot, with all len bytes initialized
+    let blob = unsafe { Vec::from_raw_parts(ptr, len, len) };
     let state = parse_blob(&blob);
     let ok = state.is_some();
-    STATE = state;
+    // SAFETY: single-threaded wasm; no other reference to STATE is live
+    unsafe { STATE = state };
     u32::from(ok)
 }
 
@@ -305,7 +308,7 @@ fn len_u32(n: usize) -> u32 {
 ///
 /// `geom` is a [`GeomEncoding`] header byte (0 varint arcs, 1 fixed-width
 /// arcs, 2 full rings, 3 coarse); unknown values fall back to varint arcs.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn utz_enc_payload(
     algorithm: u32,
     epsilon_m: f64,
@@ -314,6 +317,8 @@ pub extern "C" fn utz_enc_payload(
     grid_deg: f64,
     geom: u32,
 ) -> u32 {
+    // SAFETY: single-threaded wasm; no other STATE reference is live and
+    // this borrow dies with the call
     let Some(state) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else {
         return 0;
     };
@@ -354,8 +359,10 @@ pub extern "C" fn utz_enc_payload(
 /// the post-simplify+clean counts of arcs and verts. Indices 7-12 are the
 /// cleanup removals: 7 dups, 8 spikes, 9 collinear, 10 rings dropped,
 /// 11 polys dropped, 12 arcs dropped.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn utz_enc_stat(i: u32) -> u32 {
+    // SAFETY: single-threaded wasm; no exclusive STATE reference is live
+    // and this borrow dies with the call
     let Some(state) = (unsafe { &*core::ptr::addr_of!(STATE) }) else {
         return 0;
     };
@@ -382,8 +389,10 @@ pub extern "C" fn utz_enc_stat(i: u32) -> u32 {
 /// [`utz_enc_payload()`] call (whose return value is its length; null when
 /// there is none). This lets the JS read the exact bytes back, e.g. to
 /// offer a `.utz` download or diff against the builder.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn utz_enc_payload_ptr() -> *const u8 {
+    // SAFETY: single-threaded wasm; no exclusive STATE reference is live
+    // and this borrow dies with the call
     match unsafe { &*core::ptr::addr_of!(STATE) } {
         Some(state) if !state.payload.is_empty() => state.payload.as_ptr(),
         _ => core::ptr::null(),
@@ -399,7 +408,7 @@ pub extern "C" fn utz_enc_payload_ptr() -> *const u8 {
 /// f32 lon | f32 lat | u16 kind (0 cross, 1 overlap) | u16 feature.
 /// A spot on a shared border yields one record per owning ring; the JS
 /// dedupes by location and joins the zone names.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn utz_enc_problems(
     algorithm: u32,
     epsilon_m: f64,
@@ -407,6 +416,8 @@ pub extern "C" fn utz_enc_problems(
     quant_bits: u32,
     pre: u32,
 ) -> u32 {
+    // SAFETY: single-threaded wasm; no other STATE reference is live and
+    // this borrow dies with the call
     let Some(state) = (unsafe { &mut *core::ptr::addr_of_mut!(STATE) }) else {
         return 0;
     };
@@ -442,8 +453,10 @@ pub extern "C" fn utz_enc_problems(
 
 /// Returns a pointer to the records of the last [`utz_enc_problems()`]
 /// call (null when there are none).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn utz_enc_problems_ptr() -> *const u8 {
+    // SAFETY: single-threaded wasm; no exclusive STATE reference is live
+    // and this borrow dies with the call
     match unsafe { &*core::ptr::addr_of!(STATE) } {
         Some(state) if !state.problems.is_empty() => state.problems.as_ptr(),
         _ => core::ptr::null(),
@@ -452,8 +465,10 @@ pub extern "C" fn utz_enc_problems_ptr() -> *const u8 {
 
 /// Returns the tzid of feature `i` as (ptr, len) together with
 /// `utz_enc_tzid_len()`, for labelling problem records.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn utz_enc_tzid_ptr(i: u32) -> *const u8 {
+    // SAFETY: single-threaded wasm; no exclusive STATE reference is live
+    // and this borrow dies with the call
     match unsafe { &*core::ptr::addr_of!(STATE) } {
         Some(state) => state
             .feats
@@ -463,8 +478,10 @@ pub extern "C" fn utz_enc_tzid_ptr(i: u32) -> *const u8 {
         None => core::ptr::null(),
     }
 }
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn utz_enc_tzid_len(i: u32) -> u32 {
+    // SAFETY: single-threaded wasm; no exclusive STATE reference is live
+    // and this borrow dies with the call
     match unsafe { &*core::ptr::addr_of!(STATE) } {
         Some(state) => state
             .feats
@@ -482,8 +499,10 @@ pub extern "C" fn utz_enc_tzid_len(i: u32) -> u32 {
 /// plus the compressed sections, exactly as `encode::finish()` lays them
 /// out. Returns 0 on error, on an unsupported codec, or when there is no
 /// payload.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn utz_enc_compress(codec: u32) -> u32 {
+    // SAFETY: single-threaded wasm; no exclusive STATE reference is live
+    // and this borrow dies with the call
     let Some(state) = (unsafe { &*core::ptr::addr_of!(STATE) }) else {
         return 0;
     };
@@ -527,8 +546,10 @@ static mut WS: WsState = WsState {
 
 /// Zeroes the four running misassignment accumulators at the start of a
 /// run.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn utz_ws_reset() {
+    // SAFETY: single-threaded wasm; no other WS reference is live and this
+    // borrow dies with the call
     let ws = unsafe { &mut *core::ptr::addr_of_mut!(WS) };
     ws.simplify_acc = Acc::default();
     ws.quant_acc = Acc::default();
@@ -549,7 +570,7 @@ pub extern "C" fn utz_ws_reset() {
 /// # Safety
 /// `xy` must point at `n_pts * 2` valid doubles and `densities` at `n_pts`
 /// valid doubles or be null (e.g. from `utz_alloc()`).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn utz_ws_arc(
     algorithm: u32,
     param: f64,
@@ -560,13 +581,20 @@ pub unsafe extern "C" fn utz_ws_arc(
     n_pts: usize,
     densities: *const f64,
 ) -> usize {
-    let ws = &mut *core::ptr::addr_of_mut!(WS);
-    let buffer = core::slice::from_raw_parts_mut(xy, n_pts * 2);
+    // SAFETY: single-threaded wasm; no other WS reference is live and this
+    // borrow dies with the call
+    let ws = unsafe { &mut *core::ptr::addr_of_mut!(WS) };
+    // SAFETY: per this fn's contract, xy points at n_pts * 2 valid doubles,
+    // exclusively ours for the call
+    let buffer = unsafe { core::slice::from_raw_parts_mut(xy, n_pts * 2) };
     let arc: Vec<(f64, f64)> = buffer
         .chunks_exact(2)
         .map(|chunk| (chunk[0], chunk[1]))
         .collect();
-    let densities = (!densities.is_null()).then(|| core::slice::from_raw_parts(densities, n_pts));
+    let densities = (!densities.is_null()).then(||
+        // SAFETY: per this fn's contract, a non-null densities points at
+        // n_pts valid doubles, disjoint from xy (separate utz_alloc buffers)
+        unsafe { core::slice::from_raw_parts(densities, n_pts) });
     let params = ArcParams {
         algorithm: Simplify::from_code(algorithm, param),
         density_weight_floor: w_min,
@@ -592,8 +620,10 @@ pub unsafe extern "C" fn utz_ws_arc(
 /// f32 per kept vertex; null when there are none). `devs[v]` prices the
 /// output segment `v-1`→`v`, and it is 0 at the arc start and wherever
 /// nothing was dropped.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn utz_ws_devs_ptr() -> *const f32 {
+    // SAFETY: single-threaded wasm; no exclusive WS reference is live and
+    // this borrow dies with the call
     let ws = unsafe { &*core::ptr::addr_of!(WS) };
     if ws.deviations.is_empty() {
         core::ptr::null()
@@ -605,8 +635,10 @@ pub extern "C" fn utz_ws_devs_ptr() -> *const f32 {
 /// Returns one running misassignment accumulator (0 for an unknown
 /// index): 0 is the simplification area (km²), 1 the simplification
 /// people, 2 the display-snap area (km²), and 3 the display-snap people.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn utz_ws_stat(i: u32) -> f64 {
+    // SAFETY: single-threaded wasm; no exclusive WS reference is live and
+    // this borrow dies with the call
     let ws = unsafe { &*core::ptr::addr_of!(WS) };
     match i {
         0 => ws.simplify_acc.area,

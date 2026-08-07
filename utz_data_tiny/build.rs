@@ -2,8 +2,8 @@
 //! not match this preset's recipe in [`utz_common::presets`]. Regenerate
 //! with `scripts/gen-presets.sh` (or `utz_build_cli gen-preset tiny`).
 
-use utz_common::presets::{Provenance, TINY};
 use utz_common::PayloadHeader;
+use utz_common::presets::{Provenance, TINY};
 
 fn main() {
     let recipe = &TINY;

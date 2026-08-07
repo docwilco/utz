@@ -30,9 +30,9 @@ use alloc::vec::Vec;
 
 #[cfg(feature = "alloc")]
 use crate::decompress;
-use crate::format::{self, read_fixed, read_u16, read_u32, read_varint, unzigzag, PayloadLayout};
-use crate::{caps, pip, Codec, Error, Result};
-use utz_common::{grid_cell, CellTag, GeomEncoding, QuantBits};
+use crate::format::{self, PayloadLayout, read_fixed, read_u16, read_u32, read_varint, unzigzag};
+use crate::{Codec, Error, Result, caps, pip};
+use utz_common::{CellTag, GeomEncoding, QuantBits, grid_cell};
 
 /// A geographic position in degrees, **order-neutral by design**: you
 /// construct it with named fields, so there is no argument order to get
@@ -1008,10 +1008,11 @@ impl Finder {
         for ring_index in ring_start..ring_end {
             let coord_end = read_u32(payload, layout.full_ring_ends + ring_index * 4) as usize;
             let coord_count = coord_end - coord_start;
-            // SAFETY (slice cast): pair layouts are asserted at the top of
-            // this file (Pack24 is align 1; i16/i32 pairs land aligned
-            // because full_coords is 4-aligned — checked at load — and their
-            // strides are multiples of the element alignment). Bounds hold
+            // SAFETY: pair layouts for the slice cast are asserted at the
+            // top of this file (Pack24 is align 1; i16/i32 pairs land
+            // aligned because full_coords is 4-aligned — checked at load —
+            // and their strides are multiples of the element alignment).
+            // Bounds hold
             // for arbitrary container bytes: parse fits the coordinate
             // section to the header counts, and check_tables proved both
             // ring tables monotone and bounded at load, so

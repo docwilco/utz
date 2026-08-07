@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use ndarray::Array2;
 
 use crate::Feat;
-use utz_common::{grid_cell, NO_ZONE};
+use utz_common::{NO_ZONE, grid_cell};
 
 /// The grid dimensions for a cell size, `(ncols, nrows)` =
 /// `ceil(360/deg) × ceil(180/deg)`. The sweep tools share this with the

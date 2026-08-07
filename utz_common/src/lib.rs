@@ -678,11 +678,11 @@ pub fn gen_pts(seed: u64, count: usize) -> Vec<(f64, f64)> {
 
 #[cfg(test)]
 mod tests {
-    use scroll::{Pread, Pwrite, LE};
+    use scroll::{LE, Pread, Pwrite};
 
     use super::{
-        Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgorithm,
-        PAYLOAD_HEADER_LEN,
+        Codec, Dataset, GeomEncoding, PAYLOAD_HEADER_LEN, PayloadHeader, QuantBits,
+        SimplifyAlgorithm,
     };
 
     #[test]

@@ -31,8 +31,12 @@ pub fn run(args: Args) -> utz_build::Result<()> {
                         if (x1 - x0).abs() > 180.0 {
                             wide += 1;
                             let tzid = feature.tzid.clone().unwrap_or_default();
-                            println!("  wide edge in {tzid}: ({x0},{y0}) -> ({x1},{})  ring {} of {} verts",
-                                ring[(i + 1) % ring_len].1, i, ring_len);
+                            println!(
+                                "  wide edge in {tzid}: ({x0},{y0}) -> ({x1},{})  ring {} of {} verts",
+                                ring[(i + 1) % ring_len].1,
+                                i,
+                                ring_len
+                            );
                             if !wide_tzids.contains(&tzid) {
                                 wide_tzids.push(tzid);
                             }

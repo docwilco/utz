@@ -11,7 +11,7 @@
 
 use utz::format::{self};
 use utz_common::GeomEncoding;
-use utz_encode::encode::{compress, Codec};
+use utz_encode::encode::{Codec, compress};
 
 #[derive(clap::Args)]
 pub struct Args {

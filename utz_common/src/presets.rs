@@ -190,7 +190,7 @@ impl From<&Recipe> for Provenance {
 
 #[cfg(test)]
 mod tests {
-    use super::{by_name, Provenance, Recipe, ACCURATE, ALL, BALANCED, COMPACT, TINY, TINY_STATIC};
+    use super::{ACCURATE, ALL, BALANCED, COMPACT, Provenance, Recipe, TINY, TINY_STATIC, by_name};
     use crate::Codec;
 
     #[test]

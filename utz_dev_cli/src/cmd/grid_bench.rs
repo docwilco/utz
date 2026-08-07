@@ -10,7 +10,7 @@
 use std::time::Instant;
 
 use utz_encode::grid::{self, Order};
-use utz_encode::{q24_lat, q24_lon, topo, Feat, QMAX_I24};
+use utz_encode::{Feat, QMAX_I24, q24_lat, q24_lon, topo};
 
 struct QPoly {
     bbox: (i32, i32, i32, i32),
@@ -57,8 +57,12 @@ pub fn run(args: Args) -> utz_build::Result<()> {
         reason = "CSR byte size ≪ 2^53; KB display"
     )]
     let csr_kb = csr.bytes() as f64 / 1024.0;
-    println!("{} epsilon={epsilon_m}m grid={deg}°: {} features, {} uniq lists, {csr_kb:.1} KB CSR, {n_points} points",
-        dataset.to_uppercase(), feature_polys.len(), csr.uniq_lists);
+    println!(
+        "{} epsilon={epsilon_m}m grid={deg}°: {} features, {} uniq lists, {csr_kb:.1} KB CSR, {n_points} points",
+        dataset.to_uppercase(),
+        feature_polys.len(),
+        csr.uniq_lists
+    );
 
     let points: Vec<(i32, i32)> = gen_pts(n_points)
         .iter()
@@ -172,7 +176,9 @@ pub fn run(args: Args) -> utz_build::Result<()> {
         reason = "pip_needed ≤ n_points point count ≪ 2^53; percentage display"
     )]
     let pip_pct = 100.0 * pip_needed as f64 / n_points as f64;
-    println!("  PIP needed: {pip_needed}/{n_points} ({pip_pct:.1}%)   fallbacks: {fallback}   tzid disagreements vs linear: {diff}");
+    println!(
+        "  PIP needed: {pip_needed}/{n_points} ({pip_pct:.1}%)   fallbacks: {fallback}   tzid disagreements vs linear: {diff}"
+    );
     #[expect(
         clippy::cast_precision_loss,
         reason = "elapsed µs ≪ 2^53 (would be 285 years); µs/lookup display"

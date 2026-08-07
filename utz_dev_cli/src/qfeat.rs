@@ -4,7 +4,7 @@
 //! tool-side as an independent oracle for PIP benches and roundtrip
 //! comparisons.
 
-use utz_encode::{q_lat, q_lon, Feat, Poly};
+use utz_encode::{Feat, Poly, q_lat, q_lon};
 
 /// A tzid paired with its polygons, each a list of rings of quantized
 /// vertices.

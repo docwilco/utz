@@ -264,7 +264,7 @@ impl DensityGrid {
                 other => {
                     return Err(Error::BadSampleFormat {
                         format: format!("{other:?}"),
-                    })
+                    });
                 }
             }
         }

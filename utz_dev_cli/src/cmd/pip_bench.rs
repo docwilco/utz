@@ -16,7 +16,7 @@ use std::time::Instant;
 use geo::Contains;
 
 use crate::qfeat::QFeat;
-use utz_encode::{q24_lat, q24_lon, topo, Feat};
+use utz_encode::{Feat, q24_lat, q24_lon, topo};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -79,10 +79,10 @@ pub fn run(args: Args) -> utz_build::Result<()> {
                         .iter()
                         .map(|&(x, y)| (i64::from(x), i64::from(y)))
                         .collect();
-                    if vertices.first() != vertices.last() {
-                        if let Some(&first) = vertices.first() {
-                            vertices.push(first);
-                        }
+                    if vertices.first() != vertices.last()
+                        && let Some(&first) = vertices.first()
+                    {
+                        vertices.push(first);
                     }
                     vertices.into()
                 };

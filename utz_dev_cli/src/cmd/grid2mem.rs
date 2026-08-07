@@ -93,7 +93,7 @@ pub fn run(args: Args) -> utz_build::Result<()> {
     let vec_header32 = 12usize;
     let vec_header64 = 24usize;
     let alloc = 16usize; // rough per-allocation heap overhead
-                         // every non-empty cell heap-allocates its inner Vec
+    // every non-empty cell heap-allocates its inner Vec
     let nonempty = total - sets.iter().filter(|set| set.is_empty()).count();
     let all_ids: usize = sets.iter().map(std::collections::HashSet::len).sum();
     let layout_c32 = total * vec_header32 + nonempty * alloc + all_ids * 2;

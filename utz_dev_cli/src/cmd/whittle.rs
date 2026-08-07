@@ -16,7 +16,7 @@ use utz_build::density::DensityGrid;
 use utz_build::presets::{self, Recipe};
 use utz_build::{download, loader};
 use utz_encode::encode::{self, Codec, GeomEncoding, Params, SimplifyAlgorithm};
-use utz_encode::{topo, Feat};
+use utz_encode::{Feat, topo};
 use utz_simplify::DensityWeight;
 use utz_viz::{arc_verts, coord_count};
 

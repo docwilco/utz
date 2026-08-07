@@ -168,7 +168,7 @@ use scroll::Pread;
 use utz_common::{Codec, Dataset, GeomEncoding, PayloadHeader, QuantBits, SimplifyAlgorithm};
 pub use utz_common::{MAGIC, PAYLOAD_HEADER_LEN, PROLOGUE_LEN, VERSION};
 
-use crate::{caps, Error, Result};
+use crate::{Error, Result, caps};
 
 /// The parsed header, which records every section position needed for
 /// O(1) access.

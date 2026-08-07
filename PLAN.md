@@ -789,8 +789,13 @@ op-count win (cache misses vs streaming's sequential prefetch) — bench first (
     rejection tests in format.rs. The other sites verified sound as-is:
     Pack24 reads stay inside its 6 bytes unconditionally; the wasm statics
     are single-threaded with no reference outliving a call; the FFI
-    surfaces carry documented alloc-pairing contracts. Still open:
-    `unsafe_op_in_unsafe_fn`, Miri coverage.
+    surfaces carry documented alloc-pairing contracts. **Hygiene landed
+    with the edition 2024 migration (2026-08-07)**: `unsafe_op_in_unsafe_fn`
+    (edition default, stated in the workspace lints) — every unsafe op in
+    the wasm FFI fns and the tracking allocator now carries its own narrow
+    block — plus `clippy::undocumented_unsafe_blocks`, making the
+    per-block SAFETY comments compile-enforced workspace-wide. Still open:
+    Miri coverage.
 
 ---
 

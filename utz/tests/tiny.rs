@@ -76,14 +76,18 @@ fn invalid_positions_error() {
     let _ = finder.lookup_unchecked(wild);
     let _ = finder.lookup_coarse_unchecked(wild);
     // the domain corners are valid
-    assert!(utz::Position {
-        lon: 180.0,
-        lat: 90.0
-    }
-    .is_valid());
-    assert!(utz::Position {
-        lon: -180.0,
-        lat: -90.0
-    }
-    .is_valid());
+    assert!(
+        utz::Position {
+            lon: 180.0,
+            lat: 90.0
+        }
+        .is_valid()
+    );
+    assert!(
+        utz::Position {
+            lon: -180.0,
+            lat: -90.0
+        }
+        .is_valid()
+    );
 }

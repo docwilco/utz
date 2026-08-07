@@ -11,7 +11,7 @@
 
 use std::path::{Path, PathBuf};
 
-use utz_build::{ensure, Error};
+use utz_build::{Error, ensure};
 use utz_encode::encode::{self, Codec, Params};
 use utz_encode::topo;
 use utz_viz::emit as viz;

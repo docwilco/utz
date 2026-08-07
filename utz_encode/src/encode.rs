@@ -26,14 +26,14 @@
 //! The grid and bboxes are derived from the QUANTIZED geometry, so what the
 //! runtime PIPs is exactly what the grid indexed.
 
-use scroll::{Pread, Pwrite, LE};
-use utz_common::{CellTag, PayloadHeader, NO_ZONE};
+use scroll::{LE, Pread, Pwrite};
+use utz_common::{CellTag, NO_ZONE, PayloadHeader};
 pub use utz_common::{Dataset, MAGIC, PAYLOAD_HEADER_LEN, PROLOGUE_LEN, VERSION};
 
 use crate::error::ensure;
 use crate::grid::{self, Order};
 use crate::topo::{put_varint, zigzag};
-use crate::{clean, dq_lat, dq_lon, q_lat, q_lon, qmax_for, topo, Arc, Error, Feat};
+use crate::{Arc, Error, Feat, clean, dq_lat, dq_lon, q_lat, q_lon, qmax_for, topo};
 /// Checked narrowing for serializer counts and offsets: the format stores
 /// these at fixed width and a wrap would silently corrupt the container, so
 /// the helpers panic.

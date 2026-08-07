@@ -24,14 +24,14 @@ pub fn fetch(url: &str, cache_dir: &Path) -> crate::Result<PathBuf> {
     let headers_path = cache_dir.join(format!("{name}.headers"));
 
     let mut request = ureq::get(url);
-    if file.exists() {
-        if let Ok(cached_headers) = std::fs::read_to_string(&headers_path) {
-            for line in cached_headers.lines() {
-                if let Some(value) = line.strip_prefix("etag: ") {
-                    request = request.header("If-None-Match", value);
-                } else if let Some(value) = line.strip_prefix("last-modified: ") {
-                    request = request.header("If-Modified-Since", value);
-                }
+    if file.exists()
+        && let Ok(cached_headers) = std::fs::read_to_string(&headers_path)
+    {
+        for line in cached_headers.lines() {
+            if let Some(value) = line.strip_prefix("etag: ") {
+                request = request.header("If-None-Match", value);
+            } else if let Some(value) = line.strip_prefix("last-modified: ") {
+                request = request.header("If-Modified-Since", value);
             }
         }
     }

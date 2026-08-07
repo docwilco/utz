@@ -21,7 +21,7 @@ members = [
 exclude = ["utz_bench_firmware"]
 
 [workspace.package]
-edition = "2021"
+edition = "2024"
 license = "MIT"
 repository = "https://github.com/docwilco/utz"
 # floor: zip 8 and geo 0.33 require 1.88 (our own code needs 1.87 for
@@ -45,12 +45,20 @@ include_bytes_aligned = "0.2.0"
 # doc tree and the Pages site) for absolute docs.rs URLs. The Pages
 # build sets docsrs (for feature banners) but never on_docsrs.
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(on_docsrs)"] }
+# warn-by-default since edition 2024; stated explicitly because the unsafe
+# audit relies on it: an unsafe fn's body gets no implicit unsafe powers,
+# every unsafe operation carries its own block
+unsafe_op_in_unsafe_fn = "warn"
 
 [workspace.lints.clippy]
 # Pedantic is enforced with NO blanket allows: every finding is either fixed
 # or carries a site-level #[expect(..., reason = "...")] naming the invariant
 # that makes it safe (2026-07 campaign).
 pedantic = { level = "warn", priority = -1 }
+# every unsafe block must carry a // SAFETY: comment naming the invariant it
+# discharges (restriction lint; the unsafe-audit counterpart of the
+# expect-with-reason policy above)
+undocumented_unsafe_blocks = "warn"
 
 # utz_bench_common's build.rs runs the encoder (codec-none twins via the
 # utz_build builder API) — at the default build-override opt-level 0 the

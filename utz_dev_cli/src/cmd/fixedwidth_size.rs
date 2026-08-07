@@ -23,7 +23,7 @@
 
 use utz::format::{self, read_fixed, read_u16, read_u32, read_varint};
 use utz_common::GeomEncoding;
-use utz_encode::encode::{compress, Codec};
+use utz_encode::encode::{Codec, compress};
 
 fn write_fixed(value: i32, coord_bytes: usize, out: &mut Vec<u8>) {
     out.extend_from_slice(&value.cast_unsigned().to_le_bytes()[..coord_bytes]);

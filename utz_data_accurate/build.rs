@@ -2,8 +2,8 @@
 //! not match this preset's recipe in [`utz_common::presets`]. Regenerate
 //! with `scripts/gen-presets.sh` (or `utz_build_cli gen-preset accurate`).
 
-use utz_common::presets::{Provenance, ACCURATE};
 use utz_common::PayloadHeader;
+use utz_common::presets::{ACCURATE, Provenance};
 
 fn main() {
     let recipe = &ACCURATE;

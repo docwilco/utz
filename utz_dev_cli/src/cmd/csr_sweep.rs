@@ -115,9 +115,14 @@ pub fn run(args: &Args) -> utz_build::Result<()> {
                 side_bytes as f64 / 1024.0,
                 (primary_bytes + side_bytes) as f64 / 1024.0,
             );
-            println!("{:>4}{:>9}{:>9}{border_pct:>9.1}%{pip_pct:>8.1}%{:>7}{:>8}{primary_kb:>8.1} KB{side_kb:>8.1} KB{total_kb:>8.1} KB",
-                deg, total, border,
-                csr.uniq_lists, csr.list_ids.len());
+            println!(
+                "{:>4}{:>9}{:>9}{border_pct:>9.1}%{pip_pct:>8.1}%{:>7}{:>8}{primary_kb:>8.1} KB{side_kb:>8.1} KB{total_kb:>8.1} KB",
+                deg,
+                total,
+                border,
+                csr.uniq_lists,
+                csr.list_ids.len()
+            );
         }
         println!();
     }

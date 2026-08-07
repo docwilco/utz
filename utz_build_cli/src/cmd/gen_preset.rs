@@ -10,8 +10,8 @@
 
 use std::path::PathBuf;
 
-use utz_build::presets::{self, Recipe};
 use utz_build::Config;
+use utz_build::presets::{self, Recipe};
 
 #[derive(clap::Args)]
 pub struct Args {

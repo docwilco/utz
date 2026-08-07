@@ -14,7 +14,7 @@ use utz_build_cli::cmd;
 )]
 enum Cmd {
     /// Generates a .utz asset to disk from explicit knobs.
-    Gen(cmd::gen::Args),
+    Gen(cmd::generate::Args),
     /// Generates a preset asset (or every preset) from the canonical
     /// recipe table.
     GenPreset(cmd::gen_preset::Args),
@@ -32,7 +32,7 @@ fn main() -> std::process::ExitCode {
 
 fn run() -> utz_build::Result<()> {
     match Cmd::parse() {
-        Cmd::Gen(args) => cmd::gen::run(args),
+        Cmd::Gen(args) => cmd::generate::run(args),
         Cmd::GenPreset(args) => cmd::gen_preset::run(args),
     }
 }

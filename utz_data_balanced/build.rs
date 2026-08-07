@@ -2,8 +2,8 @@
 //! not match this preset's recipe in [`utz_common::presets`]. Regenerate
 //! with `scripts/gen-presets.sh` (or `utz_build_cli gen-preset balanced`).
 
-use utz_common::presets::{Provenance, BALANCED};
 use utz_common::PayloadHeader;
+use utz_common::presets::{BALANCED, Provenance};
 
 fn main() {
     let recipe = &BALANCED;

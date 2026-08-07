@@ -17,11 +17,11 @@
 //! utz_free(ptr, n * 2);
 //! ```
 
-use crate::{simplify, simplify_weighted, DensityWeight, Simplify};
+use crate::{DensityWeight, Simplify, simplify, simplify_weighted};
 
 /// Allocates space for `n_f64` doubles; every call must be paired with
 /// [`utz_free()`].
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn utz_alloc(n_f64: usize) -> *mut f64 {
     let mut buffer = Vec::<f64>::with_capacity(n_f64);
     let ptr = buffer.as_mut_ptr();
@@ -33,9 +33,11 @@ pub extern "C" fn utz_alloc(n_f64: usize) -> *mut f64 {
 ///
 /// # Safety
 /// `ptr`/`n_f64` must come from a single prior `utz_alloc(n_f64)` call.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn utz_free(ptr: *mut f64, n_f64: usize) {
-    drop(Vec::from_raw_parts(ptr, 0, n_f64));
+    // SAFETY: per this fn's contract, (ptr, n_f64) reconstruct exactly the
+    // Vec a prior utz_alloc(n_f64) forgot; length 0 reads no elements
+    drop(unsafe { Vec::from_raw_parts(ptr, 0, n_f64) });
 }
 
 /// Simplifies `n_points` interleaved `x,y` doubles IN PLACE and returns the
@@ -44,14 +46,16 @@ pub unsafe extern "C" fn utz_free(ptr: *mut f64, n_f64: usize) {
 ///
 /// # Safety
 /// `xy` must point at `n_points * 2` valid doubles (e.g. from [`utz_alloc()`]).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn utz_simplify(
     algorithm: u32,
     xy: *mut f64,
     n_points: usize,
     param: f64,
 ) -> usize {
-    let buffer = core::slice::from_raw_parts_mut(xy, n_points * 2);
+    // SAFETY: per this fn's contract, xy points at n_points * 2 valid
+    // doubles, exclusively ours for the call (single-threaded wasm)
+    let buffer = unsafe { core::slice::from_raw_parts_mut(xy, n_points * 2) };
     let points: Vec<(f64, f64)> = buffer
         .chunks_exact(2)
         .map(|chunk| (chunk[0], chunk[1]))
@@ -74,7 +78,7 @@ pub unsafe extern "C" fn utz_simplify(
 /// # Safety
 /// `xy` must point at `n_points * 2` valid doubles and `densities` at `n_points`
 /// valid doubles (e.g. from [`utz_alloc()`]).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn utz_simplify_w(
     algorithm: u32,
     xy: *mut f64,
@@ -83,13 +87,18 @@ pub unsafe extern "C" fn utz_simplify_w(
     densities: *const f64,
     w_min: f64,
 ) -> usize {
-    let buffer = core::slice::from_raw_parts_mut(xy, n_points * 2);
+    // SAFETY: per this fn's contract, xy points at n_points * 2 valid
+    // doubles, exclusively ours for the call (single-threaded wasm)
+    let buffer = unsafe { core::slice::from_raw_parts_mut(xy, n_points * 2) };
     let points: Vec<(f64, f64)> = buffer
         .chunks_exact(2)
         .map(|chunk| (chunk[0], chunk[1]))
         .collect();
     let model = DensityWeight::new(w_min);
-    let weights: Vec<f64> = core::slice::from_raw_parts(densities, n_points)
+    // SAFETY: per this fn's contract, densities points at n_points valid
+    // doubles, disjoint from xy (separate utz_alloc buffers)
+    let densities = unsafe { core::slice::from_raw_parts(densities, n_points) };
+    let weights: Vec<f64> = densities
         .iter()
         .map(|&density| model.weight(density))
         .collect();

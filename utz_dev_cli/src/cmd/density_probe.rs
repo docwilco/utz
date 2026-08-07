@@ -7,7 +7,7 @@
 //! ```
 
 use utz_build::density::DensityGrid;
-use utz_build::{ensure, Error};
+use utz_build::{Error, ensure};
 
 #[derive(clap::Args)]
 pub struct Args {}

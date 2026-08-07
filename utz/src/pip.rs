@@ -705,7 +705,7 @@ mod tests {
     /// packing here could drift from the encoder without failing.
     #[cfg(feature = "geom-full-rings")]
     fn pack24(x: i32, y: i32) -> Pack24 {
-        use utz_encode::encode::{push_fixed, QuantBits};
+        use utz_encode::encode::{QuantBits, push_fixed};
         let mut bytes = Vec::new();
         push_fixed(&mut bytes, x, QuantBits::Bits24);
         push_fixed(&mut bytes, y, QuantBits::Bits24);

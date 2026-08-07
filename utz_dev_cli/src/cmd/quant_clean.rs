@@ -12,7 +12,7 @@
 //!
 //! [`utz_encode::clean`]: ../utz_encode/clean/index.html
 
-use utz_build::{ensure, Error};
+use utz_build::{Error, ensure};
 use utz_encode::clean::{self, CleanStats};
 use utz_encode::topo;
 use utz_encode::validate::{self, Bad, Kind};

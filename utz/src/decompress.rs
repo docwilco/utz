@@ -176,7 +176,7 @@ fn decompress_brotli(codec: Codec, raw_len: usize, body: &[u8]) -> Result<Vec<u8
             return Err(Error::decoder_failed(
                 codec,
                 format_args!("{:?}", state.error_code),
-            ))
+            ));
         }
     }
     if output_offset != raw_len {

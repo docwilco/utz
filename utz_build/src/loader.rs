@@ -11,7 +11,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::{download, Dataset, Error, Feat};
+use crate::{Dataset, Error, Feat, download};
 use utz_encode::{Poly, Ring};
 
 const REPO: &str = "https://github.com/evansiroky/timezone-boundary-builder";
@@ -30,10 +30,10 @@ const REPO: &str = "https://github.com/evansiroky/timezone-boundary-builder";
 /// probed tag (probe failures themselves fall back to the cached tag or
 /// `"dev"`).
 pub fn resolve_release(cache_dir: &Path) -> crate::Result<String> {
-    if let Ok(tag) = std::env::var("UTZ_TZBB_RELEASE") {
-        if !tag.is_empty() {
-            return Ok(tag);
-        }
+    if let Ok(tag) = std::env::var("UTZ_TZBB_RELEASE")
+        && !tag.is_empty()
+    {
+        return Ok(tag);
     }
     let tag_file = cache_dir.join("tzbb-release.tag");
     let probed: crate::Result<String> = (|| {
